@@ -1,0 +1,336 @@
+/* PROTOTYPE: the comments feed */
+
+.feed {
+  max-width: 46rem;
+  margin: 0 auto;
+  font-size: var(--text-sm);
+}
+.feed-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.feed-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+/* the vertical rail behind the timeline */
+.feed-timeline::before {
+  content: '';
+  position: absolute;
+  left: calc(1rem - var(--hairline));
+  top: var(--space-4);
+  bottom: 0;
+  width: calc(var(--hairline) * 2);
+  background: var(--rule);
+}
+.feed-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+.feed-gutter {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+}
+.feed-gutter .avatar-md {
+  width: 2rem;
+  height: 2rem;
+  box-shadow: 0 0 0 calc(var(--hairline) * 4) var(--surface);
+}
+.feed-bot {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius);
+  background: var(--bot-soft);
+  box-shadow: 0 0 0 calc(var(--hairline) * 4) var(--surface);
+}
+.feed-icon {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-top: 0.125rem;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: var(--hairline) solid var(--rule-strong);
+  font-size: 0.6875rem;
+  color: var(--ink-2);
+  box-shadow: 0 0 0 calc(var(--hairline) * 4) var(--surface);
+}
+
+/* small one-line events */
+.feed-event {
+  margin-bottom: var(--space-4);
+}
+.feed-event-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  padding-top: var(--space-1);
+  color: var(--ink-2);
+}
+.feed-event-body .actor {
+  font-size: var(--text-sm);
+}
+.feed-event-msg {
+  color: var(--ink);
+}
+.feed-event-files {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+}
+.feed-event-files .link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.feed-time {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
+
+/* the opening post */
+.feed-card {
+  border: var(--hairline) solid var(--rule-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+.feed-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--accent-soft);
+  border-bottom: var(--hairline) solid var(--rule);
+}
+.feed-author-tag {
+  margin-left: auto;
+  background: var(--surface);
+}
+.feed-card-body {
+  padding: var(--space-4);
+}
+.feed-title {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.2;
+  margin: 0 0 var(--space-2);
+}
+.feed-desc {
+  font-family: var(--font-prose);
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  color: var(--ink-2);
+  margin: 0 0 var(--space-3);
+}
+.feed-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
+
+/* a comment thread, with the file and text it's about */
+.feed-thread {
+  border: var(--hairline) solid var(--rule-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+.feed-thread-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-2);
+  border-bottom: var(--hairline) solid var(--rule);
+}
+.feed-path {
+  color: var(--ink-2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.feed-open {
+  margin-left: auto;
+  color: var(--accent);
+}
+.feed-quote {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: var(--hairline) solid var(--rule);
+  font-family: var(--font-prose);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--mark) 10%, var(--surface));
+}
+.feed-quote mark.anchor {
+  cursor: default;
+}
+.feed-quote.is-lost q {
+  text-decoration: line-through;
+  color: var(--ink-3);
+}
+.feed-thread > .card {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+.feed-thread > .card.by-bot {
+  border-left: var(--rail) solid var(--bot);
+}
+.feed-hide {
+  display: block;
+  padding: 0 var(--space-4) var(--space-3);
+}
+
+/* the summary box at the end */
+.feed-summary {
+  margin: var(--space-6) 0 var(--space-8) calc(2rem + var(--space-3));
+  border: calc(var(--hairline) * 2) solid var(--rule-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  display: grid;
+}
+.feed-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+}
+.feed-summary-row + .feed-summary-row {
+  border-top: var(--hairline) solid var(--rule);
+}
+.feed-summary-title {
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  margin-right: auto;
+}
+.feed-summary-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+}
+.feed-summary-files .actor {
+  gap: var(--space-1);
+}
+
+@media (max-width: 48rem) {
+  .feed-summary {
+    margin-left: 0;
+  }
+}
+
+/* what a thread is attached to */
+.feed-kind {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  border: var(--hairline) solid var(--rule-strong);
+  color: var(--ink-2);
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.feed-kind-section {
+  border-color: var(--mark-line);
+  background: color-mix(in srgb, var(--mark) 35%, var(--surface));
+  color: var(--ink);
+}
+.feed-kind-text {
+  border-bottom: calc(var(--hairline) * 2) solid var(--mark-line);
+}
+.feed-crumb {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.feed-crumb.muted {
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+/* section context: the section drawn as an outlined box, like the anchored view */
+.feed-section {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: var(--hairline) solid var(--rule);
+  display: grid;
+  gap: var(--space-2);
+}
+.feed-section-box {
+  position: relative;
+  border: var(--hairline) solid color-mix(in srgb, var(--mark-line) 60%, transparent);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--mark) 14%, var(--surface));
+  padding: var(--space-3) var(--space-4);
+}
+.feed-section-level {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 700;
+  color: var(--ink-3);
+}
+.feed-section-title {
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.feed-section-first {
+  margin: var(--space-1) 0 0;
+  font-family: var(--font-prose);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.feed-section-extent {
+  font-size: var(--text-xs);
+  color: var(--ink-3);
+}
+.feed-section-extent b {
+  color: var(--ink-2);
+}
+.feed-section.is-lost {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+}
+.feed-section.is-lost .feed-section-title {
+  text-decoration: line-through;
+  color: var(--ink-3);
+}
