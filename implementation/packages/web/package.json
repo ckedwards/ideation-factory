@@ -1,0 +1,7 @@
+{
+  "name": "@ideaf/web",
+  "private": true,
+  "type": "module",
+  "dependencies": { "@ideaf/api": "workspace:*", "@ideaf/core": "workspace:*" },
+  "scripts": { "typecheck": "tsc -p ." }
+}

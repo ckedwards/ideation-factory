@@ -11,12 +11,26 @@ export type Actor =
 
 export type IdeaStatus = 'draft' | 'requesting review' | 'changes in progress'
 
+// Images referenced by the idea's markdown, as uploaded by the cli with that
+// version. Keyed by repo path. Uploaded images are stored once by content hash;
+// anything the cli didn't upload says why. Other media (PDF, video, code) is
+// never uploaded: links to it resolve to the repository instead.
+export type Media =
+  | { status: 'uploaded'; url: string; bytes: number; type: string; hash: string }
+  | { status: 'skipped'; reason: string; bytes?: number }
+
+// Deployment-wide settings a site admin chooses (see experiment 2's Site admin
+// page): how external images behave, and the largest image the cli uploads.
+export type ExternalImages = 'click' | 'always' | 'never'
+export const deployment = { externalImages: 'click' as ExternalImages, maxImageMB: 10 }
+
 export type Version = {
   n: number
   author: Actor
   message: string
   at: string
   files: Record<string, string>
+  media?: Record<string, Media>
 }
 
 export type Anchor =
@@ -55,7 +69,7 @@ export const users: Record<string, User> = {
 // The logged-in user is the idea's author.
 export const me = users.riley
 
-export const idea = {
+const offlineIdea = {
   id: 'idea-142',
   title: 'Offline-first sync for the field app',
   description:
@@ -72,12 +86,12 @@ export const idea = {
   ] as Reviewer[],
 }
 
-export const initialStatus: IdeaStatus = 'requesting review'
+const offlineStatus: IdeaStatus = 'requesting review'
 
 // Idea-level events that aren't versions or comments (for the feed).
 export type Activity = { id: string; at: string; actor: Actor; text: string; kind: 'created' | 'status' | 'review-requested' }
 
-export const initialActivity: Activity[] = [
+const offlineActivity: Activity[] = [
   { id: 'a1', at: '2026-10-20T16:09:30Z', actor: { kind: 'user', userId: 'riley' }, kind: 'created', text: 'created this idea as a draft' },
   { id: 'a2', at: '2026-10-22T10:08:00Z', actor: { kind: 'user', userId: 'riley' }, kind: 'review-requested', text: 'requested review from Maya Ortiz, Devon Fox and Platform team' },
   { id: 'a3', at: '2026-10-22T10:08:30Z', actor: { kind: 'user', userId: 'riley' }, kind: 'status', text: 'changed the status to Requesting review' },
@@ -124,6 +138,8 @@ Field technicians spend a surprising part of their day without signal: basements
 
 ## Proposal
 
+![Sync flow sketch](./img/sync-flow.svg)
+
 Every change the technician makes is written to a local operation log in SQLite before it touches the UI. We will reuse the existing REST endpoints unchanged and replay the log against them.
 
 Conflicts are handled per field, not per record. See [conflict resolution](./conflict-resolution.md) for the rules.
@@ -134,6 +150,8 @@ Conflicts are handled per field, not per record. See [conflict resolution](./con
 `
 
 const readmeV3 = `# Offline-first sync for the field app
+
+![Prototype badge](https://img.shields.io/badge/prototype-offline%20sync-2b6b5a)
 
 Field technicians spend a surprising part of their day without signal: basements, plant rooms, rural sites. Today the app blocks on every save and shows a spinner until the request finishes. When the request fails, the technician retypes their notes or, more often, writes them on paper and enters them back at the truck.
 
@@ -151,6 +169,8 @@ This proposal makes the field app work offline by default and sync in the backgr
 - Offline support for the admin web console.
 
 ## Proposal
+
+![Sync flow sketch](./img/sync-flow.svg)
 
 Every change the technician makes is written to a local operation log in SQLite before it touches the UI. A background worker drains the log to a new \`/sync\` endpoint in batches, and the server replies with the operations other devices made since the last sync.
 
@@ -178,6 +198,8 @@ Conflicts are handled per field, not per record. See [conflict resolution](./con
 1. Ship behind the \`offline_sync\` flag to internal devices.
 2. Expand to 5% of technicians in one region and watch conflict rates.
 3. Default on once the conflict rate stays under 0.5% for two weeks.
+
+Background: the [load test results](../../perf/sync-load-test.pdf) and a [screen recording of the offline demo](./media/offline-demo.mp4).
 
 ## Open questions
 
@@ -220,6 +242,8 @@ A conflict happens when two devices change the same field of the same record bef
 
 Flagged work orders show a banner on the technician's device and appear in the dispatcher's queue. The dispatcher picks a version or edits the merged text.
 
+![Conflict banner on the technician's device](./img/conflict-banner.svg)
+
 ## Why not last-write-wins?
 
 Device clocks drift, and a technician who syncs late would silently overwrite a colleage's notes. That breaks our "no silent data loss" goal.
@@ -238,6 +262,8 @@ The field app is a React Native client that talks to the REST API directly. Ever
 `
 
 const overviewIdea = `# Architecture overview
+
+![Whiteboard photo from the kickoff](./img/kickoff-whiteboard.jpg)
 
 ## Clients
 
@@ -265,17 +291,20 @@ Implementation notes that live next to the code.
 `
 
 // What the CLI last reported for the target branch (main).
-export const target: Record<string, string> = {
+const offlineTarget: Record<string, string> = {
   'docs/README.md': docsIndex,
   'docs/architecture/overview.md': overviewMain,
 }
 
-export const initialVersions: Version[] = [
+const WHITEBOARD: Media = { status: 'skipped', reason: `Not uploaded: 14.2 MB is over this deployment’s ${deployment.maxImageMB} MB image limit`, bytes: 14_200_000 }
+
+const offlineVersions: Version[] = [
   {
     n: 1,
     author: { kind: 'user', userId: 'riley' },
     message: 'First draft',
     at: '2026-10-20T16:10:00Z',
+    media: { 'docs/architecture/img/kickoff-whiteboard.jpg': WHITEBOARD },
     files: {
       'docs/README.md': docsIndex,
       'docs/architecture/overview.md': overviewIdea,
@@ -287,6 +316,10 @@ export const initialVersions: Version[] = [
     author: { kind: 'userbot', bot: 'planbot', userId: 'riley' },
     message: 'Add conflict resolution doc, flesh out rollout',
     at: '2026-10-22T10:05:00Z',
+    media: {
+      'docs/architecture/img/kickoff-whiteboard.jpg': WHITEBOARD,
+      'docs/offline-sync/img/sync-flow.svg': { status: 'uploaded', url: '/uploads/sync-flow-v2.svg', bytes: 1370, type: 'image/svg+xml', hash: 'sha256:5e1c…a09f' },
+    },
     files: {
       'docs/README.md': docsIndex,
       'docs/architecture/overview.md': overviewIdea,
@@ -299,6 +332,11 @@ export const initialVersions: Version[] = [
     author: { kind: 'user', userId: 'riley' },
     message: 'Address review: batch endpoint, non-goals, move rollout, sync notes',
     at: '2026-10-23T18:40:00Z',
+    media: {
+      'docs/architecture/img/kickoff-whiteboard.jpg': WHITEBOARD,
+      'docs/offline-sync/img/sync-flow.svg': { status: 'uploaded', url: '/uploads/sync-flow-v3.svg', bytes: 1856, type: 'image/svg+xml', hash: 'sha256:b77d…31c2' },
+      'docs/offline-sync/img/conflict-banner.svg': { status: 'uploaded', url: '/uploads/conflict-banner.svg', bytes: 1347, type: 'image/svg+xml', hash: 'sha256:0c4a…e81b' },
+    },
     files: {
       'docs/README.md': docsIndex,
       'docs/architecture/overview.md': overviewIdea,
@@ -312,7 +350,7 @@ export const initialVersions: Version[] = [
 const README = 'docs/offline-sync/README.md'
 const CONFLICT = 'docs/offline-sync/conflict-resolution.md'
 
-export const initialComments: Comment[] = [
+const offlineComments: Comment[] = [
   {
     id: 'c1',
     file: README,
@@ -490,3 +528,47 @@ export const initialComments: Comment[] = [
     replies: [],
   },
 ]
+
+// ---------- which idea this page shows ----------
+// The prototype holds more than one idea. ?idea=<id> picks one, once, before
+// the app renders (selectIdea in main.tsx); everything reads these bindings.
+// Without ?idea it's the offline-sync idea.
+
+export type IdeaInfo = typeof offlineIdea
+export type IdeaData = {
+  idea: IdeaInfo
+  status: IdeaStatus
+  activity: Activity[]
+  target: Record<string, string>
+  versions: Version[]
+  comments: Comment[]
+  defaultFile: string
+}
+
+const offlineSync: IdeaData = {
+  idea: offlineIdea,
+  status: offlineStatus,
+  activity: offlineActivity,
+  target: offlineTarget,
+  versions: offlineVersions,
+  comments: offlineComments,
+  defaultFile: 'docs/offline-sync/README.md',
+}
+
+export let idea = offlineSync.idea
+export let initialStatus = offlineSync.status
+export let initialActivity = offlineSync.activity
+export let target = offlineSync.target
+export let initialVersions = offlineSync.versions
+export let initialComments = offlineSync.comments
+export let defaultFile = offlineSync.defaultFile
+
+export function selectIdea(d: IdeaData) {
+  idea = d.idea
+  initialStatus = d.status
+  initialActivity = d.activity
+  target = d.target
+  initialVersions = d.versions
+  initialComments = d.comments
+  defaultFile = d.defaultFile
+}

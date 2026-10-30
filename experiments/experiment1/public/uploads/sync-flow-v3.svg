@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="220" viewBox="0 0 640 220" font-family="Helvetica, Arial, sans-serif">
+  <rect width="640" height="220" fill="#fffdf9"/>
+  <text x="20" y="32" font-size="15" font-weight="700" fill="#1f1d1a">Sync flow (v3): batched /sync</text>
+  <rect x="20" y="80" width="130" height="70" rx="10" fill="#dcebe4" stroke="#2b6b5a" stroke-width="2"/>
+  <text x="85" y="112" font-size="14" text-anchor="middle" fill="#1f1d1a">Field app</text>
+  <text x="85" y="132" font-size="11" text-anchor="middle" fill="#514c44">writes instantly</text>
+  <rect x="200" y="80" width="130" height="70" rx="10" fill="#efebe3" stroke="#514c44" stroke-width="2"/>
+  <text x="265" y="112" font-size="14" text-anchor="middle" fill="#1f1d1a">Op log</text>
+  <text x="265" y="132" font-size="11" text-anchor="middle" fill="#514c44">SQLite</text>
+  <rect x="380" y="80" width="110" height="70" rx="10" fill="#efebe3" stroke="#514c44" stroke-width="2"/>
+  <text x="435" y="120" font-size="14" text-anchor="middle" fill="#1f1d1a">Worker</text>
+  <rect x="530" y="80" width="95" height="70" rx="10" fill="#d6efe0" stroke="#145a37" stroke-width="2"/>
+  <text x="577" y="112" font-size="14" text-anchor="middle" fill="#1f1d1a">/sync</text>
+  <text x="577" y="132" font-size="11" text-anchor="middle" fill="#514c44">batches</text>
+  <g stroke="#2b6b5a" stroke-width="2" fill="none">
+    <path d="M152 115 H195" marker-end="url(#b)"/><path d="M332 115 H375" marker-end="url(#b)"/><path d="M492 115 H525" marker-end="url(#b)"/>
+  </g>
+  <defs><marker id="b" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="#2b6b5a"/></marker></defs>
+  <text x="320" y="185" font-size="12" text-anchor="middle" fill="#145a37">One request per batch of up to 50 ops; remote ops come back in the reply</text>
+</svg>

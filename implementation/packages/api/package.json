@@ -1,0 +1,8 @@
+{
+  "name": "@ideaf/api",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": { "@ideaf/core": "workspace:*" },
+  "scripts": { "typecheck": "tsc -p ." }
+}

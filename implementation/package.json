@@ -1,0 +1,15 @@
+{
+  "name": "ideation-factory",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "typecheck": "bun run --filter '*' typecheck",
+    "test": "bun test",
+    "dev:server": "bun run --filter '@ideaf/server' dev"
+  },
+  "devDependencies": {
+    "@types/bun": "^1",
+    "typescript": "^5"
+  }
+}

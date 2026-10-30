@@ -298,7 +298,7 @@ textarea {
   background: var(--ins-bg);
   color: var(--ins-ink);
 }
-.tag-lost {
+.tag-outdated {
   background: var(--del-bg);
   color: var(--lost);
 }
@@ -514,14 +514,73 @@ textarea {
   text-decoration: underline dotted;
 }
 .md-mermaid {
-  margin-left: 0;
-  margin-right: 0;
+  margin: var(--space-4) 0;
+  /* Pele reads its colors and font from these, so diagrams follow the theme */
+  --pele-bg: transparent;
+  --pele-fg: var(--ink);
+  --pele-muted: var(--ink-3);
+  --pele-line: var(--ink-2);
+  --pele-surface: var(--surface);
+  --pele-surface-alt: var(--surface-2);
+  --pele-border: var(--rule-strong);
+  --pele-accent: var(--accent);
+  --pele-font: var(--font-ui);
+  --pele-radius: var(--radius);
+}
+.md-mermaid-svg {
+  padding: var(--space-3);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow-x: auto;
+}
+.md-mermaid-wait {
+  /* holds roughly a diagram's space so the page doesn't jump much when it lands */
+  min-height: 12rem;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  color: var(--ink-3);
+  animation: md-wait 1.2s ease-in-out infinite alternate;
+}
+@keyframes md-wait {
+  from {
+    opacity: 0.55;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .md-mermaid-wait {
+    animation: none;
+  }
+}
+.md-mermaid-svg svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+.md-mermaid-src {
+  margin-top: var(--space-1);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  color: var(--ink-3);
+}
+.md-mermaid-src summary {
+  cursor: pointer;
+  width: max-content;
+}
+.md-mermaid-src pre {
+  margin-top: var(--space-2);
 }
 .md-mermaid figcaption {
   font-family: var(--font-ui);
   font-size: var(--text-xs);
   color: var(--ink-3);
   margin-bottom: var(--space-1);
+}
+.md-mermaid.is-broken figcaption {
+  color: var(--lost);
 }
 
 /* section changed vs target: a rail in the left margin */
@@ -730,7 +789,7 @@ mark.anchor.is-resolved {
 .card.is-resolved {
   opacity: 0.66;
 }
-.card.is-lost {
+.card.is-outdated {
   border-style: dashed;
 }
 .card-head {
@@ -828,34 +887,26 @@ mark.anchor.is-resolved {
   color: var(--ok);
 }
 
-.reattach-banner {
-  position: fixed;
-  top: var(--space-4);
-  left: 50%;
-  translate: -50% 0;
-  z-index: 60;
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  background: var(--ink);
-  color: var(--bg);
-  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
-  border-radius: var(--radius-pill);
-  font-size: var(--text-sm);
-  box-shadow: var(--shadow);
-}
-.reattach-banner .actor-name,
-.reattach-banner button {
-  color: var(--bg);
-}
 
 /* ---------- dev-only state button (not part of the design) ---------- */
 
-.proto-state-btn {
+.proto-dev {
   position: fixed;
   bottom: var(--space-4);
   left: var(--space-4);
   z-index: 100;
+  display: flex;
+  gap: var(--space-2);
+}
+.proto-state-btn select {
+  font: inherit;
+  background: #333;
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  margin-left: var(--space-1);
+}
+.proto-state-btn {
   background: #111;
   color: #fff;
   border: none;
@@ -957,4 +1008,119 @@ mark.anchor.is-resolved {
 .toc-empty {
   font-size: var(--text-xs);
   color: var(--ink-3);
+}
+
+/* ---------- media in markdown ---------- */
+.md-image {
+  display: block;
+  margin: var(--space-2) 0;
+}
+.md-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius);
+  border: var(--hairline) solid var(--rule);
+  background: #fff;
+}
+.md-image-external img {
+  border-style: dashed;
+}
+.md-image-cap {
+  display: block;
+  margin-top: var(--space-1);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  color: var(--ink-3);
+}
+.md-media {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: var(--space-2) 0;
+  padding: var(--space-3) var(--space-4);
+  border: var(--hairline) dashed var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+.md-media-icon {
+  font-size: 1.25rem;
+}
+.md-media-text {
+  flex: 1;
+  min-width: 12rem;
+}
+.md-media-missing {
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--rule));
+}
+.md-media-show {
+  font-size: var(--text-xs);
+}
+.prose a.md-source::after {
+  content: ' ↗';
+  font-size: 0.75em;
+}
+.md-filetype {
+  margin-left: var(--space-1);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  white-space: nowrap;
+}
+/* image changed between versions: before / after */
+.rl-image {
+  position: relative;
+}
+.rl-image-label {
+  display: inline-block;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--warn);
+  margin-bottom: var(--space-1);
+}
+.rl-image-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+.rl-image-before img {
+  outline: calc(var(--hairline) * 3) solid var(--del-bg);
+  opacity: 0.8;
+}
+.rl-image-after img {
+  outline: calc(var(--hairline) * 3) solid var(--ins-bg);
+}
+.rl-image-before .md-image-cap::before {
+  content: 'Before · ';
+  color: var(--del-ink);
+  font-weight: 700;
+}
+.rl-image-after .md-image-cap::before {
+  content: 'After · ';
+  color: var(--ins-ink);
+  font-weight: 700;
+}
+@media (max-width: 48rem) {
+  .rl-image-pair {
+    grid-template-columns: 1fr;
+  }
+}
+
+a.proto-state-btn {
+  text-decoration: none;
+}
+
+.view-in {
+  font-size: var(--text-xs);
+  font-weight: 600;
 }

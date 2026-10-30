@@ -4,7 +4,7 @@ As of 2026-10-24. Product details come from each product's own site and docs, no
 
 ## Purpose
 
-Ideation Factory is intended to be a free, open source project that organizations can host internally using [celld](https://celld.dev). It is not a paid product. The goal of this analysis is to answer one question: **is it worth building?** Does an equivalent already exist, and if not, where does Ideation Factory fit?
+Ideation Factory is intended to be a free, open source project that organizations host internally, on infrastructure they already have (containers, plus an S3-compatible bucket, using [Rivet](https://github.com/rivet-dev/rivet) actors; no particular cloud). Earlier versions of this analysis assumed Cloudflare plus [celld](https://celld.dev); that changed on 2026-10-28, because the target users mostly don't use Cloudflare. It is not a paid product. The goal of this analysis is to answer one question: **is it worth building?** Does an equivalent already exist, and if not, where does Ideation Factory fit?
 
 ## Summary
 
@@ -61,7 +61,7 @@ The open source tools are single-player (one developer reviewing their own agent
 | md-redline / Human Review | Yes | No (localhost) | No | Yes |
 | Proof | Partial (SDK snapshot) | No | Partial | Yes |
 | HedgeDoc / Outline / Docmost | Yes | Yes | No | No |
-| **Ideation Factory** | Yes | Yes (celld) | Yes | Yes |
+| **Ideation Factory** | Yes | Yes (containers and a bucket) | Yes | Yes |
 
 ## Table stakes (not differentiators)
 
@@ -78,19 +78,19 @@ These are expected by users and offered by most competitors:
 
 1. **Open source, self-hostable team review.** Ideas with status, assigned reviewers, teams and groups, a list across repos, and destinations that aren't git (Jira, Confluence, etc.).
 2. **Sparse, deeply nested multi-file ideas diffed against a target-branch baseline.** No competitor found offers an "only show what changed vs main" view.
-3. **Comments that survive restructuring and renames, plus a lost comments page.** GitHub marks such comments outdated; only Crit explicitly keeps comments attached across rounds. If done well, this is the strongest technical moat.
+3. **Comments that survive restructuring and renames.** GitHub marks such comments outdated; only Crit explicitly keeps comments attached across rounds. The key is **remote editing with commands** (see Editing with commands in `architecture.md`): agents and people edit the idea in place with explicit operations (move this section, replace this sentence), so comments follow exactly instead of being guessed from a diff. Uploaded copies fall back to diff-based tracking, and comments that can't be placed are marked outdated with a link to the last version where they applied. As of 2026-10-25 this is treated as **the main differentiator** and the strongest technical moat.
 4. **"On behalf of" attribution with purpose-specific tokens.** Matches where Linear and GitHub are heading. A supporting feature rather than a reason to adopt on its own.
 
 ## Risks
 
-1. **Scope.** 1.0 now includes versioning and diffs, multi-file trees, comment re-anchoring, teams and groups, three token types, theming, a Go CLI, skills, an MCP server and suggested edits. Consider a 0.x that proves the core loop first (sync, view, comment, re-anchor, reply/resolve, with CLI and MCP), then add teams/groups and suggested edits.
+1. **Scope.** 1.0 now includes versioning and diffs, multi-file trees, comment re-anchoring, teams and groups, three token types, theming, a CLI, skills, an MCP server and suggested edits. Consider a 0.x that proves the core loop first (sync, view, comment, re-anchor, reply/resolve, with CLI and MCP), then add teams/groups and suggested edits.
 2. **Plannotator could open source its team tier.** That would shrink the gap. Shipping the self-host story early is the hedge.
-3. **celld is beta** (v0.6.x at the time of writing). Self-hosters would run two young projects. Document this, and make sure the app also runs unchanged on Cloudflare so people can start there.
+3. **Platform maturity.** Self-hosters would run our app on Rivet, a fast-moving project (its API still changes). Pin versions, keep the platform-specific code thin, and prove the self-hosted shapes (one VM, three VMs) before launch (see `mvp/spike-rivet.md`).
 4. **"Why not just open a PR?"** PRs are free and the default. The README needs a one-line answer, for example: review before a branch exists, no code noise, comments that survive edits, targets that aren't git, reviewers who aren't engineers.
 
 ## Alternative considered
 
-Contributing a team/self-host mode to Crit (also Go, already has comments that persist across rounds) or to Plannotator's open source core. Less work, but it means giving up the celld architecture, the multi-file and target-branch design, and the attribution model. Given how specific the vision is, building Ideation Factory as its own project is reasonable.
+Contributing a team/self-host mode to Crit (written in Go, already has comments that persist across rounds) or to Plannotator's open source core. Less work, but it means giving up the self-hosted actor architecture, the multi-file and target-branch design, and the attribution model. Given how specific the vision is, building Ideation Factory as its own project is reasonable.
 
 ## Sources
 
@@ -102,4 +102,5 @@ Contributing a team/self-host mode to Crit (also Go, already has comments that p
 - [GitBook change requests](https://gitbook.com/docs/collaborate/change-requests), [GitBook Agent](https://www.gitbook.com/blog/introducing-docs-agent)
 - [Linear agents](https://linear.app/developers/agents), [Copilot agent commit tracing](https://github.blog/changelog/2026-03-20-trace-any-copilot-coding-agent-commit-to-its-session-logs)
 - [Spec Kit vs Kiro vs Claude Code](https://www.glukhov.org/ai-devtools/ai-coding-assistants/spec-kit-vs-kiro-vs-claude-code/)
-- [celld](https://celld.dev)
+- [celld](https://celld.dev) (the earlier self-hosting plan)
+- [Rivet](https://github.com/rivet-dev/rivet)

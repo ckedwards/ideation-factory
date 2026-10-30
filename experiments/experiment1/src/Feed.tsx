@@ -4,8 +4,8 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { idea, users, type Actor, type Comment } from './data'
 import { useStore } from './store'
-import { ago, basename, fileChange, headings, htmlText, placeComment, renderMarkdown, splitSections, type Placement } from './lib'
-import { ActorLabel, Avatar, CommentCard, Md, StatusControl } from './shared'
+import { ago, basename, fileChange, headings, htmlText, lastSeenIn, placeComment, renderMarkdown, splitSections, type Placement } from './lib'
+import { ActorLabel, Avatar, CommentCard, Md, StatusControl, ViewInVersion } from './shared'
 import type { PlacedComment } from './useIdeaView'
 import './Feed.css'
 
@@ -43,7 +43,8 @@ export function Feed({
     }
     return state.comments.map((c): PlacedComment => {
       const { text, heads } = info(c.file)
-      return { ...c, placement: placeComment(c, latest.files[c.file], text, heads) as Placement }
+      const placement = placeComment(c, latest.files[c.file], text, heads) as Placement
+      return { ...c, placement, lastSeen: placement === 'outdated' ? lastSeenIn(c, state.versions, latest.n) : undefined }
     })
   }, [state.comments, latest])
 
@@ -162,10 +163,14 @@ export function Feed({
                     {c.file}
                   </span>
                   <Kind c={c} src={latest.files[c.file]} />
-                  {c.placement === 'lost' && <span className="tag tag-lost">Lost</span>}
-                  <button className="link feed-open" onClick={() => onOpenComment(c)}>
-                    {c.placement === 'lost' ? 'Open file' : 'View in document'} →
-                  </button>
+                  {c.placement === 'outdated' && <span className="tag tag-outdated">Outdated</span>}
+                  {c.placement === 'outdated' ? (
+                    c.lastSeen && <ViewInVersion c={c} n={c.lastSeen} />
+                  ) : (
+                    <button className="link feed-open" onClick={() => onOpenComment(c)}>
+                      View in document →
+                    </button>
+                  )}
                 </div>
                 <Context c={c} src={latest.files[c.file]} />
                 <CommentCard c={c} showContext={false} />
@@ -303,9 +308,11 @@ function Context({ c, src }: { c: PlacedComment; src: string | undefined }) {
     const info = sectionInfo(src, c.anchor.section)
     if (!info)
       return (
-        <div className="feed-section is-lost">
+        <div className="feed-section is-outdated">
           <span className="feed-section-title">{c.anchor.section}</span>
-          <span className="muted">This section no longer exists in the latest version.</span>
+          <span className="muted">
+            This section isn’t in the latest version{c.lastSeen ? `; it was last in v${c.lastSeen}` : ''}.
+          </span>
         </div>
       )
     // first line of the section, as text: list markers and link targets dropped
@@ -337,11 +344,11 @@ function Context({ c, src }: { c: PlacedComment; src: string | undefined }) {
       </div>
     )
   }
-  if (c.placement === 'lost')
+  if (c.placement === 'outdated')
     return (
-      <blockquote className="feed-quote is-lost">
+      <blockquote className="feed-quote is-outdated">
         <q>{c.anchor.quote}</q>
-        <span className="muted"> no longer in the latest version</span>
+        <span className="muted"> isn’t in the latest version{c.lastSeen ? `; it was last in v${c.lastSeen}` : ''}</span>
       </blockquote>
     )
   if (!src) return null

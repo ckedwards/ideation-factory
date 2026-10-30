@@ -1,0 +1,19 @@
+// The prototypes as one static site on Cloudflare, behind basic auth.
+// Set the login with:  npx wrangler secret put BASIC_AUTH_USER
+//                      npx wrangler secret put BASIC_AUTH_PASS
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ideaf-prototype-demo",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    // every request goes through the worker first, so nothing is served without the password
+    "run_worker_first": true,
+    // the worker decides which app's index.html a page URL gets
+    "html_handling": "none",
+    "not_found_handling": "none"
+  },
+  "observability": { "enabled": true }
+}

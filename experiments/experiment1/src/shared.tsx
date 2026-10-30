@@ -4,7 +4,8 @@ import { createPortal } from 'react-dom'
 import { marked } from 'marked'
 import { idea, me, users, type Actor, type IdeaStatus } from './data'
 import { useStore, type Theme } from './store'
-import { ago, sectionOf, wrapQuote } from './lib'
+import { ago, sectionOf, useIdeaSearch, wrapQuote } from './lib'
+import { drawPending } from './diagrams'
 import type { PlacedComment } from './useIdeaView'
 
 // ---------- people & bots ----------
@@ -134,6 +135,9 @@ export function MarkdownView({
     const root = ref.current
     if (!root) return
     root.innerHTML = html
+    // diagrams not drawn yet are placeholders; they fill in when ready (and the
+    // ResizeObserver below re-reports comment positions as they grow)
+    drawPending(root)
 
     if (changed) {
       let on = false
@@ -184,6 +188,19 @@ export function MarkdownView({
       className={`prose ${className}`}
       onClick={(e) => {
         const t = e.target as HTMLElement
+        // external images load only when asked
+        const show = t.closest<HTMLElement>('[data-show-image]')
+        if (show) {
+          const img = document.createElement('img')
+          img.src = show.dataset.showImage!
+          img.alt = show.dataset.alt ?? ''
+          img.referrerPolicy = 'no-referrer'
+          const wrap = document.createElement('span')
+          wrap.className = 'md-image md-image-external'
+          wrap.appendChild(img)
+          show.closest('.md-media')?.replaceWith(wrap)
+          return
+        }
         const link = t.closest<HTMLElement>('[data-file]')
         if (link) {
           e.preventDefault()
@@ -261,7 +278,6 @@ export function SelectionComposer({
 
   if (!pending) return null
   const r = pending.range.getBoundingClientRect()
-  const reattaching = state.reattachId
 
   const close = () => {
     setPending(null)
@@ -296,17 +312,6 @@ export function SelectionComposer({
     >
       {mode === 'menu' ? (
         <div className="composer-menu">
-          {reattaching ? (
-            <button
-              className="primary"
-              onClick={() => {
-                dispatch({ type: 'reattach', file, version, anchor: { type: 'selection', quote: pending.quote, section: pending.section } })
-                close()
-              }}
-            >
-              Attach comment here
-            </button>
-          ) : (
             <>
               <button onClick={() => setMode('comment')}>Comment</button>
               <button onClick={() => setMode('suggest')}>Suggest edit</button>
@@ -316,7 +321,6 @@ export function SelectionComposer({
                 </button>
               )}
             </>
-          )}
         </div>
       ) : (
         <div className="composer-form">
@@ -421,7 +425,7 @@ export function CommentCard({
 
   return (
     <article
-      className={`card ${active ? 'is-active' : ''} ${resolved ? 'is-resolved' : ''} ${c.placement === 'lost' ? 'is-lost' : ''} ${c.author.kind !== 'user' ? 'by-bot' : ''}`}
+      className={`card ${active ? 'is-active' : ''} ${resolved ? 'is-resolved' : ''} ${c.placement === 'outdated' ? 'is-outdated' : ''} ${c.author.kind !== 'user' ? 'by-bot' : ''}`}
       onClick={() => onSelect?.(c.id)}
       data-card-id={c.id}
     >
@@ -432,14 +436,15 @@ export function CommentCard({
 
       {showContext && (
         <div className="card-context">
-          {c.placement === 'lost' ? (
-            <span className="tag tag-lost" title="The text this comment pointed at is gone">
-              Lost
+          {c.placement === 'outdated' ? (
+            <span className="tag tag-outdated" title="The text this comment was on isn’t in this version">
+              Outdated
             </span>
           ) : null}
           {c.anchor.type === 'file' && <span className="tag">Whole file</span>}
           {c.anchor.type === 'section' && <span className="tag">§ {c.anchor.section}</span>}
-          {c.anchor.type === 'selection' && c.placement === 'lost' && <q className="card-quote">{c.anchor.quote}</q>}
+          {c.anchor.type === 'selection' && c.placement === 'outdated' && <q className="card-quote">{c.anchor.quote}</q>}
+          {c.placement === 'outdated' && c.lastSeen && <ViewInVersion c={c} n={c.lastSeen} />}
           {c.version < state.versions[state.versions.length - 1].n && <span className="tag tag-faint">on v{c.version}</span>}
           {resolved && <span className="tag tag-ok">Resolved</span>}
         </div>
@@ -460,7 +465,7 @@ export function CommentCard({
             <del>{s.state === 'accepted' ? '' : c.anchor.quote}</del>
             <ins>{s.replacement}</ins>
           </div>
-          {s.state === 'open' && owner && c.placement !== 'lost' && (
+          {s.state === 'open' && owner && c.placement !== 'outdated' && (
             <div className="suggestion-actions">
               <button
                 className="primary"
@@ -531,14 +536,6 @@ export function CommentCard({
           <button className="link" onClick={() => dispatch({ type: 'toggleResolved', id: c.id })}>
             {resolved ? 'Reopen' : 'Resolve'}
           </button>
-          {c.placement === 'lost' && owner && (
-            <button
-              className="link"
-              onClick={() => dispatch({ type: 'startReattach', id: state.reattachId === c.id ? null : c.id })}
-            >
-              {state.reattachId === c.id ? 'Cancel re-attach' : 'Re-attach…'}
-            </button>
-          )}
           {extra}
         </footer>
       )}
@@ -546,17 +543,20 @@ export function CommentCard({
   )
 }
 
-export function ReattachBanner() {
-  const { state, dispatch } = useStore()
-  const c = state.comments.find((x) => x.id === state.reattachId)
-  if (!c) return null
+// For an outdated comment: open the newest version where its text still was.
+export function ViewInVersion({ c, n, label }: { c: PlacedComment; n: number; label?: string }) {
+  const [, setSearch] = useIdeaSearch()
   return (
-    <div className="reattach-banner" role="status">
-      Select text in any file to re-attach the comment from <ActorLabel actor={c.author} short />.
-      <button className="ghost" onClick={() => dispatch({ type: 'startReattach', id: null })}>
-        Cancel
-      </button>
-    </div>
+    <button
+      className="link view-in"
+      title={`Open v${n}, the last version with the text this comment was on`}
+      onClick={(e) => {
+        e.stopPropagation()
+        setSearch({ file: c.file, v: n, compare: undefined, view: undefined })
+      }}
+    >
+      {label ?? `View in v${n}`} →
+    </button>
   )
 }
 

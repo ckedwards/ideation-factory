@@ -1,0 +1,18 @@
+{
+  // Shared settings. Code in core and api must run unchanged in Workers,
+  // browsers and Bun, so their lib is web standards only (no DOM, no Node).
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023", "WebWorker"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  }
+}

@@ -1,6 +1,7 @@
 // PROTOTYPE: in-memory state. Nothing persists except the theme choice.
 import { createContext, useContext, useEffect, useReducer, type ReactNode } from 'react'
 import {
+  deployment,
   initialActivity,
   initialComments,
   initialStatus,
@@ -10,6 +11,7 @@ import {
   type Activity,
   type Anchor,
   type Comment,
+  type ExternalImages,
   type IdeaStatus,
   type Version,
 } from './data'
@@ -21,8 +23,9 @@ type State = {
   comments: Comment[]
   status: IdeaStatus
   activity: Activity[]
-  reattachId: string | null
   theme: Theme
+  externalImages: ExternalImages // from the deployment settings (dev control can flip it)
+  subscribed: boolean // notifications for this idea (on by default: Riley wrote it)
   clock: number // fake clock so new items sort after canned ones
 }
 
@@ -33,9 +36,9 @@ type Action =
   | { type: 'acceptSuggestion'; id: string }
   | { type: 'rejectSuggestion'; id: string }
   | { type: 'setStatus'; status: IdeaStatus }
-  | { type: 'startReattach'; id: string | null }
-  | { type: 'reattach'; file: string; version: number; anchor: Anchor }
   | { type: 'setTheme'; theme: Theme }
+  | { type: 'setSubscribed'; on: boolean }
+  | { type: 'setExternalImages'; mode: ExternalImages }
 
 const meActor = { kind: 'user', userId: me.id } as const
 
@@ -128,16 +131,10 @@ function reducer(s: State, a: Action): State {
         activity: [...s.activity, { id: `a-${clock}`, at, actor: meActor, kind: 'status', text: `changed the status to ${label}` }],
       }
     }
-    case 'startReattach':
-      return { ...s, reattachId: a.id }
-    case 'reattach':
-      return {
-        ...s,
-        reattachId: null,
-        comments: s.comments.map((c) =>
-          c.id === s.reattachId ? { ...c, file: a.file, version: a.version, anchor: a.anchor } : c,
-        ),
-      }
+    case 'setExternalImages':
+      return { ...s, externalImages: a.mode }
+    case 'setSubscribed':
+      return { ...s, subscribed: a.on }
     case 'setTheme':
       return { ...s, theme: a.theme }
   }
@@ -159,8 +156,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     comments: initialComments,
     status: initialStatus,
     activity: initialActivity,
-    reattachId: null,
     theme: loadTheme(),
+    subscribed: true,
+    externalImages: deployment.externalImages,
     clock: NOW,
   }))
 

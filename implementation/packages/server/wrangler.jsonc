@@ -1,0 +1,12 @@
+// The Ideation Factory backend on Cloudflare. (celld gets its own config later:
+// it accepts a narrower set of top-level keys.)
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ideaf",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "durable_objects": {
+    "bindings": [{ "name": "IDEA", "class_name": "Idea" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Idea"] }]
+}

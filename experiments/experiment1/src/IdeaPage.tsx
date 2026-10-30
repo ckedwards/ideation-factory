@@ -5,13 +5,13 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { createPortal } from 'react-dom'
 import { idea, me, target, users, type Actor, type Version } from './data'
 import { ago, basename, fileChange, wrapSections } from './lib'
+import { useStore } from './store'
 import {
   ActorLabel,
   Avatar,
   CommentCard,
   FileCommentBox,
   MarkdownView,
-  ReattachBanner,
   SelectionComposer,
   StatusControl,
   ThemeToggle,
@@ -136,7 +136,7 @@ export function IdeaPage() {
   const groups = [
     { key: 'file', title: 'On this file', items: filtered.filter((c) => c.placement === 'file') },
     { key: 'anchored', title: 'In the text', items: filtered.filter((c) => c.placement === 'anchored') },
-    { key: 'lost', title: 'Lost', items: filtered.filter((c) => c.placement === 'lost') },
+    { key: 'outdated', title: 'Outdated', items: filtered.filter((c) => c.placement === 'outdated') },
   ]
   const openCount = comments.filter((c) => c.status === 'unresolved').length
   // Table of contents for the current file, with the section you're reading.
@@ -250,7 +250,6 @@ export function IdeaPage() {
 
   return (
     <div className="vb">
-      <ReattachBanner />
       <aside className="vb-side">
         <div className="vb-brand">
           <span className="vb-logo">✳</span> Ideation Factory
@@ -544,7 +543,7 @@ export function IdeaPage() {
               {comparing && mode === 'list' && <div className="vb-hint">Highlights are hidden while comparing.</div>}
               {anchored && (
                 <div className="vb-hint">
-                  Section comments sit under their section. Whole-file{groups[2].items.length > 0 ? ' and lost' : ''} comments are at the end of the document.
+                  Section comments sit under their section. Whole-file{groups[2].items.length > 0 ? ' and outdated' : ''} comments are at the end of the document.
                 </div>
               )}
             </div>
@@ -598,7 +597,7 @@ export function IdeaPage() {
   )
 }
 
-// End of the document: whole-file comments, plus a Lost tab when any exist.
+// End of the document: whole-file comments, plus an Outdated tab when any exist.
 function FileFooter({
   file,
   version,
@@ -614,17 +613,17 @@ function FileFooter({
   active: string | null
   onSelect: (id: string) => void
 }) {
-  const [tab, setTab] = useState<'file' | 'lost'>('file')
+  const [tab, setTab] = useState<'file' | 'outdated'>('file')
   const current = lost.length > 0 ? tab : 'file'
   return (
-    <section className="vb-foot" aria-label="Whole-file and lost comments">
+    <section className="vb-foot" aria-label="Whole-file and outdated comments">
       <div className="vb-foot-tabs" role="tablist">
         <button role="tab" aria-selected={current === 'file'} className={current === 'file' ? 'on' : ''} onClick={() => setTab('file')}>
           Whole file <span className="tag">{fileComments.length}</span>
         </button>
         {lost.length > 0 && (
-          <button role="tab" aria-selected={current === 'lost'} className={current === 'lost' ? 'on' : ''} onClick={() => setTab('lost')}>
-            Lost <span className="tag tag-lost">{lost.length}</span>
+          <button role="tab" aria-selected={current === 'outdated'} className={current === 'outdated' ? 'on' : ''} onClick={() => setTab('outdated')}>
+            Outdated <span className="tag tag-outdated">{lost.length}</span>
           </button>
         )}
       </div>
@@ -639,7 +638,7 @@ function FileFooter({
           </>
         ) : (
           <>
-            <p className="vb-hint">The text these pointed at changed. Re-attach them to the new wording, or resolve them.</p>
+            <p className="vb-hint">The text these were on isn’t in this version. Each links to the last version where it was. Resolve them once they’re dealt with.</p>
             {lost.map((c) => (
               <CommentCard key={c.id} c={c} active={active === c.id} onSelect={onSelect} />
             ))}
@@ -652,9 +651,33 @@ function FileFooter({
 
 function Details() {
   const { setSearch, latest } = useIdeaView()
+  const { state, dispatch } = useStore()
+  const author = idea.ownerId === me.id
 
   return (
     <div className="vb-details">
+      <section className="vb-d-section">
+        <h3>Notifications</h3>
+        <div className="vb-d-subscribe">
+          <button
+            className={state.subscribed ? '' : 'primary'}
+            aria-pressed={state.subscribed}
+            onClick={() => {
+              dispatch({ type: 'setSubscribed', on: !state.subscribed })
+            }}
+          >
+            {state.subscribed ? '🔕 Unsubscribe' : '🔔 Subscribe'}
+          </button>
+          <span className="hint">
+            {state.subscribed
+              ? author
+                ? 'You’re getting notifications because you wrote this idea.'
+                : 'You’re getting notifications for this idea.'
+              : 'You won’t get notifications for this idea, except when someone asks you to review it.'}
+          </span>
+        </div>
+      </section>
+
       <section className="vb-d-section">
         <h3>Idea</h3>
         <div className="vb-d-title">{idea.title}</div>

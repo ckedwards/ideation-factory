@@ -11,9 +11,11 @@ npm --prefix experiments/experiment1 install   # first time only
 npm --prefix experiments/experiment1 run dev
 ```
 
-Open http://localhost:5199/prototype/idea. The logged-in user is **Riley Park**, the idea's author, so author-only actions are available: changing the status, accepting or rejecting suggestions, and re-attaching lost comments.
+Open http://localhost:5199/prototype/idea. The logged-in user is **Riley Park**, the idea's author, so author-only actions are available: changing the status, and accepting or rejecting suggestions.
 
 The small **state** button in the bottom-left corner (dev builds only) shows the in-memory state, so you can see what each action changed.
+
+To show it to people, `experiments/demo` packages both prototypes as one password-protected Cloudflare site (see its README).
 
 ## The page
 
@@ -60,8 +62,8 @@ Three panes, each scrolling on its own. The page state lives in the URL: `file`,
   - **Anchored view** (default):
     - **Text comments** sit in the panel level with their text and move with the document as it scrolls. Scrolling over the panel scrolls the document.
     - **Section comments** sit in the document, after the section's last line, inside an outline around the section. Outlines nest: an H3 box sits inside its H2 box, and the H2's comments come after its subsections.
-    - **At the end of the document**, a panel holds **Whole file** comments (with a box to add one) and, only when the file has some, a **Lost** tab.
-  - **List view:** every comment for the file in one list (on the file, in the text, lost).
+    - **At the end of the document**, a panel holds **Whole file** comments (with a box to add one) and, only when the file has some, an **Outdated** tab.
+  - **List view:** every comment for the file in one list (on the file, in the text, outdated).
   - **When Anchored isn't available** (comparing, source view, or a narrow window): the Anchored button is disabled with a tooltip, List shows as selected, and a short notice explains why, with **Stop comparing** or **Show rendered**. Anchored comes back afterwards.
 - **Versions**
   - **Top bar:** "Viewing v3 ▾ · Compare: Off ▾".
@@ -71,6 +73,7 @@ Three panes, each scrolling on its own. The page state lives in the URL: `file`,
     - Each version shows its message, who uploaded it, the files it changed (clicking one opens that change) and which reviewers last saw it.
     - **Compare** on an older version or on `main` starts a comparison, and the range being compared is shaded.
 - **Details**
+  - **Notifications:** **Subscribe / Unsubscribe**, with why you're subscribed ("because you wrote this idea"). Unsubscribed, you only hear about it if someone asks you to review it.
   - **Idea info:** title, description, status (author only), author, team, source branch and target.
   - **Reviewers:** each one's last-seen version. For anyone behind, **What's new for them** compares from the version they last saw. Groups are listed with their members.
 
@@ -82,7 +85,23 @@ In the feed, the panel shows only Versions and Details, because the feed is the 
 - **Whole-file comments** are added from the end of the document (Anchored view) or the top of the list (List view).
 - **Reply** and **Resolve / Reopen** are on every thread.
 - **Accepting a suggestion** (author only) creates a new version with the change applied and re-anchors the comment to the new wording. **Reject** resolves it.
-- **Lost comments** (their text is gone in the latest version) offer **Re-attach…** (author only): select new text in any file to move the comment there.
+- **Outdated comments** (their text isn't in the version you're viewing) show the original quote and **View in v2 →**, which opens the last version where that text was, with the comment back in place. There's no re-attaching; reply or resolve. The comments feed shows them the same way: "isn't in the latest version; it was last in v2", with **View in v2**.
+
+### Media
+
+Images are uploaded so they render; everything else links to the source (see Media in `architecture.md`).
+
+- **Uploaded images** render in place, with a caption: alt text, file name and size. They're part of the version they came with, so viewing v2 shows v2's image.
+- **Changed images:** in the changes view, an image whose contents changed (same markdown line) shows **Image changed** with **Before** and **After** side by side.
+- **Images that weren't uploaded** show a dashed placeholder with the alt text, the reason (e.g. "Not uploaded: 14.2 MB is over the 10 MB limit for images") and **View on GitHub**.
+- **External images** (`https://…`) follow the deployment setting a site admin chooses:
+  - **Click to show** (the default): a placeholder explaining why it isn't loaded, with **Show image**.
+  - **Always:** loads like any image.
+  - **Never:** a placeholder with a plain link.
+
+  The dev control in the bottom-left corner switches between them.
+- **The upload size limit** is also a deployment setting (10 MB here), and the skipped-image message names it.
+- **Links to other files** (PDF, video, code, docs outside the idea) open on GitHub at the idea's branch, with a file-type badge ("PDF · GitHub", "Video · GitHub").
 
 ### Attribution
 
@@ -96,6 +115,11 @@ Bot comments carry a violet rail, so agent feedback is distinguishable at a glan
 
 ## The canned data
 
+There are two ideas. `?idea=` picks one when the page loads; without it, it's the offline-sync idea.
+
+- **`?idea=mvp`, "Ideation Factory MVP architecture"** (Dogfood team): the real docs from the repository's `mvp/` folder, read at build time, so the page always shows their current text, diagrams included. It's one version, with every file new against `main`. Maya and Sam are reviewing, with four example comments: Maya on § MVP scope, Sam on "One Durable Object per idea." (with Riley's reply), archbot on the back end's § Self-hosting, and a resolved whole-file note from "planbot on behalf of Maya" on the cli doc. If the docs change under those comments, they become outdated, as the real product would show it. Links between the docs work, including links to a heading in another doc.
+- **The offline-sync idea** (the default) is described below.
+
 - **Idea:** "Offline-first sync for the field app" by Riley Park, Mobile team, `acme/field-app` · `riley/offline-sync` → `main`. Status is Requesting review.
 - **Reviewers:**
   - Maya Ortiz has seen v3.
@@ -108,10 +132,14 @@ Bot comments carry a violet rail, so agent feedback is distinguishable at a glan
   - The rest are new.
 - **Restructuring:** "Rollout" moved below "Proposal" in v3. Devon's v2 section comment still finds it, and the redline marks it as moved.
 - **Nested sections:** "Proposal" (H2) contains "Sync endpoint" and "Conflicts" (H3s). There are comments on the H2 (archbot), on both H3s (Maya with a planbot reply, and Sam), and on a line inside "Conflicts" (Devon).
-- **Lost comments:**
+- **Outdated comments:**
   - Maya's v2 comment on "reuse the existing REST endpoints" (that text was removed in v3).
   - Devon's resolved comment on the old "Last write wins" rule.
 - **Suggestions:** two are open. Maya's p95 rewording and typobot's spelling fix ("typobot on behalf of Devon").
+- **Media:**
+  - **README:** a sync-flow diagram under "Proposal" that changed between v2 and v3; an external badge under the title; and PDF and video links in "Rollout".
+  - **conflict-resolution.md:** a screenshot of the conflict banner.
+  - **overview.md:** a 14.2 MB whiteboard photo that was skipped for size.
 - **Idea activity:** created as a draft, review requested, and status changes (Requesting review → Changes in progress → Requesting review). Changing the status adds an event.
 
 ## Design
@@ -129,7 +157,16 @@ Bot comments carry a violet rail, so agent feedback is distinguishable at a glan
 - **Themes:** light, dark (Auto follows the system) and high contrast.
   - Everything is a CSS variable in `src/theme.css`, so an organization can re-theme by overriding `:root`.
   - Sizes are `rem` on a token spacing scale. The CSS has no pixel values; the only ones are in the JavaScript that positions comments beside the text.
-- **Mermaid:** shown as source with a caption. Rendering isn't prototyped.
+- **Mermaid** diagrams are drawn with [Pele](https://github.com/obsidianmd/pele) (Obsidian's MIT-licensed renderer, no runtime dependencies), **asynchronously but preloaded**:
+  - **Preloading:** most architecture documents have diagrams, so the app starts fetching Pele (its own chunk) when it starts, plus the types those documents use most: flowchart, sequence, class, state, ER, C4 and architecture. Other types load the first time they're needed. In a production build, Pele and those types have arrived about 300 ms after the page starts loading.
+  - **Rendering:** Markdown still renders at once. A diagram not drawn yet shows a "Drawing diagram…" placeholder about the size of a diagram, and the drawing replaces it when ready.
+  - **Caching:** drawn diagrams are cached by their source, so switching versions or re-rendering never redraws or flickers.
+  - **Theming:** its CSS variables (`--pele-fg`, `--pele-line`, `--pele-surface`, …) are mapped to the page's tokens, so a diagram follows light, dark and high contrast without being redrawn.
+  - **Source:** each diagram sits in a bordered box with **Mermaid source** below it, folded away. The source is what's versioned and commented on. Labels inside the drawing don't count when matching comment quotes.
+  - **Safety:** links and images inside diagrams are turned off, since diagrams come from people's documents.
+  - **Errors:** a diagram Pele can't draw shows its source with "Couldn't draw this diagram (line 3): Expecting 'ACTOR', got 'NEWLINE'".
+  - **Example:** the README's "Sync endpoint" sequence diagram.
+  - **Size:** the main bundle stays at about 134 kB gzipped. Pele's core is a separate 17 kB chunk, and each diagram type is its own small chunk.
 
 ## Code map (`experiments/experiment1/src`)
 
@@ -140,6 +177,7 @@ Bot comments carry a violet rail, so agent feedback is distinguishable at a glan
 | `Feed.tsx` / `.css` | The comments feed |
 | `shared.tsx` | Comment card, selection composer, markdown view, contents, status, theme, author labels |
 | `useIdeaView.ts` | Derives the current file, version, comparison, comment placement and file entries |
+| `diagrams.ts` | Mermaid drawing with Pele: preloading, asynchronous drawing, the cache, placeholders |
 | `lib.ts` | Markdown rendering, anchoring, section wrapping, diffs and redline, URL state |
 | `store.tsx` | In-memory state and actions (comments, replies, suggestions, versions, status, activity) |
 | `data.ts` | Canned data |
@@ -148,7 +186,7 @@ Bot comments carry a violet rail, so agent feedback is distinguishable at a glan
 
 ## Known prototype shortcuts
 
-- Comment anchors match rendered text exactly (first occurrence). There's no fuzzy re-anchoring yet, and that's the real comment-tracking problem.
+- Comment anchors match rendered text exactly (first occurrence). The planned approach is different: anchors on the Markdown source, followed through each version's diff from its base, with moved blocks and renamed headings tracked and no fuzzy matching. See Keeping comments anchored in `architecture.md`.
 - Moved-block detection only catches blocks that moved without edits.
 - There are no file renames in the data; the CLI would report them.
 - The anchored view needs a wide window (about 1200px or more); narrower windows get the list.

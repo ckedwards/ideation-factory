@@ -7,6 +7,19 @@ import { StoreProvider } from './store'
 import { parseSearch } from './lib'
 import { IdeaPage } from './IdeaPage'
 import { DevState } from './DevState'
+import { preloadDiagrams } from './diagrams'
+import { selectIdea, type IdeaData } from './data'
+import { mvpIdea } from './ideas/mvp'
+
+// Which canned idea to show: ?idea=mvp is the MVP architecture docs (Dogfood
+// team); anything else is the offline-sync idea. Picked once, before rendering.
+const IDEAS: Record<string, IdeaData> = { mvp: mvpIdea }
+const picked = IDEAS[new URLSearchParams(location.search).get('idea') ?? '']
+if (picked) selectIdea(picked)
+
+// Most ideas have diagrams, so start fetching the renderer now, alongside
+// everything else, rather than when the first diagram appears.
+preloadDiagrams()
 
 const rootRoute = createRootRoute({ component: () => <Outlet /> })
 

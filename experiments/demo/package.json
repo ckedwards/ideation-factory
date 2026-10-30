@@ -1,0 +1,15 @@
+{
+  "name": "ideaf-prototype-demo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Both prototypes in one Cloudflare Worker, behind basic auth. Throwaway.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}

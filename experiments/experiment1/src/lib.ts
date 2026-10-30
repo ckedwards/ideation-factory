@@ -1,18 +1,19 @@
 // PROTOTYPE: shared helpers (markdown, anchoring, diffs, labels).
 import { Marked, type Tokens } from 'marked'
 import { diffArrays, diffWords } from 'diff'
+import { diagramFigure } from './diagrams'
 import { useNavigate, useSearch } from '@tanstack/react-router'
-import { NOW, users, type Actor, type Comment } from './data'
+import { NOW, defaultFile, idea, users, type Actor, type Comment, type ExternalImages, type Media } from './data'
 
 // ---------- search params ----------
 
-export type IdeaSearch = { file: string; v?: number; compare?: string; view?: 'feed' }
-
-export const DEFAULT_FILE = 'docs/offline-sync/README.md'
+// `idea` picks which canned idea the page shows (see selectIdea in data.ts)
+export type IdeaSearch = { idea?: string; file: string; v?: number; compare?: string; view?: 'feed' }
 
 export function parseSearch(s: Record<string, unknown>): IdeaSearch {
   return {
-    file: typeof s.file === 'string' ? s.file : DEFAULT_FILE,
+    idea: typeof s.idea === 'string' ? s.idea : undefined,
+    file: typeof s.file === 'string' ? s.file : defaultFile,
     v: typeof s.v === 'number' ? s.v : undefined,
     compare: typeof s.compare === 'string' || typeof s.compare === 'number' ? String(s.compare) : undefined,
     view: s.view === 'feed' ? 'feed' : undefined,
@@ -66,35 +67,76 @@ export function resolvePath(fromFile: string, href: string) {
   return parts.join('/')
 }
 
-export function renderMarkdown(src: string, file: string, files: string[]) {
+// Where a repo file lives on the code host, at the idea's branch.
+export function sourceUrl(path: string) {
+  return `https://github.com/${idea.repo}/blob/${idea.branch}/${path}`
+}
+
+function fmtBytes(n: number) {
+  return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)} MB` : n >= 1000 ? `${Math.round(n / 1000)} KB` : `${n} B`
+}
+
+const KIND_BY_EXT: Record<string, string> = { pdf: 'PDF', mp4: 'Video', mov: 'Video', webm: 'Video', zip: 'Archive', csv: 'CSV', xlsx: 'Spreadsheet', ts: 'Code', tsx: 'Code', go: 'Code', py: 'Code', md: 'Markdown' }
+
+// media: images uploaded with this version (see data.ts). Images render from the
+// upload; anything else relative resolves to the repository on the code host.
+// externalImages: the deployment's setting for images hosted on other sites.
+export function renderMarkdown(src: string, file: string, files: string[], media: Record<string, Media> = {}, externalImages: ExternalImages = 'click') {
   const m = new Marked({ gfm: true })
   m.use({
     renderer: {
+      image(t: Tokens.Image) {
+        const alt = esc(t.text || 'Image')
+        if (/^https?:/.test(t.href)) {
+          const host = new URL(t.href).host
+          if (externalImages === 'always')
+            return `<span class="md-image md-image-external"><img src="${esc(t.href)}" alt="${alt}" loading="lazy" referrerpolicy="no-referrer" /><span class="md-image-cap">${alt} · from ${esc(host)}</span></span>`
+          if (externalImages === 'never')
+            return `<span class="md-media md-media-external"><span class="md-media-icon" aria-hidden="true">🖼</span><span class="md-media-text"><b>${alt}</b> · external image from ${esc(host)}. This deployment doesn’t load images from other sites.</span><a class="md-ext" href="${esc(t.href)}" target="_blank" rel="noreferrer">Open link</a></span>`
+          return `<span class="md-media md-media-external"><span class="md-media-icon" aria-hidden="true">🖼</span><span class="md-media-text"><b>${alt}</b> · external image from ${esc(host)}. Not loaded automatically, so outside sites can’t track who reads this.</span><button type="button" class="md-media-show" data-show-image="${esc(t.href)}" data-alt="${alt}">Show image</button></span>`
+        }
+        const path = resolvePath(file, t.href)
+        const found = media[path]
+        if (found?.status === 'uploaded')
+          return `<span class="md-image"><img src="${esc(found.url)}" alt="${alt}" loading="lazy" /><span class="md-image-cap">${alt} · ${esc(basename(path))} · ${fmtBytes(found.bytes)}</span></span>`
+        const why = found?.status === 'skipped' ? found.reason : 'Not uploaded with this version'
+        return `<span class="md-media md-media-missing"><span class="md-media-icon" aria-hidden="true">🖼</span><span class="md-media-text"><b>${alt}</b> · ${esc(basename(path))}. ${esc(why)}.</span><a class="md-ext" href="${esc(sourceUrl(path))}" target="_blank" rel="noreferrer">View on GitHub</a></span>`
+      },
       heading(this: { parser: { parseInline(t: Tokens.Generic[]): string } }, t: Tokens.Heading) {
         const inner = this.parser.parseInline(t.tokens)
         return `<h${t.depth} data-section="${esc(t.text)}">${inner}</h${t.depth}>\n`
       },
       code(t: Tokens.Code) {
-        if (t.lang === 'mermaid')
-          return `<figure class="md-mermaid"><figcaption>Mermaid diagram · source shown, rendering not prototyped</figcaption><pre><code>${esc(t.text)}</code></pre></figure>\n`
+        if (t.lang === 'mermaid') return `${diagramFigure(t.text)}\n`
         return `<pre><code>${esc(t.text)}</code></pre>\n`
       },
       link(this: { parser: { parseInline(t: Tokens.Generic[]): string } }, t: Tokens.Link) {
         const inner = this.parser.parseInline(t.tokens)
         if (/^https?:/.test(t.href))
           return `<a href="${esc(t.href)}" target="_blank" rel="noreferrer" class="md-ext">${inner}</a>`
-        const target = resolvePath(file, t.href)
+        // a link to another file of the idea (possibly to a heading in it) opens that file
+        const target = resolvePath(file, t.href.split('#')[0])
         if (files.includes(target)) return `<a href="#" data-file="${esc(target)}" class="md-internal">${inner}</a>`
-        return `<a class="md-missing" title="Not part of this idea">${inner}</a>`
+        // not part of the idea (PDFs, video, code, other docs): open it in the repository
+        const ext = target.split('.').pop()?.toLowerCase() ?? ''
+        const kind = KIND_BY_EXT[ext]
+        return `<a href="${esc(sourceUrl(target))}" target="_blank" rel="noreferrer" class="md-ext md-source" title="Not in this idea. Opens ${esc(target)} on GitHub.">${inner}</a>${kind ? `<span class="md-filetype">${kind} · GitHub</span>` : ''}`
       },
     },
   })
   return m.parse(src, { async: false }) as string
 }
 
+// Plain text of rendered HTML, for matching comment quotes. For diagrams only
+// their source counts (not the drawing, its labels, captions or the
+// placeholder), so the text is the same whether a diagram is drawn yet or not,
+// and labels inside a drawing never produce a second match.
 export function htmlText(html: string) {
-  return new DOMParser().parseFromString(html, 'text/html').body.textContent ?? ''
+  const body = new DOMParser().parseFromString(html, 'text/html').body
+  body.querySelectorAll('.md-mermaid-svg, .md-mermaid figcaption, .md-mermaid summary, svg').forEach((n) => n.remove())
+  return body.textContent ?? ''
 }
+
 
 export function headings(src: string) {
   return splitSections(src)
@@ -104,13 +146,28 @@ export function headings(src: string) {
 
 // ---------- anchoring ----------
 
-export type Placement = 'anchored' | 'lost' | 'file'
+// 'outdated': the text (or section) it was on isn't in this version. There's no
+// re-attaching: it links to the last version where its text was.
+export type Placement = 'anchored' | 'outdated' | 'file'
 
 export function placeComment(c: Comment, src: string | undefined, text: string, heads: string[]): Placement {
-  if (src === undefined) return 'lost'
+  if (src === undefined) return 'outdated'
   if (c.anchor.type === 'file') return 'file'
-  if (c.anchor.type === 'section') return heads.includes(c.anchor.section) ? 'anchored' : 'lost'
-  return text.includes(c.anchor.quote) ? 'anchored' : 'lost'
+  if (c.anchor.type === 'section') return heads.includes(c.anchor.section) ? 'anchored' : 'outdated'
+  return text.includes(c.anchor.quote) ? 'anchored' : 'outdated'
+}
+
+// The newest version (at or before `upTo`) where an outdated comment's text or
+// section still exists, so readers can see what it was about.
+export function lastSeenIn(c: Comment, versions: { n: number; files: Record<string, string> }[], upTo: number): number | undefined {
+  for (const v of [...versions].sort((a, b) => b.n - a.n)) {
+    if (v.n > upTo) continue
+    if (v.n < c.version) break
+    const s = v.files[c.file]
+    if (s === undefined) continue
+    if (placeComment(c, s, htmlText(renderMarkdown(s, c.file, Object.keys(v.files))), headings(s)) === 'anchored') return v.n
+  }
+  return undefined
 }
 
 // Wrap the first occurrence of `quote` (which may span text nodes) in <mark>s.
@@ -255,8 +312,29 @@ function mergeBlock(a: string, b: string) {
 // Rendered "redline": unchanged blocks render normally, edits show inline,
 // and blocks that moved (identical text, new position) are marked as moved
 // rather than shown as a delete plus an insert.
-export function renderRedline(base: string, cur: string, file: string, files: string[]) {
-  const r = (s: string) => renderMarkdown(s, file, files)
+// Images referenced by a block of markdown, as repo paths.
+function imagesIn(block: string, file: string) {
+  return [...block.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)].map((m) => m[1]).filter((h) => !/^https?:/.test(h)).map((h) => resolvePath(file, h))
+}
+const hashOf = (m: Media | undefined) => (m?.status === 'uploaded' ? m.hash : m ? `skipped:${m.reason}` : '')
+
+export function renderRedline(
+  base: string,
+  cur: string,
+  file: string,
+  files: string[],
+  baseMedia: Record<string, Media> = {},
+  curMedia: Record<string, Media> = {},
+  externalImages: ExternalImages = 'click',
+) {
+  const r = (s: string) => renderMarkdown(s, file, files, curMedia, externalImages)
+  const rOld = (s: string) => renderMarkdown(s, file, files, baseMedia, externalImages)
+  // the same markdown line can point at an image whose contents changed
+  const imageChange = (b: string) => {
+    const changed = imagesIn(b, file).filter((p) => hashOf(baseMedia[p]) !== hashOf(curMedia[p]))
+    if (!changed.length) return null
+    return `<div class="rl-edit rl-image"><span class="rl-image-label">Image changed</span><div class="rl-image-pair"><div class="rl-image-before">${rOld(b)}</div><div class="rl-image-after">${r(b)}</div></div></div>`
+  }
   const changes = diffArrays(blocks(base), blocks(cur))
   const removed = new Set(changes.filter((c) => c.removed).flatMap((c) => c.value))
   const added = new Set(changes.filter((c) => c.added).flatMap((c) => c.value))
@@ -270,7 +348,7 @@ export function renderRedline(base: string, cur: string, file: string, files: st
   for (let i = 0; i < changes.length; i++) {
     const c = changes[i]
     if (!c.added && !c.removed) {
-      parts.push(...c.value.map(r))
+      parts.push(...c.value.map((b) => imageChange(b) ?? r(b)))
       continue
     }
     // gather a run of removed+added, set the moved blocks aside, pair the rest
@@ -294,7 +372,7 @@ export function renderRedline(base: string, cur: string, file: string, files: st
       const merged = x !== undefined && y !== undefined ? mergeBlock(x, y) : null
       if (merged !== null) parts.push(`<div class="rl-edit">${r(merged)}</div>`)
       else {
-        if (x !== undefined) parts.push(`<div class="rl-del">${r(x)}</div>`)
+        if (x !== undefined) parts.push(`<div class="rl-del">${rOld(x)}</div>`)
         if (y !== undefined) parts.push(`<div class="rl-ins">${r(y)}</div>`)
       }
     }

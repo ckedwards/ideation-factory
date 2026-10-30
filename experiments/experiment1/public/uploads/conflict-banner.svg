@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="420" viewBox="0 0 300 420" font-family="Helvetica, Arial, sans-serif">
+  <rect width="300" height="420" fill="#efebe3"/>
+  <rect x="40" y="20" width="220" height="380" rx="28" fill="#1f1d1a"/>
+  <rect x="52" y="44" width="196" height="332" rx="10" fill="#fffdf9"/>
+  <text x="64" y="74" font-size="13" font-weight="700" fill="#1f1d1a">Work order #4182</text>
+  <rect x="60" y="88" width="180" height="62" rx="8" fill="#fff4d6" stroke="#d49500"/>
+  <text x="70" y="108" font-size="11" font-weight="700" fill="#7a5200">Two edits conflict</text>
+  <text x="70" y="124" font-size="10" fill="#514c44">Notes changed on another device.</text>
+  <text x="70" y="140" font-size="10" font-weight="700" fill="#2b6b5a">Review both versions →</text>
+  <rect x="60" y="164" width="180" height="10" rx="5" fill="#e3ded3"/>
+  <rect x="60" y="184" width="140" height="10" rx="5" fill="#e3ded3"/>
+  <rect x="60" y="204" width="160" height="10" rx="5" fill="#e3ded3"/>
+  <rect x="60" y="234" width="180" height="60" rx="8" fill="#efebe3"/>
+  <text x="70" y="258" font-size="10" fill="#8a8378">Notes</text>
+  <rect x="60" y="320" width="180" height="34" rx="8" fill="#2b6b5a"/>
+  <text x="150" y="342" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">Complete work order</text>
+</svg>

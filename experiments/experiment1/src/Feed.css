@@ -193,7 +193,7 @@
 .feed-quote mark.anchor {
   cursor: default;
 }
-.feed-quote.is-lost q {
+.feed-quote.is-outdated q {
   text-decoration: line-through;
   color: var(--ink-3);
 }
@@ -324,13 +324,13 @@
 .feed-section-extent b {
   color: var(--ink-2);
 }
-.feed-section.is-lost {
+.feed-section.is-outdated {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
   align-items: baseline;
 }
-.feed-section.is-lost .feed-section-title {
+.feed-section.is-outdated .feed-section-title {
   text-decoration: line-through;
   color: var(--ink-3);
 }

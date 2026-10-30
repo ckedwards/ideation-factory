@@ -7,6 +7,7 @@ import {
   fileChange,
   headings,
   htmlText,
+  lastSeenIn,
   placeComment,
   renderMarkdown,
   renderRedline,
@@ -15,7 +16,8 @@ import {
   type Placement,
 } from './lib'
 
-export type PlacedComment = Comment & { placement: Placement }
+// lastSeen: for an outdated comment, the newest version where its text still was
+export type PlacedComment = Comment & { placement: Placement; lastSeen?: number }
 export type FileEntry = { path: string; change: FileChange; open: number }
 
 export function useIdeaView() {
@@ -33,6 +35,8 @@ export function useIdeaView() {
   const compare = search.compare
   const baseFiles =
     compare === 'main' ? target : compare ? state.versions.find((v) => String(v.n) === compare)?.files : undefined
+  // the main snapshot has no uploaded images in this prototype
+  const baseMedia = compare && compare !== 'main' ? state.versions.find((v) => String(v.n) === compare)?.media : undefined
   const baseLabel = compare === 'main' ? 'main' : compare ? `v${compare}` : undefined
 
   // Section rails show what changed vs the target branch. A file that is new
@@ -42,17 +46,20 @@ export function useIdeaView() {
     [file, src],
   )
 
-  const html = useMemo(() => renderMarkdown(src, file, files), [src, file, files.join()])
+  const html = useMemo(() => renderMarkdown(src, file, files, version.media, state.externalImages), [src, file, files.join(), version, state.externalImages])
   const redline = useMemo(
-    () => (baseFiles ? renderRedline(baseFiles[file] ?? '', src, file, files) : null),
-    [baseFiles, src, file, files.join()],
+    () => (baseFiles ? renderRedline(baseFiles[file] ?? '', src, file, files, baseMedia, version.media, state.externalImages) : null),
+    [baseFiles, src, file, files.join(), version, baseMedia, state.externalImages],
   )
   const text = useMemo(() => htmlText(html), [html])
   const heads = useMemo(() => headings(src), [src])
 
   const comments: PlacedComment[] = state.comments
     .filter((c) => c.file === file && c.version <= version.n)
-    .map((c) => ({ ...c, placement: placeComment(c, src, text, heads) }))
+    .map((c) => {
+      const placement = placeComment(c, src, text, heads)
+      return { ...c, placement, lastSeen: placement === 'outdated' ? lastSeenIn(c, state.versions, version.n) : undefined }
+    })
 
   // Per-file entries vs the compare base (default: the target branch), with
   // open-comment counts.
@@ -62,19 +69,6 @@ export function useIdeaView() {
     change: fileChange(entryBase[path], version.files[path]),
     open: state.comments.filter((c) => c.file === path && c.status === 'unresolved' && c.version <= version.n).length,
   }))
-
-  // Lost comments across every file in this version.
-  const allLost = state.comments.filter((c) => {
-    if (c.version > version.n) return false
-    const s = version.files[c.file]
-    if (c.file !== file) {
-      if (s === undefined) return true
-      if (c.anchor.type === 'file') return false
-      if (c.anchor.type === 'section') return !headings(s).includes(c.anchor.section)
-      return !htmlText(renderMarkdown(s, c.file, files)).includes(c.anchor.quote)
-    }
-    return placeComment(c, src, text, heads) === 'lost'
-  })
 
   return {
     state,
@@ -92,6 +86,5 @@ export function useIdeaView() {
     changed,
     comments,
     entries,
-    allLost,
   }
 }
