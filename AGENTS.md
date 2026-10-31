@@ -12,6 +12,10 @@ Every commit message follows `CONTRIBUTING.md`; a hook and CI check it, and `bun
 - Body: why the change was made, at least 20 characters (all types but `docs`).
 - Breaking changes: `!` in the title (`feat(api)!: …`) and a `BREAKING CHANGE:` footer with what breaks and how to migrate.
 
+## Code
+
+Every body of `if`, `else`, `for`, `while` and `do` is a block in braces, on its own lines. oxlint and oxfmt check it in a pre-commit hook and in CI; `bun run format` fixes it.
+
 ## Running things
 
 - Tests: `bun run test`. It gives this worktree a fresh Rivet Engine of its own; the actor tests refuse to start under plain `bun test`.

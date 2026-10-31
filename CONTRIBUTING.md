@@ -1,5 +1,21 @@
 # Contributing
 
+## Code style
+
+[oxlint](https://oxc.rs/docs/guide/usage/linter) checks the rules (`.oxlintrc.json`) and [oxfmt](https://oxc.rs/docs/guide/usage/formatter) the layout (`.oxfmtrc.json`), for the TypeScript and JSON in `packages/` and `scripts/`. A pre-commit hook checks the staged files and CI checks everything; `bun run format` fixes what they report, and `bun run lint` checks without changing anything. Bun's own `bun lint` and `bun fmt` read these same config files, so moving to them later is a small change.
+
+- **Every body of `if`, `else`, `for`, `while` and `do` is a block in braces, on its own lines**, even when it's one statement:
+
+  ```ts
+  for (const [name, value] of Object.entries(values)) {
+    if (value !== undefined) {
+      url.searchParams.set(name, String(value))
+    }
+  }
+  ```
+
+- The formatter decides the rest of the layout: 2-space indents, single quotes, no semicolons, trailing commas, lines up to 120 characters.
+
 ## Commit messages
 
 Commits follow rules adapted from [Angular's commit message guidelines](https://github.com/angular/angular/blob/main/contributing-docs/commit-message-guidelines.md). The `commit-msg` hook checks every commit (`bun install` turns it on), and CI checks every push and pull request, so a message that breaks them is caught either way. To check a message yourself: `bun scripts/commit-lint.ts --message "…"`.
