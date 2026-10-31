@@ -11,7 +11,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import { setup } from 'rivetkit'
 import { createClient } from 'rivetkit/client'
 import * as z from 'zod'
-import { ACCESS_TOKEN_SECONDS, BASE, MCP_RESOURCE, makeAuth, outbox } from './auth.ts'
+import { ACCESS_TOKEN_SECONDS, BASE, cimdFetches, MCP_RESOURCE, makeAuth, outbox } from './auth.ts'
 import { directoryA, directoryB } from './directory.ts'
 import { consentPage, devicePage, loginPage } from './pages.ts'
 import { calls, directoryAdapter } from './remote-adapter.ts'
@@ -147,7 +147,7 @@ async function fetch(req: Request): Promise<Response> {
   // spike-only introspection, for the test scripts
   if (p === '/spike/outbox') return Response.json(localAuth ? outbox : await (await dirB.fetch('/ideaf/outbox', { headers: { 'x-ideaf-url': `${BASE}/ideaf/outbox` } })).json())
   if (p === '/spike/stats')
-    return Response.json({ mode: MODE, directoryCalls, adapterCalls: calls.count, adapterLog: calls.log.slice(-200), mcpLog, adminAudit, actor: MODE === 'adapter' ? await dirA.stats() : await dirB.stats() })
+    return Response.json({ mode: MODE, directoryCalls, adapterCalls: calls.count, adapterLog: calls.log.slice(-200), mcpLog, adminAudit, cimdFetches: localAuth ? cimdFetches : null, actor: MODE === 'adapter' ? await dirA.stats() : await dirB.stats() })
   if (p === '/spike/reset-stats') {
     directoryCalls.auth = directoryCalls.status = 0
     calls.count = 0

@@ -18,6 +18,20 @@ export const BASE = process.env.IDEAF_URL ?? 'http://localhost:25445'
 export const MCP_RESOURCE = `${BASE}/mcp`
 export const ACCESS_TOKEN_SECONDS = 15 * 60
 
+/** CIMD metadata fetches through the transport, for the caching checks. */
+export const cimdFetches: { url: string; outcome: string }[] = []
+const countedFetch: typeof fetchClientMetadataResource = async (input, init) => {
+  const url = String(input instanceof Request ? input.url : input)
+  try {
+    const r = await fetchClientMetadataResource(input, init)
+    cimdFetches.push({ url, outcome: String(r.status) })
+    return r
+  } catch (e) {
+    cimdFetches.push({ url, outcome: `refused: ${(e as Error).message}` })
+    throw e
+  }
+}
+
 /** The fake email sender: codes are logged and kept here for tests. */
 export const outbox: { email: string; otp: string; type: string }[] = []
 
@@ -228,7 +242,7 @@ export function authOptions(database: BetterAuthOptions['database']) {
         },
       }),
       cimd({
-        fetchClientMetadataResource,
+        fetchClientMetadataResource: countedFetch,
         metadataProfile: 'mcp-2026-07-28',
         ...(process.env.CIMD_ALLOW ? { isMetadataDocumentUrlAllowed: (url: string) => process.env.CIMD_ALLOW!.split(',').includes(new URL(url).host) } : {}),
       }),

@@ -1,0 +1,18 @@
+PASS  cimd: Claude Code client resolved from its metadata document  — /consent?response_type=code&redirect_uri=http%3A%2F%2Flocalhost%3A43123%2Fcallback&scope=openid+offline_access+ideas%3Aread&state=s&client_id=https%3A%2F%2Fclaude.ai%2Foauth%2Fclaude-code-client-metad
+NOTE fetches for the first authorize: 1 (https://claude.ai/oauth/claude-code-client-metadata 200)
+NOTE stored client row: {"clientId":"https://claude.ai/oauth/claude-code-client-metadata","clientDiscoveryId":"cimd","redirectUris":"[\"http://localhost/callback\",\"http://127.0.0.1/callback\"]","tokenEndpointAuthMethod":"none"}
+PASS  cimd: Claude Code client gets a 15-minute JWT for the MCP resource  — {"status":200,"aud":["http://localhost:25445/mcp","http://localhost:25445/api/auth/oauth2/userinfo"],"azp":"https://claude.ai/oauth/claude-code-client-metadata"}
+PASS  cimd cache: 5 repeat authorizations, no refetch  — 0 fetches
+PASS  cimd: Claude.ai connector client resolved  — /consent?response_type=code&redirect_uri=https%3A%2F%2Fclaude.ai%2Fapi%2Fmcp%2Fauth_callback&scope=openid+offline_access+ideas%3Aread&state=s&client_id=https%3A%2F%2Fclaude.ai%2Foauth%2Fmcp-oauth-clie
+PASS  cimd: VS Code client resolved  — /consent?response_type=code&redirect_uri=http%3A%2F%2F127.0.0.1%3A33418%2F&scope=openid+offline_access+ideas%3Aread&state=s&client_id=https%3A%2F%2Fvscode.dev%2Foauth%2Fclient-metadata.json&prompt=con
+PASS  cimd: redirect URI not in the document refused  — http://localhost:25445/api/auth/error?error=invalid_redirect&error_description=invalid+redirect+uri
+PASS  cimd: client ID resolving to a private address refused  — {"location":"","fetch":{"url":"https://127.0.0.1.sslip.io/client.json","outcome":"refused: metadata hostname must resolve only to public-routable addresses"}}
+PASS  cimd: client ID on a link-local literal refused
+PASS  cimd flood: 60 new client IDs on one origin, from 60 IPs, cause at most 30 fetches  — {"fetches":30,"outcomes":{"400":30,"429":30},"ms":6373}
+
+9/9 passed
+## allowlist run (CIMD_ALLOW=vscode.dev)
+PASS  allowlist (vscode.dev): listed host accepted  — /consent?response_type=code&redirect_uri=http%3A%2F%2F127.0.0.1%3A33418%2F&scope=openid+offline_access+ideas%3Aread&state=s&client_id=https%3A%2F%2Fvscode.dev%2
+PASS  allowlist: unlisted host refused before any fetch  — {"location":"","fetched":["https://vscode.dev/oauth/client-metadata.json"]}
+
+2/2 passed
