@@ -12,7 +12,7 @@
     "zod": "^4.6.7"
   },
   "scripts": {
-    "dev": "RIVETKIT_STORAGE_PATH=../../.data IDEAF_DATA=../../.data bun --watch src/main.ts",
+    "dev": "bun ../../scripts/worktree.ts exec -- bun --watch src/main.ts",
     "typecheck": "tsc -p ."
   }
 }
