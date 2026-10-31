@@ -10,6 +10,7 @@ import { describe, expect, test } from 'bun:test'
 import { existsSync } from 'node:fs'
 import { contentHash } from '@ideaf/core'
 import { inProcessCore } from '../core-pool/runner.ts'
+import { COLUMNS } from '../directory/schema.ts'
 import { fts5Search } from '../directory/search.ts'
 import { SqlDirectory } from '../directory/sql-directory.ts'
 import { MemoryFileStore } from '../files/memory.ts'
@@ -49,6 +50,25 @@ for (const schema of SCHEMAS) {
     })
   })
 }
+
+describe("the directory's types match its schema", () => {
+  test('every table and column the queries are typed against exists, and nothing else', async () => {
+    const directory = SCHEMAS.find((s) => s.name === 'directory')!
+    const { db, sql } = emptyDatabase()
+    await directory.migrate(sql)
+    const tables = (
+      db.query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as Array<{ name: string }>
+    )
+      .map((t) => t.name)
+      // the search index is a full-text table with its own interface, not part of DB
+      .filter((name) => name !== 'idea_search' && !name.startsWith('idea_search_') && !name.startsWith('sqlite_'))
+    expect(tables).toEqual(Object.keys(COLUMNS).toSorted())
+    for (const [table, columns] of Object.entries(COLUMNS)) {
+      const actual = (db.query(`PRAGMA table_info("${table}")`).all() as Array<{ name: string }>).map((c) => c.name)
+      expect(actual.toSorted(), `columns of ${table}`).toEqual([...columns].toSorted())
+    }
+  })
+})
 
 describe('data survives migration', () => {
   test('an idea written at v1 reads back through IdeaService after migrating', async () => {

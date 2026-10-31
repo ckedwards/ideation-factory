@@ -53,6 +53,28 @@ export interface DB {
   schema_version: { version: number }
 }
 
+/**
+ * Every table's columns, as the migrations create them. The types below make
+ * this list name every table and column in `DB` (and nothing else), and a
+ * migration test checks it against what a fresh database really has, so the
+ * types the queries are written against can't drift from the schema: a column
+ * added to `DB` without a migration fails one or the other.
+ */
+export const COLUMNS = {
+  users: ['id', 'handle', 'name', 'email', 'inactive', 'created_at'],
+  teams: ['id', 'handle', 'name', 'description', 'created_by', 'created_at', 'archived', 'create_policy', 'defaults'],
+  groups: ['id', 'handle', 'name', 'description', 'created_by', 'created_at', 'deleted_at'],
+  memberships: ['kind', 'container', 'user', 'role', 'created_at'],
+  join_requests: ['kind', 'container', 'user', 'created_at'],
+  ideas: ['id', 'title', 'team', 'owner', 'status', 'latest', 'created_at', 'updated_at'],
+  grants: ['idea', 'kind', 'subject', 'can_edit', 'can_share', 'created_at'],
+  schema_version: ['version'],
+} as const satisfies { [T in keyof DB]: ReadonlyArray<keyof DB[T]> }
+
+/** Fails to compile if a table in `DB` has a column missing from COLUMNS. */
+type Missing = { [T in keyof DB]: Exclude<keyof DB[T], (typeof COLUMNS)[T][number]> }
+export const columnsCoverDB: { [T in keyof DB]: never } = {} as Missing
+
 type Migration = (db: Kysely<DB>) => Promise<void>
 
 const MIGRATIONS: Migration[] = [
