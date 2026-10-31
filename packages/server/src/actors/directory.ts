@@ -8,7 +8,7 @@ import { db } from 'rivetkit/db'
 import { migrateDirectory } from '../directory/schema.ts'
 import { fts5Search } from '../directory/search.ts'
 import { SqlDirectory } from '../directory/sql-directory.ts'
-import type { ContainerKind, CreatePolicy, Directory, GrantSubject, IdeaFilter, IdeaRow, Result, Role, TeamDefaults } from '../directory/types.ts'
+import type { ContainerKind, CreatePolicy, Directory, GrantSubject, IdeaFilter, IdeaRow, MoveAdjustments, Result, Role, TeamDefaults } from '../directory/types.ts'
 
 const search = fts5Search()
 
@@ -62,6 +62,8 @@ export const directory = actor({
     permission: (c, idea: string, user: string) => directoryOf(c).permission(idea, user),
     grants: (c, idea: string) => directoryOf(c).grants(idea),
     setGrant: (c, by: string, idea: string, subject: GrantSubject, access: { edit: boolean; share: boolean } | null) => directoryOf(c).setGrant(by, idea, subject, access),
+    previewMove: (c, by: string, idea: string, to: string | null, adjustments?: MoveAdjustments) => directoryOf(c).previewMove(by, idea, to, adjustments),
+    moveIdea: (c, by: string, idea: string, to: string | null, adjustments?: MoveAdjustments) => directoryOf(c).moveIdea(by, idea, to, adjustments),
     listIdeas: (c, by: string, filter?: IdeaFilter) => directoryOf(c).listIdeas(by, filter),
     searchIdeas: (c, by: string, query: string, limit?: number) => directoryOf(c).searchIdeas(by, query, limit),
   },

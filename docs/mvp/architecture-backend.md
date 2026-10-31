@@ -111,6 +111,17 @@ Built in step 2 (`packages/server/src/idea/`). The logic is a plain `IdeaService
 - **Live updates:** after each write the actor broadcasts `version`, `comment` or `resolved` to everyone connected.
 - **Until access grants exist** (step 5), only the owner edits, and a single dev token stands in for sign-in.
 
+## Inside the directory actor
+
+Built in step 5 (`packages/server/src/directory/`): a `Directory` interface, `SqlDirectory` on Kysely implementing it, and the directory actor as a thin shell (one per deployment).
+
+- **Tables:** users, teams and groups (each with a unique handle), memberships with roles, join requests, the idea index (title, team, owner, status, latest version, updated time), and access grants (idea, who: a person, a group, a team's members or everyone, and whether they can edit and share; a row always gives view).
+- **Reads and writes are actions.** Writes stay correct when they run at once through keys, upserts and transactions, not the actor's queue order, which is what the Postgres version needs too. A contract test suite covers the interface, for every implementation.
+- **Index updates come through the queue:** after a write, an idea actor schedules one update of its index row about 2 seconds later, however many writes happen meanwhile, and sends it without waiting. The directory applies them in batches, keeping only the newest per idea, and never moves a row's updated time backwards.
+- **Access:** the app node checks the caller's permission on an idea in the directory before every idea operation (one indexed read). An idea you can't view is "not found". Lists and search filter by access inside their own indexed query.
+- **Search:** FTS5 with the trigram tokenizer (confirmed in RivetKit's SQLite), behind its own interface; under three characters, titles match from the start of a word. Ranking by closeness is in our code.
+- **Until real sign-in** (step 6), dev tokens name the user: `Bearer dev` is "dev", and `Bearer dev:<handle>` is that person, added to the directory when first seen.
+
 ## Editing with commands
 
 The core of the product. The web app, the cli, the MCP server and "accept suggestion" all send **batches of edit commands** to the idea's actor:
@@ -280,7 +291,7 @@ Each idea actor runs in one place and applies its writes one at a time. That's t
 **Postgres is the other escape hatch.** Everything stays in Rivet by default. For a customer who'd rather run Postgres, the directory can be swapped for it, removing the single owner: every app node queries it directly, writes run in parallel, and availability comes from their managed Postgres. Idea actors stay on Rivet either way. To keep that cheap, the MVP builds the directory so the swap is an added implementation, not a redesign:
 
 - **One `Directory` interface** in the server (members, teams, groups, index rows, inbox, tokens, search). The actor is the only implementation at first; config picks it (`directory: actor`, later `postgres`).
-- **SQL that works in both:** through a query builder that targets SQLite and Postgres (Kysely is the likely choice; to confirm in step 5 of the implementation plan).
+- **SQL that works in both:** through Kysely, which targets SQLite and Postgres (chosen in step 5; its table types aren't tied to one database, unlike Drizzle's). It runs on the actor's SQLite through a small adapter; the schema is defined with its schema builder.
 - **Search behind its own interface,** since it's what differs most (FTS5 with trigrams vs. `pg_trgm`). Ranking stays in our code.
 - **Correct under concurrency:** unique constraints, upserts and transactions, never relying on the actor's queue order. The Postgres version runs writes concurrently.
 - **One test suite** for the interface, run against every implementation in CI once there's a second.

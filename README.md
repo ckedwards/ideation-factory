@@ -36,7 +36,7 @@ bun run test
 bun run engine:stop  # stop the local Rivet Engine
 ```
 
-Until real sign-in (step 6), the server takes one dev token: `Authorization: Bearer dev` (set `IDEAF_DEV_TOKEN` to change it). For example:
+Until real sign-in (step 6), the server takes a dev token: `Authorization: Bearer dev` signs you in as "dev", and `Bearer dev:maya` as "maya", so several people can be tried (set `IDEAF_DEV_TOKEN` to change the `dev` part). For example:
 
 ```
 curl -H 'authorization: Bearer dev' -X POST localhost:8080/ideas \

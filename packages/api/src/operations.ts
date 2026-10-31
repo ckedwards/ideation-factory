@@ -2,6 +2,7 @@
 // read it, show its blocks, pull, sync, preview and apply edits, and comments.
 import { z } from 'zod'
 import { defineOperation } from './operation.ts'
+import { directoryOperations } from './operations-directory.ts'
 import {
   AnchorInput,
   Batch,
@@ -14,6 +15,7 @@ import {
   FileOutline,
   IdeaId,
   IdeaSummary,
+  Ref,
   StepResult,
   VersionParam,
   VersionResult,
@@ -26,13 +28,14 @@ export const operations = {
     name: 'create_idea',
     summary: 'Start an idea',
     description:
-      'Creates an idea from one or more Markdown files, as its first version. The new idea is private to you. Retrying with the same idempotency key returns the same idea instead of creating another.',
+      "Creates an idea from one or more Markdown files, as its first version. Outside a team it's private to you; in a team (ID or handle) it starts with the team's defaults for new ideas, and you need permission to create ideas there. Retrying with the same idempotency key returns the same idea instead of creating another.",
     method: 'POST',
     path: '/ideas',
     kind: 'write',
     input: z.strictObject({
       title: z.string().trim().min(1).max(200),
       description: z.string().max(5000).optional(),
+      team: Ref.optional(),
       files: z.array(MarkdownFile).min(1).max(500),
     }),
     output: z.object({ idea: z.string(), version: z.number().int() }),
@@ -164,6 +167,8 @@ export const operations = {
     input: z.strictObject({ idea: IdeaId, comment: CommentId, resolved: z.boolean() }),
     output: z.object({ comment: z.string(), resolved: z.boolean() }),
   }),
+
+  ...directoryOperations,
 } as const
 
 export type Operations = typeof operations

@@ -87,3 +87,58 @@ export const CommentThread = CommentBase.extend({
 export const VersionResult = z.object({ version: z.number().int(), comments: z.array(CommentOutcome), steps: z.array(StepResult) })
 
 export const FileContent = z.object({ file: z.string(), path: z.string(), hash: z.string(), content: z.string() })
+
+// --- the directory -----------------------------------------------------------------
+
+/** A person, team or group named by ID or by handle (with or without @). */
+export const Ref = z.string().trim().min(1).max(64)
+export const Handle = z.string().regex(/^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/, 'a handle: 1 to 39 lowercase letters, digits and dashes')
+export const Cursor = z.string().max(500).optional()
+export const Limit = z.coerce.number().int().min(1).max(100).optional()
+
+export const User = z.object({ id: z.string(), handle: z.string(), name: z.string(), inactive: z.boolean() })
+export const Role = z.enum(['admin', 'maintainer', 'member'])
+export const CreatePolicy = z.enum(['anyone', 'members', 'maintainers'])
+export const TeamDefaults = z.strictObject({
+  members: z.enum(['none', 'view', 'edit']),
+  public: z.boolean(),
+  groups: z.array(z.strictObject({ group: z.string(), edit: z.boolean() })).max(50),
+})
+
+const ContainerFields = { id: z.string(), handle: z.string(), name: z.string(), description: z.string(), createdAt: z.number(), members: z.number().int() }
+export const Team = z.object({ kind: z.literal('team'), ...ContainerFields, archived: z.boolean(), createPolicy: CreatePolicy, defaults: TeamDefaults })
+export const Group = z.object({ kind: z.literal('group'), ...ContainerFields, deleted: z.boolean() })
+export const Member = z.object({ user: User, role: Role })
+
+export function Page<T extends z.ZodType>(item: T) {
+  return z.object({ items: z.array(item), next: z.string().nullable() })
+}
+
+export const IdeaRow = z.object({
+  id: z.string(),
+  title: z.string(),
+  team: z.string().nullable(),
+  owner: z.string(),
+  status: z.string(),
+  latest: z.number().int(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+})
+
+export const GrantSubject = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('user'), id: z.string() }),
+  z.strictObject({ kind: z.literal('group'), id: z.string() }),
+  z.strictObject({ kind: z.literal('team'), id: z.string() }),
+  z.strictObject({ kind: z.literal('everyone') }),
+])
+export const Grant = z.object({ subject: GrantSubject, edit: z.boolean(), share: z.boolean() })
+export const Permission = z.object({ view: z.boolean(), edit: z.boolean(), share: z.boolean(), owner: z.boolean() })
+
+const AccessChange = z.object({ count: z.number().int(), people: z.array(User), everyone: z.boolean() })
+export const MovePreview = z.object({
+  from: z.string().nullable(),
+  to: z.string().nullable(),
+  grants: z.object({ now: z.array(Grant), after: z.array(Grant) }),
+  losing: AccessChange,
+  gaining: AccessChange,
+})

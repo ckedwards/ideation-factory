@@ -120,14 +120,6 @@ describe('editing with a batch', () => {
     })
   })
 
-  test('only the owner edits, for now', async () => {
-    const { write } = await created()
-    expect(await write({ type: 'edit', batch: { base: 1, steps: [{ command: 'delete', target: 'b3' }] } }, REVIEWER)).toMatchObject({
-      ok: false,
-      error: { code: 'forbidden' },
-    })
-  })
-
   test('a preview shows the result without changing anything', async () => {
     const { service } = await created()
     const preview = await service.preview({ base: 1, steps: [{ command: 'replace', in: 'b3', old: 'brown', new: 'red' }] })

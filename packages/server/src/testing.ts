@@ -16,6 +16,8 @@ export function startTestActors(deps: Partial<NodeDeps> = {}): Promise<Client<Re
   if (!process.env.RIVETKIT_STORAGE_PATH || !process.env.RIVET_RUN_ENGINE_PORT) {
     throw new Error('run the tests with `bun run test`: it gives this worktree its own Rivet Engine and data folder')
   }
+  // index rows catch up quickly in tests
+  process.env.IDEAF_INDEX_DELAY_MS ??= '100'
   configureNode({ files: new MemoryFileStore(), core: inProcessCore(), limits: DEFAULT_LIMITS, ...deps })
   started ??= (async () => {
     registry.config.noWelcome = true

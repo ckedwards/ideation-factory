@@ -2,7 +2,7 @@
 // SQLite now, Postgres if it's added. Each implementation's test file calls
 // directoryContract with a way to make an empty directory.
 import { describe, expect, test } from 'bun:test'
-import type { Directory, IdeaRow } from './types.ts'
+import type { Directory, IdeaRow, MovePreview } from './types.ts'
 
 export function directoryContract(name: string, make: () => Promise<Directory>): void {
   async function people() {
@@ -169,6 +169,56 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
         // removing a grant
         await d.setGrant('u-riley', 'i1', { kind: 'everyone' }, null)
         expect((await d.permission('i1', 'u-outsider')).view).toBe(false)
+      })
+    })
+
+    describe('moving an idea (the move wizard)', () => {
+      test('the preview says who loses and gains access; nothing changes until the move', async () => {
+        const d = await people()
+        const core = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } }).value.id
+        const web = ((await d.createTeam('u-devon', { handle: 'web', name: 'Web' })) as { value: { id: string } }).value.id
+        await d.addMember('u-riley', 'team', core, 'u-maya')
+        await d.addMember('u-devon', 'team', web, 'u-riley')
+        await d.addMember('u-devon', 'team', web, 'u-sam')
+        await d.registerIdea(idea('i1', { team: core }))
+
+        const preview = await d.previewMove('u-riley', 'i1', web)
+        expect(preview).toMatchObject({
+          ok: true,
+          value: {
+            from: core,
+            to: web,
+            grants: { now: [{ subject: { kind: 'team', id: core } }], after: [{ subject: { kind: 'team', id: web } }] },
+            losing: { count: 1, people: [expect.objectContaining({ handle: 'maya' })], everyone: false },
+            gaining: { count: 2, everyone: false },
+          },
+        })
+        expect((await d.idea('i1'))!.team).toBe(core)
+        expect((await d.permission('i1', 'u-maya')).view).toBe(true)
+
+        // keep the old team's access, as the wizard allows
+        const kept = await d.previewMove('u-riley', 'i1', web, { keep: [{ kind: 'team', id: core }] })
+        expect((kept as { value: MovePreview }).value.losing.count).toBe(0)
+
+        const moved = await d.moveIdea('u-riley', 'i1', web)
+        expect(moved.ok).toBe(true)
+        expect((await d.idea('i1'))!.team).toBe(web)
+        expect((await d.permission('i1', 'u-maya')).view).toBe(false)
+        expect((await d.permission('i1', 'u-sam')).view).toBe(true)
+      })
+
+      test('moving needs share access, and permission to create ideas in the new team', async () => {
+        const d = await people()
+        const core = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } }).value.id
+        const closed = ((await d.createTeam('u-devon', { handle: 'closed', name: 'Closed' })) as { value: { id: string } }).value.id
+        await d.addMember('u-riley', 'team', core, 'u-maya')
+        await d.registerIdea(idea('i1', { team: core, owner: 'u-riley' }))
+        expect(await d.moveIdea('u-maya', 'i1', null)).toMatchObject({ ok: false, error: { code: 'forbidden' } })
+        expect(await d.moveIdea('u-riley', 'i1', closed)).toMatchObject({ ok: false, error: { code: 'forbidden' } })
+        expect(await d.moveIdea('u-outsider', 'i1', null)).toMatchObject({ ok: false, error: { code: 'not_found' } })
+        // out of a team: private to its owner again
+        expect(await d.moveIdea('u-riley', 'i1', null)).toMatchObject({ ok: true, value: { to: null, losing: { count: 1 } } })
+        expect(await d.grants('i1')).toEqual([])
       })
     })
 

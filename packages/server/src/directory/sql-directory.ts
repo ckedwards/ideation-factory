@@ -15,9 +15,12 @@ import {
   type Grant,
   type GrantSubject,
   type Group,
+  type AccessChange,
   type IdeaFilter,
   type IdeaRow,
   type Member,
+  type MoveAdjustments,
+  type MovePreview,
   type Page,
   type Permission,
   type Result,
@@ -102,8 +105,13 @@ export class SqlDirectory implements Directory {
     return (await this.user(user.id))!
   }
 
-  async user(id: string): Promise<User | null> {
-    const row = await this.#db.selectFrom('users').select(['id', 'handle', 'name', 'inactive']).where('id', '=', id).executeTakeFirst()
+  async user(idOrHandle: string): Promise<User | null> {
+    const handle = idOrHandle.toLowerCase().replace(/^@/, '')
+    const row = await this.#db
+      .selectFrom('users')
+      .select(['id', 'handle', 'name', 'inactive'])
+      .where((eb) => eb.or([eb('id', '=', idOrHandle), eb('handle', '=', handle)]))
+      .executeTakeFirst()
     return row ? toUser(row) : null
   }
 
@@ -488,6 +496,72 @@ export class SqlDirectory implements Directory {
     return ok(await this.grants(ideaId))
   }
 
+  async previewMove(actor: string, ideaId: string, to: string | null, adjustments: MoveAdjustments = {}): Promise<Result<MovePreview>> {
+    const idea = await this.idea(ideaId)
+    if (!idea || !(await this.permission(ideaId, actor)).view) return fail('not_found', `no idea ${ideaId}`)
+    if (!(await this.permission(ideaId, actor)).share) return fail('forbidden', 'moving an idea changes who can see it, so it needs share access')
+    const target = to === null ? null : await this.team(to)
+    if (to !== null && !target) return fail('not_found', `no team ${to}`)
+    const allowed = await this.canCreateIdea(actor, target?.id ?? null)
+    if (!allowed.ok) return allowed
+    const now = await this.grants(ideaId)
+    const after = moveGrants(now, idea.team, target, adjustments)
+    const [before, later] = await Promise.all([this.#viewers(idea.owner, idea.team, now), this.#viewers(idea.owner, target?.id ?? null, after)])
+    return ok({
+      from: idea.team,
+      to: target?.id ?? null,
+      grants: { now, after },
+      losing: await this.#difference(before, later),
+      gaining: await this.#difference(later, before),
+    })
+  }
+
+  async moveIdea(actor: string, ideaId: string, to: string | null, adjustments: MoveAdjustments = {}): Promise<Result<MovePreview>> {
+    const preview = await this.previewMove(actor, ideaId, to, adjustments)
+    if (!preview.ok) return preview
+    const { after } = preview.value.grants
+    await this.#transaction(async (db) => {
+      await db.updateTable('ideas').set({ team: preview.value.to }).where('id', '=', ideaId).execute()
+      await db.deleteFrom('grants').where('idea', '=', ideaId).execute()
+      const now = this.#now()
+      for (const g of after) {
+        await insertGrant(db, ideaId, { kind: g.subject.kind, subject: g.subject.kind === 'everyone' ? '*' : g.subject.id, edit: g.edit, share: g.share }, now)
+      }
+    })
+    return preview
+  }
+
+  /** Everyone who can view an idea with these grants: user IDs, or 'everyone'. */
+  async #viewers(owner: string, team: string | null, grants: Grant[]): Promise<Set<string> | 'everyone'> {
+    if (grants.some((g) => g.subject.kind === 'everyone')) return 'everyone'
+    const users = new Set<string>([owner])
+    const containers: Array<{ kind: ContainerKind; id: string }> = []
+    for (const g of grants) {
+      if (g.subject.kind === 'user') users.add(g.subject.id)
+      else if (g.subject.kind === 'group' || g.subject.kind === 'team') containers.push({ kind: g.subject.kind, id: g.subject.id })
+    }
+    for (const c of containers) {
+      for (const r of await this.#db.selectFrom('memberships').select('user').where('kind', '=', c.kind).where('container', '=', c.id).execute()) users.add(r.user)
+    }
+    if (team) {
+      for (const r of await this.#db.selectFrom('memberships').select('user').where('kind', '=', 'team').where('container', '=', team).where('role', '=', 'admin').execute()) users.add(r.user)
+    }
+    return users
+  }
+
+  async #difference(a: Set<string> | 'everyone', b: Set<string> | 'everyone'): Promise<AccessChange> {
+    if (b === 'everyone') return { count: 0, people: [], everyone: false }
+    if (a === 'everyone') {
+      const total = await this.#db.selectFrom('users').select((eb) => eb.fn.countAll<number>().as('n')).executeTakeFirstOrThrow()
+      return { count: Math.max(0, Number(total.n) - b.size), people: [], everyone: true }
+    }
+    const ids = [...a].filter((id) => !b.has(id))
+    const people = ids.length
+      ? (await this.#db.selectFrom('users').select(['id', 'handle', 'name', 'inactive']).where('id', 'in', ids.slice(0, 20)).orderBy('handle').execute()).map(toUser)
+      : []
+    return { count: ids.length, people, everyone: false }
+  }
+
   async listIdeas(actor: string, filter: IdeaFilter = {}): Promise<Page<IdeaRow>> {
     const limit = pageSize(filter.limit)
     const after = decodeCursor(filter.cursor)
@@ -554,6 +628,27 @@ function visibleTo(eb: ExpressionBuilder<DB, 'ideas'>, user: string): Expression
 }
 
 type GrantRow = { kind: DB['grants']['kind']; subject: string; edit: boolean; share: boolean }
+
+const sameSubject = (a: GrantSubject, b: GrantSubject) => a.kind === b.kind && (a.kind === 'everyone' || a.id === (b as { id: string }).id)
+
+/** The grants after a move: the old team's member grant goes, the new team's defaults come, with the wizard's adjustments. */
+function moveGrants(now: Grant[], from: string | null, to: Team | null, adjustments: MoveAdjustments): Grant[] {
+  const keep = adjustments.keep ?? []
+  const skip = adjustments.skip ?? []
+  const after = now.filter((g) => !(from && g.subject.kind === 'team' && g.subject.id === from && to?.id !== from) || keep.some((k) => sameSubject(k, g.subject)))
+  if (to) {
+    for (const d of grantsFromDefaults(to)) {
+      const subject = toSubject(d.kind, d.subject)
+      if (skip.some((s) => sameSubject(s, subject))) continue
+      const existing = after.find((g) => sameSubject(g.subject, subject))
+      if (existing) {
+        existing.edit ||= d.edit
+        existing.share ||= d.share
+      } else after.push({ subject, edit: d.edit, share: d.share })
+    }
+  }
+  return after
+}
 
 function grantsFromDefaults(team: Team): GrantRow[] {
   const out: GrantRow[] = []

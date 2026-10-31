@@ -88,6 +88,31 @@ export interface Grant {
   share: boolean
 }
 
+/** Who would lose or gain access: counts, with the first names. */
+export interface AccessChange {
+  count: number
+  people: User[]
+  /** True if the change is that everyone with an account can see it (or no longer can). */
+  everyone: boolean
+}
+
+/** What moving an idea to another team (or out of one) would change, for the move wizard. */
+export interface MovePreview {
+  from: string | null
+  to: string | null
+  grants: { now: Grant[]; after: Grant[] }
+  losing: AccessChange
+  gaining: AccessChange
+}
+
+/** Changes to the move's default effect, chosen in the wizard. */
+export interface MoveAdjustments {
+  /** Grants the move would remove (the old team's members) to keep instead. */
+  keep?: GrantSubject[]
+  /** Grants the new team's defaults would add, to leave out. */
+  skip?: GrantSubject[]
+}
+
 export interface IdeaFilter {
   team?: string
   owner?: string
@@ -99,7 +124,8 @@ export interface IdeaFilter {
 export interface Directory {
   // people
   ensureUser(user: { id: string; handle: string; name: string; email?: string }): Promise<User>
-  user(id: string): Promise<User | null>
+  /** A person by ID or handle. */
+  user(idOrHandle: string): Promise<User | null>
   findUsers(query: string, limit?: number): Promise<User[]>
 
   // teams and groups
@@ -127,6 +153,10 @@ export interface Directory {
   permission(idea: string, user: string): Promise<Permission>
   grants(idea: string): Promise<Grant[]>
   setGrant(actor: string, idea: string, subject: GrantSubject, access: { edit: boolean; share: boolean } | null): Promise<Result<Grant[]>>
+  /** What moving an idea would change, before anything changes. */
+  previewMove(actor: string, idea: string, to: string | null, adjustments?: MoveAdjustments): Promise<Result<MovePreview>>
+  /** Moves an idea into, out of, or to another team: the old team's member grant goes, the new team's defaults are added. */
+  moveIdea(actor: string, idea: string, to: string | null, adjustments?: MoveAdjustments): Promise<Result<MovePreview>>
   listIdeas(actor: string, filter?: IdeaFilter): Promise<Page<IdeaRow>>
   searchIdeas(actor: string, query: string, limit?: number): Promise<IdeaRow[]>
 }

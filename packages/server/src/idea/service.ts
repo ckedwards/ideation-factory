@@ -9,6 +9,9 @@
 //
 // core's CPU work (parsing, applying batches, re-anchoring) goes through a
 // CoreRunner, which on the server is a pool of worker threads.
+//
+// Who may do what is checked before a write gets here, by the app node against
+// the directory's access grants; the idea trusts the caller it's given.
 import {
   type Anchor,
   type AnchorInput,
@@ -251,7 +254,6 @@ export class IdeaService {
 
   async #edit(request: WriteRequest, write: Extract<IdeaWrite, { type: 'edit' }>) {
     const meta = await this.#requireMeta()
-    this.#requireEditor(meta, request.caller)
     if (write.batch.base > meta.latest) refuse('invalid', `the batch is built on v${write.batch.base}, but the latest is v${meta.latest}`)
     const latest = await this.#loadLatest()
     const applied = await this.#core.applyBatch(this.id, latest.idea, latest.comments, write.batch)
@@ -264,7 +266,6 @@ export class IdeaService {
 
   async #upload(request: WriteRequest, write: Extract<IdeaWrite, { type: 'upload' }>) {
     const meta = await this.#requireMeta()
-    this.#requireEditor(meta, request.caller)
     const latest = await this.#loadLatest()
     if (write.files.length === 0 && !write.deleted?.length) refuse('invalid', 'nothing to upload')
     // every existing file must say it was edited from the latest version of it
@@ -446,11 +447,6 @@ export class IdeaService {
     const meta = await this.#meta()
     if (!meta) refuse('not_found', "this idea doesn't exist")
     return meta!
-  }
-
-  /** Until access grants exist (step 5), only the owner edits. */
-  #requireEditor(meta: Meta, caller: Caller): void {
-    if (caller.user !== meta.owner) refuse('forbidden', 'only the idea’s owner can edit it for now')
   }
 
   async #rootComment(id: string): Promise<string> {

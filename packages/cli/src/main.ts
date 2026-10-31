@@ -27,10 +27,15 @@ const IDEA: Flag = { type: 'string', description: 'act on this idea instead of t
 const commands: Command[] = [
   {
     name: 'start',
-    usage: 'ideaf start [path] --title <title> [--description <text>]',
+    usage: 'ideaf start [path] --title <title> [--team <team>] [--description <text>]',
     summary: "Start an idea from the Markdown files in path (default: this folder), and make it this working tree's idea",
-    flags: { title: { type: 'string', description: 'the idea’s title (asked for at a terminal if missing)' }, description: { type: 'string', description: 'a short description' } },
-    run: (ctx, f, args) => start(ctx, { ...(typeof f.title === 'string' ? { title: f.title } : {}), ...(typeof f.description === 'string' ? { description: f.description } : {}) }, args[0]),
+    flags: {
+      title: { type: 'string', description: 'the idea’s title (asked for at a terminal if missing)' },
+      team: { type: 'string', description: 'start it in this team (its defaults decide who can see it); without one it’s private to you' },
+      description: { type: 'string', description: 'a short description' },
+    },
+    run: (ctx, f, args) =>
+      start(ctx, { ...(typeof f.title === 'string' ? { title: f.title } : {}), ...(typeof f.team === 'string' ? { team: f.team } : {}), ...(typeof f.description === 'string' ? { description: f.description } : {}) }, args[0]),
   },
   {
     name: 'sync',

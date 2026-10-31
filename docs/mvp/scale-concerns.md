@@ -43,7 +43,7 @@ In rough order of how likely each is to bite. Severity: **High** means likely to
 - **Keep transactions short** so little waits behind them, and treat a full queue as back-pressure (a retryable error), never a lost write.
 - **If it's still too much,** split the directory (concern 8).
 
-**Status:** open. Measure in the Rivet spike.
+**Status:** coalescing built in step 5 (one index update per idea about 2 seconds after its last change, sent without waiting, applied in batches with only the newest kept). Inbox batching comes with the inbox. Measure in the Rivet spike.
 
 ### 2. Checking access on every read
 
@@ -56,7 +56,7 @@ In rough order of how likely each is to bite. Severity: **High** means likely to
 - **In lists:** the visibility filter is part of the indexed query, not a check on each idea afterwards.
 - **Keep the per-idea split strict:** anything about one idea comes from its actor, never from the directory.
 
-**Status:** open.
+**Status:** the list and search filter is built into the indexed query (step 5). The per-idea check is one indexed directory read per request for now; caching grants and member lists in the idea actor is still to do, if measurement says it's needed.
 
 ### 3. Rate limiting needs somewhere to count
 
@@ -116,7 +116,7 @@ A faster parser is the other option, but the web app must parse with the same li
 - Require three characters for "includes" search, and match prefixes for shorter input.
 - Make large counts approximate ("about 4,000"), which is already an open question in `architecture.md`, or keep cached counters.
 
-**Status:** open.
+**Status:** the three-character rule is built (step 5). Lists page with cursors and don't count totals yet.
 
 ### 7. Big groups as reviewers
 
@@ -137,7 +137,7 @@ A faster parser is the other option, but the web app must parse with the same li
 
 **Mitigations:** the signed tokens, the per-idea split and the coalescing above. Only if needed, split it: an actor per person (inbox, watch settings) and per team (members, the team's idea list), leaving the directory actor with search and type-ahead. For a customer who'd rather run Postgres, the directory can be swapped for it, which removes the single owner. See "The directory actor is the one shared owner" in the backend doc.
 
-**Status:** open. The Rivet spike measures what one directory actor can sustain.
+**Status:** the `Directory` interface, Kysely queries for SQLite and Postgres, search behind its own interface, and a contract test suite are built (step 5), so a Postgres version is an added implementation. The Rivet spike measures what one directory actor can sustain.
 
 ### 9. Loading versions from the bucket
 

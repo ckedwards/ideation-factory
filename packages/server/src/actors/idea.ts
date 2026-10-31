@@ -7,6 +7,15 @@ import { db } from 'rivetkit/db'
 import { nodeDeps } from '../deps.ts'
 import { migrate } from '../idea/schema.ts'
 import { type IdeaEvent, IdeaService, Refused, type WriteRequest, type WriteResult } from '../idea/service.ts'
+import type { Registry } from '../registry.ts'
+import { DIRECTORY_KEY } from './directory.ts'
+
+/**
+ * How long an idea waits before updating its row in the directory's index, so a
+ * burst of activity (a bot posting many comments) is one index write, not many
+ * (scale concern 1).
+ */
+const indexDelayMs = () => Number(process.env.IDEAF_INDEX_DELAY_MS ?? 2000)
 
 type Payload<N extends IdeaEvent['name']> = Extract<IdeaEvent, { name: N }>['payload']
 
@@ -20,6 +29,7 @@ export const idea = actor({
   queues: {
     writes: queue<WriteRequest, WriteResult>(),
   },
+  state: { indexDue: false, lastActivity: 0 },
   createVars: () => ({ service: null as IdeaService | null }),
   run: async (c) => {
     const service = serviceOf(c)
@@ -27,6 +37,13 @@ export const idea = actor({
       try {
         const { result, events } = await service.write(message.body)
         for (const e of events) c.broadcast(e.name, e.payload)
+        if (events.length > 0) {
+          c.state.lastActivity = Date.now()
+          if (!c.state.indexDue) {
+            c.state.indexDue = true
+            await c.schedule.after(indexDelayMs(), 'flushIndex')
+          }
+        }
         await message.complete(result)
       } catch (error) {
         c.log.error({ msg: 'idea write failed', error: String(error) })
@@ -43,6 +60,14 @@ export const idea = actor({
     comments: (c, version?: number) => read(() => serviceOf(c).comments(version)),
     steps: (c, version: number) => read(() => serviceOf(c).steps(version)),
     preview: (c, batch: unknown) => read(() => serviceOf(c).preview(batch)),
+    /** Sends this idea's current index row to the directory, without waiting (scheduled after a write). */
+    flushIndex: async (c) => {
+      c.state.indexDue = false
+      const summary = await serviceOf(c).summary()
+      if (!summary) return
+      const directory = c.client<Registry>().directory.getOrCreate(DIRECTORY_KEY)
+      await directory.send('index', { id: summary.id, title: summary.title, status: summary.status, latest: summary.latest, updatedAt: c.state.lastActivity || Date.now() })
+    },
   },
 })
 
