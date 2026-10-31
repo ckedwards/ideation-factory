@@ -85,6 +85,16 @@ Each has a pass condition. Record results in Findings, below.
 - [ ] **Bot burst:** 10 bots each comment on 12 ideas as fast as allowed. **Pass:** no `sqlite.transaction_queue_full` or queue-full errors with coalescing on, and reads stay within target.
 - [ ] **Hops:** compare a directory call from the node hosting it with one from another node. **Pass:** the extra time is recorded and small (a few milliseconds).
 
+### Heavy work on one node
+
+[Scale concerns](scale-concerns.md) concern 4: one Bun process hosts many actors on one JavaScript thread, so CPU work in one idea actor delays the rest of the node. Measure **event-loop delay** with a timer probe on each app node: a 10 ms interval that records how late each tick fires.
+
+- [ ] **Large idea, on the main thread:** an idea with 40 files and 500 comments, uploaded and edited repeatedly (re-anchoring, or a stand-in diff of the same size if `core` isn't ready), while other ideas on the same node take ordinary reads. **Pass:** event-loop delay and the other ideas' read latency are recorded, as the baseline.
+- [ ] **The same, with the work in Bun worker threads.** **Pass:** event-loop delay under 20 ms at the 99th percentile, and the other ideas' reads stay under 100 ms at the 99th percentile.
+- [ ] **During the bot burst** (above), on every app node. **Pass:** event-loop delay is recorded and stays under 20 ms at the 99th percentile.
+
+If worker threads don't meet the target, the next step is moving that heavy work into a Rust actor (the Rust SDK is in beta; Rust and TypeScript actors can call each other in one app), not rewriting the app.
+
 ### Waking and upgrades
 
 - [ ] **Cold wake:** an idea actor asleep long enough to be loaded from the bucket. **Pass:** first response under 1 s for a typical idea.
@@ -100,6 +110,7 @@ Each has a pass condition. Record results in Findings, below.
 | Time shared requests wait when the directory's node fails | Recorded (expected about 40–60 s) |
 | Directory read latency, 99th percentile, at design load | Under 50 ms |
 | Idea-actor cold wake from the bucket | Under 1 s |
+| App-node event-loop delay, 99th percentile, large idea with worker threads and during the bot burst | Under 20 ms |
 | Engine CPU, memory and disk per instance at design load | Recorded, for the self-hosting sizing guide |
 
 ## Deciding

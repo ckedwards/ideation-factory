@@ -81,7 +81,7 @@ In rough order of how likely each is to bite. Severity: **High** means likely to
 - **Only touch what changed:** re-anchor and diff only the files a version changed.
 - **Very large work in the background:** the actor schedules it, and marks the version "processing" until it's done.
 
-**Status:** open. Measure with a deliberately large test idea.
+**Status:** open. Measure with a deliberately large test idea, in the [Rivet spike](spike-rivet.md) ("Heavy work on one node").
 
 ### 5. The inbox's read-time merge
 
