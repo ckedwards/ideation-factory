@@ -59,7 +59,7 @@ export function openApiDocument(
       }
     }
     entry.parameters = parameters
-    paths[operation.path] = { ...(paths[operation.path] ?? {}), [operation.method.toLowerCase()]: entry }
+    paths[operation.path] = { ...paths[operation.path], [operation.method.toLowerCase()]: entry }
   }
   return {
     openapi: '3.1.0',

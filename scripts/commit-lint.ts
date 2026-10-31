@@ -73,7 +73,7 @@ export function lintCommitMessage(raw: string, options: LintOptions = {}): strin
   if (/^[A-Z]/.test(summary) && !/^[A-Z]{2,}/.test(summary)) {
     problems.push('start the summary with a lowercase letter')
   }
-  if (/\.$/.test(summary)) {
+  if (summary.endsWith('.')) {
     problems.push("don't end the summary with a full stop")
   }
   if (NOT_IMPERATIVE.test(summary)) {

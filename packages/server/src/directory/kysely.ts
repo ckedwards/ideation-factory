@@ -23,7 +23,8 @@ class SqlConnection implements DatabaseConnection {
     return { rows: rows as R[] }
   }
 
-  async *streamQuery<R>(): AsyncIterableIterator<QueryResult<R>> {
+  /** Kysely only streams for `.stream()`, which the directory never uses. */
+  streamQuery<R>(): AsyncIterableIterator<QueryResult<R>> {
     throw new Error('streaming queries are not supported')
   }
 }
