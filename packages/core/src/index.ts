@@ -15,7 +15,9 @@ export { Batch, batchJsonSchema, Command, Position } from './batch.ts'
 export { contentHash } from './hash.ts'
 export {
   type Anchor,
+  type AnchorInput,
   type AnchorState,
+  checkAnchor,
   type Comment,
   type CommentOutcome,
   createIdea,

@@ -115,3 +115,30 @@ export function locate(idea: Idea, id: string): { file: IdeaFile; parsed: Parsed
   }
   return null
 }
+
+/** What a client sends to anchor a new comment; the server fills in the quote. */
+export type AnchorInput =
+  | { kind: 'file'; file: string }
+  | { kind: 'section'; section: string }
+  | { kind: 'text'; file: string; start: number; end: number }
+
+/** Checks a new comment's anchor against this version, returning the full anchor or why it can't be used. */
+export function checkAnchor(idea: Idea, input: AnchorInput): { ok: true; anchor: Anchor } | { ok: false; message: string } {
+  if (input.kind === 'section') {
+    const at = locate(idea, input.section)
+    if (!at || !input.section.startsWith('s')) return { ok: false, message: `${input.section} isn't a section in this version` }
+    return { ok: true, anchor: { kind: 'section', file: at.file.id, section: input.section } }
+  }
+  const file = fileById(idea, input.file)
+  if (!file) return { ok: false, message: `${input.file} isn't in this version` }
+  if (input.kind === 'file') return { ok: true, anchor: { kind: 'file', file: file.id } }
+  const text = parseMarkdown(file.source).plain.text
+  const { start, end } = input
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end > text.length || end <= start) {
+    return { ok: false, message: `text range ${start}–${end} is outside ${file.path} (plain text is ${text.length} characters)` }
+  }
+  const quote = text.slice(start, end)
+  if (!/[\p{L}\p{N}]/u.test(quote)) return { ok: false, message: 'a text comment must cover some words' }
+  if (quote.includes('\n')) return { ok: false, message: 'a text comment must stay within one block' }
+  return { ok: true, anchor: { kind: 'text', file: file.id, start, end, quote } }
+}

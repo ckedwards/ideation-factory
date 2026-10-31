@@ -93,7 +93,7 @@ Parsing is most of it: the Markdown parser takes ~715 ms for the large idea, mor
 
 A faster parser is the other option, but the web app must parse with the same libraries so comment positions agree, so that's only worth it if measurement says workers and limits aren't enough.
 
-**Status:** measured; mitigations planned for step 2, and to be confirmed in the [Rivet spike](spike-rivet.md) ("Heavy work on one node").
+**Status:** worker pool, size limits and in-memory latest version built in step 2. On the large idea, an upload's main-thread stall went from 901 ms (in process) to at most 2 ms (through the pool); the upload itself still takes about 0.9 s of worker time (1.9 s the first time a worker sees the idea). To be confirmed under load in the [Rivet spike](spike-rivet.md) ("Heavy work on one node").
 
 ### 5. The inbox's read-time merge
 

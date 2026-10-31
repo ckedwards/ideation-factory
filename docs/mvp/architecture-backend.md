@@ -97,6 +97,18 @@ erDiagram
 
 A **version** is a manifest (path → content hash, plus a stable file ID) and its **steps**: either the edit commands that made it, or "uploaded". Each **comment** has an **anchor for every version** it's in, so older versions show comments where they were then.
 
+## Inside an idea actor
+
+Built in step 2 (`packages/server/src/idea/`). The logic is a plain `IdeaService`; the actor is a thin shell around it.
+
+- **Tables** (the actor's SQLite): `idea` (title, owner, status, latest version), `versions` (parent, who made it, how: created, commands or upload), `version_files` (the manifest: file ID, path, content hash, size, unit IDs), `steps` (each command of a batch and the comments it addresses), `comments` (threads and replies), `anchors` (one per comment per version, with its state), and `writes` (recent results by idempotency key). File contents are in the file store (the bucket in production) by hash, stored before the version that points at them is committed.
+- **Writes** (create, comment, reply, resolve, edit, upload) go through the actor's queue, so they're applied one at a time, in order. Each carries an **idempotency key** and its result is kept for 7 days: a queued message is removed when the actor receives it, not when it completes, so a write that fails midway isn't redelivered, and the client's retry with the same key returns the first result instead of applying twice.
+- **Reads** (summary, files, outline, comments as of any version, steps, a batch's dry run) are actions and run in parallel against the latest committed state. Comments made on the latest version only; each version keeps its own anchors, so older versions show comments where they were then, and an outdated comment knows the last version it applied to.
+- **core runs in a pool of worker threads**, and each idea always goes to the same worker, whose parse cache then holds that idea's latest version. Measured on the large idea (890 KB): an upload stalled the main thread for 901 ms in process, and at most 2 ms through the pool. The latest version's sources and open comments are also kept in the actor's memory.
+- **Size limits** are checked before parsing for uploads and new ideas, and on the result for batches (see Deployment settings in the [overview](../architecture.md)).
+- **Live updates:** after each write the actor broadcasts `version`, `comment` or `resolved` to everyone connected.
+- **Until access grants exist** (step 5), only the owner edits, and a single dev token stands in for sign-in.
+
 ## Editing with commands
 
 The core of the product. The web app, the cli, the MCP server and "accept suggestion" all send **batches of edit commands** to the idea's actor:

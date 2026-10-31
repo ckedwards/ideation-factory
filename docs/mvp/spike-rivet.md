@@ -139,6 +139,8 @@ _To be filled in during the spike._
 
 **Early, from step 0 of the build (2026-10-31):** Bun 1.4.3 runs RivetKit 2.3.31's native runtime with no Node-only blockers. RivetKit starts a local 2.x engine itself, ready in about 0.6–2 s, and a queued write that waits for its result takes about 180 ms on a new actor. Writes through a queue were applied in order, and 25 concurrent writes were each applied once. Still to check on the 3.0 engine.
 
+**From step 2 (2026-10-31):** per-actor SQLite, typed events to connected clients, and per-instance memory (`vars`) all work on Bun. **`onMigrate` already runs inside a savepoint:** opening a transaction inside it waits on the outer one until it times out (30 s), so migrations must not open their own. Ten concurrent batches on one idea were applied in order, each against the latest version, and retried writes with the same idempotency key were applied once.
+
 ## Sources
 
 - [Introducing Rivet 3.0 Preview](https://rivet.dev/changelog/2026-10-26-introducing-rivet-3-0-preview/)
