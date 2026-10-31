@@ -119,11 +119,18 @@ export const directoryOperations = {
   searchIdeas: defineOperation({
     name: 'search_ideas',
     summary: 'Search ideas',
-    description: 'Ideas you can see whose titles match, closest first. Three or more characters match anywhere in a word; shorter input matches the start of a word.',
+    description: 'Ideas you can see whose titles contain the search, closest first. A search needs at least 3 characters; it matches anywhere in a word, and shorter words in it are ignored.',
     method: 'GET',
     path: '/search/ideas',
     kind: 'read',
-    input: z.strictObject({ q: z.string().trim().min(1).max(200), limit: Limit }),
+    input: z.strictObject({
+      q: z
+        .string()
+        .trim()
+        .max(200)
+        .refine((q) => q.split(/\s+/).some((t) => [...t].length >= 3), 'a search needs a word of at least 3 characters'),
+      limit: Limit,
+    }),
     output: z.object({ items: z.array(IdeaRow) }),
   }),
 

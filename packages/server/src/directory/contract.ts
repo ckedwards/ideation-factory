@@ -245,6 +245,13 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
         expect((await d.listIdeas('u-maya', { team, limit: 100 })).items).toHaveLength(30)
       })
 
+      test("search finds the ideas you can see even when many you can't see match better", async () => {
+        const d = await people()
+        for (let i = 0; i < 600; i++) await d.registerIdea(idea(`hidden-${i}`, { title: 'Sync', owner: 'u-maya' }))
+        await d.registerIdea(idea('mine', { title: 'An older plan to sync the field app', owner: 'u-riley' }))
+        expect((await d.searchIdeas('u-riley', 'sync')).map((i) => i.id)).toEqual(['mine'])
+      })
+
       test('updates keep the row current, and an older update never overwrites a newer one', async () => {
         const d = await people()
         await d.registerIdea(idea('i1', { updatedAt: 100 }))
@@ -262,9 +269,9 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
         expect((await d.searchIdeas('u-riley', 'sync')).map((i) => i.id)).toEqual(['b', 'a'])
         expect((await d.searchIdeas('u-riley', 'line')).map((i) => i.id).toSorted()).toEqual(['a', 'c'])
         expect((await d.searchIdeas('u-maya', 'sync')).map((i) => i.id)).toEqual(['hidden'])
-        // under three characters: from the start of a word
-        expect((await d.searchIdeas('u-riley', 'of')).map((i) => i.id)).toEqual(['a'])
-        expect((await d.searchIdeas('u-riley', 'in')).map((i) => i.id)).toEqual(['c'])
+        // a search needs three characters; shorter terms are ignored
+        expect(await d.searchIdeas('u-riley', 'of')).toEqual([])
+        expect((await d.searchIdeas('u-riley', 'of sync')).map((i) => i.id)).toEqual(['b', 'a'])
         // renaming updates search
         await d.updateIdea({ id: 'b', title: 'Replication', status: 'draft', latest: 2, updatedAt: clock++ })
         expect((await d.searchIdeas('u-riley', 'sync')).map((i) => i.id)).toEqual(['a'])

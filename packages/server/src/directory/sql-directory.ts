@@ -6,7 +6,7 @@ import type { Expression, ExpressionBuilder, Kysely, SqlBool } from 'kysely'
 import type { Sql } from '../idea/sql.ts'
 import { sqliteKysely } from './kysely.ts'
 import type { ContainerKind, DB, Role } from './schema.ts'
-import { closeness, type IdeaSearch } from './search.ts'
+import { closeness, type IdeaSearch, searchTerms } from './search.ts'
 import {
   type Container,
   type CreatePolicy,
@@ -585,13 +585,16 @@ export class SqlDirectory implements Directory {
   }
 
   async searchIdeas(actor: string, query: string, limit = 25): Promise<IdeaRow[]> {
-    const candidates = await this.#search.candidates(this.#db, query, 500)
-    if (candidates.length === 0) return []
+    const matching = this.#search.matching(searchTerms(query))
+    if (!matching) return []
+    // access is filtered in the same query, before the limit, so ideas you can't see never crowd out yours
     const rows = await this.#db
-      .selectFrom('ideas')
-      .selectAll()
-      .where('id', 'in', candidates)
-      .where((eb) => visibleTo(eb, actor))
+      .selectFrom(matching)
+      .innerJoin('ideas', 'ideas.id', 'm.id')
+      .selectAll('ideas')
+      .where((eb) => visibleTo(eb as unknown as ExpressionBuilder<DB, 'ideas'>, actor))
+      .orderBy('m.rank')
+      .limit(200)
       .execute()
     return rows
       .map(toIdea)

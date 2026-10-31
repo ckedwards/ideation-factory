@@ -113,10 +113,10 @@ A faster parser is the other option, but the web app must parse with the same li
 - **FTS5 itself** must be available in the actor's SQLite (to confirm in the Rivet spike).
 
 **Mitigations:**
-- Require three characters for "includes" search, and match prefixes for shorter input.
+- Require three characters: a search needs a word of at least 3 characters, and shorter words in it are ignored (decided in step 5; common for search, and it means no full scans).
 - Make large counts approximate ("about 4,000"), which is already an open question in `architecture.md`, or keep cached counters.
 
-**Status:** the three-character rule is built (step 5). Lists page with cursors and don't count totals yet.
+**Status:** the three-character rule is built (step 5), and access is filtered inside the search query. Measured at 100,000 ideas: about 14 ms for a word in 10% of titles, about 100 ms for a word in every title, since each match's access is checked. If that worst case matters in the load test, let the query stop after enough visible matches instead of ranking every one first. Lists page with cursors and don't count totals yet.
 
 ### 7. Big groups as reviewers
 

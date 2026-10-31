@@ -158,5 +158,6 @@ export interface Directory {
   /** Moves an idea into, out of, or to another team: the old team's member grant goes, the new team's defaults are added. */
   moveIdea(actor: string, idea: string, to: string | null, adjustments?: MoveAdjustments): Promise<Result<MovePreview>>
   listIdeas(actor: string, filter?: IdeaFilter): Promise<Page<IdeaRow>>
+  /** Ideas the actor can see whose titles contain the query's terms (each at least 3 characters; shorter ones are ignored). */
   searchIdeas(actor: string, query: string, limit?: number): Promise<IdeaRow[]>
 }

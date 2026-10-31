@@ -100,6 +100,7 @@ describe('lists and search', () => {
     const word = `zebra${run}`
     const { idea } = await riley.createIdea({ title: `The ${word} plan`, files: [{ path: 'a.md', content: PLAN }] })
     expect((await riley.searchIdeas({ q: word })).items.map((i) => i.id)).toEqual([idea])
+    await expect(riley.searchIdeas({ q: 'ze' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('at least 3 characters') })
     expect((await as('maya').searchIdeas({ q: word })).items).toEqual([])
 
     // an edit makes the idea actor update its row (coalesced, a moment later)
