@@ -7,3 +7,6 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Pull requests and commits read like "ci: bump actions/checkout from 7.0.1 to 7.1.0"
+    commit-message:
+      prefix: ci
