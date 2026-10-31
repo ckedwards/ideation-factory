@@ -4,8 +4,8 @@ import { Database } from 'bun:sqlite'
 import { DIRECTORY_SCHEMA_VERSION, migrateDirectory } from '../directory/schema.ts'
 import { fts5Search } from '../directory/search.ts'
 import { IDEA_SCHEMA_VERSION, migrate } from '../idea/schema.ts'
-import type { Sql } from '../idea/sql.ts'
-import { bunSql } from '../idea/sql-bun.ts'
+import type { Sql } from '../sql/sql.ts'
+import { bunSql } from '../sql/sql-bun.ts'
 
 export interface MigratedSchema {
   name: 'idea' | 'directory'

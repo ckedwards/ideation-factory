@@ -11,6 +11,7 @@ import { existsSync } from 'node:fs'
 import { contentHash } from '@ideaf/core'
 import { inProcessCore } from '../core-pool/runner.ts'
 import { COLUMNS } from '../directory/schema.ts'
+import { IDEA_COLUMNS } from '../idea/schema.ts'
 import { fts5Search } from '../directory/search.ts'
 import { SqlDirectory } from '../directory/sql-directory.ts'
 import { MemoryFileStore } from '../files/memory.ts'
@@ -50,6 +51,20 @@ for (const schema of SCHEMAS) {
     })
   })
 }
+
+test("the idea actor's types match its schema", async () => {
+  const idea = SCHEMAS.find((s) => s.name === 'idea')!
+  const { db, sql } = emptyDatabase()
+  await idea.migrate(sql)
+  const tables = (
+    db.query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as Array<{ name: string }>
+  ).map((t) => t.name)
+  expect(tables).toEqual(Object.keys(IDEA_COLUMNS).toSorted())
+  for (const [table, columns] of Object.entries(IDEA_COLUMNS)) {
+    const actual = (db.query(`PRAGMA table_info("${table}")`).all() as Array<{ name: string }>).map((c) => c.name)
+    expect(actual.toSorted(), `columns of ${table}`).toEqual([...columns].toSorted())
+  }
+})
 
 describe("the directory's types match its schema", () => {
   test('every table and column the queries are typed against exists, and nothing else', async () => {

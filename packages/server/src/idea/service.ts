@@ -29,7 +29,7 @@ import { z } from 'zod'
 import type { CoreRunner } from '../core-pool/runner.ts'
 import type { FileStore } from '../files/store.ts'
 import { byteLength, checkSizes, type Limits, type SizeProblem } from '../limits.ts'
-import type { Sql } from './sql.ts'
+import type { Sql } from '../sql/sql.ts'
 
 import type { Caller } from '@ideaf/api'
 

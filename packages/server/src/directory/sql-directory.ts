@@ -3,8 +3,8 @@
 // they run concurrently: unique keys, upserts and transactions, never the order
 // a queue applies them in.
 import { type Expression, type ExpressionBuilder, type Kysely, type SqlBool, sql as raw } from 'kysely'
-import type { Sql } from '../idea/sql.ts'
-import { sqliteKysely } from './kysely.ts'
+import type { Sql } from '../sql/sql.ts'
+import { sqliteKysely } from '../sql/kysely.ts'
 import type { ContainerKind, DB, Role } from './schema.ts'
 import { type IdeaSearch, SEARCH_WORK_CAP, searchTerms } from './search.ts'
 import {

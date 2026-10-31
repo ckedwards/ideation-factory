@@ -5,7 +5,7 @@
 // applies to ideas you can see (never to all matches, which could hide yours)
 // and ranking is the same everywhere.
 import { type AliasedRawBuilder, type Kysely, sql as raw } from 'kysely'
-import type { Sql } from '../idea/sql.ts'
+import type { Sql } from '../sql/sql.ts'
 import type { DB } from './schema.ts'
 
 /** Searches need at least this many characters: a trigram index can't match less, and there's no full scan. */

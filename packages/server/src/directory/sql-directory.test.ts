@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { bunSql } from '../idea/sql-bun.ts'
+import { bunSql } from '../sql/sql-bun.ts'
 import { directoryContract } from './contract.ts'
 import { migrateDirectory } from './schema.ts'
 import { fts5Search } from './search.ts'

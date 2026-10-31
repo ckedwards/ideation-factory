@@ -2,9 +2,71 @@
 // content hash and unit IDs); the contents are in the file store by hash.
 // Every comment has an anchor per version, so older versions show comments
 // where they were then.
-import type { Sql } from './sql.ts'
+import type { Kysely } from 'kysely'
+import { sqliteKysely } from '../sql/kysely.ts'
+import type { Sql } from '../sql/sql.ts'
 
-const MIGRATIONS: string[][] = [
+/** The idea actor's tables, as Kysely types: what its queries are written against. */
+export interface IdeaDB {
+  idea: {
+    id: string
+    title: string
+    description: string
+    owner: string
+    status: string
+    created_at: number
+    latest: number
+    next_comment: number
+  }
+  versions: {
+    number: number
+    parent: number | null
+    created_at: number
+    created_by: string
+    how: 'created' | 'commands' | 'upload'
+    next_id: number
+  }
+  version_files: { version: number; file: string; path: string; hash: string; bytes: number; unit_ids: string }
+  steps: { version: number; step: number; command: string; addresses: string }
+  comments: {
+    id: string
+    parent: string | null
+    version: number
+    author: string
+    created_at: number
+    body: string
+    resolved: number
+  }
+  anchors: {
+    comment: string
+    version: number
+    state: 'exact' | 'moved' | 'changed' | 'outdated'
+    anchor: string | null
+  }
+  writes: { key: string; result: string; at: number }
+  schema_version: { version: number }
+}
+
+/** Every table's columns, as the migrations create them; checked against IdeaDB by type and against a fresh database by a test. */
+export const IDEA_COLUMNS = {
+  idea: ['id', 'title', 'description', 'owner', 'status', 'created_at', 'latest', 'next_comment'],
+  versions: ['number', 'parent', 'created_at', 'created_by', 'how', 'next_id'],
+  version_files: ['version', 'file', 'path', 'hash', 'bytes', 'unit_ids'],
+  steps: ['version', 'step', 'command', 'addresses'],
+  comments: ['id', 'parent', 'version', 'author', 'created_at', 'body', 'resolved'],
+  anchors: ['comment', 'version', 'state', 'anchor'],
+  writes: ['key', 'result', 'at'],
+  schema_version: ['version'],
+} as const satisfies { [T in keyof IdeaDB]: ReadonlyArray<keyof IdeaDB[T]> }
+
+/** Fails to compile if a table in IdeaDB has a column missing from IDEA_COLUMNS. */
+type Missing = { [T in keyof IdeaDB]: Exclude<keyof IdeaDB[T], (typeof IDEA_COLUMNS)[T][number]> }
+export const ideaColumnsCoverDB: { [T in keyof IdeaDB]: never } = {} as Missing
+
+/** v1 shipped as raw SQL and stays exactly as it was; later migrations use Kysely's schema builder. */
+type Migration = string[] | ((db: Kysely<IdeaDB>) => Promise<void>)
+
+const MIGRATIONS: Migration[] = [
   [
     `CREATE TABLE idea (
       id TEXT PRIMARY KEY,
@@ -64,15 +126,15 @@ const MIGRATIONS: string[][] = [
   ],
 ]
 
-/**
- * Brings the tables up to date. The caller runs it atomically: RivetKit's
- * onMigrate already wraps it in a savepoint, so it must not open a transaction
- * of its own (a nested one waits on the outer one until it times out).
- */
 /** The idea schema's current version: the number of migrations. */
 export const IDEA_SCHEMA_VERSION = MIGRATIONS.length
 
-/** `to` stops at an earlier version, for migration tests. */
+/**
+ * Brings the tables up to date. The caller runs it atomically: RivetKit's
+ * onMigrate already wraps it in a savepoint, so it must not open a transaction
+ * of its own (a nested one waits on the outer one until it times out). `to`
+ * stops at an earlier version, for migration tests.
+ */
 export async function migrate(sql: Sql, to = IDEA_SCHEMA_VERSION): Promise<void> {
   await sql.execute('CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)')
   const rows = await sql.execute<{ version: number }>('SELECT version FROM schema_version')
@@ -80,8 +142,13 @@ export async function migrate(sql: Sql, to = IDEA_SCHEMA_VERSION): Promise<void>
     await sql.execute('INSERT INTO schema_version (version) VALUES (0)')
   }
   for (let current = rows[0]?.version ?? 0; current < to; current++) {
-    for (const statement of MIGRATIONS[current]!) {
-      await sql.execute(statement)
+    const migration = MIGRATIONS[current]!
+    if (Array.isArray(migration)) {
+      for (const statement of migration) {
+        await sql.execute(statement)
+      }
+    } else {
+      await migration(sqliteKysely<IdeaDB>(sql))
     }
     await sql.execute('UPDATE schema_version SET version = ?', current + 1)
   }

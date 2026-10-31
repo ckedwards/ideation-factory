@@ -7,7 +7,7 @@ import { MemoryFileStore } from '../files/memory.ts'
 import { DEFAULT_LIMITS, type Limits } from '../limits.ts'
 import { migrate } from './schema.ts'
 import { type Caller, IdeaService, type WriteResult } from './service.ts'
-import { bunSql } from './sql-bun.ts'
+import { bunSql } from '../sql/sql-bun.ts'
 
 const OWNER: Caller = { user: 'riley', bot: null, purpose: 'me' }
 const REVIEWER: Caller = { user: 'maya', bot: null, purpose: 'me' }

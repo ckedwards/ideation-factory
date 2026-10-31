@@ -13,7 +13,7 @@ import {
   SqliteIntrospector,
   SqliteQueryCompiler,
 } from 'kysely'
-import type { Sql } from '../idea/sql.ts'
+import type { Sql } from './sql.ts'
 
 class SqlConnection implements DatabaseConnection {
   constructor(private readonly sql: Sql) {}

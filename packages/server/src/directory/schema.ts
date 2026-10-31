@@ -4,8 +4,8 @@
 // from the order an actor's queue applies writes in.
 import type { Kysely } from 'kysely'
 import { sql as raw } from 'kysely'
-import type { Sql } from '../idea/sql.ts'
-import { sqliteKysely } from './kysely.ts'
+import type { Sql } from '../sql/sql.ts'
+import { sqliteKysely } from '../sql/kysely.ts'
 
 export type ContainerKind = 'team' | 'group'
 export type Role = 'admin' | 'maintainer' | 'member'
