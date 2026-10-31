@@ -7,18 +7,22 @@ on:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # Pinned, so a new Ubuntu image is a change we choose, not one that arrives
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@v7.0.1
+      - uses: oven-sh/setup-bun@v2.2.0
         with:
           bun-version-file: package.json
-      - run: bun install --frozen-lockfile
-      - run: bun run typecheck
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Typecheck
+        run: bun run typecheck
       # The tests start RivetKit's local engine, which outlives the test process,
       # so stop it afterwards whatever the result.
-      - run: |
+      - name: Test
+        run: |
           code=0
           bun run test || code=$?
           bun run engine:stop
