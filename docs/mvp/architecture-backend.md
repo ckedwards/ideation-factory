@@ -80,6 +80,10 @@ erDiagram
     IDEA ||--o{ VERSION : has
     VERSION ||--o{ MANIFEST_ENTRY : lists
     MANIFEST_ENTRY }o--|| BLOB : "points to (bucket)"
+    IDEA ||--o{ GRANT : "shared through"
+    GRANT }o--o| USER : "to a person"
+    GRANT }o--o| GROUP : "to a group"
+    TEAM ||--o{ GRANT : "to its members"
     IDEA ||--o{ COMMENT : has
     COMMENT ||--o{ ANCHOR : "one per version"
     COMMENT ||--o{ REPLY : has
@@ -87,7 +91,7 @@ erDiagram
     VERSION ||--o{ STEP : "made of"
 ```
 
-- **In the directory actor's SQLite:** users, teams, groups, memberships, tokens, sessions, the idea index, search, notifications.
+- **In the directory actor's SQLite:** users, teams, groups, memberships, tokens, sessions, the idea index, **access grants** (idea, who: a person, a group, a team's members or everyone, and the permission: view, edit or share), search, notifications.
 - **In each idea actor's SQLite:** versions, manifest entries, steps, comments, anchors, replies, suggestions, reviews.
 - **In the bucket, directly:** blobs (file contents and images).
 
@@ -115,7 +119,7 @@ sequenceDiagram
     participant B as Bucket
     participant D as Directory actor
     C->>A: POST batch (built on v4)
-    A->>A: verify the token, check author or their bot
+    A->>A: verify the token, check edit access
     A->>I: apply batch
     I->>I: latest is v5? replay commands onto v5
     alt every command still applies
@@ -183,13 +187,14 @@ Sessions and tokens are long-lived, and they live in the directory actor. Readin
 
 **Client ID Metadata Documents (CIMD)** are the current MCP standard for a client to identify itself (the 2026-07-28 MCP spec recommends them and deprecates Dynamic Client Registration). The client's ID is a URL, and the server fetches a metadata document from it, so the fetch must never reach a private network (SSRF protection). On our own servers that's solvable properly: resolve the hostname once, refuse any private or special-use address, pin the connection to the approved address, and refuse redirects. Better Auth ships exactly that transport for Node (it pins through `node:https`'s `lookup` option). Bun's `node:https` client has been built on `node:net`, which honors `lookup`, since mid-2026, so it should work. **To confirm in the spike,** including a hostname that resolves to a private address. As a backstop, Better Auth can limit CIMD to an allowlist of client hosts.
 
-- **Visibility is checked on every read,** in lists, search, counts, the API, MCP, the cli and notifications. In the MVP, ideas are visible to everyone with an account, except someone else's "Your ideas".
-- **Editing** is for an idea's author and bots acting for them. Reviewers propose changes as suggested edits.
+- **Access is per idea** (view, edit, share; see Authorization in the [overview](../architecture.md)). Grants are rows in the directory actor, to a person, a group, a team's members or everyone, and access through a group or team follows membership. Reviewers are viewers: asking for a review adds a view grant.
+- **Access is checked on every read,** in lists, search, counts, the API, MCP, the cli and notifications. Lists and search filter in the indexed query: ideas that are public, or have a grant to the caller, to a group they're in, or to a team they're in. Inside an idea, its actor keeps its own grants and the member lists they depend on cached (see [scale concerns](scale-concerns.md) concern 2).
+- **Editing** is for the idea's owner, people with edit access, and bots acting for them. Reviewers propose changes as suggested edits.
 - **Rate limits** are per token, stricter for bots, with a per-idea cap on comments per minute. Counters live in actors, never in the directory (see [scale concerns](scale-concerns.md)).
 
 ## Notifications and search
 
-- **Direct participants** (the author, reviewers, members of reviewer groups, followers) get an inbox row when something happens.
+- **Direct participants** (the owner, reviewers, members of reviewer groups, followers) get an inbox row when something happens.
 - **Team watchers aren't written one by one:** a team's activity is merged into a watcher's inbox when they read it. Busy teams stay cheap.
 - **The inbox is bundled per idea when read,** like GitHub's: one row per idea, however many events.
 - **Search** uses SQLite full-text search (FTS5 with a trigram index) in the directory actor. It finds text anywhere in a word, ranked by the field it's in and how close the match is. FTS5 is available in actor SQLite (a crash on closing FTS5 connections was fixed in Rivet 3.0 preview 3); the spike confirms the trigram tokenizer.
@@ -272,7 +277,6 @@ The open performance risks (directory writes under bot bursts, access checks on 
 
 ## After the MVP
 
-- Locked teams and per-member visibility.
 - Single sign-on (SAML/OIDC) with automatic account creation, and SCIM deprovisioning.
 - Inactive users, permanent team deletion, and site admin tokens.
 - Review batching (one submission instead of many comments).

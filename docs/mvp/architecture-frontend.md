@@ -82,7 +82,9 @@ Storybook, run from the `ui` package, is the site that shows every component and
 | **Ideas** | Search every idea you can see; Open and Closed lists with filters |
 | **Teams / team page** | Directory, then a team's ideas, members, approval requirements and watch level |
 | **Groups / group page** | Directory, then a group's members and where it's used |
-| **Settings** for teams and groups | Pages, not popups, with only the tabs your role allows; new teams and groups are set up through the same pages |
+| **Settings** for teams and groups | Pages, not popups, with only the tabs your role allows; new teams and groups are set up through the same pages. A team's settings include its defaults for new ideas and who can create ideas |
+| **Sharing** for an idea | Who has access and where it comes from (directly, through a group, as a team member, public), with view, edit or share for each; reached from the idea's Details panel |
+| **Move wizard** for an idea | Moving into, out of or between teams: the access now, what the move changes, who loses and who gains access by name, adjustments, then confirm. Nothing changes until confirmed |
 | **Your settings** | Profile, sign-in (passkeys), tokens for the cli and agents |
 | **Idea page** | Below |
 
@@ -94,7 +96,7 @@ Three panes, each scrolling on its own:
 flowchart LR
     Left["<b>Navigation</b><br/>files (changed vs main)<br/>contents of this file<br/>comments feed"]
     Center["<b>Document</b><br/>rendered Markdown<br/>section outlines<br/>compare: redline<br/>edit mode"]
-    Right["<b>Panel</b><br/>Comments (anchored or list)<br/>Versions<br/>Details: status, reviewers,<br/>approvals, subscribe"]
+    Right["<b>Panel</b><br/>Comments (anchored or list)<br/>Versions<br/>Details: status, reviewers,<br/>approvals, access, subscribe"]
     Left --- Center --- Right
 ```
 

@@ -125,7 +125,8 @@ packages/
 - Uploading an edited copy, with comments followed through the diff (exact matching only, never a guess).
 - Comments on a file, section or text; replies; resolving; suggested edits; outdated comments linking to the version where they applied.
 - Reviews: requesting people or groups, approve or request changes, and team approval requirements (minimum approvals, group rules, all discussions resolved).
-- Teams and groups with admin, maintainer and member roles; "Your ideas" for private drafts.
+- **Access per idea, like a shared document:** view, edit and share, given to people, groups, a team's members or everyone; reviewers are viewers. Ideas outside a team start private; ideas in a team start with the team's defaults.
+- Teams and groups with admin, maintainer and member roles; teams decide who can create ideas in them; teams and groups are invite only. Moving an idea between teams goes through a move wizard that shows, and lets you adjust, how access changes.
 - A GitHub-style notification inbox, with watch levels per team.
 - Search across ideas, teams and groups.
 - Images in Markdown; other files link back to the code host.
@@ -133,7 +134,7 @@ packages/
 - Sign-in with an email code or a passkey.
 - **Self-hosting** on one VM or a three-node cluster, with Docker Compose, plus a Kubernetes example.
 
-**After the MVP:** locked teams, single sign-on and automatic account creation, inactive users and other site-admin tools, site admin tokens, review batching, email notifications, fuzzy comment re-anchoring, and per-deployment settings in the UI (they're install-time configuration in the MVP).
+**After the MVP:** single sign-on and automatic account creation, inactive users and other site-admin tools, site admin tokens, review batching, email notifications, fuzzy comment re-anchoring, and per-deployment settings in the UI (they're install-time configuration in the MVP).
 
 ## Already validated
 

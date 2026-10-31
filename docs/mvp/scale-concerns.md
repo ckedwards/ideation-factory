@@ -47,12 +47,12 @@ In rough order of how likely each is to bite. Severity: **High** means likely to
 
 ### 2. Checking access on every read
 
-**Why:** authentication no longer needs the directory, but authorization does. Lists and search join against your memberships. Locked teams, especially those set to "only ideas they're on", need membership and reviewer data for every idea shown. This is now the main directory read on most requests.
+**Why:** authentication no longer needs the directory, but authorization does. Access is per idea, through grants to people, groups, a team's members or everyone, so lists and search join each idea's grants against your group and team memberships. This is now the main directory read on most requests.
 
 **When it bites:** busy list, search and inbox pages, and agents making many small read calls.
 
 **Mitigations:**
-- **Inside an idea:** its actor keeps its team's member list (and its own reviewers) cached, refreshed when membership changes.
+- **Inside an idea:** its actor keeps its own grants, and the member lists of the groups and team they name, cached, refreshed when a grant or membership changes.
 - **In lists:** the visibility filter is part of the indexed query, not a check on each idea afterwards.
 - **Keep the per-idea split strict:** anything about one idea comes from its actor, never from the directory.
 

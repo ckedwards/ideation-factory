@@ -77,7 +77,7 @@ The cli keeps the bases in a per-idea state file (see Uploads in `cli.md`).
 
 **Concurrency, like a pull request.** A batch records the version it was built from. If the idea has moved on since, the batch is replayed onto the latest version: each command finds its target by ID and checks its expected text. If every command still applies, the batch lands, like a pull request that merges cleanly. If any command doesn't (its block is gone, or its expected text changed), the batch is refused with a conflict that names those commands, and the editor re-reads and tries again. Conflicting edits are never merged automatically.
 
-**Who can edit:** the idea's author and bots acting for them (see Authorization). Reviewers propose changes as suggested edits, which the author accepts or rejects.
+**Who can edit:** the idea's owner and anyone with edit access, and bots acting for them (see Authorization). Reviewers propose changes as suggested edits, which someone with edit access accepts or rejects.
 
 **Back into the repository:** when the editing is done, `ideaf pull` writes the new version into the files (merging any local edits, see Base versions), and you commit as usual. Ideation Factory is where the idea is worked on, not where it lives in the end.
 
@@ -149,11 +149,11 @@ Comments can have replies associated with them to start conversations.
 
 Suggested edits are required for 1.0. A reviewer (human or agent) can propose a concrete change to a highlighted selection or section instead of only describing it in a comment. A suggestion is a comment with a proposed replacement attached, so it uses the same anchoring, replies, status and bot/user attribution as any other comment.
 
-Only the idea's creator (or bot credentials associated with the idea) can accept a suggestion. Accepting a suggestion applies its `replace` command (see Editing with commands), which creates a new version in Ideation Factory; `ideaf pull` brings it into the source. Reviewers propose, the author decides, and the repository (or wherever the idea ends up) stays the final home.
+Only someone with edit access to the idea (or a bot acting for them) can accept a suggestion. Accepting a suggestion applies its `replace` command (see Editing with commands), which creates a new version in Ideation Factory; `ideaf pull` brings it into the source. Reviewers propose, the people with edit access decide, and the repository (or wherever the idea ends up) stays the final home.
 
 If a suggestion's text isn't in a newer version, it's outdated like any comment, and can no longer be accepted.
 
-TODO: apply changes batching. The author should be able to accept several suggestions (across files) at once. That's one batch (see Editing with commands): one new version, with each suggestion its own step, so every suggestion's comment follows its new wording. Two suggestions on overlapping text conflict: the second one's expected text is gone, so it stays open. Open question: should rejecting be batched the same way, or stay immediate?
+TODO: apply changes batching. Someone with edit access should be able to accept several suggestions (across files) at once. That's one batch (see Editing with commands): one new version, with each suggestion its own step, so every suggestion's comment follows its new wording. Two suggestions on overlapping text conflict: the second one's expected text is gone, so it stays open. Open question: should rejecting be batched the same way, or stay immediate?
 
 ## Reviews
 
@@ -161,7 +161,7 @@ Ideas move through the states defined in `idea.md`: draft, requesting review, ch
 
 TODO: review verdicts. A reviewer can finish a review with **Approve**, **Request changes** or **Reject**, from any account: a user, a bot associated with a user, or a bot. Verdicts carry the same attribution as comments (`[bot emoji] <bot> on behalf of <user>`), so an automated approval is never mistaken for a person's. A verdict applies to a specific version, and the idea shows each reviewer's latest verdict and which version it was for. Open questions: does a new version reset earlier approvals? Does "Request changes" move the idea to "changes in progress"? Does a reviewer's "Reject" close the idea as rejected, or is closing always the author's call? Can a bot's approval count toward a team's approval requirements, or only a person's?
 
-TODO: approval requirements. Each team sets requirements (see Team support in `idea.md`): a minimum number of approvals (0 = none), group rules that are either "any of" (or) or "each of" (and) a list of groups, and optionally "all discussions resolved". A group rule can auto-add its groups as reviewers when an idea goes out for review (created out of draft, moved out of draft, or moved into the team while in review); this happens in the idea's actor on that state change, skips deleted groups and groups already reviewing, and doesn't touch ideas already in review when the setting is turned on. An idea is approved once all of its team's requirements are met, with approvals on the current version and no open comment threads when that check is on. Requirements name groups rather than people, so they keep working as people join and leave groups. Open questions: does meeting the requirements move an idea to approved automatically, or does the author do it? Does approved still need an explicit close as accepted? For an "each of" rule, can one person who is in two of the groups count for both? Does "all discussions resolved" count resolved-but-reopened threads, and should it ignore bot-only threads? Locked teams can't use group rules (see Groups). Only a team's maintainers and admins can change its requirements. Open question: should changes apply to ideas already in review (they do in the prototype)?
+TODO: approval requirements. Each team sets requirements (see Team support in `idea.md`): a minimum number of approvals (0 = none), group rules that are either "any of" (or) or "each of" (and) a list of groups, and optionally "all discussions resolved". A group rule can auto-add its groups as reviewers (which gives them view access, see Authorization) when an idea goes out for review (created out of draft, moved out of draft, or moved into the team while in review); this happens in the idea's actor on that state change, skips deleted groups and groups already reviewing, and doesn't touch ideas already in review when the setting is turned on. An idea is approved once all of its team's requirements are met, with approvals on the current version and no open comment threads when that check is on. Requirements name groups rather than people, so they keep working as people join and leave groups. Open questions: does meeting the requirements move an idea to approved automatically, or does the author do it? Does approved still need an explicit close as accepted? For an "each of" rule, can one person who is in two of the groups count for both? Does "all discussions resolved" count resolved-but-reopened threads, and should it ignore bot-only threads? Only a team's maintainers and admins can change its requirements. Open question: should changes apply to ideas already in review (they do in the prototype)?
 
 TODO: review comment batching. A reviewer can start a review and leave comments, replies and suggested edits as pending: visible only to them, and editable or deletable until submitted. Submitting publishes them all at once, optionally with a verdict and a summary comment, so the author gets one review instead of a stream of notifications. This matters for agents too: a bot reviewing a whole idea should submit one review, not dozens of separate comments. Open questions: are pending comments saved server side (so a review can continue on another machine or be finished by the cli) or kept locally? What happens to pending comments if a new version is uploaded before the review is submitted?
 
@@ -177,7 +177,7 @@ Every site admin action (permanently deleting a team, marking people inactive, c
 
 ### File editing
 
-Editing in Ideation Factory is done with commands (see Editing with commands). The web UI offers the same operations agents use (replace text, move a section, rename a heading, and so on), as one framework. What stays out of scope is free-form, live, multi-person editing (Google Docs style): only the author and their bots edit, a batch at a time, and concurrent batches merge like pull requests or conflict.
+Editing in Ideation Factory is done with commands (see Editing with commands). The web UI offers the same operations agents use (replace text, move a section, rename a heading, and so on), as one framework. What stays out of scope is free-form, live, multi-person editing (Google Docs style): only people with edit access (and their bots) edit, a batch at a time, and concurrent batches merge like pull requests or conflict.
 ## Accounts and sign-in
 
 An account has three parts:
@@ -213,13 +213,50 @@ Open questions: should handles be changeable (GitHub allows it, and redirects ol
 
 ## Authorization
 
-Everyone who has an account can view all ideas, with two exceptions: ideas in someone else's **Your ideas** (only the owner and the people they ask to review can see them), and ideas in a **locked team** (only its current members can see them, and if the team limits members to the ideas they're on, plain members only see ideas they wrote or are asked to review while admins and maintainers see all; see Team support in `idea.md`). This applies to inactive users too (who are read only; see Inactive users in `idea.md`). A token belonging to an inactive user, or a bot token acting on their behalf, is rejected on every write. Personal tokens are checked against the user's own team and group roles only; site admin powers are never available through them. Site admin actions need a site admin session or a site admin token (separate, short-lived, reason required), and every site admin action is logged as one.
+Access is per idea, like a shared document: each idea says who can view it, edit it and share it.
+
+**Permissions on an idea:**
+
+| Permission | Allows | Includes |
+|---|---|---|
+| **View** | Reading it, commenting, replying, suggesting edits, and reviewing when asked | |
+| **Edit** | Editing it (commands or uploads), accepting or rejecting suggested edits, and changing its status | View |
+| **Share** | Changing who has access: adding and removing people, groups and the team's members, making it public, and asking for reviews (which gives view access, see below) | View |
+| **Owner** | Everything, including transferring ownership. Every idea has exactly one owner, who starts as its creator | Edit and share |
+
+**Who access can be given to:** a person, a group (its current members), the members of the idea's team, or everyone (**public**: everyone with an account on this deployment, never anonymous visitors). Access through a group or a team **follows membership**: joining gives access to what's shared with it, and leaving takes that access away at once. When several grants apply, the highest wins. The sharing page shows where each person's access comes from ("through Security"), so removing a person who also has access through a group says so.
+
+**Reviewers are viewers.** Asking a person or group to review an idea gives them view access to it. That includes groups that a team's approval rule adds automatically (see Reviews). Taking someone off the reviewers leaves them a plain viewer; removing their access is a separate step, and also takes them off the reviewers. Reviewers approve, request changes and suggest edits; only people with edit access change the idea.
+
+**New ideas:**
+
+- **Outside a team:** private. Only the owner has access until they share it.
+- **In a team:** the team's defaults for new ideas, set by its admins: what the team's members get (nothing, view or edit), whether the idea starts public, and any groups that get view or edit. Defaults are applied when the idea is created; after that, anyone who can share it can change its access.
+- **Moving an idea** into a team, out of one, or to another one needs share access on the idea and permission to create ideas in the new team. It goes through a **move wizard**, because moving can change who has access:
+  1. It shows the idea's access now, and what the move changes: the old team's members lose the access the old team gave them, and the new team's defaults are added.
+  2. It lists, by name, the people who would lose access, and those who would gain it (counting the new team's members, groups and whether it becomes public).
+  3. The person moving can adjust any of it before confirming: keep a grant the move would remove, drop one it would add, or change a permission.
+  4. Nothing changes until they confirm. People who lose access stop seeing the idea and its notifications at once.
+
+  The cli and MCP do the same: `ideaf move` prints the same summary and asks to confirm (agents pass the adjustments as flags, and `--yes`), and the MCP tool returns the summary for a dry run before the move.
+
+**Teams** decide who can create ideas in them (anyone with an account, the team's members (the default), or only its maintainers and admins). A team's **admins can always share every idea in the team**, so access can be fixed when an owner is away or has left. Team names, members and approval requirements are visible to everyone.
+
+**Teams and groups are always invite only:** joining one needs a maintainer or admin to approve (or to add you directly), because membership gives access to everything shared with it. There's no open joining; revisit if people ask for it. Teams and groups, and their members, are visible to everyone. Anyone can create a team or a group.
+
+**Site admins** manage every team and group, but can't read an idea unless it's been shared with them (directly, through a group or team, or by being public).
+
+**Bots:** a token acts with its user's access ("me" and "a bot for me"). A standalone bot account is given access like a person.
+
+Inactive users keep read access to what they could see, but can't write (see Inactive users in `idea.md`). A token belonging to an inactive user, or a bot token acting on their behalf, is rejected on every write. Personal tokens are checked against the user's own access only; site admin powers are never available through them. Site admin actions need a site admin session or a site admin token (separate, short-lived, reason required), and every site admin action is logged as one.
+
+**Why not OpenFGA:** the model is Zanzibar-shaped (grants to people, groups and team members, followed through membership), but running OpenFGA means a separate service with Postgres or MySQL in production (its SQLite store is beta), which conflicts with keeping everything in Rivet and a bucket. Its weakest query is also our most common one: listing the ideas someone can see, filtered and paged. The grants are rows in the directory actor instead (see Auth and access in `mvp/architecture-backend.md`).
 
 **Checking who's calling.** Sessions and personal tokens are long-lived and live in the directory (see Storage). Requests carry a **15-minute signed access token** instead, checked by its signature alone. It holds who the caller is and the token's purpose, never roles or memberships, so authorization always uses current data. Long-lived credentials are only checked when a short-lived token is issued or refreshed (the browser through its session, the cli by exchanging its personal token). So **revocation takes effect within 15 minutes:** revoking a token, signing out a session, or marking someone inactive stops new short-lived tokens at once, and existing ones expire within 15 minutes. That includes site admin tokens. **Writes don't wait:** a write (comment, edit, review, upload, settings) checks the caller's current status, so an inactive user's writes are refused at once. Writes are far rarer than reads, so that check is affordable. In an emergency, rotating the signing key ends every outstanding token. MCP clients get the same signed tokens through OAuth (Better Auth is the candidate; see Auth and access in `mvp/architecture-backend.md`).
 
-Visibility is checked on every read, not just in lists: idea pages, search results, counts, the API, MCP and the cli. Notification fan-out and the inbox filter on it too, so removing someone from a locked team hides their existing notifications and stops new ones, with no cleanup job. Because access comes from team membership (and, for teams that limit members to their own ideas, from an idea's author and reviewers), membership, role and reviewer changes must invalidate any cached visibility (the directory's search index stores each idea's team, and queries join against the caller's memberships). Content-addressed media in the bucket is served only through a visibility check on an idea that references it, never by hash alone.
+Access is checked on every read, not just in lists: idea pages, search results, counts, the API, MCP and the cli. Notification fan-out and the inbox filter on it too, so removing someone's access (or removing them from a group or team that had it) hides their existing notifications and stops new ones, with no cleanup job. Because access comes from grants and from group and team membership, grant and membership changes must invalidate any cached access (the directory's search index stores each idea's grants, and queries join against the caller's memberships). Content-addressed media in the bucket is served only through a visibility check on an idea that references it, never by hash alone.
 
-TODO: explore OIDC for agentic use cases. Agents and CI jobs currently authenticate with tokens a person creates and stores as a secret. With OIDC (workload identity federation), an agent's platform (for example a CI provider or a cloud runtime) would present a short-lived, signed identity token, and Ideation Factory would exchange it for a short-lived ideaf credential, so there are no long-lived secrets to leak or rotate. Open questions: which issuers to trust, and how an issuer's claims (repository, workflow, environment) map to the three token purposes ("me", "bot associated with me", "bot") so attribution still reads "[bot emoji] <bot> on behalf of <user>"; whether a person can delegate to an agent this way (token exchange) rather than only automated bots; and how this works for self-hosted deployments with their own identity provider. Only the creator (or bot credentials assoiciated with an idea) of an idea can edit the files associated with an idea. Having finer, document based acess control is a future consideratiaon.
+TODO: explore OIDC for agentic use cases. Agents and CI jobs currently authenticate with tokens a person creates and stores as a secret. With OIDC (workload identity federation), an agent's platform (for example a CI provider or a cloud runtime) would present a short-lived, signed identity token, and Ideation Factory would exchange it for a short-lived ideaf credential, so there are no long-lived secrets to leak or rotate. Open questions: which issuers to trust, and how an issuer's claims (repository, workflow, environment) map to the three token purposes ("me", "bot associated with me", "bot") so attribution still reads "[bot emoji] <bot> on behalf of <user>"; whether a person can delegate to an agent this way (token exchange) rather than only automated bots; and how this works for self-hosted deployments with their own identity provider.
 
 # Groups
 
@@ -227,7 +264,7 @@ A user should be able to make groups to associate mutiple
 
 Groups are also the building blocks of team approval requirements (see Reviews). Changing a group's members therefore changes what every team using that group requires.
 
-Private teams (locked teams and Your ideas) don't support groups at all: no group reviewers and no group rules in approval requirements, only people, a minimum number of approvals and (optionally) resolved discussions. A group's members don't line up with who can see a private team's ideas, so allowing them would mean either leaking ideas to the group or sending review requests people can't open. A team can't be locked while its requirements use groups (they have to be changed first, since dropping them silently would loosen approval), and locking removes any group review requests on its open ideas.
+Groups are visible to everyone, including their members, and anyone can create one. Like teams, groups are always invite only: joining needs a group maintainer or admin to approve, or to add you directly, because membership gives access to everything shared with the group (see Authorization).
 
 Groups have admins and maintainers, like teams (see Team support in `idea.md`). Each group has its own page (name, description, members with roles, and where it's used: team requirements and ideas it reviews) and a separate settings page for its admins and maintainers.
 
@@ -238,6 +275,7 @@ Only a group's admins (or a site admin) can delete it. Before deleting, the sett
 - "One person from any of several groups" with other groups left keeps working through them. It shows a warning (not an error) so a maintainer can tidy it up.
 - The delete report separates the two cases: requirements that will break (and how many active ideas that blocks) and requirements that keep working through other groups.
 - An idea that had the group as a reviewer shows it as a deleted reviewer.
+- Access given to the group ends, and the delete report lists the ideas it was shared with, so their owners can give access another way.
 
 # Emails/messageing
 
@@ -288,7 +326,7 @@ The full list of open performance risks is in `mvp/scale-concerns.md`.
 
 ## Notification fan-out
 
-- **Direct participants get notifications written to their inbox when the event happens.** These are the author, reviewers, members of reviewer groups and people following the idea, usually a few dozen at most.
+- **Direct participants get notifications written to their inbox when the event happens.** These are the owner, reviewers, members of reviewer groups and people following the idea, usually a few dozen at most.
 - **Team watchers are not fanned out per event.** A team with hundreds of watchers would turn every comment into hundreds of writes. Events go to the team's activity log, and a watcher's inbox merges in the teams they watch (at their level) when it's read. Unread counts for watched teams are kept per team, not per event.
 - **Bundling happens at read time** (per idea), so the stored events stay simple.
 
