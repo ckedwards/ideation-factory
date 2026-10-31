@@ -29,6 +29,7 @@ In rough order of how likely each is to bite. Severity: **High** means likely to
 | 8 | The directory actor is the one shared owner | Medium | Directory actor, engine |
 | 9 | Loading versions from the bucket | Low | Bucket, app nodes, web app |
 | 10 | Reaching and waking actors | Low | Engine, actors |
+| 11 | One-off actor calls cost about 80 ms each | High, if it holds in production | App nodes, engine gateway |
 
 ### 1. Writes to the directory when bots get busy
 
@@ -155,6 +156,33 @@ A faster parser is the other option, but the web app must parse with the same li
 
 **Status:** low priority; measure in the Rivet spike.
 
+### 11. One-off actor calls cost about 80 ms each
+
+**Why:** the app node calls actors through RivetKit handles (`actors.idea.getOrCreate([id]).summary()`). Each call is one HTTP request to the engine's gateway, and on the local development engine each one takes about 80 ms, whatever it does. The same action over a connection (`handle.connect()`) takes about 2 ms. Every API request makes at least two calls (the access check in the directory, then the idea), and writes go through the idea's queue, which is the same kind of request, so a read pays about 170 ms and a write about 175 ms before any real work. It's also most of why the test suite grew from about 14 s to about 36 s in step 5.
+
+**Measured** (2026-10-31; RivetKit 2.3.31, the local 2.x engine RivetKit starts in development, one machine; first noticed by the Better Auth spike):
+
+| Call | Time |
+|---|---|
+| Action through a handle, by key (what the server does) | ~86 ms |
+| Action by actor ID | ~79 ms |
+| Queue message, waiting for its result (every write); the same through a handle or a connection | ~88 ms |
+| Action over a connection | ~2 ms |
+| Plain HTTP request to the engine | ~1 ms |
+
+**Likely cause, not confirmed:** the network is fine, so it's the gateway's path for one-off requests. A steady ~80 ms whatever the call does looks like a timer, not work. In development, RivetKit starts the engine with its own settings, among them `RIVET__PEGBOARD__BASE_RETRY_TIMEOUT=100` and `RIVET__PEGBOARD__MIN_METADATA_POLL_INTERVAL=1000`, which govern how the engine routes requests to actors. A production engine, configured normally, may not have the delay at all. So this may only exist in development.
+
+**When it bites:** on every request, if it holds in production; otherwise only in local development and tests.
+
+**Mitigations, only if it holds in production:**
+- **Keep connections open from each app node:** one to the directory, and connections to idea actors cached by idea and closed after about a minute idle (so actors still sleep), with a cap on how many are open.
+- **Writes as an action applied one at a time in the actor** (a lock in its memory) instead of a queue message, since queue messages go out as one-off requests even over a connection. Ordering stays the same; nothing durable is lost, because a queued message is removed when received anyway, and idempotency keys already make retries safe. This changes the documented write path.
+- **Report it to Rivet** with these numbers, whichever way it turns out.
+
+If it's only a development setting, give local development and tests the production settings instead, and leave the design as it is.
+
+**Status:** measured in development only. Decide after measuring on a production-like setup in the [Rivet spike](spike-rivet.md) ("Call latency"), once the build is further along.
+
 ## Load test plan
 
 Before launch, on both deployment shapes:
@@ -172,5 +200,5 @@ Before launch, on both deployment shapes:
 
 - `architecture.md` (Scale): the design targets, storage and notification fan-out.
 - [Backend](architecture-backend.md): auth and access (15-minute tokens), and self-hosting.
-- [Rivet spike](spike-rivet.md): the platform questions behind concerns 4, 6, 8 and 10.
+- [Rivet spike](spike-rivet.md): the platform questions behind concerns 4, 6, 8, 10 and 11.
 - [Better Auth spike](spike-better-auth.md): sign-in, tokens and MCP.

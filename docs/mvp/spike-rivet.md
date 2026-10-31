@@ -96,6 +96,16 @@ Each has a pass condition. Record results in Findings, below.
 
 If worker threads don't meet the target, the next step is moving that heavy work into a Rust actor (the Rust SDK is in beta; Rust and TypeScript actors can call each other in one app), not rewriting the app.
 
+### Call latency
+
+[Scale concerns](scale-concerns.md) concern 11: on the local development engine, a one-off actor call takes about 80 ms and a call over a connection about 2 ms. Measure whether that holds on a production-like setup, on both engines (3.0, and 2.x for comparison) and with the app nodes connecting through `RIVET_ENDPOINT`, as in production.
+
+- [ ] **The same calls as in development:** an action through a handle (by key and by actor ID), a queue message that waits for its result, and an action over a connection; one node, then a call to an actor on another node. **Pass:** each is recorded, median and 99th percentile.
+- [ ] **Real requests, end to end:** a read with its access check, and a write, under steady load. **Pass:** recorded, median and 99th percentile.
+- [ ] **If one-off calls are still slow:** turn the development engine's settings (`RIVET__PEGBOARD__BASE_RETRY_TIMEOUT`, `RIVET__PEGBOARD__MIN_METADATA_POLL_INTERVAL` and the others RivetKit sets) on and off one at a time. **Pass:** the setting responsible is known, or it's shown to be in RivetKit's request path, and reported to Rivet.
+
+Then decide: if one-off calls are fast in production, give development and tests production-like settings and keep the design; if not, use the mitigations in concern 11.
+
 ### Waking and upgrades
 
 - [ ] **Cold wake:** an idea actor asleep long enough to be loaded from the bucket. **Pass:** first response under 1 s for a typical idea.
@@ -111,6 +121,7 @@ If worker threads don't meet the target, the next step is moving that heavy work
 | Time shared requests wait when the directory's node fails | Recorded (expected about 40–60 s) |
 | Directory read latency, 99th percentile, at design load | Under 50 ms |
 | Idea-actor cold wake from the bucket | Under 1 s |
+| One-off actor call (through a handle) and call over a connection, median and 99th percentile | Recorded; a one-off call well under 10 ms, or concern 11's mitigations apply |
 | App-node event-loop delay, 99th percentile, large idea with worker threads and during the bot burst | Under 20 ms |
 | Engine CPU, memory and disk per instance at design load | Recorded, for the self-hosting sizing guide |
 
