@@ -12,11 +12,16 @@
 // - dev server port: 8080 in the main worktree; engine port + 5 elsewhere
 // - and RivetKit's optional services sidecar off (it always binds 8642)
 //
+// Tests get an engine of their own (engine port + 2, data in .data/test),
+// started fresh for every run and stopped afterwards, so a run never sees an
+// earlier run's data and never touches the dev server's.
+//
 //   bun scripts/worktree.ts info          the ports and paths for this worktree
 //   bun scripts/worktree.ts env           `export …` lines for a shell
 //   bun scripts/worktree.ts exec -- cmd   run cmd with those settings
-//   bun scripts/worktree.ts stop          stop this worktree's engine only
-import { realpathSync } from 'node:fs'
+//   bun scripts/worktree.ts test -- cmd   run tests on a fresh test engine
+//   bun scripts/worktree.ts stop          stop this worktree's engines only
+import { realpathSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 function git(args: string[]): string | null {
@@ -28,8 +33,10 @@ export interface WorktreeSettings {
   root: string
   linked: boolean
   enginePort: number
+  testEnginePort: number
   serverPort: number
   env: Record<string, string>
+  testEnv: Record<string, string>
 }
 
 export function settings(): WorktreeSettings {
@@ -47,11 +54,21 @@ export function settings(): WorktreeSettings {
     serverPort = enginePort + 5
   }
   const data = join(root, '.data')
+  // the engine uses its port, + 1 and + 10; + 2, + 3 and + 12 don't overlap
+  const testEnginePort = enginePort + 2
+  const testData = join(data, 'test')
   return {
     root,
     linked,
     enginePort,
+    testEnginePort,
     serverPort,
+    testEnv: {
+      RIVETKIT_STORAGE_PATH: testData,
+      IDEAF_DATA: testData,
+      RIVET_RUN_ENGINE_PORT: String(testEnginePort),
+      RIVET_RUN_SERVICES: '0',
+    },
     env: {
       RIVETKIT_STORAGE_PATH: data,
       IDEAF_DATA: data,
@@ -76,17 +93,29 @@ function processName(pid: number): string {
   return ps.stdout.toString().trim()
 }
 
-async function stop(s: WorktreeSettings): Promise<number> {
-  const engines = [...new Set(listeners(s.enginePort))].filter((pid) => processName(pid).startsWith('rivet-engine'))
-  if (engines.length === 0) {
-    console.log(`No engine running for this worktree (port ${s.enginePort}).`)
-    return 0
-  }
+/** Stops the engine listening on a port, if it's a Rivet Engine. Returns the process IDs stopped. */
+async function stopEngine(port: number): Promise<number[]> {
+  const engines = [...new Set(listeners(port))].filter((pid) => processName(pid).startsWith('rivet-engine'))
   for (const pid of engines) process.kill(pid, 'SIGTERM')
   for (let i = 0; i < 50 && engines.some(alive); i++) await Bun.sleep(100)
   for (const pid of engines.filter(alive)) process.kill(pid, 'SIGKILL')
-  console.log(`Stopped this worktree's engine (port ${s.enginePort}, pid ${engines.join(', ')}).`)
+  return engines
+}
+
+async function stop(s: WorktreeSettings): Promise<number> {
+  const stopped = [...(await stopEngine(s.enginePort)), ...(await stopEngine(s.testEnginePort))]
+  console.log(stopped.length ? `Stopped this worktree's engines (pid ${stopped.join(', ')}).` : `No engine running for this worktree (ports ${s.enginePort}, ${s.testEnginePort}).`)
   return 0
+}
+
+/** Runs a test command on a fresh test engine, and stops it afterwards. */
+async function test(s: WorktreeSettings, argv: string[]): Promise<number> {
+  await stopEngine(s.testEnginePort)
+  rmSync(s.testEnv.RIVETKIT_STORAGE_PATH!, { recursive: true, force: true })
+  const child = Bun.spawn(argv, { stdio: ['inherit', 'inherit', 'inherit'], env: { ...process.env, ...s.testEnv } })
+  const code = await child.exited
+  await stopEngine(s.testEnginePort)
+  return code
 }
 
 function alive(pid: number): boolean {
@@ -107,6 +136,7 @@ if (import.meta.main) {
       console.log(`  data       ${s.env.IDEAF_DATA}`)
       console.log(`  engine     http://127.0.0.1:${s.enginePort}`)
       console.log(`  server     http://localhost:${s.serverPort} (bun run dev)`)
+      console.log(`  tests      engine on ${s.testEnginePort}, fresh data in ${s.testEnv.IDEAF_DATA} (bun run test)`)
       console.log('Run `eval "$(bun scripts/worktree.ts env)"` to use these from a shell (curl, ideaf).')
       break
     case 'env':
@@ -122,11 +152,16 @@ if (import.meta.main) {
       process.exit(await child.exited)
       break
     }
+    case 'test': {
+      const argv = rest[0] === '--' ? rest.slice(1) : rest
+      process.exit(await test(s, argv.length ? argv : ['bun', 'test']))
+      break
+    }
     case 'stop':
       process.exit(await stop(s))
       break
     default:
-      console.error('usage: bun scripts/worktree.ts info | env | exec -- <command> | stop')
+      console.error('usage: bun scripts/worktree.ts info | env | exec -- <command> | test [-- <command>] | stop')
       process.exit(2)
   }
 }

@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "dev": "bun run --filter '@ideaf/server' dev",
-    "test": "bun scripts/worktree.ts exec -- bun test",
+    "test": "bun scripts/worktree.ts test -- bun test",
     "typecheck": "bun run --filter '*' typecheck && tsc -p scripts",
     "engine:stop": "bun scripts/worktree.ts stop",
     "worktree": "bun scripts/worktree.ts info"

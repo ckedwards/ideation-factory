@@ -19,11 +19,6 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Typecheck
         run: bun run typecheck
-      # The tests start RivetKit's local engine, which outlives the test process,
-      # so stop it afterwards whatever the result.
+      # bun run test starts a fresh test engine and stops it afterwards
       - name: Test
-        run: |
-          code=0
-          bun run test || code=$?
-          bun run engine:stop
-          exit $code
+        run: bun run test

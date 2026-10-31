@@ -61,11 +61,11 @@ Every route is described at `/openapi.json`. From code, use the typed client: `c
 
 The Markdown size limits default to 256 KB per file and 2 MB per idea; `IDEAF_MAX_FILE_BYTES` and `IDEAF_MAX_IDEA_BYTES` change them (until the site admin page exists).
 
-**Several worktrees at once** (for example one per agent): each worktree gets its own data folder, Rivet Engine port and dev server port, so they never share an engine or each other's actors. The main worktree uses the defaults (engine 6420, server 8080); a linked worktree gets fixed ports derived from its path. `bun run worktree` shows them, and `eval "$(bun scripts/worktree.ts env)"` sets `IDEAF_URL` and the rest in a shell. `bun run dev`, `bun run test` and `bun run engine:stop` use them automatically, and `engine:stop` only stops this worktree's engine.
+**Several worktrees at once** (for example one per agent): each worktree gets its own data folder, Rivet Engine port and dev server port, so they never share an engine or each other's actors. The main worktree uses the defaults (engine 6420, server 8080); a linked worktree gets fixed ports derived from its path. `bun run worktree` shows them, and `eval "$(bun scripts/worktree.ts env)"` sets `IDEAF_URL` and the rest in a shell. `bun run dev`, `bun run test` and `bun run engine:stop` use them automatically, and `engine:stop` only stops this worktree's engines. Tests get an engine of their own, with fresh data in `.data/test` for every run, stopped when they finish.
 
 ```
 git worktree add ../ideation-factory-auth -b spike/better-auth
 cd ../ideation-factory-auth && bun install && bun run worktree
 ```
 
-In development RivetKit starts a local Rivet Engine itself and keeps its data in `.data/` (in each worktree), with file contents in `.data/files/`; delete that folder to start fresh. Use `bun run test` rather than plain `bun test`, which would put the engine's data in `~/.rivetkit` instead. The engine keeps running after the server or tests exit, and holds their output open, so a test run piped into another command waits until the engine is stopped.
+In development RivetKit starts a local Rivet Engine itself and keeps its data in `.data/` (in each worktree), with file contents in `.data/files/`; delete that folder to start fresh. Use `bun run test` rather than plain `bun test`: the actor tests refuse to start without this worktree's settings. The dev engine keeps running after the server exits; `bun run engine:stop` stops it.
