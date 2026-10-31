@@ -11,7 +11,9 @@ const comments = [{ id: 'c1', anchor: textAnchor(idea, 'f1', 'brown') }]
 const batch = { base: 1, steps: [{ command: 'replace' as const, in: 'b3', old: 'brown', new: 'red' }] }
 
 test('a worker gives the same result as running core in process', async () => {
-  expect(await pool.applyBatch('idea-1', idea, comments, batch)).toEqual(await inProcessCore().applyBatch('idea-1', idea, comments, batch))
+  expect(await pool.applyBatch('idea-1', idea, comments, batch)).toEqual(
+    await inProcessCore().applyBatch('idea-1', idea, comments, batch),
+  )
   expect(await pool.outline('idea-1', idea)).toEqual(await inProcessCore().outline('idea-1', idea))
 })
 
@@ -33,5 +35,8 @@ test('a call that runs too long ends its worker, and the next call gets a new on
 
 test('errors in core come back as rejections', async () => {
   // createIdea reports bad paths as a result, not a crash
-  expect(await pool.createIdea('x', [{ path: '../bad.md', source: '' }])).toEqual({ ok: false, message: '../bad.md: path has an empty, "." or ".." part' })
+  expect(await pool.createIdea('x', [{ path: '../bad.md', source: '' }])).toEqual({
+    ok: false,
+    message: '../bad.md: path has an empty, "." or ".." part',
+  })
 })

@@ -36,16 +36,32 @@ describe('the first milestone: a walking skeleton', () => {
     const timeline = blocks.files[0].entries.find((e: { source: string }) => e.source === '## Timeline').id
     const riskBlock = blocks.files[0].entries.find((e: { section: string }) => e.section === risks).id
     const reviewer = api()
-    const onSection = await reviewer.addComment({ idea, version: 1, anchor: { kind: 'section', section: risks }, body: 'Move risks after the timeline?' })
+    const onSection = await reviewer.addComment({
+      idea,
+      version: 1,
+      anchor: { kind: 'section', section: risks },
+      body: 'Move risks after the timeline?',
+    })
     const plain = 'Plan\nWe should ship the offline mode this quarter.\nRisks\nIt might rain on launch day.'
     const start = plain.indexOf('rain on launch day')
-    const onText = await reviewer.addComment({ idea, version: 1, anchor: { kind: 'text', file: 'f1', start, end: start + 'rain on launch day'.length }, body: 'Which risk?' })
+    const onText = await reviewer.addComment({
+      idea,
+      version: 1,
+      anchor: { kind: 'text', file: 'f1', start, end: start + 'rain on launch day'.length },
+      body: 'Which risk?',
+    })
 
     // 3. edit with a batch that moves the section and rewords it; dry run first
     const batch = {
       steps: [
         { command: 'move', target: risks, to: { after: timeline }, addresses: [onSection.comment] },
-        { command: 'replace', in: riskBlock, old: 'rain on launch day', new: 'storm during the launch window', addresses: [onText.comment] },
+        {
+          command: 'replace',
+          in: riskBlock,
+          old: 'rain on launch day',
+          new: 'storm during the launch window',
+          addresses: [onText.comment],
+        },
       ],
     }
     await r.write('batch.json', JSON.stringify(batch))
@@ -59,7 +75,9 @@ describe('the first milestone: a walking skeleton', () => {
 
     // the comments followed the edit
     const comments = await reviewer.listComments({ idea })
-    expect(comments.map((c) => [c.id, c.state, c.anchor?.kind === 'text' ? c.anchor.quote : c.anchor?.kind, c.addressedIn])).toEqual([
+    expect(
+      comments.map((c) => [c.id, c.state, c.anchor?.kind === 'text' ? c.anchor.quote : c.anchor?.kind, c.addressedIn]),
+    ).toEqual([
       [onSection.comment, 'moved', 'section', [2]],
       [onText.comment, 'changed', 'storm during the launch window', [2]],
     ])
@@ -97,7 +115,10 @@ describe('sync', () => {
     expect(synced.json()).toMatchObject({ version: 2, uploaded: ['plan.md'], deleted: [] })
 
     // someone edits remotely; a local sync from the old base is refused
-    await api().edit({ idea, batch: { base: 2, steps: [{ command: 'insert', at: { end: planFile }, markdown: 'Remote line.' }] } })
+    await api().edit({
+      idea,
+      batch: { base: 2, steps: [{ command: 'insert', at: { end: planFile }, markdown: 'Remote line.' }] },
+    })
     await r.write('plan.md', PLAN.replace('Two weeks.', 'Four weeks.'))
     const stale = await r.ideaf('sync')
     expect(stale.exit).toBe(3)
@@ -135,24 +156,34 @@ describe('pull', () => {
   test('merges local and remote edits to different parts of a file', async () => {
     const r = await repo({ 'plan.md': PLAN })
     const { idea } = (await r.ideaf('start', '--title', 'Merge', '--json')).json()
-    await api().edit({ idea, batch: { base: 1, steps: [{ command: 'replace', in: 'b3', old: 'this quarter', new: 'next quarter' }] } })
+    await api().edit({
+      idea,
+      batch: { base: 1, steps: [{ command: 'replace', in: 'b3', old: 'this quarter', new: 'next quarter' }] },
+    })
     await r.write('plan.md', PLAN.replace('Two weeks.', 'Two weeks, maybe three.'))
     const pulled = await r.ideaf('pull', '--json')
     expect(pulled.exit).toBe(0)
     expect(pulled.json().changes).toEqual([{ path: 'plan.md', change: 'merged' }])
-    expect(await r.read('plan.md')).toBe(PLAN.replace('this quarter', 'next quarter').replace('Two weeks.', 'Two weeks, maybe three.'))
+    expect(await r.read('plan.md')).toBe(
+      PLAN.replace('this quarter', 'next quarter').replace('Two weeks.', 'Two weeks, maybe three.'),
+    )
   })
 
   test('leaves conflict markers when both sides changed the same line, and says so', async () => {
     const r = await repo({ 'plan.md': PLAN })
     const { idea } = (await r.ideaf('start', '--title', 'Conflict', '--json')).json()
-    await api().edit({ idea, batch: { base: 1, steps: [{ command: 'replace', in: 'b3', old: 'this quarter', new: 'next quarter' }] } })
+    await api().edit({
+      idea,
+      batch: { base: 1, steps: [{ command: 'replace', in: 'b3', old: 'this quarter', new: 'next quarter' }] },
+    })
     await r.write('plan.md', PLAN.replace('this quarter', 'this month'))
     const pulled = await r.ideaf('pull')
     expect(pulled.exit).toBe(7)
     expect(pulled.out).toContain('Resolve the conflict markers in plan.md')
     const content = await r.read('plan.md')
-    expect(content).toContain('<<<<<<< yours\nWe should ship the offline mode this month.\n=======\nWe should ship the offline mode next quarter.\n>>>>>>> v2')
+    expect(content).toContain(
+      '<<<<<<< yours\nWe should ship the offline mode this month.\n=======\nWe should ship the offline mode next quarter.\n>>>>>>> v2',
+    )
   })
 
   test('on a new machine, writes the files and starts tracking them', async () => {
@@ -174,13 +205,18 @@ describe('edit', () => {
     await r.write('batch.json', JSON.stringify({ steps: [{ command: 'delete', target: 'b7' }] }))
     const refused = await r.ideaf('edit', 'batch.json', '--json')
     expect(refused.exit).toBe(8)
-    expect(refused.json()).toEqual({ error: { code: 'local_changes', message: expect.stringContaining('plan.md'), details: { files: ['plan.md'] } } })
+    expect(refused.json()).toEqual({
+      error: { code: 'local_changes', message: expect.stringContaining('plan.md'), details: { files: ['plan.md'] } },
+    })
   })
 
   test('a conflict names the steps that no longer apply', async () => {
     const r = await repo({ 'plan.md': PLAN })
     await r.ideaf('start', '--title', 'Conflict')
-    await r.write('batch.json', JSON.stringify({ steps: [{ command: 'replace', in: 'b3', old: 'not there', new: 'x' }] }))
+    await r.write(
+      'batch.json',
+      JSON.stringify({ steps: [{ command: 'replace', in: 'b3', old: 'not there', new: 'x' }] }),
+    )
     const result = await r.ideaf('edit', 'batch.json')
     expect(result.exit).toBe(4)
     expect(result.err).toContain('step 0: "not there" isn\'t in b3')
@@ -207,7 +243,7 @@ describe('one ideaf at a time per idea', () => {
     expect((await api().getIdea({ idea })).latest).toBe(2)
   })
 
-  test('a command that can\'t get the lock in time says who has it', async () => {
+  test("a command that can't get the lock in time says who has it", async () => {
     const r = await repo({ 'plan.md': PLAN }, { env: { IDEAF_LOCK_WAIT_MS: '100' } })
     const { idea } = (await r.ideaf('start', '--title', 'Busy', '--json')).json()
     await r.write(`.git/ideaf/${idea}.lock`, JSON.stringify({ pid: 1, host: 'another-machine', at: Date.now() }))
@@ -237,7 +273,10 @@ describe('ideaf unlock', () => {
     const r = await repo({ 'plan.md': PLAN })
     const { idea } = (await r.ideaf('start', '--title', 'Running', '--json')).json()
     // this test process stands in for an ideaf that's still running
-    await r.write(`.git/ideaf/${idea}.lock`, JSON.stringify({ pid: process.pid, host: (await import('node:os')).hostname(), at: Date.now() }))
+    await r.write(
+      `.git/ideaf/${idea}.lock`,
+      JSON.stringify({ pid: process.pid, host: (await import('node:os')).hostname(), at: Date.now() }),
+    )
     const refused = await r.ideaf('unlock')
     expect(refused.exit).toBe(10)
     expect(refused.err).toContain('still running')

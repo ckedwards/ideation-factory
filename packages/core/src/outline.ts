@@ -29,7 +29,9 @@ export function outline(idea: Idea): FileOutline[] {
     const titles = parsed.units.map((u) => parsed.plain.text.slice(u.plainStart, u.plainEnd))
     const pathOf = (section: number): string[] => {
       const out: string[] = []
-      for (let s: number | null = section; s !== null && s >= 0; s = parsed.sections[s]!.parent) out.unshift(titles[parsed.sections[s]!.heading]!)
+      for (let s: number | null = section; s !== null && s >= 0; s = parsed.sections[s]!.parent) {
+        out.unshift(titles[parsed.sections[s]!.heading]!)
+      }
       return out
     }
     const entries = parsed.units.map((unit, i): OutlineEntry => {

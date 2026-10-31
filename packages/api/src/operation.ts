@@ -19,7 +19,9 @@ export interface Operation<I extends z.ZodObject = z.ZodObject, O extends z.ZodT
   output: O
 }
 
-export function defineOperation<I extends z.ZodObject, O extends z.ZodType>(operation: Operation<I, O>): Operation<I, O> {
+export function defineOperation<I extends z.ZodObject, O extends z.ZodType>(
+  operation: Operation<I, O>,
+): Operation<I, O> {
   return operation
 }
 

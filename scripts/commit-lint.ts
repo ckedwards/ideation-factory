@@ -25,33 +25,65 @@ export interface LintOptions {
 /** The problems with a commit message; empty if it follows the rules. */
 export function lintCommitMessage(raw: string, options: LintOptions = {}): string[] {
   const message = clean(raw)
-  if (!message) return ['the message is empty']
+  if (!message) {
+    return ['the message is empty']
+  }
   const [header = '', ...rest] = message.split('\n')
   // merges made by git, and autosquash commits while working, are left alone
-  if (/^Merge (branch|pull request|remote-tracking branch|commit) /.test(header)) return []
-  if (/^(fixup|squash|amend)! /.test(header)) return options.allowFixups ? [] : [`"${header}" is a fixup commit: squash it before it lands`]
+  if (/^Merge (branch|pull request|remote-tracking branch|commit) /.test(header)) {
+    return []
+  }
+  if (/^(fixup|squash|amend)! /.test(header)) {
+    return options.allowFixups ? [] : [`"${header}" is a fixup commit: squash it before it lands`]
+  }
 
   const problems: string[] = []
   const match = HEADER.exec(header)
   if (!match?.groups) {
-    return [`the first line must be "<type>(<scope>): <summary>" or "<type>: <summary>" (types: ${TYPES.join(', ')}), not "${header}"`]
+    return [
+      `the first line must be "<type>(<scope>): <summary>" or "<type>: <summary>" (types: ${TYPES.join(', ')}), not "${header}"`,
+    ]
   }
-  const { type, scope, bang, summary } = match.groups as { type: string; scope?: string; bang?: string; summary: string }
+  const { type, scope, bang, summary } = match.groups as {
+    type: string
+    scope?: string
+    bang?: string
+    summary: string
+  }
   if (!(TYPES as readonly string[]).includes(type)) {
-    problems.push(`"${type}" isn't a commit type; use one of ${TYPES.join(', ')}${type === 'chore' ? ' (there is no "chore": tooling is build(dev-infra), CI is ci, tests are test)' : ''}`)
+    problems.push(
+      `"${type}" isn't a commit type; use one of ${TYPES.join(', ')}${type === 'chore' ? ' (there is no "chore": tooling is build(dev-infra), CI is ci, tests are test)' : ''}`,
+    )
   }
   if (scope !== undefined) {
-    if (type === 'docs') problems.push('docs commits have no scope: "docs: …"')
-    else if (!(SCOPES as readonly string[]).includes(scope)) problems.push(`"${scope}" isn't a scope; use a package (${SCOPES.join(', ')}), or no scope for changes across packages`)
+    if (type === 'docs') {
+      problems.push('docs commits have no scope: "docs: …"')
+    } else if (!(SCOPES as readonly string[]).includes(scope)) {
+      problems.push(
+        `"${scope}" isn't a scope; use a package (${SCOPES.join(', ')}), or no scope for changes across packages`,
+      )
+    }
   }
-  if (header.length > MAX_HEADER) problems.push(`the first line is ${header.length} characters; keep it to ${MAX_HEADER}`)
-  if (!summary.trim()) problems.push('the summary is empty')
-  if (/^[A-Z]/.test(summary) && !/^[A-Z]{2,}/.test(summary)) problems.push('start the summary with a lowercase letter')
-  if (/\.$/.test(summary)) problems.push("don't end the summary with a full stop")
-  if (NOT_IMPERATIVE.test(summary)) problems.push(`write the summary in the imperative ("add", not "added" or "adds"): "${summary.split(' ')[0]}"`)
+  if (header.length > MAX_HEADER) {
+    problems.push(`the first line is ${header.length} characters; keep it to ${MAX_HEADER}`)
+  }
+  if (!summary.trim()) {
+    problems.push('the summary is empty')
+  }
+  if (/^[A-Z]/.test(summary) && !/^[A-Z]{2,}/.test(summary)) {
+    problems.push('start the summary with a lowercase letter')
+  }
+  if (/\.$/.test(summary)) {
+    problems.push("don't end the summary with a full stop")
+  }
+  if (NOT_IMPERATIVE.test(summary)) {
+    problems.push(`write the summary in the imperative ("add", not "added" or "adds"): "${summary.split(' ')[0]}"`)
+  }
 
   // body and footers
-  if (rest.length > 0 && rest[0] !== '') problems.push('leave a blank line after the first line')
+  if (rest.length > 0 && rest[0] !== '') {
+    problems.push('leave a blank line after the first line')
+  }
   const body = rest.join('\n').trim()
   const prose = body
     .split('\n')
@@ -64,11 +96,23 @@ export function lintCommitMessage(raw: string, options: LintOptions = {}): strin
 
   // breaking changes: "!" in the title and a BREAKING CHANGE: footer, each requiring the other
   const breaking = /^BREAKING CHANGE: \S/m.test(body)
-  if (/^BREAKING[ -]CHANGES?:/im.test(body) && !breaking) problems.push('write the breaking change footer exactly as "BREAKING CHANGE: <what breaks>"')
-  if (bang && !breaking) problems.push('a breaking change ("!" in the title) needs a "BREAKING CHANGE: <what breaks, and how to migrate>" footer')
-  if (breaking && !bang) problems.push(`a breaking change needs "!" in the title, so it's visible: "${type}${scope !== undefined ? `(${scope})` : ''}!: ${summary}"`)
+  if (/^BREAKING[ -]CHANGES?:/im.test(body) && !breaking) {
+    problems.push('write the breaking change footer exactly as "BREAKING CHANGE: <what breaks>"')
+  }
+  if (bang && !breaking) {
+    problems.push(
+      'a breaking change ("!" in the title) needs a "BREAKING CHANGE: <what breaks, and how to migrate>" footer',
+    )
+  }
+  if (breaking && !bang) {
+    problems.push(
+      `a breaking change needs "!" in the title, so it's visible: "${type}${scope !== undefined ? `(${scope})` : ''}!: ${summary}"`,
+    )
+  }
 
-  if (type === 'revert' && !/This reverts commit [0-9a-f]{7,40}/.test(body)) problems.push('a revert says which commit: "This reverts commit <sha>." and why')
+  if (type === 'revert' && !/This reverts commit [0-9a-f]{7,40}/.test(body)) {
+    problems.push('a revert says which commit: "This reverts commit <sha>." and why')
+  }
   return problems
 }
 
@@ -90,7 +134,9 @@ function isTrailer(line: string): boolean {
 
 function git(args: string[]): string {
   const run = Bun.spawnSync(['git', ...args], { stdout: 'pipe', stderr: 'pipe' })
-  if (run.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${run.stderr.toString().trim()}`)
+  if (run.exitCode !== 0) {
+    throw new Error(`git ${args.join(' ')}: ${run.stderr.toString().trim()}`)
+  }
   return run.stdout.toString()
 }
 
@@ -98,7 +144,9 @@ if (import.meta.main) {
   const [flag, value] = process.argv.slice(2)
   const report = (label: string, problems: string[]) => {
     console.error(`✗ ${label}`)
-    for (const p of problems) console.error(`    ${p}`)
+    for (const p of problems) {
+      console.error(`    ${p}`)
+    }
   }
   let failed = 0
   if (flag === '--file' && value) {
@@ -123,7 +171,11 @@ if (import.meta.main) {
         failed++
       }
     }
-    console.error(failed ? `\n${failed} of ${shas.length} commits break the rules in CONTRIBUTING.md.` : `All ${shas.length} commits follow the rules.`)
+    console.error(
+      failed
+        ? `\n${failed} of ${shas.length} commits break the rules in CONTRIBUTING.md.`
+        : `All ${shas.length} commits follow the rules.`,
+    )
   } else {
     console.error('usage: bun scripts/commit-lint.ts --file <path> | --range <from>..<to> | --message "<text>"')
     process.exit(2)

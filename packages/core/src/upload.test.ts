@@ -22,7 +22,9 @@ const doc = () => createIdea([{ path: 'plan.md', source: DOC }])
 
 function upload(idea: Idea, comments: Comment[], files: Upload['files'], deleted?: string[]) {
   const result: UploadResult = applyUpload(idea, comments, { files, ...(deleted ? { deleted } : {}) })
-  if (!result.ok) throw new Error(`expected the upload to apply: ${result.problems.join('; ')}`)
+  if (!result.ok) {
+    throw new Error(`expected the upload to apply: ${result.problems.join('; ')}`)
+  }
   return result
 }
 
@@ -35,15 +37,26 @@ const ids = (r: ReturnType<typeof upload>, file = 'f1') => r.idea.files.find((f)
 describe('following positions through the diff', () => {
   test('an unchanged upload changes nothing', () => {
     const idea = doc()
-    const r = upload(idea, [{ id: 'c1', anchor: textAnchor(idea, 'f1', 'lazy dog') }], [{ file: 'f1', path: 'plan.md', content: DOC }])
+    const r = upload(
+      idea,
+      [{ id: 'c1', anchor: textAnchor(idea, 'f1', 'lazy dog') }],
+      [{ file: 'f1', path: 'plan.md', content: DOC }],
+    )
     expect(ids(r)).toEqual(idea.files[0]!.unitIds)
     expect(outcome(r, 'c1')).toEqual({ state: 'exact', quote: 'lazy dog', file: 'f1' })
   })
 
   test('re-wrapping a paragraph or adding bold leaves comments exact', () => {
     const idea = doc()
-    const content = DOC.replace('The quick brown fox jumps over the lazy dog.', 'The quick **brown** fox\njumps over the lazy dog.')
-    const r = upload(idea, [{ id: 'c1', anchor: textAnchor(idea, 'f1', 'brown fox jumps') }], [{ file: 'f1', path: 'plan.md', content }])
+    const content = DOC.replace(
+      'The quick brown fox jumps over the lazy dog.',
+      'The quick **brown** fox\njumps over the lazy dog.',
+    )
+    const r = upload(
+      idea,
+      [{ id: 'c1', anchor: textAnchor(idea, 'f1', 'brown fox jumps') }],
+      [{ file: 'f1', path: 'plan.md', content }],
+    )
     expect(outcome(r, 'c1')).toEqual({ state: 'exact', quote: 'brown fox jumps', file: 'f1' })
     expect(ids(r)).toEqual(idea.files[0]!.unitIds)
   })
@@ -56,20 +69,32 @@ describe('following positions through the diff', () => {
       [{ id: 'second', anchor: textAnchor(idea, 'f1', 'Ship it.', 2) }],
       [{ file: 'f1', path: 'a.md', content: source.replace('Ship it.', 'Ship it today.') }],
     )
-    expect(r.comments[0]).toEqual({ id: 'second', state: 'exact', anchor: { kind: 'text', file: 'f1', start: 23, end: 31, quote: 'Ship it.' } })
+    expect(r.comments[0]).toEqual({
+      id: 'second',
+      state: 'exact',
+      anchor: { kind: 'text', file: 'f1', start: 23, end: 31, quote: 'Ship it.' },
+    })
   })
 
   test('a partly edited sentence keeps the part that survived, marked changed', () => {
     const idea = doc()
     const content = DOC.replace('jumps over the lazy dog', 'jumps over the sleeping cat')
-    const r = upload(idea, [{ id: 'c1', anchor: textAnchor(idea, 'f1', 'fox jumps over the lazy') }], [{ file: 'f1', path: 'plan.md', content }])
+    const r = upload(
+      idea,
+      [{ id: 'c1', anchor: textAnchor(idea, 'f1', 'fox jumps over the lazy') }],
+      [{ file: 'f1', path: 'plan.md', content }],
+    )
     expect(outcome(r, 'c1')).toEqual({ state: 'changed', quote: 'fox jumps over the', file: 'f1' })
   })
 
   test("a rewritten sentence's comment becomes outdated", () => {
     const idea = doc()
     const content = DOC.replace('It might rain on the day.', 'Storms are likely in spring.')
-    const r = upload(idea, [{ id: 'c1', anchor: textAnchor(idea, 'f1', 'It might rain on the day.') }], [{ file: 'f1', path: 'plan.md', content }])
+    const r = upload(
+      idea,
+      [{ id: 'c1', anchor: textAnchor(idea, 'f1', 'It might rain on the day.') }],
+      [{ file: 'f1', path: 'plan.md', content }],
+    )
     expect(outcome(r, 'c1').state).toBe('outdated')
     // the paragraph is still followed through the diff, so it keeps its ID
     expect(ids(r)).toEqual(idea.files[0]!.unitIds)
@@ -92,7 +117,11 @@ It might rain on the day.
 
 ## Costs
 `
-    const r = upload(idea, [{ id: 'c1', anchor: textAnchor(idea, 'f1', 'Cheap enough') }], [{ file: 'f1', path: 'plan.md', content }])
+    const r = upload(
+      idea,
+      [{ id: 'c1', anchor: textAnchor(idea, 'f1', 'Cheap enough') }],
+      [{ file: 'f1', path: 'plan.md', content }],
+    )
     expect(outcome(r, 'c1')).toEqual({ state: 'moved', quote: 'Cheap enough', file: 'f1' })
     expect(ids(r)).toEqual(['s2', 'b7', 'b3', 's4', 'b5', 's6'])
   })
@@ -128,12 +157,16 @@ It might rain on the day.
   test('a section moved unchanged keeps its section comments; moved and edited, they become outdated', () => {
     const intro = 'An introduction long enough that the diff keeps it in place.'
     const costs = 'A paragraph about costs, also long enough to stay where it is.'
-    const idea = createIdea([{ path: 'a.md', source: `# Plan\n\n${intro}\n\n## Risks\n\nRain.\n\n## Costs\n\n${costs}\n` }])
+    const idea = createIdea([
+      { path: 'a.md', source: `# Plan\n\n${intro}\n\n## Risks\n\nRain.\n\n## Costs\n\n${costs}\n` },
+    ])
     const comments: Comment[] = [
       { id: 'section', anchor: { kind: 'section', file: 'f1', section: 's4' } },
       { id: 'text', anchor: textAnchor(idea, 'f1', 'Rain') },
     ]
-    const moved = upload(idea, comments, [{ file: 'f1', path: 'a.md', content: `# Plan\n\n${intro}\n\n## Costs\n\n${costs}\n\n## Risks\n\nRain.\n` }])
+    const moved = upload(idea, comments, [
+      { file: 'f1', path: 'a.md', content: `# Plan\n\n${intro}\n\n## Costs\n\n${costs}\n\n## Risks\n\nRain.\n` },
+    ])
     expect(outcome(moved, 'section').state).toBe('moved')
     expect(outcome(moved, 'text')).toEqual({ state: 'moved', quote: 'Rain', file: 'f1' })
     const movedAndEdited = upload(idea, comments, [
@@ -158,8 +191,15 @@ describe('headings renamed in place', () => {
 
   test('renamed with its body edited in the same upload: section comments become outdated', () => {
     const idea = doc()
-    const content = DOC.replace('## Risks', '## Hazards').replace('It might rain on the day.', 'Storms are likely in spring.')
-    const r = upload(idea, [{ id: 'section', anchor: { kind: 'section', file: 'f1', section: 's4' } }], [{ file: 'f1', path: 'plan.md', content }])
+    const content = DOC.replace('## Risks', '## Hazards').replace(
+      'It might rain on the day.',
+      'Storms are likely in spring.',
+    )
+    const r = upload(
+      idea,
+      [{ id: 'section', anchor: { kind: 'section', file: 'f1', section: 's4' } }],
+      [{ file: 'f1', path: 'plan.md', content }],
+    )
     expect(outcome(r, 'section').state).toBe('outdated')
     expect(ids(r)[2]).not.toBe('s4')
   })

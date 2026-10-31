@@ -82,9 +82,13 @@ const cache = new Map<string, ParsedFile>()
 
 export function parseMarkdown(source: string): ParsedFile {
   const hit = cache.get(source)
-  if (hit) return hit
+  if (hit) {
+    return hit
+  }
   const parsed = parse(source)
-  if (cache.size > 500) cache.clear()
+  if (cache.size > 500) {
+    cache.clear()
+  }
   cache.set(source, parsed)
   return parsed
 }
@@ -108,7 +112,9 @@ function parse(source: string): ParsedFile {
       offsets.push(previousEnd)
       owners.push(-1)
     }
-    if (collapsed.text.length > 0) previousEnd = end
+    if (collapsed.text.length > 0) {
+      previousEnd = end
+    }
     const plainStart = chars.length
     for (let i = 0; i < collapsed.text.length; i++) {
       chars.push(collapsed.text[i]!)
@@ -164,18 +170,25 @@ function parse(source: string): ParsedFile {
             continue
           }
           const own = item.children.filter((child) => child.type !== 'list')
-          const ownEnd = own.length > 0 ? own[own.length - 1]!.position!.end.offset! : lineEnd(source, item.position!.start.offset!)
+          const ownEnd =
+            own.length > 0 ? own[own.length - 1]!.position!.end.offset! : lineEnd(source, item.position!.start.offset!)
           add('list-item', item, item.position!.start.offset!, ownEnd, item.position!.end.offset!, () =>
             joinBlocks(own, source),
           )
-          for (const child of item.children) if (child.type === 'list') visit(child)
+          for (const child of item.children) {
+            if (child.type === 'list') {
+              visit(child)
+            }
+          }
         }
         return
       default:
         return add('html', node as Nodes, start, end, end, empty)
     }
   }
-  for (const node of tree.children) visit(node)
+  for (const node of tree.children) {
+    visit(node)
+  }
 
   const plain: PlainText = { text: chars.join(''), source: offsets, unit: owners }
   return { source, units, sections: sectionsOf(units), plain }
@@ -185,8 +198,12 @@ function sectionsOf(units: Unit[]): Section[] {
   const sections: Section[] = []
   const open: number[] = []
   units.forEach((unit, index) => {
-    if (unit.kind !== 'heading') return
-    while (open.length > 0 && sections[open[open.length - 1]!]!.level >= unit.level) open.pop()
+    if (unit.kind !== 'heading') {
+      return
+    }
+    while (open.length > 0 && sections[open[open.length - 1]!]!.level >= unit.level) {
+      open.pop()
+    }
     sections.push({ heading: index, level: unit.level, parent: open.at(-1) ?? null, bodyLast: index, last: index })
     open.push(sections.length - 1)
   })
@@ -278,7 +295,9 @@ function collect(node: Nodes, source: string, out: Raw): void {
     case 'yaml':
       return
   }
-  if (!('children' in node)) return
+  if (!('children' in node)) {
+    return
+  }
   const parent = node as Parents
   let previousWasBlock = false
   let previousEnd = node.position!.start.offset!
@@ -331,11 +350,17 @@ function align(value: string, source: string, from: number, to: number, out: Raw
     }
     // skipped syntax (indentation, `>` markers, backticks): find the character nearby
     let k = j
-    while (k < to && k - j < 16 && source[k] !== ch) k++
-    if (k < to && source[k] === ch) j = k
+    while (k < to && k - j < 16 && source[k] !== ch) {
+      k++
+    }
+    if (k < to && source[k] === ch) {
+      j = k
+    }
     out.chars.push(ch)
     out.source.push(Math.min(j, Math.max(from, to - 1)))
-    if (source[j] === ch) j++
+    if (source[j] === ch) {
+      j++
+    }
   }
 }
 
@@ -356,7 +381,9 @@ function collapse(raw: Raw): { text: string; source: number[] } {
   for (let i = 0; i < raw.chars.length; i++) {
     const ch = raw.chars[i]!
     if (/\s/.test(ch)) {
-      if (pendingSpace < 0) pendingSpace = raw.source[i]!
+      if (pendingSpace < 0) {
+        pendingSpace = raw.source[i]!
+      }
       continue
     }
     if (pendingSpace >= 0 && text.length > 0) {
@@ -380,7 +407,9 @@ export function lineEnd(source: string, offset: number): number {
 /** The start of the line if only spaces or tabs come before `offset` on it; otherwise `offset`. */
 export function lineStartIfBlank(source: string, offset: number): number {
   let i = offset
-  while (i > 0 && (source[i - 1] === ' ' || source[i - 1] === '\t')) i--
+  while (i > 0 && (source[i - 1] === ' ' || source[i - 1] === '\t')) {
+    i--
+  }
   return i === 0 || source[i - 1] === '\n' ? i : offset
 }
 
@@ -390,8 +419,11 @@ export function plainIndexAtOrAfter(plain: PlainText, offset: number): number {
   let hi = plain.source.length
   while (lo < hi) {
     const mid = (lo + hi) >> 1
-    if (plain.source[mid]! < offset) lo = mid + 1
-    else hi = mid
+    if (plain.source[mid]! < offset) {
+      lo = mid + 1
+    } else {
+      hi = mid
+    }
   }
   return lo
 }
@@ -409,9 +441,13 @@ export function unitAt(units: Unit[], offset: number): number {
   while (lo <= hi) {
     const mid = (lo + hi) >> 1
     const unit = units[mid]!
-    if (offset < unit.start) hi = mid - 1
-    else if (offset >= unit.end) lo = mid + 1
-    else return mid
+    if (offset < unit.start) {
+      hi = mid - 1
+    } else if (offset >= unit.end) {
+      lo = mid + 1
+    } else {
+      return mid
+    }
   }
   return -1
 }
@@ -420,7 +456,9 @@ export function unitAt(units: Unit[], offset: number): number {
 export function sectionOfUnit(parsed: ParsedFile, unit: number): number {
   let found = -1
   parsed.sections.forEach((section, i) => {
-    if (section.heading <= unit && unit <= section.last) found = i
+    if (section.heading <= unit && unit <= section.last) {
+      found = i
+    }
   })
   return found
 }

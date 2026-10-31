@@ -13,9 +13,16 @@ export async function unlock(ctx: Context, flags: { idea?: string; force?: boole
     ctx.result({ idea: id, removed: false, holder: null })
     return EXIT.ok
   }
-  const who = lock.holder ? `pid ${lock.holder.pid} on ${lock.holder.host}, since ${new Date(lock.holder.at).toISOString()}` : 'an unknown process'
+  const who = lock.holder
+    ? `pid ${lock.holder.pid} on ${lock.holder.host}, since ${new Date(lock.holder.at).toISOString()}`
+    : 'an unknown process'
   if (lock.running && !flags.force) {
-    throw new CliError(`${id} is locked by an ideaf that's still running (${who}); wait for it, or pass --force to remove the lock anyway`, EXIT.busy, 'busy', lock.holder ?? undefined)
+    throw new CliError(
+      `${id} is locked by an ideaf that's still running (${who}); wait for it, or pass --force to remove the lock anyway`,
+      EXIT.busy,
+      'busy',
+      lock.holder ?? undefined,
+    )
   }
   await removeLock(ctx.ws, id)
   ctx.say(`Removed the lock on ${id} (held by ${who}).`)

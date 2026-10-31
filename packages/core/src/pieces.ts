@@ -29,9 +29,13 @@ export type Edit = {
 /** The pieces of one file after an edit to it. */
 export function applyEdit(file: string, length: number, edit: Edit): Piece[] {
   const deletes = edit.deletes.filter(([s, e]) => e > s).toSorted((a, b) => a[0] - b[0])
-  const inserts = edit.inserts.map((insert, order) => ({ ...insert, order })).toSorted((a, b) => a.at - b.at || a.order - b.order)
+  const inserts = edit.inserts
+    .map((insert, order) => ({ ...insert, order }))
+    .toSorted((a, b) => a.at - b.at || a.order - b.order)
   for (let i = 1; i < deletes.length; i++) {
-    if (deletes[i]![0] < deletes[i - 1]![1]) throw new Error('overlapping deletes')
+    if (deletes[i]![0] < deletes[i - 1]![1]) {
+      throw new Error('overlapping deletes')
+    }
   }
   const pieces: Piece[] = []
   let pos = 0
@@ -47,12 +51,16 @@ export function applyEdit(file: string, length: number, edit: Edit): Piece[] {
       pieces.push(...inserts[n++]!.pieces)
       continue
     }
-    if (n < inserts.length && inserts[n]!.at < pos) throw new Error('insert inside a deleted range')
+    if (n < inserts.length && inserts[n]!.at < pos) {
+      throw new Error('insert inside a deleted range')
+    }
     if (d < deletes.length && deletes[d]![0] === pos) {
       pos = deletes[d++]![1]
       continue
     }
-    if (pos >= length) break
+    if (pos >= length) {
+      break
+    }
   }
   return merge(pieces)
 }
@@ -61,8 +69,12 @@ function merge(pieces: Piece[]): Piece[] {
   const out: Piece[] = []
   for (const piece of pieces) {
     const last = out.at(-1)
-    if (piece.kind === 'copy' && piece.end === piece.start) continue
-    if (piece.kind === 'text' && piece.text === '' && !piece.replaces) continue
+    if (piece.kind === 'copy' && piece.end === piece.start) {
+      continue
+    }
+    if (piece.kind === 'text' && piece.text === '' && !piece.replaces) {
+      continue
+    }
     if (
       last?.kind === 'copy' &&
       piece.kind === 'copy' &&
@@ -115,8 +127,12 @@ export class PieceMap {
         }
       }
     }
-    for (const list of this.#copies.values()) list.sort((a, b) => a.start - b.start)
-    for (const list of this.#replaced.values()) list.sort((a, b) => a.start - b.start)
+    for (const list of this.#copies.values()) {
+      list.sort((a, b) => a.start - b.start)
+    }
+    for (const list of this.#replaced.values()) {
+      list.sort((a, b) => a.start - b.start)
+    }
   }
 
   /** Where an old character was copied to, or null if it didn't survive. */
@@ -136,20 +152,29 @@ export class PieceMap {
 
 function push<T>(map: Map<string, T[]>, key: string, value: T): void {
   const list = map.get(key)
-  if (list) list.push(value)
-  else map.set(key, [value])
+  if (list) {
+    list.push(value)
+  } else {
+    map.set(key, [value])
+  }
 }
 
 function find<T extends { start: number; end: number }>(list: T[] | undefined, offset: number): T | null {
-  if (!list) return null
+  if (!list) {
+    return null
+  }
   let lo = 0
   let hi = list.length - 1
   while (lo <= hi) {
     const mid = (lo + hi) >> 1
     const item = list[mid]!
-    if (offset < item.start) hi = mid - 1
-    else if (offset >= item.end) lo = mid + 1
-    else return item
+    if (offset < item.start) {
+      hi = mid - 1
+    } else if (offset >= item.end) {
+      lo = mid + 1
+    } else {
+      return item
+    }
   }
   return null
 }

@@ -2,9 +2,32 @@
 // idea's access (sharing and the move wizard).
 import { z } from 'zod'
 import { defineOperation } from './operation.ts'
-import { CreatePolicy, Cursor, Grant, GrantSubject, Group, Handle, IdeaId, IdeaRow, Limit, Member, MovePreview, Page, Permission, Ref, Role, Team, TeamDefaults, User } from './schemas.ts'
+import {
+  CreatePolicy,
+  Cursor,
+  Grant,
+  GrantSubject,
+  Group,
+  Handle,
+  IdeaId,
+  IdeaRow,
+  Limit,
+  Member,
+  MovePreview,
+  Page,
+  Permission,
+  Ref,
+  Role,
+  Team,
+  TeamDefaults,
+  User,
+} from './schemas.ts'
 
-const NewContainer = z.strictObject({ handle: Handle, name: z.string().trim().min(1).max(100), description: z.string().max(2000).optional() })
+const NewContainer = z.strictObject({
+  handle: Handle,
+  name: z.string().trim().min(1).max(100),
+  description: z.string().max(2000).optional(),
+})
 const MoveInput = z.strictObject({
   idea: IdeaId,
   /** The team to move to (ID or handle), or null to take it out of its team. */
@@ -109,11 +132,18 @@ export const directoryOperations = {
   listIdeas: defineOperation({
     name: 'list_ideas',
     summary: 'List ideas',
-    description: 'Ideas you can see, most recently updated first, 25 at a time, optionally in one team, by one owner, or in one status.',
+    description:
+      'Ideas you can see, most recently updated first, 25 at a time, optionally in one team, by one owner, or in one status.',
     method: 'GET',
     path: '/ideas',
     kind: 'read',
-    input: z.strictObject({ team: Ref.optional(), owner: Ref.optional(), status: z.string().max(40).optional(), cursor: Cursor, limit: Limit }),
+    input: z.strictObject({
+      team: Ref.optional(),
+      owner: Ref.optional(),
+      status: z.string().max(40).optional(),
+      cursor: Cursor,
+      limit: Limit,
+    }),
     output: Page(IdeaRow),
   }),
   searchIdeas: defineOperation({
@@ -129,7 +159,10 @@ export const directoryOperations = {
         .string()
         .trim()
         .max(200)
-        .refine((q) => q.split(/\s+/).some((t) => [...t].length >= 3), 'a search needs a word of at least 3 characters'),
+        .refine(
+          (q) => q.split(/\s+/).some((t) => [...t].length >= 3),
+          'a search needs a word of at least 3 characters',
+        ),
       limit: Limit,
     }),
     output: z.object({ items: z.array(IdeaRow), incomplete: z.boolean() }),
@@ -138,7 +171,8 @@ export const directoryOperations = {
   getAccess: defineOperation({
     name: 'get_access',
     summary: 'Who can see an idea',
-    description: "An idea's grants (people, groups, team members, everyone, each with view, edit or share), and what you can do with it.",
+    description:
+      "An idea's grants (people, groups, team members, everyone, each with view, edit or share), and what you can do with it.",
     method: 'GET',
     path: '/ideas/{idea}/access',
     kind: 'read',
@@ -149,11 +183,15 @@ export const directoryOperations = {
     name: 'set_access',
     summary: 'Share an idea, or change or remove access',
     description:
-      'Gives a person, a group, a team\'s members or everyone access to an idea (view always; edit and share optional; everyone gets view only), or removes it with `access: null`. Needs share access. Asking someone to review gives them view access too.',
+      "Gives a person, a group, a team's members or everyone access to an idea (view always; edit and share optional; everyone gets view only), or removes it with `access: null`. Needs share access. Asking someone to review gives them view access too.",
     method: 'POST',
     path: '/ideas/{idea}/access',
     kind: 'write',
-    input: z.strictObject({ idea: IdeaId, subject: GrantSubject, access: z.strictObject({ edit: z.boolean(), share: z.boolean() }).nullable() }),
+    input: z.strictObject({
+      idea: IdeaId,
+      subject: GrantSubject,
+      access: z.strictObject({ edit: z.boolean(), share: z.boolean() }).nullable(),
+    }),
     output: z.object({ grants: z.array(Grant) }),
   }),
   previewMove: defineOperation({
@@ -170,7 +208,8 @@ export const directoryOperations = {
   moveIdea: defineOperation({
     name: 'move_idea',
     summary: 'Move an idea',
-    description: 'Moves an idea into, out of, or to another team, with the same adjustments as preview_move. Needs share access, and permission to create ideas in the new team. People who lose access stop seeing it at once.',
+    description:
+      'Moves an idea into, out of, or to another team, with the same adjustments as preview_move. Needs share access, and permission to create ideas in the new team. People who lose access stop seeing it at once.',
     method: 'POST',
     path: '/ideas/{idea}/move',
     kind: 'write',
@@ -211,7 +250,8 @@ export const directoryOperations = {
   updateTeam: defineOperation({
     name: 'update_team_settings',
     summary: "Change a team's settings",
-    description: "Who can create ideas in the team, and what new ideas in it start with (the team members' access, public or not, and groups). Admins only. Existing ideas keep their access.",
+    description:
+      "Who can create ideas in the team, and what new ideas in it start with (the team members' access, public or not, and groups). Admins only. Existing ideas keep their access.",
     method: 'POST',
     path: '/teams/{team}/settings',
     kind: 'write',
@@ -228,7 +268,8 @@ export const directoryOperations = {
   createGroup: defineOperation({
     name: 'create_group',
     summary: 'Create a group',
-    description: 'Creates a group, with you as its first admin. Groups are invite only and visible to everyone, with their members.',
+    description:
+      'Creates a group, with you as its first admin. Groups are invite only and visible to everyone, with their members.',
     method: 'POST',
     path: '/groups',
     kind: 'write',

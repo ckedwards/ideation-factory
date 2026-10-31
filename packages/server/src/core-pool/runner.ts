@@ -22,12 +22,17 @@ export interface CoreRunner {
   applyBatch(key: string, idea: Idea, comments: Comment[], batch: Batch): Promise<BatchResult>
   applyUpload(key: string, idea: Idea, comments: Comment[], upload: Upload): Promise<UploadResult>
   outline(key: string, idea: Idea): Promise<FileOutline[]>
-  createIdea(key: string, files: Array<{ path: string; source: string }>): Promise<{ ok: true; idea: Idea } | { ok: false; message: string }>
+  createIdea(
+    key: string,
+    files: Array<{ path: string; source: string }>,
+  ): Promise<{ ok: true; idea: Idea } | { ok: false; message: string }>
   checkAnchor(key: string, idea: Idea, input: AnchorInput): Promise<ReturnType<typeof checkAnchor>>
   close(): Promise<void>
 }
 
-function tryCreateIdea(files: Array<{ path: string; source: string }>): { ok: true; idea: Idea } | { ok: false; message: string } {
+function tryCreateIdea(
+  files: Array<{ path: string; source: string }>,
+): { ok: true; idea: Idea } | { ok: false; message: string } {
   try {
     return { ok: true, idea: createIdea(files) }
   } catch (error) {

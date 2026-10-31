@@ -41,21 +41,35 @@ export function searchTerms(query: string): string[] {
 export function fts5Search(): IdeaSearch {
   return {
     async migrate(sql) {
-      await sql.execute("CREATE VIRTUAL TABLE IF NOT EXISTS idea_search USING fts5(id UNINDEXED, title, tokenize = 'trigram')")
+      await sql.execute(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS idea_search USING fts5(id UNINDEXED, title, tokenize = 'trigram')",
+      )
     },
     async index(db, id, title) {
       await raw`DELETE FROM idea_search WHERE id = ${id}`.execute(db)
       await raw`INSERT INTO idea_search (id, title) VALUES (${id}, ${title})`.execute(db)
     },
     matching(terms, cap) {
-      if (terms.length === 0) return null
+      if (terms.length === 0) {
+        return null
+      }
       // rows are re-inserted when a title changes, so the newest rowids are the most recently updated ideas,
       // and FTS5 reads them in that order without sorting
-      return raw<{ id: string }>`(SELECT id FROM idea_search WHERE idea_search MATCH ${ftsMatch(terms)} ORDER BY rowid DESC LIMIT ${cap})`.as('m')
+      return raw<{
+        id: string
+      }>`(SELECT id FROM idea_search WHERE idea_search MATCH ${ftsMatch(terms)} ORDER BY rowid DESC LIMIT ${cap})`.as(
+        'm',
+      )
     },
     async exceeds(db, terms, cap) {
-      if (terms.length === 0) return false
-      const rows = await raw<{ n: number }>`SELECT count(*) AS n FROM (SELECT 1 FROM idea_search WHERE idea_search MATCH ${ftsMatch(terms)} LIMIT ${cap + 1})`.execute(db)
+      if (terms.length === 0) {
+        return false
+      }
+      const rows = await raw<{
+        n: number
+      }>`SELECT count(*) AS n FROM (SELECT 1 FROM idea_search WHERE idea_search MATCH ${ftsMatch(terms)} LIMIT ${cap + 1})`.execute(
+        db,
+      )
       return Number(rows.rows[0]?.n ?? 0) > cap
     },
   }

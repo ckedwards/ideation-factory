@@ -8,7 +8,18 @@ import { db } from 'rivetkit/db'
 import { migrateDirectory } from '../directory/schema.ts'
 import { fts5Search } from '../directory/search.ts'
 import { SqlDirectory } from '../directory/sql-directory.ts'
-import type { ContainerKind, CreatePolicy, Directory, GrantSubject, IdeaFilter, IdeaRow, MoveAdjustments, Result, Role, TeamDefaults } from '../directory/types.ts'
+import type {
+  ContainerKind,
+  CreatePolicy,
+  Directory,
+  GrantSubject,
+  IdeaFilter,
+  IdeaRow,
+  MoveAdjustments,
+  Result,
+  Role,
+  TeamDefaults,
+} from '../directory/types.ts'
 
 const search = fts5Search()
 
@@ -27,7 +38,9 @@ export const directory = actor({
       for (const message of batch) {
         const u = message.body as IndexUpdate
         const seen = latest.get(u.id)
-        if (!seen || seen.updatedAt <= u.updatedAt) latest.set(u.id, u)
+        if (!seen || seen.updatedAt <= u.updatedAt) {
+          latest.set(u.id, u)
+        }
       }
       for (const update of latest.values()) {
         try {
@@ -39,44 +52,62 @@ export const directory = actor({
     }
   },
   actions: {
-    ensureUser: (c, user: { id: string; handle: string; name: string; email?: string }) => directoryOf(c).ensureUser(user),
+    ensureUser: (c, user: { id: string; handle: string; name: string; email?: string }) =>
+      directoryOf(c).ensureUser(user),
     user: (c, id: string) => directoryOf(c).user(id),
     findUsers: (c, query: string, limit?: number) => directoryOf(c).findUsers(query, limit),
-    createTeam: (c, by: string, input: { handle: string; name: string; description?: string }) => directoryOf(c).createTeam(by, input),
-    createGroup: (c, by: string, input: { handle: string; name: string; description?: string }) => directoryOf(c).createGroup(by, input),
+    createTeam: (c, by: string, input: { handle: string; name: string; description?: string }) =>
+      directoryOf(c).createTeam(by, input),
+    createGroup: (c, by: string, input: { handle: string; name: string; description?: string }) =>
+      directoryOf(c).createGroup(by, input),
     team: (c, id: string) => directoryOf(c).team(id),
     group: (c, id: string) => directoryOf(c).group(id),
     teams: (c, options?: { query?: string; cursor?: string; limit?: number }) => directoryOf(c).teams(options),
     groups: (c, options?: { query?: string; cursor?: string; limit?: number }) => directoryOf(c).groups(options),
-    updateTeam: (c, by: string, team: string, changes: { createPolicy?: CreatePolicy; defaults?: TeamDefaults }) => directoryOf(c).updateTeam(by, team, changes),
-    members: (c, kind: ContainerKind, id: string, options?: { cursor?: string; limit?: number }) => directoryOf(c).members(kind, id, options),
-    addMember: (c, by: string, kind: ContainerKind, id: string, user: string, role?: Role) => directoryOf(c).addMember(by, kind, id, user, role),
-    removeMember: (c, by: string, kind: ContainerKind, id: string, user: string) => directoryOf(c).removeMember(by, kind, id, user),
+    updateTeam: (c, by: string, team: string, changes: { createPolicy?: CreatePolicy; defaults?: TeamDefaults }) =>
+      directoryOf(c).updateTeam(by, team, changes),
+    members: (c, kind: ContainerKind, id: string, options?: { cursor?: string; limit?: number }) =>
+      directoryOf(c).members(kind, id, options),
+    addMember: (c, by: string, kind: ContainerKind, id: string, user: string, role?: Role) =>
+      directoryOf(c).addMember(by, kind, id, user, role),
+    removeMember: (c, by: string, kind: ContainerKind, id: string, user: string) =>
+      directoryOf(c).removeMember(by, kind, id, user),
     requestToJoin: (c, by: string, kind: ContainerKind, id: string) => directoryOf(c).requestToJoin(by, kind, id),
     joinRequests: (c, by: string, kind: ContainerKind, id: string) => directoryOf(c).joinRequests(by, kind, id),
-    decide: (c, by: string, kind: ContainerKind, id: string, user: string, approve: boolean) => directoryOf(c).decide(by, kind, id, user, approve),
+    decide: (c, by: string, kind: ContainerKind, id: string, user: string, approve: boolean) =>
+      directoryOf(c).decide(by, kind, id, user, approve),
     canCreateIdea: (c, by: string, team: string | null) => directoryOf(c).canCreateIdea(by, team),
     registerIdea: (c, row: IdeaRow) => directoryOf(c).registerIdea(row),
     updateIdea: (c, row: IndexUpdate) => directoryOf(c).updateIdea(row),
     idea: (c, id: string) => directoryOf(c).idea(id),
     permission: (c, idea: string, user: string) => directoryOf(c).permission(idea, user),
     grants: (c, idea: string) => directoryOf(c).grants(idea),
-    setGrant: (c, by: string, idea: string, subject: GrantSubject, access: { edit: boolean; share: boolean } | null) => directoryOf(c).setGrant(by, idea, subject, access),
-    previewMove: (c, by: string, idea: string, to: string | null, adjustments?: MoveAdjustments) => directoryOf(c).previewMove(by, idea, to, adjustments),
-    moveIdea: (c, by: string, idea: string, to: string | null, adjustments?: MoveAdjustments) => directoryOf(c).moveIdea(by, idea, to, adjustments),
+    setGrant: (c, by: string, idea: string, subject: GrantSubject, access: { edit: boolean; share: boolean } | null) =>
+      directoryOf(c).setGrant(by, idea, subject, access),
+    previewMove: (c, by: string, idea: string, to: string | null, adjustments?: MoveAdjustments) =>
+      directoryOf(c).previewMove(by, idea, to, adjustments),
+    moveIdea: (c, by: string, idea: string, to: string | null, adjustments?: MoveAdjustments) =>
+      directoryOf(c).moveIdea(by, idea, to, adjustments),
     listIdeas: (c, by: string, filter?: IdeaFilter) => directoryOf(c).listIdeas(by, filter),
     searchIdeas: (c, by: string, query: string, limit?: number) => directoryOf(c).searchIdeas(by, query, limit),
   },
 })
 
-function directoryOf(c: { db: Parameters<typeof migrateDirectory>[0]; vars: { directory: Directory | null } }): Directory {
-  if (!c.vars.directory) c.vars.directory = new SqlDirectory({ sql: c.db, search })
+function directoryOf(c: {
+  db: Parameters<typeof migrateDirectory>[0]
+  vars: { directory: Directory | null }
+}): Directory {
+  if (!c.vars.directory) {
+    c.vars.directory = new SqlDirectory({ sql: c.db, search })
+  }
   return c.vars.directory
 }
 
 /** For callers that want a Result's failure as an error. */
 export function unwrap<T>(result: Result<T>): T {
-  if (!result.ok) throw new UserError(result.error.message, { code: result.error.code })
+  if (!result.ok) {
+    throw new UserError(result.error.message, { code: result.error.code })
+  }
   return result.value
 }
 

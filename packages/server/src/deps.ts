@@ -18,6 +18,8 @@ export function configureNode(deps: NodeDeps): void {
 }
 
 export function nodeDeps(): NodeDeps {
-  if (!current) throw new Error('the app node is not configured: call configureNode() before starting the registry')
+  if (!current) {
+    throw new Error('the app node is not configured: call configureNode() before starting the registry')
+  }
   return current
 }

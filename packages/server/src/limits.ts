@@ -17,13 +17,20 @@ export const LIMIT_RANGES = {
 export function limitsFromEnv(env: Record<string, string | undefined>): Limits {
   const read = (name: string, key: keyof Limits): number => {
     const raw = env[name]
-    if (raw === undefined) return DEFAULT_LIMITS[key]
+    if (raw === undefined) {
+      return DEFAULT_LIMITS[key]
+    }
     const value = Number(raw)
     const { min, max } = LIMIT_RANGES[key]
-    if (!Number.isInteger(value) || value < min || value > max) throw new Error(`${name} must be a whole number of bytes from ${min} to ${max}`)
+    if (!Number.isInteger(value) || value < min || value > max) {
+      throw new Error(`${name} must be a whole number of bytes from ${min} to ${max}`)
+    }
     return value
   }
-  return { maxFileBytes: read('IDEAF_MAX_FILE_BYTES', 'maxFileBytes'), maxIdeaBytes: read('IDEAF_MAX_IDEA_BYTES', 'maxIdeaBytes') }
+  return {
+    maxFileBytes: read('IDEAF_MAX_FILE_BYTES', 'maxFileBytes'),
+    maxIdeaBytes: read('IDEAF_MAX_IDEA_BYTES', 'maxIdeaBytes'),
+  }
 }
 
 export const byteLength = (text: string) => new TextEncoder().encode(text).length
@@ -42,10 +49,14 @@ export function checkSizes(
   const problems: SizeProblem[] = []
   for (const f of after) {
     const old = before.get(f.file) ?? 0
-    if (f.bytes > limits.maxFileBytes && f.bytes > old) problems.push({ path: f.path, bytes: f.bytes, limit: limits.maxFileBytes })
+    if (f.bytes > limits.maxFileBytes && f.bytes > old) {
+      problems.push({ path: f.path, bytes: f.bytes, limit: limits.maxFileBytes })
+    }
   }
   const total = after.reduce((n, f) => n + f.bytes, 0)
   const oldTotal = [...before.values()].reduce((n, b) => n + b, 0)
-  if (total > limits.maxIdeaBytes && total > oldTotal) problems.push({ path: null, bytes: total, limit: limits.maxIdeaBytes })
+  if (total > limits.maxIdeaBytes && total > oldTotal) {
+    problems.push({ path: null, bytes: total, limit: limits.maxIdeaBytes })
+  }
   return problems
 }

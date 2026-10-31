@@ -44,7 +44,8 @@ export const operations = {
   getIdea: defineOperation({
     name: 'get_idea',
     summary: 'Read an idea',
-    description: "An idea's title, owner, status, latest version and version history (who made each version, and whether with commands or an upload).",
+    description:
+      "An idea's title, owner, status, latest version and version history (who made each version, and whether with commands or an upload).",
     method: 'GET',
     path: '/ideas/{idea}',
     kind: 'read',
@@ -86,7 +87,16 @@ export const operations = {
     kind: 'write',
     input: z.strictObject({
       idea: IdeaId,
-      files: z.array(z.strictObject({ file: FileId.optional(), path: z.string().min(1).max(512), content: z.string(), base: z.string().optional() })).max(500),
+      files: z
+        .array(
+          z.strictObject({
+            file: FileId.optional(),
+            path: z.string().min(1).max(512),
+            content: z.string(),
+            base: z.string().optional(),
+          }),
+        )
+        .max(500),
       deleted: z.array(FileId).max(500).optional(),
       force: z.boolean().optional(),
     }),
@@ -106,7 +116,9 @@ export const operations = {
       base: z.number().int(),
       comments: z.array(CommentOutcome),
       steps: z.array(StepResult),
-      files: z.array(z.object({ file: z.string(), path: z.string(), content: z.string(), before: z.string().nullable() })),
+      files: z.array(
+        z.object({ file: z.string(), path: z.string(), content: z.string(), before: z.string().nullable() }),
+      ),
       deleted: z.array(z.string()),
     }),
   }),
@@ -126,7 +138,8 @@ export const operations = {
   listComments: defineOperation({
     name: 'list_comments',
     summary: 'List comments',
-    description: 'Every comment thread as of a version (the latest by default): where it is anchored there and its state, replies, whether it is resolved, and which versions addressed it.',
+    description:
+      'Every comment thread as of a version (the latest by default): where it is anchored there and its state, replies, whether it is resolved, and which versions addressed it.',
     method: 'GET',
     path: '/ideas/{idea}/comments',
     kind: 'read',
@@ -142,7 +155,12 @@ export const operations = {
     method: 'POST',
     path: '/ideas/{idea}/comments',
     kind: 'write',
-    input: z.strictObject({ idea: IdeaId, version: z.number().int().positive(), anchor: AnchorInput, body: z.string().trim().min(1).max(20_000) }),
+    input: z.strictObject({
+      idea: IdeaId,
+      version: z.number().int().positive(),
+      anchor: AnchorInput,
+      body: z.string().trim().min(1).max(20_000),
+    }),
     output: z.object({ comment: z.string() }),
   }),
 
@@ -177,5 +195,8 @@ export type OperationKey = keyof Operations
 /** Error details, for the codes that carry them. */
 export const ErrorDetails = {
   conflict: z.object({ conflicts: z.array(Conflict) }),
-  pull_first: z.object({ latest: z.number().int(), files: z.array(z.object({ file: z.string(), path: z.string(), base: z.string().nullable(), latest: z.string() })) }),
+  pull_first: z.object({
+    latest: z.number().int(),
+    files: z.array(z.object({ file: z.string(), path: z.string(), base: z.string().nullable(), latest: z.string() })),
+  }),
 }

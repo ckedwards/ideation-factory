@@ -17,7 +17,9 @@ test('unknown commands, unknown fields and bad IDs are refused', () => {
   expect(Batch.safeParse({ base: 1, steps: [{ command: 'rewrite', target: 'b1' }] }).success).toBe(false)
   expect(Batch.safeParse({ base: 1, steps: [{ command: 'delete', target: 'b1', extra: true }] }).success).toBe(false)
   expect(Batch.safeParse({ base: 1, steps: [{ command: 'delete', target: 'f1' }] }).success).toBe(false)
-  expect(Batch.safeParse({ base: 1, steps: [{ command: 'rename-heading', target: 'b1', title: 'x' }] }).success).toBe(false)
+  expect(Batch.safeParse({ base: 1, steps: [{ command: 'rename-heading', target: 'b1', title: 'x' }] }).success).toBe(
+    false,
+  )
   expect(Batch.safeParse({ base: 1, steps: [] }).success).toBe(false)
 })
 

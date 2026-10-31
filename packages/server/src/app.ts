@@ -16,7 +16,11 @@ export type AppDeps = {
 
 const DEV_HANDLE = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/
 
-export function createApp({ actors, devToken, validateOutput = false }: AppDeps): (request: Request) => Promise<Response> {
+export function createApp({
+  actors,
+  devToken,
+  validateOutput = false,
+}: AppDeps): (request: Request) => Promise<Response> {
   const openapi = openApiDocument(operations, { title: 'Ideation Factory', version: '0.0.0' })
   const directory = actors.directory.getOrCreate(DIRECTORY_KEY)
   const known = new Set<string>()
@@ -28,10 +32,14 @@ export function createApp({ actors, devToken, validateOutput = false }: AppDeps)
    */
   const authenticate = async (request: Request): Promise<Caller | null> => {
     const header = request.headers.get('authorization') ?? ''
-    if (!header.startsWith(`Bearer ${devToken}`)) return null
+    if (!header.startsWith(`Bearer ${devToken}`)) {
+      return null
+    }
     const rest = header.slice(`Bearer ${devToken}`.length)
     const handle = rest === '' ? 'dev' : rest.startsWith(':') ? rest.slice(1) : null
-    if (!handle || !DEV_HANDLE.test(handle)) return null
+    if (!handle || !DEV_HANDLE.test(handle)) {
+      return null
+    }
     if (!known.has(handle)) {
       await directory.ensureUser({ id: handle, handle, name: handle })
       known.add(handle)
@@ -46,8 +54,15 @@ export function createApp({ actors, devToken, validateOutput = false }: AppDeps)
   })
   return async (request) => {
     const { pathname } = new URL(request.url)
-    if (pathname === '/health') return Response.json({ ok: true })
-    if (pathname === '/openapi.json') return Response.json(openapi)
-    return (await route(request)) ?? Response.json({ error: { code: 'not_found', message: 'no such route' } }, { status: 404 })
+    if (pathname === '/health') {
+      return Response.json({ ok: true })
+    }
+    if (pathname === '/openapi.json') {
+      return Response.json(openapi)
+    }
+    return (
+      (await route(request)) ??
+      Response.json({ error: { code: 'not_found', message: 'no such route' } }, { status: 404 })
+    )
   }
 }

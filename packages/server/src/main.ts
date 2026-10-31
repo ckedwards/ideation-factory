@@ -20,7 +20,9 @@ configureNode({ files: new LocalFolderFileStore(join(data, 'files')), core, limi
 
 await registry.startAndWait()
 const { endpoint } = registry.parseConfig()
-if (!endpoint) throw new Error('RivetKit has no engine endpoint; set RIVET_ENDPOINT or run in development')
+if (!endpoint) {
+  throw new Error('RivetKit has no engine endpoint; set RIVET_ENDPOINT or run in development')
+}
 const actors = createClient<Registry>(endpoint)
 
 const server = Bun.serve({ port, fetch: createApp({ actors, devToken }) })

@@ -23,7 +23,6 @@ class SqlConnection implements DatabaseConnection {
     return { rows: rows as R[] }
   }
 
-  // biome-ignore lint/correctness/useYield: streaming isn't used
   async *streamQuery<R>(): AsyncIterableIterator<QueryResult<R>> {
     throw new Error('streaming queries are not supported')
   }

@@ -72,9 +72,13 @@ const MIGRATIONS: string[][] = [
 export async function migrate(sql: Sql): Promise<void> {
   await sql.execute('CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)')
   const rows = await sql.execute<{ version: number }>('SELECT version FROM schema_version')
-  if (rows.length === 0) await sql.execute('INSERT INTO schema_version (version) VALUES (0)')
+  if (rows.length === 0) {
+    await sql.execute('INSERT INTO schema_version (version) VALUES (0)')
+  }
   for (let current = rows[0]?.version ?? 0; current < MIGRATIONS.length; current++) {
-    for (const statement of MIGRATIONS[current]!) await sql.execute(statement)
+    for (const statement of MIGRATIONS[current]!) {
+      await sql.execute(statement)
+    }
     await sql.execute('UPDATE schema_version SET version = ?', current + 1)
   }
 }

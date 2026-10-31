@@ -15,7 +15,8 @@ beforeAll(async () => {
   app = createApp({ actors: await startTestActors(), devToken: 'test-token', validateOutput: true })
 }, 60_000)
 
-const client = () => createApiClient({ baseUrl: 'http://ideaf.test', token: 'test-token', fetch: (r) => app(r), validateOutput: true })
+const client = () =>
+  createApiClient({ baseUrl: 'http://ideaf.test', token: 'test-token', fetch: (r) => app(r), validateOutput: true })
 const PLAN = '# Plan\n\nThe quick brown fox.\n\n## Risks\n\nIt might rain.\n'
 
 test('the agent loop: create, show blocks, comment, dry run, edit, pull, sync', async () => {
@@ -31,14 +32,26 @@ test('the agent loop: create, show blocks, comment, dry run, edit, pull, sync', 
     ['s4', 'heading'],
     ['b5', 'paragraph'],
   ])
-  const { comment } = await api.addComment({ idea, version: 1, anchor: { kind: 'text', file: 'f1', start: 15, end: 20 }, body: 'Which brown?' })
-  expect((await api.showBlocks({ idea })).comments.map((c) => [c.id, c.anchor])).toEqual([[comment, { kind: 'text', file: 'f1', start: 15, end: 20, quote: 'brown' }]])
+  const { comment } = await api.addComment({
+    idea,
+    version: 1,
+    anchor: { kind: 'text', file: 'f1', start: 15, end: 20 },
+    body: 'Which brown?',
+  })
+  expect((await api.showBlocks({ idea })).comments.map((c) => [c.id, c.anchor])).toEqual([
+    [comment, { kind: 'text', file: 'f1', start: 15, end: 20, quote: 'brown' }],
+  ])
 
   // plan an edit that addresses the comment; dry-run it, then apply it
-  const batch = { base: 1, steps: [{ command: 'replace' as const, in: 'b3', old: 'brown', new: 'red', addresses: [comment] }] }
+  const batch = {
+    base: 1,
+    steps: [{ command: 'replace' as const, in: 'b3', old: 'brown', new: 'red', addresses: [comment] }],
+  }
   const preview = await api.previewEdit({ idea, batch })
   expect(preview.files).toEqual([{ file: 'f1', path: 'plan.md', before: PLAN, content: PLAN.replace('brown', 'red') }])
-  expect(preview.comments).toEqual([{ id: comment, state: 'changed', anchor: { kind: 'text', file: 'f1', start: 15, end: 18, quote: 'red' } }])
+  expect(preview.comments).toEqual([
+    { id: comment, state: 'changed', anchor: { kind: 'text', file: 'f1', start: 15, end: 18, quote: 'red' } },
+  ])
   const edited = await api.edit({ idea, batch })
   expect(edited.version).toBe(2)
   const [thread] = await api.listComments({ idea })
@@ -46,9 +59,22 @@ test('the agent loop: create, show blocks, comment, dry run, edit, pull, sync', 
 
   // pull the result, edit it locally, and sync it back with its base
   const pulled = await api.pull({ idea })
-  expect(pulled).toEqual({ version: 2, files: [{ file: 'f1', path: 'plan.md', hash: await contentHash(PLAN.replace('brown', 'red')), content: PLAN.replace('brown', 'red') }] })
+  expect(pulled).toEqual({
+    version: 2,
+    files: [
+      {
+        file: 'f1',
+        path: 'plan.md',
+        hash: await contentHash(PLAN.replace('brown', 'red')),
+        content: PLAN.replace('brown', 'red'),
+      },
+    ],
+  })
   const local = pulled.files[0]!
-  const synced = await api.sync({ idea, files: [{ file: local.file, path: local.path, content: `${local.content}\nMore.\n`, base: local.hash }] })
+  const synced = await api.sync({
+    idea,
+    files: [{ file: local.file, path: local.path, content: `${local.content}\nMore.\n`, base: local.hash }],
+  })
   expect(synced.version).toBe(3)
   expect((await api.getIdea({ idea })).versions.map((v) => v.how)).toEqual(['created', 'commands', 'upload'])
 
@@ -66,13 +92,24 @@ test('errors come back as ApiError with their codes and details', async () => {
   await api.edit({ idea, batch: { base: 1, steps: [{ command: 'replace', in: 'b5', old: 'rain', new: 'snow' }] } })
 
   // syncing from a stale base: pull first
-  const stale = await api.sync({ idea, files: [{ file: 'f1', path: 'a.md', content: PLAN.replace('fox', 'cat'), base: pulled.files[0]!.hash }] }).catch((e: unknown) => e)
+  const stale = await api
+    .sync({
+      idea,
+      files: [{ file: 'f1', path: 'a.md', content: PLAN.replace('fox', 'cat'), base: pulled.files[0]!.hash }],
+    })
+    .catch((e: unknown) => e)
   expect(stale).toBeInstanceOf(ApiError)
   expect(stale).toMatchObject({ code: 'pull_first', status: 409, details: { latest: 2, files: [{ file: 'f1' }] } })
 
   // a batch that no longer applies: conflict, naming the step
-  const conflict = await api.edit({ idea, batch: { base: 1, steps: [{ command: 'replace', in: 'b5', old: 'rain', new: 'hail' }] } }).catch((e: unknown) => e)
-  expect(conflict).toMatchObject({ code: 'conflict', status: 409, details: { conflicts: [{ step: 0, reason: 'no_match' }] } })
+  const conflict = await api
+    .edit({ idea, batch: { base: 1, steps: [{ command: 'replace', in: 'b5', old: 'rain', new: 'hail' }] } })
+    .catch((e: unknown) => e)
+  expect(conflict).toMatchObject({
+    code: 'conflict',
+    status: 409,
+    details: { conflicts: [{ step: 0, reason: 'no_match' }] },
+  })
 
   // a malformed batch never leaves the client
   await expect(api.edit({ idea, batch: { base: 1, steps: [] } })).rejects.toMatchObject({ code: 'invalid', status: 0 })
@@ -87,14 +124,23 @@ test('errors come back as ApiError with their codes and details', async () => {
 test('a retried create finds the same idea instead of making another', async () => {
   const api = client()
   const key = crypto.randomUUID()
-  const first = await api.createIdea({ title: 'Once', files: [{ path: 'a.md', content: '# A\n' }] }, { idempotencyKey: key })
-  const again = await api.createIdea({ title: 'Once', files: [{ path: 'a.md', content: '# A\n' }] }, { idempotencyKey: key })
+  const first = await api.createIdea(
+    { title: 'Once', files: [{ path: 'a.md', content: '# A\n' }] },
+    { idempotencyKey: key },
+  )
+  const again = await api.createIdea(
+    { title: 'Once', files: [{ path: 'a.md', content: '# A\n' }] },
+    { idempotencyKey: key },
+  )
   expect(again).toEqual(first)
   expect(first.idea).toBe(await ideaIdFor({ user: 'dev', bot: null, purpose: 'me' }, key))
 })
 
 test('/openapi.json and /health need no token', async () => {
   const openapi = await (await app(new Request('http://ideaf.test/openapi.json'))).json()
-  expect(openapi).toMatchObject({ openapi: '3.1.0', paths: { '/ideas/{idea}/edits': { post: { operationId: 'edit' } } } })
+  expect(openapi).toMatchObject({
+    openapi: '3.1.0',
+    paths: { '/ideas/{idea}/edits': { post: { operationId: 'edit' } } },
+  })
   expect(await (await app(new Request('http://ideaf.test/health'))).json()).toEqual({ ok: true })
 })

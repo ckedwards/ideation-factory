@@ -37,7 +37,13 @@ export const Command = z.discriminatedUnion('command', [
   z.strictObject({ command: z.literal('insert'), at: Position, markdown: Markdown.min(1), addresses }),
   z.strictObject({ command: z.literal('delete'), target: BlockOrSection, expect, addresses }),
   z.strictObject({ command: z.literal('move'), target: BlockOrSection, to: Position, expect, addresses }),
-  z.strictObject({ command: z.literal('rename-heading'), target: SectionId, title: z.string().min(1).max(500), expect, addresses }),
+  z.strictObject({
+    command: z.literal('rename-heading'),
+    target: SectionId,
+    title: z.string().min(1).max(500),
+    expect,
+    addresses,
+  }),
   /** Rewrites a section's own body (up to its first subsection), keeping the heading and subsections. */
   z.strictObject({ command: z.literal('set-section'), target: SectionId, markdown: Markdown, expect, addresses }),
   z.strictObject({ command: z.literal('rename-file'), file: FileId, path: Path, addresses }),

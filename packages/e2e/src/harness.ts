@@ -12,7 +12,9 @@ const TOKEN = 'e2e-token'
 let app: ((request: Request) => Promise<Response>) | null = null
 
 export async function server(): Promise<(request: Request) => Promise<Response>> {
-  if (app) return app
+  if (app) {
+    return app
+  }
   app = createApp({ actors: await startTestActors(), devToken: TOKEN, validateOutput: true })
   return app
 }
@@ -31,11 +33,16 @@ export interface Repo {
   git(...args: string[]): string
 }
 
-export async function repo(files: Record<string, string> = {}, options: { git?: boolean; token?: string | null; env?: Record<string, string> } = {}): Promise<Repo> {
+export async function repo(
+  files: Record<string, string> = {},
+  options: { git?: boolean; token?: string | null; env?: Record<string, string> } = {},
+): Promise<Repo> {
   const dir = await mkdtemp(join(tmpdir(), 'ideaf-e2e-'))
   const git = (...args: string[]) => {
     const run = Bun.spawnSync(['git', ...args], { cwd: dir, stdout: 'pipe', stderr: 'pipe' })
-    if (run.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${run.stderr.toString()}`)
+    if (run.exitCode !== 0) {
+      throw new Error(`git ${args.join(' ')}: ${run.stderr.toString()}`)
+    }
     return run.stdout.toString().trim()
   }
   if (options.git !== false) {
@@ -47,7 +54,9 @@ export async function repo(files: Record<string, string> = {}, options: { git?: 
     await mkdir(dirname(join(dir, path)), { recursive: true })
     await writeFile(join(dir, path), content)
   }
-  for (const [path, content] of Object.entries(files)) await write(path, content)
+  for (const [path, content] of Object.entries(files)) {
+    await write(path, content)
+  }
   const handler = await server()
   return {
     dir,

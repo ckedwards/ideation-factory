@@ -41,19 +41,25 @@ export class WorkerPool implements CoreRunner {
   async close(): Promise<void> {
     this.#closed = true
     this.#slots.forEach((slot, i) => {
-      if (slot) this.#retire(i, new Error('worker pool closed'))
+      if (slot) {
+        this.#retire(i, new Error('worker pool closed'))
+      }
     })
   }
 
   /** Which worker an idea's work goes to. */
   slotFor(key: string): number {
     let hash = 2166136261
-    for (let i = 0; i < key.length; i++) hash = Math.imul(hash ^ key.charCodeAt(i), 16777619)
+    for (let i = 0; i < key.length; i++) {
+      hash = Math.imul(hash ^ key.charCodeAt(i), 16777619)
+    }
     return (hash >>> 0) % this.#slots.length
   }
 
   #call(key: string, method: CoreMethod, args: unknown[]): Promise<unknown> {
-    if (this.#closed) return Promise.reject(new Error('worker pool closed'))
+    if (this.#closed) {
+      return Promise.reject(new Error('worker pool closed'))
+    }
     const index = this.slotFor(key)
     const slot = this.#slot(index)
     const id = this.#nextId++
@@ -68,16 +74,23 @@ export class WorkerPool implements CoreRunner {
 
   #slot(index: number): Slot {
     const existing = this.#slots[index]
-    if (existing) return existing
+    if (existing) {
+      return existing
+    }
     const worker = new Worker(new URL('./worker.ts', import.meta.url).href)
     const slot: Slot = { worker, pending: new Map() }
     worker.onmessage = (event: MessageEvent<{ id: number; result?: unknown; error?: string }>) => {
       const pending = slot.pending.get(event.data.id)
-      if (!pending) return
+      if (!pending) {
+        return
+      }
       slot.pending.delete(event.data.id)
       clearTimeout(pending.timer)
-      if (event.data.error !== undefined) pending.reject(new Error(event.data.error))
-      else pending.resolve(event.data.result)
+      if (event.data.error !== undefined) {
+        pending.reject(new Error(event.data.error))
+      } else {
+        pending.resolve(event.data.result)
+      }
     }
     worker.onerror = (event) => this.#retire(index, new Error(`core worker failed: ${event.message}`))
     // don't keep the process alive just for idle workers
@@ -89,7 +102,9 @@ export class WorkerPool implements CoreRunner {
   /** Ends a worker and fails its calls; the next call to that slot starts a new one. */
   #retire(index: number, error: Error): void {
     const slot = this.#slots[index]
-    if (!slot) return
+    if (!slot) {
+      return
+    }
     this.#slots[index] = null
     slot.worker.terminate()
     for (const pending of slot.pending.values()) {

@@ -5,22 +5,52 @@
 import { contentHash } from '@ideaf/core'
 import { CliError, type Context, EXIT } from '../context.ts'
 import { mergeFile } from '../merge.ts'
-import { activeIdea, type IdeaState, readState, readText, removeFile, setActiveIdea, writeState, writeText } from '../workspace.ts'
+import {
+  activeIdea,
+  type IdeaState,
+  readState,
+  readText,
+  removeFile,
+  setActiveIdea,
+  writeState,
+  writeText,
+} from '../workspace.ts'
 
-type Change = { path: string; change: 'written' | 'merged' | 'conflict' | 'moved' | 'deleted' | 'kept' | 'unchanged'; from?: string }
+type Change = {
+  path: string
+  change: 'written' | 'merged' | 'conflict' | 'moved' | 'deleted' | 'kept' | 'unchanged'
+  from?: string
+}
 
 export async function pull(ctx: Context, flags: { idea?: string }): Promise<number> {
   const id = flags.idea ?? (await activeIdea(ctx.ws))
-  if (!id) throw new CliError('no idea here yet: run `ideaf start`, or `ideaf pull --idea <id>` to start tracking one', EXIT.usage, 'no_idea')
+  if (!id) {
+    throw new CliError(
+      'no idea here yet: run `ideaf start`, or `ideaf pull --idea <id>` to start tracking one',
+      EXIT.usage,
+      'no_idea',
+    )
+  }
   return ctx.lock(id, () => run(ctx, id))
 }
 
 async function run(ctx: Context, id: string): Promise<number> {
-  const state: IdeaState = (await readState(ctx.ws, id)) ?? { idea: id, server: ctx.server, version: 0, branch: ctx.ws.git?.branch ?? null, files: {} }
+  const state: IdeaState = (await readState(ctx.ws, id)) ?? {
+    idea: id,
+    server: ctx.server,
+    version: 0,
+    branch: ctx.ws.git?.branch ?? null,
+    files: {},
+  }
   const latest = await ctx.api.pull({ idea: id })
   const baseVersions = new Map<number, Map<string, string>>()
   const baseContent = async (version: number, file: string) => {
-    if (!baseVersions.has(version)) baseVersions.set(version, new Map((await ctx.api.pull({ idea: id, version })).files.map((f) => [f.file, f.content])))
+    if (!baseVersions.has(version)) {
+      baseVersions.set(
+        version,
+        new Map((await ctx.api.pull({ idea: id, version })).files.map((f) => [f.file, f.content])),
+      )
+    }
     return baseVersions.get(version)!.get(file) ?? ''
   }
 
@@ -56,8 +86,12 @@ async function run(ctx: Context, id: string): Promise<number> {
       await removeFile(ctx.ws, oldPath)
       changes.push({ path: remote.path, change: 'moved', from: oldPath })
     }
-    if (change !== 'unchanged' || oldPath !== remote.path) await writeText(ctx.ws, remote.path, content)
-    if (change !== 'unchanged') changes.push({ path: remote.path, change })
+    if (change !== 'unchanged' || oldPath !== remote.path) {
+      await writeText(ctx.ws, remote.path, content)
+    }
+    if (change !== 'unchanged') {
+      changes.push({ path: remote.path, change })
+    }
   }
 
   // files deleted on the server
@@ -73,15 +107,22 @@ async function run(ctx: Context, id: string): Promise<number> {
   }
 
   await writeState(ctx.ws, { ...state, version: latest.version, files })
-  if (!(await activeIdea(ctx.ws))) await setActiveIdea(ctx.ws, id)
+  if (!(await activeIdea(ctx.ws))) {
+    await setActiveIdea(ctx.ws, id)
+  }
 
   const conflicts = changes.filter((c) => c.change === 'conflict')
-  if (changes.length === 0) ctx.say(`Already up to date with v${latest.version}.`)
-  else {
+  if (changes.length === 0) {
+    ctx.say(`Already up to date with v${latest.version}.`)
+  } else {
     ctx.say(`Pulled v${latest.version}:`)
-    for (const c of changes) ctx.say(`  ${c.change.padEnd(9)} ${c.from ? `${c.from} → ` : ''}${c.path}`)
+    for (const c of changes) {
+      ctx.say(`  ${c.change.padEnd(9)} ${c.from ? `${c.from} → ` : ''}${c.path}`)
+    }
   }
-  if (conflicts.length) ctx.say(`Resolve the conflict markers in ${conflicts.map((c) => c.path).join(', ')}, then run \`ideaf sync\`.`)
+  if (conflicts.length) {
+    ctx.say(`Resolve the conflict markers in ${conflicts.map((c) => c.path).join(', ')}, then run \`ideaf sync\`.`)
+  }
   ctx.result({ idea: id, version: latest.version, changes })
   return conflicts.length ? EXIT.mergeConflicts : EXIT.ok
 }

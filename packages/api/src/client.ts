@@ -42,7 +42,9 @@ export function createApiClient<Ops extends Record<string, Operation> = Operatio
 
   const call = async (operation: Operation, input: unknown, callOptions: CallOptions = {}): Promise<unknown> => {
     const parsed = operation.input.safeParse(input)
-    if (!parsed.success) throw new ApiError('invalid', describeIssues(parsed.error), 0, parsed.error.issues)
+    if (!parsed.success) {
+      throw new ApiError('invalid', describeIssues(parsed.error), 0, parsed.error.issues)
+    }
     const values = { ...(parsed.data as Record<string, unknown>) }
     let path = operation.path
     for (const name of pathParams(operation.path)) {
@@ -52,7 +54,11 @@ export function createApiClient<Ops extends Record<string, Operation> = Operatio
     const url = new URL(base + path)
     let body: string | undefined
     if (operation.method === 'GET') {
-      for (const [name, value] of Object.entries(values)) if (value !== undefined) url.searchParams.set(name, String(value))
+      for (const [name, value] of Object.entries(values)) {
+        if (value !== undefined) {
+          url.searchParams.set(name, String(value))
+        }
+      }
     } else {
       body = JSON.stringify(values)
     }
@@ -60,15 +66,34 @@ export function createApiClient<Ops extends Record<string, Operation> = Operatio
 
     for (let attempt = 0; ; attempt++) {
       const headers = new Headers({ accept: 'application/json' })
-      if (body !== undefined) headers.set('content-type', 'application/json')
-      if (key) headers.set('idempotency-key', key)
+      if (body !== undefined) {
+        headers.set('content-type', 'application/json')
+      }
+      if (key) {
+        headers.set('idempotency-key', key)
+      }
       const token = typeof options.token === 'function' ? await options.token() : options.token
-      if (token) headers.set('authorization', `Bearer ${token}`)
+      if (token) {
+        headers.set('authorization', `Bearer ${token}`)
+      }
       let response: Response
       try {
-        response = await send(new Request(url, { method: operation.method, headers, ...(body !== undefined ? { body } : {}), ...(callOptions.signal ? { signal: callOptions.signal } : {}) }))
+        response = await send(
+          new Request(url, {
+            method: operation.method,
+            headers,
+            ...(body !== undefined ? { body } : {}),
+            ...(callOptions.signal ? { signal: callOptions.signal } : {}),
+          }),
+        )
       } catch (error) {
-        if (callOptions.signal?.aborted || attempt >= retries) throw new ApiError('timed_out', `couldn't reach ${base}: ${error instanceof Error ? error.message : String(error)}`, 0)
+        if (callOptions.signal?.aborted || attempt >= retries) {
+          throw new ApiError(
+            'timed_out',
+            `couldn't reach ${base}: ${error instanceof Error ? error.message : String(error)}`,
+            0,
+          )
+        }
         await pause(attempt)
         continue
       }
@@ -79,19 +104,29 @@ export function createApiClient<Ops extends Record<string, Operation> = Operatio
       const payload: unknown = await response.json().catch(() => null)
       if (!response.ok) {
         const parsedError = ApiErrorBody.safeParse((payload as { error?: unknown } | null)?.error)
-        if (parsedError.success) throw new ApiError(parsedError.data.code, parsedError.data.message, response.status, parsedError.data.details)
+        if (parsedError.success) {
+          throw new ApiError(parsedError.data.code, parsedError.data.message, response.status, parsedError.data.details)
+        }
         throw new ApiError('internal', `${operation.name} failed with HTTP ${response.status}`, response.status)
       }
       if (options.validateOutput) {
         const checked = operation.output.safeParse(payload)
-        if (!checked.success) throw new ApiError('internal', `${operation.name} returned an unexpected response: ${describeIssues(checked.error)}`, response.status)
+        if (!checked.success) {
+          throw new ApiError(
+            'internal',
+            `${operation.name} returned an unexpected response: ${describeIssues(checked.error)}`,
+            response.status,
+          )
+        }
       }
       return payload
     }
   }
 
   const client = {} as Record<string, (input: unknown, o?: CallOptions) => Promise<unknown>>
-  for (const [name, operation] of Object.entries(operations)) client[name] = (input, o) => call(operation, input, o)
+  for (const [name, operation] of Object.entries(operations)) {
+    client[name] = (input, o) => call(operation, input, o)
+  }
   return client as ApiClient<Ops>
 }
 

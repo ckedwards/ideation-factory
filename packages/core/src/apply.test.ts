@@ -30,7 +30,9 @@ function run(idea: Idea, comments: Comment[], ...steps: Command[]): BatchResult 
 }
 
 function ok(result: BatchResult) {
-  if (!result.ok) throw new Error(`expected the batch to apply: ${JSON.stringify(result.conflicts)}`)
+  if (!result.ok) {
+    throw new Error(`expected the batch to apply: ${JSON.stringify(result.conflicts)}`)
+  }
   return result
 }
 
@@ -87,7 +89,12 @@ describe('replace', () => {
   })
 
   test('replacing a whole paragraph keeps its block ID', () => {
-    const r = run(plan(), [], { command: 'replace', in: 'b5', old: 'It might rain on the day.', new: 'Rain is likely.' })
+    const r = run(plan(), [], {
+      command: 'replace',
+      in: 'b5',
+      old: 'It might rain on the day.',
+      new: 'Rain is likely.',
+    })
     expect(source(r)).toContain('## Risks\n\nRain is likely.\n\n- Weather')
     expect(ids(r)).toEqual(plan().files[0]!.unitIds)
   })
@@ -97,9 +104,14 @@ describe('replace', () => {
     const none = run(idea, [], { command: 'replace', in: 'b3', old: 'purple', new: 'x' })
     expect(none).toEqual({ ok: false, conflicts: [expect.objectContaining({ step: 0, reason: 'no_match' })] })
     const several = run(idea, [], { command: 'replace', in: 'f1', old: 'the', new: 'a' })
-    expect(several).toEqual({ ok: false, conflicts: [expect.objectContaining({ reason: 'ambiguous', message: expect.stringContaining('3 times') })] })
+    expect(several).toEqual({
+      ok: false,
+      conflicts: [expect.objectContaining({ reason: 'ambiguous', message: expect.stringContaining('3 times') })],
+    })
     // the same text, scoped to one block, is fine
-    expect(source(run(idea, [], { command: 'replace', in: 'b5', old: 'the', new: 'a' }))).toContain('It might rain on a day.')
+    expect(source(run(idea, [], { command: 'replace', in: 'b5', old: 'the', new: 'a' }))).toContain(
+      'It might rain on a day.',
+    )
   })
 
   test('duplicated text: each copy keeps its own comment', () => {
@@ -245,8 +257,12 @@ describe('rename-heading', () => {
 
   test('setext and closed ATX headings', () => {
     const idea = createIdea([{ path: 'a.md', source: 'Title\n=====\n\n## Old ##\n' }])
-    expect(source(run(idea, [], { command: 'rename-heading', target: 's2', title: 'New title' }))).toBe('New title\n=====\n\n## Old ##\n')
-    expect(source(run(idea, [], { command: 'rename-heading', target: 's3', title: 'New' }))).toBe('Title\n=====\n\n## New ##\n')
+    expect(source(run(idea, [], { command: 'rename-heading', target: 's2', title: 'New title' }))).toBe(
+      'New title\n=====\n\n## Old ##\n',
+    )
+    expect(source(run(idea, [], { command: 'rename-heading', target: 's3', title: 'New' }))).toBe(
+      'Title\n=====\n\n## New ##\n',
+    )
   })
 })
 
@@ -260,7 +276,11 @@ describe('set-section', () => {
         { id: 'survives', anchor: textAnchor(idea, 'f1', 'Budget') },
         { id: 'section', anchor: { kind: 'section', file: 'f1', section: 's4' } },
       ],
-      { command: 'set-section', target: 's4', markdown: 'Storms are likely in spring.\n\n- Weather\n- Budget\n- Staff' },
+      {
+        command: 'set-section',
+        target: 's4',
+        markdown: 'Storms are likely in spring.\n\n- Weather\n- Budget\n- Staff',
+      },
     )
     expect(source(r)).toContain('## Risks\n\nStorms are likely in spring.\n\n- Weather\n- Budget\n- Staff\n\n## Costs')
     expect(outcome(r, 'rewritten').state).toBe('outdated')
@@ -272,7 +292,9 @@ describe('set-section', () => {
 
   test('keeps subsections, and refuses a body with headings', () => {
     const idea = createIdea([{ path: 'a.md', source: '# A\n\nOld body.\n\n## B\n\nKept.\n' }])
-    expect(source(run(idea, [], { command: 'set-section', target: 's2', markdown: 'New body.' }))).toBe('# A\n\nNew body.\n\n## B\n\nKept.\n')
+    expect(source(run(idea, [], { command: 'set-section', target: 's2', markdown: 'New body.' }))).toBe(
+      '# A\n\nNew body.\n\n## B\n\nKept.\n',
+    )
     const r = run(idea, [], { command: 'set-section', target: 's2', markdown: 'Text\n\n## Sneaky' })
     expect(r).toEqual({ ok: false, conflicts: [expect.objectContaining({ reason: 'invalid' })] })
   })
@@ -284,17 +306,27 @@ describe('insert', () => {
     expect(source(run(idea, [], { command: 'insert', at: { after: 'b3' }, markdown: 'New paragraph.' }))).toContain(
       'lazy dog.\n\nNew paragraph.\n\n## Risks',
     )
-    expect(source(run(idea, [], { command: 'insert', at: { before: 's8' }, markdown: '## Timeline\n\nSoon.' }))).toContain(
-      '- Budget\n\n## Timeline\n\nSoon.\n\n## Costs',
+    expect(
+      source(run(idea, [], { command: 'insert', at: { before: 's8' }, markdown: '## Timeline\n\nSoon.' })),
+    ).toContain('- Budget\n\n## Timeline\n\nSoon.\n\n## Costs')
+    expect(source(run(idea, [], { command: 'insert', at: { after: 'b6' }, markdown: '- Staff' }))).toContain(
+      '- Weather\n- Staff\n- Budget\n',
     )
-    expect(source(run(idea, [], { command: 'insert', at: { after: 'b6' }, markdown: '- Staff' }))).toContain('- Weather\n- Staff\n- Budget\n')
-    expect(source(run(idea, [], { command: 'insert', at: { start: 'f1' }, markdown: 'Draft.' }))).toStartWith('Draft.\n\n# Plan\n')
-    expect(source(run(idea, [], { command: 'insert', at: { end: 'f1' }, markdown: 'The end.' }))).toEndWith('Cheap enough.\n\nThe end.\n')
+    expect(source(run(idea, [], { command: 'insert', at: { start: 'f1' }, markdown: 'Draft.' }))).toStartWith(
+      'Draft.\n\n# Plan\n',
+    )
+    expect(source(run(idea, [], { command: 'insert', at: { end: 'f1' }, markdown: 'The end.' }))).toEndWith(
+      'Cheap enough.\n\nThe end.\n',
+    )
   })
 
   test('inserted text gets new IDs and nothing else changes', () => {
     const idea = plan()
-    const r = run(idea, [{ id: 'c1', anchor: textAnchor(idea, 'f1', 'Cheap') }], { command: 'insert', at: { after: 'b6' }, markdown: '- Staff' })
+    const r = run(idea, [{ id: 'c1', anchor: textAnchor(idea, 'f1', 'Cheap') }], {
+      command: 'insert',
+      at: { after: 'b6' },
+      markdown: '- Staff',
+    })
     expect(ids(r)).toEqual(['s2', 'b3', 's4', 'b5', 'b6', 'b10', 'b7', 's8', 'b9'])
     expect(outcome(r, 'c1').state).toBe('exact')
   })
@@ -359,7 +391,10 @@ describe('batches', () => {
     )
     expect(r).toEqual({
       ok: false,
-      conflicts: [expect.objectContaining({ step: 1, reason: 'not_found' }), expect.objectContaining({ step: 2, reason: 'no_match' })],
+      conflicts: [
+        expect.objectContaining({ step: 1, reason: 'not_found' }),
+        expect.objectContaining({ step: 2, reason: 'no_match' }),
+      ],
     })
   })
 
@@ -385,14 +420,18 @@ describe('batches', () => {
   test('steps record the comments they address, which must exist', () => {
     const idea = plan()
     const comments: Comment[] = [{ id: 'c12', anchor: textAnchor(idea, 'f1', 'Cheap') }]
-    const r = ok(run(idea, comments, { command: 'replace', in: 'b9', old: 'Cheap', new: 'Affordable', addresses: ['c12'] }))
+    const r = ok(
+      run(idea, comments, { command: 'replace', in: 'b9', old: 'Cheap', new: 'Affordable', addresses: ['c12'] }),
+    )
     expect(r.steps).toEqual([{ step: 0, command: 'replace', addresses: ['c12'] }])
     const bad = run(idea, comments, { command: 'replace', in: 'b9', old: 'Cheap', new: 'x', addresses: ['c99'] })
     expect(bad).toEqual({ ok: false, conflicts: [expect.objectContaining({ reason: 'invalid' })] })
   })
 
   test('IDs are never reused', () => {
-    const r = ok(run(plan(), [], { command: 'delete', target: 'b9' }, { command: 'insert', at: { end: 'f1' }, markdown: 'New.' }))
+    const r = ok(
+      run(plan(), [], { command: 'delete', target: 'b9' }, { command: 'insert', at: { end: 'f1' }, markdown: 'New.' }),
+    )
     expect(r.idea.files[0]!.unitIds.at(-1)).toBe('b10')
     expect(r.idea.nextId).toBe(11)
   })

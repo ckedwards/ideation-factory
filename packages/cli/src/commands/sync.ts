@@ -7,11 +7,21 @@ import { EXIT } from '../context.ts'
 import { type IdeaState, readText, scanMarkdown, scopeFrom, writeState } from '../workspace.ts'
 import { describeOutcomes } from './output.ts'
 
-export function sync(ctx: Context, flags: { idea?: string; force?: boolean }, path: string | undefined): Promise<number> {
+export function sync(
+  ctx: Context,
+  flags: { idea?: string; force?: boolean },
+  path: string | undefined,
+): Promise<number> {
   return ctx.locked(flags.idea, ({ id, state }) => run(ctx, id, state, flags, path))
 }
 
-async function run(ctx: Context, id: string, state: IdeaState, flags: { force?: boolean }, path: string | undefined): Promise<number> {
+async function run(
+  ctx: Context,
+  id: string,
+  state: IdeaState,
+  flags: { force?: boolean },
+  path: string | undefined,
+): Promise<number> {
   const scope = scopeFrom(ctx.ws, ctx.io.cwd, path)
   const inScope = (p: string) => !scope || p === scope || p.startsWith(`${scope}/`)
   const local = new Map<string, { content: string; hash: string }>()
@@ -26,7 +36,9 @@ async function run(ctx: Context, id: string, state: IdeaState, flags: { force?: 
   for (const [p, { content, hash }] of local) {
     const tracked = state.files[p]
     if (tracked) {
-      if (hash !== tracked.base) files.push({ file: tracked.file, path: p, content, base: tracked.base })
+      if (hash !== tracked.base) {
+        files.push({ file: tracked.file, path: p, content, base: tracked.base })
+      }
       continue
     }
     // a file that disappeared with exactly this content was moved here: send it as a rename
@@ -46,16 +58,33 @@ async function run(ctx: Context, id: string, state: IdeaState, flags: { force?: 
     return EXIT.ok
   }
 
-  const result = await ctx.api.sync({ idea: id, files, ...(deleted.length ? { deleted } : {}), ...(flags.force ? { force: true } : {}) })
+  const result = await ctx.api.sync({
+    idea: id,
+    files,
+    ...(deleted.length ? { deleted } : {}),
+    ...(flags.force ? { force: true } : {}),
+  })
   const pulled = await ctx.api.pull({ idea: id, version: result.version })
   const hashes = new Map([...local].map(([p, f]) => [p, f.hash]))
   const next = { ...state, version: result.version, files: { ...state.files } }
-  for (const p of Object.keys(next.files)) if (inScope(p) && !local.has(p)) delete next.files[p]
-  for (const f of pulled.files) if (hashes.get(f.path) === f.hash) next.files[f.path] = { file: f.file, base: f.hash, version: result.version }
+  for (const p of Object.keys(next.files)) {
+    if (inScope(p) && !local.has(p)) {
+      delete next.files[p]
+    }
+  }
+  for (const f of pulled.files) {
+    if (hashes.get(f.path) === f.hash) {
+      next.files[f.path] = { file: f.file, base: f.hash, version: result.version }
+    }
+  }
   await writeState(ctx.ws, next)
 
-  ctx.say(`Synced ${files.length} file${files.length === 1 ? '' : 's'}${deleted.length ? ` and deleted ${deleted.length}` : ''} as v${result.version}.`)
-  for (const line of describeOutcomes(result.comments)) ctx.say(line)
+  ctx.say(
+    `Synced ${files.length} file${files.length === 1 ? '' : 's'}${deleted.length ? ` and deleted ${deleted.length}` : ''} as v${result.version}.`,
+  )
+  for (const line of describeOutcomes(result.comments)) {
+    ctx.say(line)
+  }
   ctx.result({ idea: id, ...result, uploaded: files.map((f) => f.path), deleted })
   return EXIT.ok
 }

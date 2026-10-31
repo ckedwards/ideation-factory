@@ -2,7 +2,15 @@
 // respects --json, and errors with stable exit codes.
 import { type ApiClient, ApiError, createApiClient } from '@ideaf/api'
 import type { Io } from './io.ts'
-import { activeIdea, IdeaBusy, type IdeaState, openWorkspace, readState, type Workspace, withIdeaLock } from './workspace.ts'
+import {
+  activeIdea,
+  IdeaBusy,
+  type IdeaState,
+  openWorkspace,
+  readState,
+  type Workspace,
+  withIdeaLock,
+} from './workspace.ts'
 
 /** Stable exit codes, so scripts and agents can tell outcomes apart. */
 export const EXIT = {
@@ -57,19 +65,29 @@ export function createContext(io: Io, json: boolean): Context {
   const api = createApiClient({
     baseUrl: server,
     token: () => {
-      if (!token) throw new CliError('no token: set IDEAF_TOKEN (the local dev server takes "dev")', EXIT.unauthorized, 'unauthorized')
+      if (!token) {
+        throw new CliError(
+          'no token: set IDEAF_TOKEN (the local dev server takes "dev")',
+          EXIT.unauthorized,
+          'unauthorized',
+        )
+      }
       return token
     },
     ...(io.fetch ? { fetch: io.fetch } : {}),
   })
   const ideaId = async (flag: string | undefined) => {
     const id = flag ?? (await activeIdea(ws))
-    if (!id) throw new CliError('no idea here yet: run `ideaf start`, or pass --idea <id>', EXIT.usage, 'no_idea')
+    if (!id) {
+      throw new CliError('no idea here yet: run `ideaf start`, or pass --idea <id>', EXIT.usage, 'no_idea')
+    }
     return id
   }
   const stateOf = async (id: string) => {
     const state = await readState(ws, id)
-    if (!state) throw new CliError(`no local state for ${id}: run \`ideaf pull --idea ${id}\` first`, EXIT.usage, 'no_state')
+    if (!state) {
+      throw new CliError(`no local state for ${id}: run \`ideaf pull --idea ${id}\` first`, EXIT.usage, 'no_state')
+    }
     return state
   }
   const waitMs = Number(io.env.IDEAF_LOCK_WAIT_MS ?? 5000)
@@ -78,7 +96,12 @@ export function createContext(io: Io, json: boolean): Context {
       return await withIdeaLock(ws, id, fn, waitMs)
     } catch (error) {
       if (error instanceof IdeaBusy) {
-        throw new CliError(`${error.message}; try again when it's done, or run \`ideaf unlock\` if it crashed or was interrupted`, EXIT.busy, 'busy', error.holder ?? undefined)
+        throw new CliError(
+          `${error.message}; try again when it's done, or run \`ideaf unlock\` if it crashed or was interrupted`,
+          EXIT.busy,
+          'busy',
+          error.holder ?? undefined,
+        )
       }
       throw error
     }
@@ -100,17 +123,23 @@ export function createContext(io: Io, json: boolean): Context {
     lock,
     ideaId,
     say: (text) => {
-      if (!json) io.out(text)
+      if (!json) {
+        io.out(text)
+      }
     },
     result: (value) => {
-      if (json) io.out(JSON.stringify(value, null, 2))
+      if (json) {
+        io.out(JSON.stringify(value, null, 2))
+      }
     },
   }
 }
 
 /** Turns an API error into the cli's error and exit code. */
 export function fromApiError(error: unknown): CliError {
-  if (error instanceof CliError) return error
+  if (error instanceof CliError) {
+    return error
+  }
   if (error instanceof ApiError) {
     const exit =
       error.code === 'pull_first'

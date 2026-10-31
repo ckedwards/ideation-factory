@@ -21,20 +21,41 @@ export type Caller = z.infer<typeof Caller>
 export const Anchor = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('file'), file: z.string() }),
   z.object({ kind: z.literal('section'), file: z.string(), section: z.string() }),
-  z.object({ kind: z.literal('text'), file: z.string(), start: z.number().int(), end: z.number().int(), quote: z.string() }),
+  z.object({
+    kind: z.literal('text'),
+    file: z.string(),
+    start: z.number().int(),
+    end: z.number().int(),
+    quote: z.string(),
+  }),
 ])
 
 export const AnchorInput = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('file'), file: FileId }),
   z.strictObject({ kind: z.literal('section'), section: z.string() }),
-  z.strictObject({ kind: z.literal('text'), file: FileId, start: z.number().int().nonnegative(), end: z.number().int().positive() }),
+  z.strictObject({
+    kind: z.literal('text'),
+    file: FileId,
+    start: z.number().int().nonnegative(),
+    end: z.number().int().positive(),
+  }),
 ])
 
 export const AnchorState = z.enum(['exact', 'moved', 'changed', 'outdated'])
 
 export const CommentOutcome = z.object({ id: z.string(), state: AnchorState, anchor: Anchor.nullable() })
 
-const CommandName = z.enum(['replace', 'insert', 'delete', 'move', 'rename-heading', 'set-section', 'rename-file', 'create-file', 'delete-file'])
+const CommandName = z.enum([
+  'replace',
+  'insert',
+  'delete',
+  'move',
+  'rename-heading',
+  'set-section',
+  'rename-file',
+  'create-file',
+  'delete-file',
+])
 
 export const StepResult = z.object({ step: z.number().int(), command: CommandName, addresses: z.array(z.string()) })
 
@@ -47,7 +68,19 @@ export const Conflict = z.object({
 
 export const OutlineEntry = z.object({
   id: z.string(),
-  kind: z.enum(['heading', 'paragraph', 'list-item', 'code', 'table', 'quote', 'footnote', 'html', 'thematic-break', 'front-matter', 'definition']),
+  kind: z.enum([
+    'heading',
+    'paragraph',
+    'list-item',
+    'code',
+    'table',
+    'quote',
+    'footnote',
+    'html',
+    'thematic-break',
+    'front-matter',
+    'definition',
+  ]),
   path: z.array(z.string()),
   section: z.string().nullable(),
   level: z.number().int().optional(),
@@ -67,11 +100,24 @@ export const IdeaSummary = z.object({
   createdAt: z.number(),
   latest: z.number().int(),
   versions: z.array(
-    z.object({ number: z.number().int(), parent: z.number().int().nullable(), createdAt: z.number(), by: Caller, how: VersionHow, steps: z.number().int() }),
+    z.object({
+      number: z.number().int(),
+      parent: z.number().int().nullable(),
+      createdAt: z.number(),
+      by: Caller,
+      how: VersionHow,
+      steps: z.number().int(),
+    }),
   ),
 })
 
-const CommentBase = z.object({ id: z.string(), author: Caller, createdAt: z.number(), body: z.string(), version: z.number().int() })
+const CommentBase = z.object({
+  id: z.string(),
+  author: Caller,
+  createdAt: z.number(),
+  body: z.string(),
+  version: z.number().int(),
+})
 
 export const CommentThread = CommentBase.extend({
   resolved: z.boolean(),
@@ -84,7 +130,11 @@ export const CommentThread = CommentBase.extend({
   replies: z.array(CommentBase),
 })
 
-export const VersionResult = z.object({ version: z.number().int(), comments: z.array(CommentOutcome), steps: z.array(StepResult) })
+export const VersionResult = z.object({
+  version: z.number().int(),
+  comments: z.array(CommentOutcome),
+  steps: z.array(StepResult),
+})
 
 export const FileContent = z.object({ file: z.string(), path: z.string(), hash: z.string(), content: z.string() })
 
@@ -92,7 +142,9 @@ export const FileContent = z.object({ file: z.string(), path: z.string(), hash: 
 
 /** A person, team or group named by ID or by handle (with or without @). */
 export const Ref = z.string().trim().min(1).max(64)
-export const Handle = z.string().regex(/^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/, 'a handle: 1 to 39 lowercase letters, digits and dashes')
+export const Handle = z
+  .string()
+  .regex(/^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/, 'a handle: 1 to 39 lowercase letters, digits and dashes')
 export const Cursor = z.string().max(500).optional()
 export const Limit = z.coerce.number().int().min(1).max(100).optional()
 
@@ -105,8 +157,21 @@ export const TeamDefaults = z.strictObject({
   groups: z.array(z.strictObject({ group: z.string(), edit: z.boolean() })).max(50),
 })
 
-const ContainerFields = { id: z.string(), handle: z.string(), name: z.string(), description: z.string(), createdAt: z.number(), members: z.number().int() }
-export const Team = z.object({ kind: z.literal('team'), ...ContainerFields, archived: z.boolean(), createPolicy: CreatePolicy, defaults: TeamDefaults })
+const ContainerFields = {
+  id: z.string(),
+  handle: z.string(),
+  name: z.string(),
+  description: z.string(),
+  createdAt: z.number(),
+  members: z.number().int(),
+}
+export const Team = z.object({
+  kind: z.literal('team'),
+  ...ContainerFields,
+  archived: z.boolean(),
+  createPolicy: CreatePolicy,
+  defaults: TeamDefaults,
+})
 export const Group = z.object({ kind: z.literal('group'), ...ContainerFields, deleted: z.boolean() })
 export const Member = z.object({ user: User, role: Role })
 

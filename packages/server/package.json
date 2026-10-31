@@ -5,15 +5,15 @@
   "exports": {
     "./*": "./src/*"
   },
+  "scripts": {
+    "dev": "bun ../../scripts/worktree.ts exec -- bun --watch src/main.ts",
+    "typecheck": "tsc -p ."
+  },
   "dependencies": {
     "@ideaf/api": "workspace:*",
     "@ideaf/core": "workspace:*",
     "kysely": "^0.29.7",
     "rivetkit": "^2.3.31",
     "zod": "^4.6.7"
-  },
-  "scripts": {
-    "dev": "bun ../../scripts/worktree.ts exec -- bun --watch src/main.ts",
-    "typecheck": "tsc -p ."
   }
 }

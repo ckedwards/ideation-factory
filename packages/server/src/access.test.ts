@@ -15,7 +15,13 @@ beforeAll(async () => {
 // each test run uses fresh handles, so tests never collide
 const run = crypto.randomUUID().slice(0, 6)
 const handle = (name: string) => `${name}-${run}`
-const as = (name: string) => createApiClient({ baseUrl: 'http://ideaf.test', token: `tok:${handle(name)}`, fetch: (r) => app(r), validateOutput: true })
+const as = (name: string) =>
+  createApiClient({
+    baseUrl: 'http://ideaf.test',
+    token: `tok:${handle(name)}`,
+    fetch: (r) => app(r),
+    validateOutput: true,
+  })
 
 const PLAN = '# Plan\n\nThe quick brown fox.\n'
 
@@ -36,19 +42,36 @@ describe('ideas outside a team', () => {
     const { idea } = await riley.createIdea({ title: 'Private plan', files: [{ path: 'a.md', content: PLAN }] })
     // someone without access can't tell it exists
     await expect(maya.getIdea({ idea })).rejects.toMatchObject({ code: 'not_found' })
-    await expect(maya.addComment({ idea, version: 1, anchor: { kind: 'file', file: 'f1' }, body: 'hi' })).rejects.toMatchObject({ code: 'not_found' })
+    await expect(
+      maya.addComment({ idea, version: 1, anchor: { kind: 'file', file: 'f1' }, body: 'hi' }),
+    ).rejects.toMatchObject({ code: 'not_found' })
     expect((await maya.listIdeas({})).items.some((i) => i.id === idea)).toBe(false)
 
     // share it for viewing: maya can read and comment, but not edit
-    await riley.setAccess({ idea, subject: { kind: 'user', id: handle('maya') }, access: { edit: false, share: false } })
+    await riley.setAccess({
+      idea,
+      subject: { kind: 'user', id: handle('maya') },
+      access: { edit: false, share: false },
+    })
     expect((await maya.getAccess({ idea })).you).toEqual({ view: true, edit: false, share: false, owner: false })
     await maya.addComment({ idea, version: 1, anchor: { kind: 'file', file: 'f1' }, body: 'Looks good' })
-    await expect(maya.edit({ idea, batch: { base: 1, steps: [{ command: 'delete', target: 'b3' }] } })).rejects.toMatchObject({ code: 'forbidden', status: 403 })
-    await expect(maya.setAccess({ idea, subject: { kind: 'everyone' }, access: { edit: false, share: false } })).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(
+      maya.edit({ idea, batch: { base: 1, steps: [{ command: 'delete', target: 'b3' }] } }),
+    ).rejects.toMatchObject({ code: 'forbidden', status: 403 })
+    await expect(
+      maya.setAccess({ idea, subject: { kind: 'everyone' }, access: { edit: false, share: false } }),
+    ).rejects.toMatchObject({ code: 'forbidden' })
 
     // give edit: now maya can edit
     await riley.setAccess({ idea, subject: { kind: 'user', id: handle('maya') }, access: { edit: true, share: false } })
-    expect((await maya.edit({ idea, batch: { base: 1, steps: [{ command: 'replace', in: 'b3', old: 'brown', new: 'red' }] } })).version).toBe(2)
+    expect(
+      (
+        await maya.edit({
+          idea,
+          batch: { base: 1, steps: [{ command: 'replace', in: 'b3', old: 'brown', new: 'red' }] },
+        })
+      ).version,
+    ).toBe(2)
   })
 })
 
@@ -61,14 +84,24 @@ describe('ideas in a team', () => {
     expect(team).toMatchObject({ members: 1, createPolicy: 'members', defaults: { members: 'view', public: false } })
 
     // only members can create ideas in it
-    await expect(sam.createIdea({ title: 'Not mine to make', team: team.handle, files: [{ path: 'a.md', content: PLAN }] })).rejects.toMatchObject({ code: 'forbidden' })
-    const { idea } = await riley.createIdea({ title: 'Team plan', team: team.handle, files: [{ path: 'a.md', content: PLAN }] })
-    expect((await riley.getAccess({ idea })).grants).toEqual([{ subject: { kind: 'team', id: team.id }, edit: false, share: false }])
+    await expect(
+      sam.createIdea({ title: 'Not mine to make', team: team.handle, files: [{ path: 'a.md', content: PLAN }] }),
+    ).rejects.toMatchObject({ code: 'forbidden' })
+    const { idea } = await riley.createIdea({
+      title: 'Team plan',
+      team: team.handle,
+      files: [{ path: 'a.md', content: PLAN }],
+    })
+    expect((await riley.getAccess({ idea })).grants).toEqual([
+      { subject: { kind: 'team', id: team.id }, edit: false, share: false },
+    ])
     await expect(sam.getIdea({ idea })).rejects.toMatchObject({ code: 'not_found' })
 
     // joining is by request; once approved, sam can view the team's ideas
     expect(await sam.requestToJoinTeam({ team: team.handle })).toEqual({ requested: true })
-    expect((await riley.listTeamJoinRequests({ team: team.handle })).items.map((u) => u.handle)).toEqual([handle('sam')])
+    expect((await riley.listTeamJoinRequests({ team: team.handle })).items.map((u) => u.handle)).toEqual([
+      handle('sam'),
+    ])
     await riley.decideTeamJoinRequest({ team: team.handle, user: handle('sam'), approve: true })
     expect((await sam.getIdea({ idea })).title).toBe('Team plan')
     expect((await sam.listIdeas({ team: team.handle })).items.map((i) => i.id)).toEqual([idea])
@@ -84,8 +117,15 @@ describe('ideas in a team', () => {
     await devon.me({})
     const security = await devon.createGroup({ handle: handle('security'), name: 'Security' })
     const team = await riley.createTeam({ handle: handle('infra'), name: 'Infra' })
-    await riley.updateTeam({ team: team.handle, defaults: { members: 'edit', public: false, groups: [{ group: security.id, edit: false }] } })
-    const { idea } = await riley.createIdea({ title: 'Infra plan', team: team.id, files: [{ path: 'a.md', content: PLAN }] })
+    await riley.updateTeam({
+      team: team.handle,
+      defaults: { members: 'edit', public: false, groups: [{ group: security.id, edit: false }] },
+    })
+    const { idea } = await riley.createIdea({
+      title: 'Infra plan',
+      team: team.id,
+      files: [{ path: 'a.md', content: PLAN }],
+    })
     expect((await riley.getAccess({ idea })).grants.map((g) => [g.subject.kind, g.edit])).toEqual([
       ['group', false],
       ['team', true],
@@ -100,7 +140,10 @@ describe('lists and search', () => {
     const word = `zebra${run}`
     const { idea } = await riley.createIdea({ title: `The ${word} plan`, files: [{ path: 'a.md', content: PLAN }] })
     expect((await riley.searchIdeas({ q: word })).items.map((i) => i.id)).toEqual([idea])
-    await expect(riley.searchIdeas({ q: 'ze' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('at least 3 characters') })
+    await expect(riley.searchIdeas({ q: 'ze' })).rejects.toMatchObject({
+      code: 'invalid',
+      message: expect.stringContaining('at least 3 characters'),
+    })
     expect((await as('maya').searchIdeas({ q: word })).items).toEqual([])
 
     // an edit makes the idea actor update its row (coalesced, a moment later)
@@ -115,9 +158,13 @@ describe('lists and search', () => {
 
   test('people and teams by type-ahead', async () => {
     const riley = as('riley')
-    expect((await riley.findUsers({ q: handle('riley').slice(0, 9) })).items.map((u) => u.handle)).toEqual([handle('riley')])
+    expect((await riley.findUsers({ q: handle('riley').slice(0, 9) })).items.map((u) => u.handle)).toEqual([
+      handle('riley'),
+    ])
     await riley.createTeam({ handle: handle('typeahead'), name: 'Type-ahead team' })
-    expect((await riley.listTeams({ q: handle('typeahead') })).items.map((t) => t.handle)).toEqual([handle('typeahead')])
+    expect((await riley.listTeams({ q: handle('typeahead') })).items.map((t) => t.handle)).toEqual([
+      handle('typeahead'),
+    ])
   })
 })
 
@@ -131,7 +178,11 @@ describe('the move wizard', () => {
     const to = await riley.createTeam({ handle: handle('to'), name: 'To' })
     await riley.addTeamMember({ team: from.handle, user: handle('maya') })
     await riley.addTeamMember({ team: to.handle, user: handle('sam') })
-    const { idea } = await riley.createIdea({ title: 'Moving', team: from.handle, files: [{ path: 'a.md', content: PLAN }] })
+    const { idea } = await riley.createIdea({
+      title: 'Moving',
+      team: from.handle,
+      files: [{ path: 'a.md', content: PLAN }],
+    })
 
     const preview = await riley.previewMove({ idea, team: to.handle })
     expect(preview.losing).toMatchObject({ count: 1, people: [{ handle: handle('maya') }] })

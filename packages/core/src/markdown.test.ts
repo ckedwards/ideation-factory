@@ -35,8 +35,32 @@ code()
 
 [ref]: https://example.com
 `
-    expect(kinds(source)).toEqual(['front-matter', 'heading', 'paragraph', 'list-item', 'list-item', 'quote', 'code', 'table', 'thematic-break', 'html', 'definition'])
-    expect(texts(source)).toEqual(['', 'Title', 'A paragraph.', 'one', 'two', 'quoted', 'code()', 'a b 1 2', '', '', ''])
+    expect(kinds(source)).toEqual([
+      'front-matter',
+      'heading',
+      'paragraph',
+      'list-item',
+      'list-item',
+      'quote',
+      'code',
+      'table',
+      'thematic-break',
+      'html',
+      'definition',
+    ])
+    expect(texts(source)).toEqual([
+      '',
+      'Title',
+      'A paragraph.',
+      'one',
+      'two',
+      'quoted',
+      'code()',
+      'a b 1 2',
+      '',
+      '',
+      '',
+    ])
   })
 
   test('a nested list item is its own unit; its parent covers it when deleted or moved', () => {
@@ -74,16 +98,22 @@ describe('the plain-text form', () => {
     for (let i = 0; i < p.plain.text.length; i++) {
       const ch = p.plain.text[i]!
       const at = source[p.plain.source[i]!]!
-      if (ch === '*') expect(at).toBe('\\')
-      else if (ch === '&') expect(at).toBe('&')
-      else if (ch !== ' ') expect(at).toBe(ch)
+      if (ch === '*') {
+        expect(at).toBe('\\')
+      } else if (ch === '&') {
+        expect(at).toBe('&')
+      } else if (ch !== ' ') {
+        expect(at).toBe(ch)
+      }
     }
   })
 
   test('no two characters share a source offset', () => {
     const p = parseMarkdown('# A\n\n- one\n- two\n\n> a\n>\n> b\n\n| x | y |\n|---|---|\n| 1 | 2 |\n')
     expect(new Set(p.plain.source).size).toBe(p.plain.source.length)
-    for (let i = 0; i < p.plain.text.length; i++) expect(plainIndexAt(p.plain, p.plain.source[i]!)).toBe(i)
+    for (let i = 0; i < p.plain.text.length; i++) {
+      expect(plainIndexAt(p.plain, p.plain.source[i]!)).toBe(i)
+    }
   })
 
   test('knows which unit each character belongs to', () => {

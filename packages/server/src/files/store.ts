@@ -15,5 +15,7 @@ const HASH = /^[0-9a-f]{64}$/
 
 /** Throws unless `hash` is a content hash (64 lowercase hex characters). Keys never come from anything else. */
 export function assertContentHash(hash: string): void {
-  if (!HASH.test(hash)) throw new Error(`not a content hash: ${JSON.stringify(hash)}`)
+  if (!HASH.test(hash)) {
+    throw new Error(`not a content hash: ${JSON.stringify(hash)}`)
+  }
 }

@@ -5,7 +5,14 @@
 // Access: every idea operation checks the caller's permission in the directory
 // first (view to read or comment, edit to change, share to change access). An
 // idea you can't view is "not found", so its existence isn't revealed.
-import { type Caller, type Context, type HandlerResult, type Handlers, isApiErrorCode, type Operations } from '@ideaf/api'
+import {
+  type Caller,
+  type Context,
+  type HandlerResult,
+  type Handlers,
+  isApiErrorCode,
+  type Operations,
+} from '@ideaf/api'
 import type { Client } from 'rivetkit/client'
 import { DIRECTORY_KEY } from './actors/directory.ts'
 import type { ContainerKind, Permission, Result } from './directory/types.ts'
@@ -21,72 +28,146 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
   const directory = () => actors.directory.getOrCreate(DIRECTORY_KEY)
 
   /** The caller's permission on an idea, or the error to return if it isn't enough. */
-  const access = async (idea: string, caller: Caller, need: Need): Promise<{ ok: true; permission: Permission } | { ok: false; error: { code: 'not_found' | 'forbidden'; message: string } }> => {
+  const access = async (
+    idea: string,
+    caller: Caller,
+    need: Need,
+  ): Promise<
+    { ok: true; permission: Permission } | { ok: false; error: { code: 'not_found' | 'forbidden'; message: string } }
+  > => {
     const permission = await directory().permission(idea, caller.user)
-    if (!permission.view) return { ok: false, error: { code: 'not_found', message: "this idea doesn't exist, or you can't see it" } }
-    if (need === 'edit' && !permission.edit) return { ok: false, error: { code: 'forbidden', message: 'you can view and comment on this idea, but not edit it' } }
-    if (need === 'share' && !permission.share) return { ok: false, error: { code: 'forbidden', message: 'you need share access to change who can see this idea' } }
+    if (!permission.view) {
+      return { ok: false, error: { code: 'not_found', message: "this idea doesn't exist, or you can't see it" } }
+    }
+    if (need === 'edit' && !permission.edit) {
+      return {
+        ok: false,
+        error: { code: 'forbidden', message: 'you can view and comment on this idea, but not edit it' },
+      }
+    }
+    if (need === 'share' && !permission.share) {
+      return {
+        ok: false,
+        error: { code: 'forbidden', message: 'you need share access to change who can see this idea' },
+      }
+    }
     return { ok: true, permission }
   }
 
   /** Runs `fn` only if the caller has `need` on the idea. */
-  const withAccess = async <T>(idea: string, caller: Caller, need: Need, fn: () => Promise<HandlerResult<T>>): Promise<HandlerResult<T>> => {
+  const withAccess = async <T>(
+    idea: string,
+    caller: Caller,
+    need: Need,
+    fn: () => Promise<HandlerResult<T>>,
+  ): Promise<HandlerResult<T>> => {
     const checked = await access(idea, caller, need)
     return checked.ok ? fn() : { ok: false, error: checked.error }
   }
 
   /** Sends a write through the idea's queue, keyed per caller so two callers' keys can't collide. */
-  const write = async <T>(id: string, context: Context, body: IdeaWrite, pick: (value: WriteValue) => T): Promise<HandlerResult<T>> => {
+  const write = async <T>(
+    id: string,
+    context: Context,
+    body: IdeaWrite,
+    pick: (value: WriteValue) => T,
+  ): Promise<HandlerResult<T>> => {
     const key = `${context.caller.user}:${context.key ?? crypto.randomUUID()}`
-    const sent = await ideaOf(id).send('writes', { key, caller: context.caller, write: body }, { wait: true, timeout: WRITE_TIMEOUT_MS })
-    if (sent.status !== 'completed' || !sent.response) return { ok: false, error: { code: 'timed_out', message: 'the write timed out; retry it with the same idempotency key' } }
+    const sent = await ideaOf(id).send(
+      'writes',
+      { key, caller: context.caller, write: body },
+      { wait: true, timeout: WRITE_TIMEOUT_MS },
+    )
+    if (sent.status !== 'completed' || !sent.response) {
+      return {
+        ok: false,
+        error: { code: 'timed_out', message: 'the write timed out; retry it with the same idempotency key' },
+      }
+    }
     const result: WriteResult = sent.response
-    if (!result.ok) return { ok: false, error: result.error }
+    if (!result.ok) {
+      return { ok: false, error: result.error }
+    }
     return { ok: true, value: pick(result.value) }
   }
 
   const version = (value: WriteValue) => {
-    if (value.kind !== 'version') throw new Error(`expected a new version, got ${value.kind}`)
+    if (value.kind !== 'version') {
+      throw new Error(`expected a new version, got ${value.kind}`)
+    }
     return { version: value.version, comments: value.comments, steps: value.steps }
   }
   const comment = (value: WriteValue) => {
-    if (value.kind !== 'comment') throw new Error(`expected a comment, got ${value.kind}`)
+    if (value.kind !== 'comment') {
+      throw new Error(`expected a comment, got ${value.kind}`)
+    }
     return { comment: value.comment }
   }
 
   /** A person, by ID or handle, or a not-found error. */
-  const person = async (ref: string): Promise<{ ok: true; id: string } | { ok: false; error: { code: 'not_found'; message: string } }> => {
+  const person = async (
+    ref: string,
+  ): Promise<{ ok: true; id: string } | { ok: false; error: { code: 'not_found'; message: string } }> => {
     const user = await directory().user(ref)
-    return user ? { ok: true, id: user.id } : { ok: false, error: { code: 'not_found', message: `no one is called ${ref}` } }
+    return user
+      ? { ok: true, id: user.id }
+      : { ok: false, error: { code: 'not_found', message: `no one is called ${ref}` } }
   }
 
   const membership = (kind: ContainerKind) => ({
     members: (input: Record<string, unknown>) =>
       read(async () => {
-        const c = kind === 'team' ? await directory().team(String(input[kind])) : await directory().group(String(input[kind]))
-        if (!c) return notFound(`no ${kind} ${String(input[kind])}`)
-        return directory().members(kind, c.id, { ...(input.cursor ? { cursor: String(input.cursor) } : {}), ...(input.limit ? { limit: Number(input.limit) } : {}) })
+        const c =
+          kind === 'team' ? await directory().team(String(input[kind])) : await directory().group(String(input[kind]))
+        if (!c) {
+          return notFound(`no ${kind} ${String(input[kind])}`)
+        }
+        return directory().members(kind, c.id, {
+          ...(input.cursor ? { cursor: String(input.cursor) } : {}),
+          ...(input.limit ? { limit: Number(input.limit) } : {}),
+        })
       }),
     addMember: async (input: Record<string, unknown>, context: Context) => {
       const who = await person(String(input.user))
-      if (!who.ok) return who
-      return fromResult(await directory().addMember(context.caller.user, kind, String(input[kind]), who.id, input.role as 'admin' | 'maintainer' | 'member' | undefined))
+      if (!who.ok) {
+        return who
+      }
+      return fromResult(
+        await directory().addMember(
+          context.caller.user,
+          kind,
+          String(input[kind]),
+          who.id,
+          input.role as 'admin' | 'maintainer' | 'member' | undefined,
+        ),
+      )
     },
     removeMember: async (input: Record<string, unknown>, context: Context) => {
       const who = await person(String(input.user))
-      if (!who.ok) return who
+      if (!who.ok) {
+        return who
+      }
       const removed = await directory().removeMember(context.caller.user, kind, String(input[kind]), who.id)
       return removed.ok ? { ok: true as const, value: { removed: true } } : removed
     },
-    requestToJoin: async (input: Record<string, unknown>, context: Context) => fromResult(await directory().requestToJoin(context.caller.user, kind, String(input[kind]))),
+    requestToJoin: async (input: Record<string, unknown>, context: Context) =>
+      fromResult(await directory().requestToJoin(context.caller.user, kind, String(input[kind]))),
     joinRequests: async (input: Record<string, unknown>, context: Context) => {
       const requests = await directory().joinRequests(context.caller.user, kind, String(input[kind]))
       return requests.ok ? { ok: true as const, value: { items: requests.value } } : requests
     },
     decide: async (input: Record<string, unknown>, context: Context) => {
       const who = await person(String(input.user))
-      if (!who.ok) return who
-      const decided = await directory().decide(context.caller.user, kind, String(input[kind]), who.id, Boolean(input.approve))
+      if (!who.ok) {
+        return who
+      }
+      const decided = await directory().decide(
+        context.caller.user,
+        kind,
+        String(input[kind]),
+        who.id,
+        Boolean(input.approve),
+      )
       return decided.ok ? { ok: true as const, value: { approved: Boolean(input.approve) } } : decided
     },
   })
@@ -98,19 +179,44 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
 
     createIdea: async (input, context) => {
       const allowed = await directory().canCreateIdea(context.caller.user, input.team ?? null)
-      if (!allowed.ok) return allowed
+      if (!allowed.ok) {
+        return allowed
+      }
       const teamId = input.team ? ((await directory().team(input.team))?.id ?? null) : null
       // the ID comes from the caller and the idempotency key, so a retried create finds the same idea
       const key = context.key ?? crypto.randomUUID()
       const id = await ideaIdFor(context.caller, key)
-      const created = await write(id, { ...context, key }, { type: 'create', title: input.title, ...(input.description !== undefined ? { description: input.description } : {}), files: input.files }, (value) => {
-        if (value.kind !== 'created') throw new Error(`expected a new idea, got ${value.kind}`)
-        return { idea: id, version: value.version }
-      })
-      if (!created.ok) return created
+      const created = await write(
+        id,
+        { ...context, key },
+        {
+          type: 'create',
+          title: input.title,
+          ...(input.description !== undefined ? { description: input.description } : {}),
+          files: input.files,
+        },
+        (value) => {
+          if (value.kind !== 'created') {
+            throw new Error(`expected a new idea, got ${value.kind}`)
+          }
+          return { idea: id, version: value.version }
+        },
+      )
+      if (!created.ok) {
+        return created
+      }
       // registering is safe to repeat, so a retry after a failure here fixes it
       const now = Date.now()
-      await directory().registerIdea({ id, title: input.title, team: teamId, owner: context.caller.user, status: 'draft', latest: 1, createdAt: now, updatedAt: now })
+      await directory().registerIdea({
+        id,
+        title: input.title,
+        team: teamId,
+        owner: context.caller.user,
+        status: 'draft',
+        latest: 1,
+        createdAt: now,
+        updatedAt: now,
+      })
       return created
     },
 
@@ -132,14 +238,20 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         }),
       ),
 
-    pull: (input, { caller }) => withAccess(input.idea, caller, 'view', () => read(() => ideaOf(input.idea).pull(input.version))),
+    pull: (input, { caller }) =>
+      withAccess(input.idea, caller, 'view', () => read(() => ideaOf(input.idea).pull(input.version))),
 
     sync: (input, context) =>
       withAccess(input.idea, context.caller, 'edit', () =>
         write(
           input.idea,
           context,
-          { type: 'upload', files: input.files, ...(input.deleted ? { deleted: input.deleted } : {}), ...(input.force !== undefined ? { force: input.force } : {}) },
+          {
+            type: 'upload',
+            files: input.files,
+            ...(input.deleted ? { deleted: input.deleted } : {}),
+            ...(input.force !== undefined ? { force: input.force } : {}),
+          },
           version,
         ),
       ),
@@ -147,23 +259,41 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
     previewEdit: (input, { caller }) =>
       withAccess(input.idea, caller, 'edit', async () => {
         const result = await read(() => ideaOf(input.idea).preview(input.batch))
-        if (!result.ok) return result
+        if (!result.ok) {
+          return result
+        }
         return result.value.ok ? { ok: true, value: result.value } : { ok: false, error: result.value.error }
       }),
 
-    edit: (input, context) => withAccess(input.idea, context.caller, 'edit', () => write(input.idea, context, { type: 'edit', batch: input.batch }, version)),
+    edit: (input, context) =>
+      withAccess(input.idea, context.caller, 'edit', () =>
+        write(input.idea, context, { type: 'edit', batch: input.batch }, version),
+      ),
 
-    listComments: (input, { caller }) => withAccess(input.idea, caller, 'view', () => read(() => ideaOf(input.idea).comments(input.version))),
+    listComments: (input, { caller }) =>
+      withAccess(input.idea, caller, 'view', () => read(() => ideaOf(input.idea).comments(input.version))),
 
     addComment: (input, context) =>
-      withAccess(input.idea, context.caller, 'view', () => write(input.idea, context, { type: 'comment', version: input.version, anchor: input.anchor, body: input.body }, comment)),
+      withAccess(input.idea, context.caller, 'view', () =>
+        write(
+          input.idea,
+          context,
+          { type: 'comment', version: input.version, anchor: input.anchor, body: input.body },
+          comment,
+        ),
+      ),
 
-    reply: (input, context) => withAccess(input.idea, context.caller, 'view', () => write(input.idea, context, { type: 'reply', parent: input.comment, body: input.body }, comment)),
+    reply: (input, context) =>
+      withAccess(input.idea, context.caller, 'view', () =>
+        write(input.idea, context, { type: 'reply', parent: input.comment, body: input.body }, comment),
+      ),
 
     resolveComment: (input, context) =>
       withAccess(input.idea, context.caller, 'view', () =>
         write(input.idea, context, { type: 'resolve', comment: input.comment, resolved: input.resolved }, (value) => {
-          if (value.kind !== 'resolved') throw new Error(`expected a resolved comment, got ${value.kind}`)
+          if (value.kind !== 'resolved') {
+            throw new Error(`expected a resolved comment, got ${value.kind}`)
+          }
           return { comment: value.comment, resolved: value.resolved }
         }),
       ),
@@ -173,17 +303,23 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
     getAccess: (input, { caller }) =>
       read(async () => {
         const checked = await access(input.idea, caller, 'view')
-        if (!checked.ok) return notFound(checked.error.message)
+        if (!checked.ok) {
+          return notFound(checked.error.message)
+        }
         return { you: checked.permission, grants: await directory().grants(input.idea) }
       }),
 
     setAccess: async (input, { caller }) => {
       const checked = await access(input.idea, caller, 'view')
-      if (!checked.ok) return { ok: false, error: checked.error }
+      if (!checked.ok) {
+        return { ok: false, error: checked.error }
+      }
       let subject = input.subject
       if (subject.kind === 'user') {
         const who = await person(subject.id)
-        if (!who.ok) return who
+        if (!who.ok) {
+          return who
+        }
         subject = { kind: 'user', id: who.id }
       }
       const set = await directory().setGrant(caller.user, input.idea, subject, input.access)
@@ -191,10 +327,20 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
     },
 
     previewMove: async (input, { caller }) =>
-      fromResult(await directory().previewMove(caller.user, input.idea, input.team, { ...(input.keep ? { keep: input.keep } : {}), ...(input.skip ? { skip: input.skip } : {}) })),
+      fromResult(
+        await directory().previewMove(caller.user, input.idea, input.team, {
+          ...(input.keep ? { keep: input.keep } : {}),
+          ...(input.skip ? { skip: input.skip } : {}),
+        }),
+      ),
 
     moveIdea: async (input, { caller }) =>
-      fromResult(await directory().moveIdea(caller.user, input.idea, input.team, { ...(input.keep ? { keep: input.keep } : {}), ...(input.skip ? { skip: input.skip } : {}) })),
+      fromResult(
+        await directory().moveIdea(caller.user, input.idea, input.team, {
+          ...(input.keep ? { keep: input.keep } : {}),
+          ...(input.skip ? { skip: input.skip } : {}),
+        }),
+      ),
 
     // --- the directory ---------------------------------------------------------------
 
@@ -209,9 +355,13 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
     listIdeas: (input, { caller }) =>
       read(async () => {
         const team = input.team ? await directory().team(input.team) : null
-        if (input.team && !team) return notFound(`no team ${input.team}`)
+        if (input.team && !team) {
+          return notFound(`no team ${input.team}`)
+        }
         const owner = input.owner ? await directory().user(input.owner) : null
-        if (input.owner && !owner) return notFound(`no one is called ${input.owner}`)
+        if (input.owner && !owner) {
+          return notFound(`no one is called ${input.owner}`)
+        }
         return directory().listIdeas(caller.user, {
           ...(team ? { team: team.id } : {}),
           ...(owner ? { owner: owner.id } : {}),
@@ -225,9 +375,21 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
 
     createTeam: async (input, { caller }) => fromResult(await directory().createTeam(caller.user, container(input))),
     getTeam: (input) => read(async () => (await directory().team(input.team)) ?? notFound(`no team ${input.team}`)),
-    listTeams: (input) => read(() => directory().teams({ ...(input.q ? { query: input.q } : {}), ...(input.cursor ? { cursor: input.cursor } : {}), ...(input.limit ? { limit: input.limit } : {}) })),
+    listTeams: (input) =>
+      read(() =>
+        directory().teams({
+          ...(input.q ? { query: input.q } : {}),
+          ...(input.cursor ? { cursor: input.cursor } : {}),
+          ...(input.limit ? { limit: input.limit } : {}),
+        }),
+      ),
     updateTeam: async (input, { caller }) =>
-      fromResult(await directory().updateTeam(caller.user, input.team, { ...(input.createPolicy ? { createPolicy: input.createPolicy } : {}), ...(input.defaults ? { defaults: input.defaults } : {}) })),
+      fromResult(
+        await directory().updateTeam(caller.user, input.team, {
+          ...(input.createPolicy ? { createPolicy: input.createPolicy } : {}),
+          ...(input.defaults ? { defaults: input.defaults } : {}),
+        }),
+      ),
     listTeamMembers: team.members,
     addTeamMember: team.addMember,
     removeTeamMember: team.removeMember,
@@ -236,8 +398,16 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
     decideTeamJoinRequest: team.decide,
 
     createGroup: async (input, { caller }) => fromResult(await directory().createGroup(caller.user, container(input))),
-    getGroup: (input) => read(async () => (await directory().group(input.group)) ?? notFound(`no group ${input.group}`)),
-    listGroups: (input) => read(() => directory().groups({ ...(input.q ? { query: input.q } : {}), ...(input.cursor ? { cursor: input.cursor } : {}), ...(input.limit ? { limit: input.limit } : {}) })),
+    getGroup: (input) =>
+      read(async () => (await directory().group(input.group)) ?? notFound(`no group ${input.group}`)),
+    listGroups: (input) =>
+      read(() =>
+        directory().groups({
+          ...(input.q ? { query: input.q } : {}),
+          ...(input.cursor ? { cursor: input.cursor } : {}),
+          ...(input.limit ? { limit: input.limit } : {}),
+        }),
+      ),
     listGroupMembers: group.members,
     addGroupMember: group.addMember,
     removeGroupMember: group.removeMember,
@@ -265,9 +435,16 @@ async function read<T>(fn: () => Promise<T>): Promise<HandlerResult<T>> {
   try {
     return { ok: true, value: await fn() }
   } catch (error) {
-    if (error instanceof NotFound) return { ok: false, error: { code: 'not_found', message: error.message } }
+    if (error instanceof NotFound) {
+      return { ok: false, error: { code: 'not_found', message: error.message } }
+    }
     const { code, message, metadata } = error as { code?: unknown; message?: string; metadata?: unknown }
-    if (isApiErrorCode(code) && code !== 'internal') return { ok: false, error: { code, message: message ?? code, ...(metadata === undefined ? {} : { details: metadata }) } }
+    if (isApiErrorCode(code) && code !== 'internal') {
+      return {
+        ok: false,
+        error: { code, message: message ?? code, ...(metadata === undefined ? {} : { details: metadata }) },
+      }
+    }
     throw error
   }
 }
@@ -275,5 +452,8 @@ async function read<T>(fn: () => Promise<T>): Promise<HandlerResult<T>> {
 /** A stable idea ID for a create: the same caller and key always give the same ID. */
 export async function ideaIdFor(caller: Caller, key: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${caller.user}\n${key}`))
-  return `i${[...new Uint8Array(digest)].slice(0, 10).map((b) => b.toString(16).padStart(2, '0')).join('')}`
+  return `i${[...new Uint8Array(digest)]
+    .slice(0, 10)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')}`
 }

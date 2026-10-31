@@ -49,7 +49,9 @@ export function settings(): WorktreeSettings {
   if (linked) {
     // 1,500 slots of 20 ports from 20000: the engine uses +0, +1 and +10, the server +5
     let hash = 2166136261
-    for (const ch of root) hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619)
+    for (const ch of root) {
+      hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619)
+    }
     enginePort = 20000 + ((hash >>> 0) % 1500) * 20
     serverPort = enginePort + 5
   }
@@ -83,7 +85,9 @@ export function settings(): WorktreeSettings {
 /** Process IDs listening on a TCP port. */
 function listeners(port: number): number[] {
   const lsof = Bun.spawnSync(['lsof', '-t', `-iTCP:${port}`, '-sTCP:LISTEN'], { stdout: 'pipe', stderr: 'pipe' })
-  if (lsof.exitCode === 0 || lsof.stdout.length > 0) return lsof.stdout.toString().split('\n').filter(Boolean).map(Number)
+  if (lsof.exitCode === 0 || lsof.stdout.length > 0) {
+    return lsof.stdout.toString().split('\n').filter(Boolean).map(Number)
+  }
   const ss = Bun.spawnSync(['ss', '-ltnpH', `sport = :${port}`], { stdout: 'pipe', stderr: 'pipe' })
   return [...ss.stdout.toString().matchAll(/pid=(\d+)/g)].map((m) => Number(m[1]))
 }
@@ -96,15 +100,25 @@ function processName(pid: number): string {
 /** Stops the engine listening on a port, if it's a Rivet Engine. Returns the process IDs stopped. */
 async function stopEngine(port: number): Promise<number[]> {
   const engines = [...new Set(listeners(port))].filter((pid) => processName(pid).startsWith('rivet-engine'))
-  for (const pid of engines) process.kill(pid, 'SIGTERM')
-  for (let i = 0; i < 50 && engines.some(alive); i++) await Bun.sleep(100)
-  for (const pid of engines.filter(alive)) process.kill(pid, 'SIGKILL')
+  for (const pid of engines) {
+    process.kill(pid, 'SIGTERM')
+  }
+  for (let i = 0; i < 50 && engines.some(alive); i++) {
+    await Bun.sleep(100)
+  }
+  for (const pid of engines.filter(alive)) {
+    process.kill(pid, 'SIGKILL')
+  }
   return engines
 }
 
 async function stop(s: WorktreeSettings): Promise<number> {
   const stopped = [...(await stopEngine(s.enginePort)), ...(await stopEngine(s.testEnginePort))]
-  console.log(stopped.length ? `Stopped this worktree's engines (pid ${stopped.join(', ')}).` : `No engine running for this worktree (ports ${s.enginePort}, ${s.testEnginePort}).`)
+  console.log(
+    stopped.length
+      ? `Stopped this worktree's engines (pid ${stopped.join(', ')}).`
+      : `No engine running for this worktree (ports ${s.enginePort}, ${s.testEnginePort}).`,
+  )
   return 0
 }
 
@@ -140,7 +154,9 @@ if (import.meta.main) {
       console.log('Run `eval "$(bun scripts/worktree.ts env)"` to use these from a shell (curl, ideaf).')
       break
     case 'env':
-      for (const [name, value] of Object.entries(s.env)) console.log(`export ${name}=${JSON.stringify(value)}`)
+      for (const [name, value] of Object.entries(s.env)) {
+        console.log(`export ${name}=${JSON.stringify(value)}`)
+      }
       break
     case 'exec': {
       const argv = rest[0] === '--' ? rest.slice(1) : rest

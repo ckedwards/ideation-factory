@@ -2,6 +2,12 @@
   "name": "@ideaf/web",
   "private": true,
   "type": "module",
-  "dependencies": { "@ideaf/api": "workspace:*", "@ideaf/core": "workspace:*", "@ideaf/ui": "workspace:*" },
-  "scripts": { "typecheck": "tsc -p ." }
+  "scripts": {
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@ideaf/api": "workspace:*",
+    "@ideaf/core": "workspace:*",
+    "@ideaf/ui": "workspace:*"
+  }
 }

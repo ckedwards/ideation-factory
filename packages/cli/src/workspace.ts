@@ -46,7 +46,12 @@ export function openWorkspace(cwd: string): Workspace {
     const commonDir = resolve(cwd, git(cwd, ['rev-parse', '--git-common-dir'])!)
     const gitDir = resolve(cwd, git(cwd, ['rev-parse', '--git-dir'])!)
     const branch = git(cwd, ['symbolic-ref', '--short', '-q', 'HEAD'])
-    return { root: top, git: { commonDir, gitDir, branch }, stateDir: join(commonDir, 'ideaf'), activeFile: join(gitDir, 'ideaf-active') }
+    return {
+      root: top,
+      git: { commonDir, gitDir, branch },
+      stateDir: join(commonDir, 'ideaf'),
+      activeFile: join(gitDir, 'ideaf-active'),
+    }
   }
   return { root: cwd, git: null, stateDir: join(cwd, '.ideaf', 'state'), activeFile: join(cwd, '.ideaf', 'active') }
 }
@@ -55,7 +60,9 @@ const toPosix = (path: string) => path.split(sep).join('/')
 
 /** The Markdown files under `scope` (relative to the root), as sorted root-relative paths. Git repositories respect .gitignore. */
 export async function scanMarkdown(ws: Workspace, scope = ''): Promise<string[]> {
-  const base = toPosix(scope).replace(/^\.\/?/, '').replace(/\/$/, '')
+  const base = toPosix(scope)
+    .replace(/^\.\/?/, '')
+    .replace(/\/$/, '')
   let paths: string[]
   if (ws.git) {
     const listed = git(ws.root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard']) ?? ''
@@ -64,10 +71,15 @@ export async function scanMarkdown(ws: Workspace, scope = ''): Promise<string[]>
     paths = []
     const walk = async (dir: string) => {
       for (const entry of await readdir(dir, { withFileTypes: true })) {
-        if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
+        if (entry.name.startsWith('.') || entry.name === 'node_modules') {
+          continue
+        }
         const full = join(dir, entry.name)
-        if (entry.isDirectory()) await walk(full)
-        else if (/\.md$/i.test(entry.name)) paths.push(toPosix(relative(ws.root, full)))
+        if (entry.isDirectory()) {
+          await walk(full)
+        } else if (/\.md$/i.test(entry.name)) {
+          paths.push(toPosix(relative(ws.root, full)))
+        }
       }
     }
     await walk(ws.root)
@@ -77,9 +89,13 @@ export async function scanMarkdown(ws: Workspace, scope = ''): Promise<string[]>
 
 /** A path given on the command line, relative to the root. */
 export function scopeFrom(ws: Workspace, cwd: string, path: string | undefined): string {
-  if (!path) return toPosix(relative(ws.root, cwd))
+  if (!path) {
+    return toPosix(relative(ws.root, cwd))
+  }
   const rel = toPosix(relative(ws.root, resolve(cwd, path)))
-  if (rel.startsWith('..')) throw new Error(`${path} is outside ${ws.root}`)
+  if (rel.startsWith('..')) {
+    throw new Error(`${path} is outside ${ws.root}`)
+  }
   return rel
 }
 
@@ -138,7 +154,11 @@ export type LockHolder = { pid: number; host: string; at: number }
 
 export class IdeaBusy extends Error {
   constructor(readonly holder: LockHolder | null) {
-    super(holder ? `another ideaf (pid ${holder.pid} on ${holder.host}) is working on this idea` : 'another ideaf is working on this idea')
+    super(
+      holder
+        ? `another ideaf (pid ${holder.pid} on ${holder.host}) is working on this idea`
+        : 'another ideaf is working on this idea',
+    )
   }
 }
 
@@ -164,13 +184,17 @@ export async function withIdeaLock<T>(ws: Workspace, idea: string, fn: () => Pro
       await handle.close()
       break
     } catch (error) {
-      if ((error as { code?: string }).code !== 'EEXIST') throw error
+      if ((error as { code?: string }).code !== 'EEXIST') {
+        throw error
+      }
       const holder = await readHolder(path)
       if (await abandoned(path, holder)) {
         await rm(path, { force: true })
         continue
       }
-      if (Date.now() >= deadline) throw new IdeaBusy(holder)
+      if (Date.now() >= deadline) {
+        throw new IdeaBusy(holder)
+      }
       await new Promise((resolve) => setTimeout(resolve, 100))
     }
   }
@@ -188,7 +212,9 @@ export async function withIdeaLock<T>(ws: Workspace, idea: string, fn: () => Pro
 function releaseIfOurs(path: string, me: LockHolder): void {
   try {
     const holder = JSON.parse(readFileSync(path, 'utf8')) as LockHolder
-    if (holder.pid === me.pid && holder.host === me.host && holder.at === me.at) rmSync(path, { force: true })
+    if (holder.pid === me.pid && holder.host === me.host && holder.at === me.at) {
+      rmSync(path, { force: true })
+    }
   } catch {
     // already gone
   }
@@ -200,20 +226,33 @@ const held = new Map<string, LockHolder>()
 let cleanupInstalled = false
 
 function installSignalCleanup(): void {
-  if (cleanupInstalled) return
+  if (cleanupInstalled) {
+    return
+  }
   cleanupInstalled = true
-  for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]] as const) {
+  for (const [signal, code] of [
+    ['SIGINT', 130],
+    ['SIGTERM', 143],
+    ['SIGHUP', 129],
+  ] as const) {
     process.on(signal, () => {
-      for (const [path, me] of held) releaseIfOurs(path, me)
+      for (const [path, me] of held) {
+        releaseIfOurs(path, me)
+      }
       process.exit(code)
     })
   }
 }
 
 /** Who holds an idea's lock, or null if nobody does. */
-export async function lockHolder(ws: Workspace, idea: string): Promise<{ holder: LockHolder | null; running: boolean } | null> {
+export async function lockHolder(
+  ws: Workspace,
+  idea: string,
+): Promise<{ holder: LockHolder | null; running: boolean } | null> {
   const path = join(ws.stateDir, `${idea}.lock`)
-  if (!existsSync(path)) return null
+  if (!existsSync(path)) {
+    return null
+  }
   const holder = await readHolder(path)
   return { holder, running: !(await abandoned(path, holder)) && holder?.host === hostname() }
 }

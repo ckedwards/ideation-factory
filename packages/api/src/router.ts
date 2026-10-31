@@ -46,13 +46,23 @@ export function createRouter<Ops extends Record<string, Operation>>(
   return async (request) => {
     const url = new URL(request.url)
     const matching = routes.filter((r) => r.pattern.test(url.pathname))
-    if (matching.length === 0) return null
+    if (matching.length === 0) {
+      return null
+    }
     const route = matching.find((r) => r.operation.method === request.method)
-    if (!route) return error('invalid', `${request.method} isn't allowed here; use ${matching.map((r) => r.operation.method).join(' or ')}`, 405)
+    if (!route) {
+      return error(
+        'invalid',
+        `${request.method} isn't allowed here; use ${matching.map((r) => r.operation.method).join(' or ')}`,
+        405,
+      )
+    }
     const { operation, key } = route
 
     const caller = await options.authenticate(request)
-    if (!caller) return error('unauthorized', 'sign in, or send a token as "Authorization: Bearer <token>"')
+    if (!caller) {
+      return error('unauthorized', 'sign in, or send a token as "Authorization: Bearer <token>"')
+    }
 
     const idempotencyKey = request.headers.get('idempotency-key')
     if (idempotencyKey !== null && (idempotencyKey.length === 0 || idempotencyKey.length > 128)) {
@@ -61,13 +71,17 @@ export function createRouter<Ops extends Record<string, Operation>>(
 
     let raw: Record<string, unknown> = {}
     if (operation.method === 'GET') {
-      for (const [name, value] of url.searchParams) raw[name] = value
+      for (const [name, value] of url.searchParams) {
+        raw[name] = value
+      }
     } else {
       const text = await request.text()
       if (text) {
         try {
           const body: unknown = JSON.parse(text)
-          if (typeof body !== 'object' || body === null || Array.isArray(body)) return error('invalid', 'the request body must be a JSON object')
+          if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+            return error('invalid', 'the request body must be a JSON object')
+          }
           raw = body as Record<string, unknown>
         } catch {
           return error('invalid', "the request body isn't valid JSON")
@@ -80,15 +94,27 @@ export function createRouter<Ops extends Record<string, Operation>>(
     })
 
     const parsed = operation.input.safeParse(raw)
-    if (!parsed.success) return error('invalid', describeIssues(parsed.error), undefined, z.treeifyError(parsed.error))
+    if (!parsed.success) {
+      return error('invalid', describeIssues(parsed.error), undefined, z.treeifyError(parsed.error))
+    }
 
     try {
       const handler = handlers[key as keyof Ops]
-      const result = await handler(parsed.data as never, { caller, key: operation.kind === 'write' ? idempotencyKey : null, request })
-      if (!result.ok) return error(result.error.code, result.error.message, undefined, result.error.details)
+      const result = await handler(parsed.data as never, {
+        caller,
+        key: operation.kind === 'write' ? idempotencyKey : null,
+        request,
+      })
+      if (!result.ok) {
+        return error(result.error.code, result.error.message, undefined, result.error.details)
+      }
       if (options.validateOutput) {
         const checked = operation.output.safeParse(result.value)
-        if (!checked.success) throw new Error(`${operation.name} returned output that doesn't match its schema: ${describeIssues(checked.error)}`)
+        if (!checked.success) {
+          throw new Error(
+            `${operation.name} returned output that doesn't match its schema: ${describeIssues(checked.error)}`,
+          )
+        }
       }
       return Response.json(result.value)
     } catch (e) {
@@ -99,7 +125,10 @@ export function createRouter<Ops extends Record<string, Operation>>(
 }
 
 function error(code: ApiErrorBody['code'], message: string, status?: number, details?: unknown): Response {
-  return Response.json({ error: { code, message, ...(details === undefined ? {} : { details }) } }, { status: status ?? ERROR_STATUS[code] })
+  return Response.json(
+    { error: { code, message, ...(details === undefined ? {} : { details }) } },
+    { status: status ?? ERROR_STATUS[code] },
+  )
 }
 
 /** One line per problem, like `batch.steps.0.old: Too small`. */

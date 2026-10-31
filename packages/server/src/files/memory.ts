@@ -8,7 +8,9 @@ export class MemoryFileStore implements FileStore {
   async put(content: Uint8Array<ArrayBuffer>): Promise<string> {
     const hash = await contentHash(content)
     // copy, so later changes to the caller's buffer can't change a stored file
-    if (!this.#files.has(hash)) this.#files.set(hash, content.slice())
+    if (!this.#files.has(hash)) {
+      this.#files.set(hash, content.slice())
+    }
     return hash
   }
 

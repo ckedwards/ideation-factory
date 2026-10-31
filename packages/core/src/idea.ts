@@ -65,7 +65,9 @@ export function createIdea(files: Array<{ path: string; source: string }>): Idea
   const seen = new Set<string>()
   const out = files.map(({ path, source }) => {
     const problem = pathProblem(path) ?? (seen.has(path.toLowerCase()) ? 'duplicate path' : null)
-    if (problem) throw new Error(`${path}: ${problem}`)
+    if (problem) {
+      throw new Error(`${path}: ${problem}`)
+    }
     seen.add(path.toLowerCase())
     return newFile(ids, path, source)
   })
@@ -83,22 +85,34 @@ export function freshIds(ids: Ids, parsed: ParsedFile): string[] {
 
 /** Why a path can't be used for an idea's file, or null if it can. */
 export function pathProblem(path: string): string | null {
-  if (!path || path.length > 512) return 'path must be 1 to 512 characters'
-  if (path.startsWith('/') || path.includes('\\') || /^[a-zA-Z]:/.test(path)) return 'path must be relative, with "/" between folders'
-  if (path.split('/').some((part) => part === '' || part === '.' || part === '..')) return 'path has an empty, "." or ".." part'
-  if (!/\.md$/i.test(path)) return 'only Markdown files (.md) can be part of an idea'
+  if (!path || path.length > 512) {
+    return 'path must be 1 to 512 characters'
+  }
+  if (path.startsWith('/') || path.includes('\\') || /^[a-zA-Z]:/.test(path)) {
+    return 'path must be relative, with "/" between folders'
+  }
+  if (path.split('/').some((part) => part === '' || part === '.' || part === '..')) {
+    return 'path has an empty, "." or ".." part'
+  }
+  if (!/\.md$/i.test(path)) {
+    return 'only Markdown files (.md) can be part of an idea'
+  }
   return null
 }
 
 /** A text anchor on the `occurrence`th match of `quote` in a file's plain-text form. Mostly for tests and tools. */
 export function textAnchor(idea: Idea, fileId: string, quote: string, occurrence = 1): Anchor {
   const file = idea.files.find((f) => f.id === fileId)
-  if (!file) throw new Error(`no file ${fileId}`)
+  if (!file) {
+    throw new Error(`no file ${fileId}`)
+  }
   const text = parseMarkdown(file.source).plain.text
   let at = -1
   for (let n = 0; n < occurrence; n++) {
     at = text.indexOf(quote, at + 1)
-    if (at < 0) throw new Error(`"${quote}" occurs fewer than ${occurrence} times in ${file.path}`)
+    if (at < 0) {
+      throw new Error(`"${quote}" occurs fewer than ${occurrence} times in ${file.path}`)
+    }
   }
   return { kind: 'text', file: fileId, start: at, end: at + quote.length, quote }
 }
@@ -111,7 +125,9 @@ export function fileById(idea: Idea, id: string): IdeaFile | undefined {
 export function locate(idea: Idea, id: string): { file: IdeaFile; parsed: ParsedFile; unit: number } | null {
   for (const file of idea.files) {
     const unit = file.unitIds.indexOf(id)
-    if (unit >= 0) return { file, parsed: parseMarkdown(file.source), unit }
+    if (unit >= 0) {
+      return { file, parsed: parseMarkdown(file.source), unit }
+    }
   }
   return null
 }
@@ -123,22 +139,38 @@ export type AnchorInput =
   | { kind: 'text'; file: string; start: number; end: number }
 
 /** Checks a new comment's anchor against this version, returning the full anchor or why it can't be used. */
-export function checkAnchor(idea: Idea, input: AnchorInput): { ok: true; anchor: Anchor } | { ok: false; message: string } {
+export function checkAnchor(
+  idea: Idea,
+  input: AnchorInput,
+): { ok: true; anchor: Anchor } | { ok: false; message: string } {
   if (input.kind === 'section') {
     const at = locate(idea, input.section)
-    if (!at || !input.section.startsWith('s')) return { ok: false, message: `${input.section} isn't a section in this version` }
+    if (!at || !input.section.startsWith('s')) {
+      return { ok: false, message: `${input.section} isn't a section in this version` }
+    }
     return { ok: true, anchor: { kind: 'section', file: at.file.id, section: input.section } }
   }
   const file = fileById(idea, input.file)
-  if (!file) return { ok: false, message: `${input.file} isn't in this version` }
-  if (input.kind === 'file') return { ok: true, anchor: { kind: 'file', file: file.id } }
+  if (!file) {
+    return { ok: false, message: `${input.file} isn't in this version` }
+  }
+  if (input.kind === 'file') {
+    return { ok: true, anchor: { kind: 'file', file: file.id } }
+  }
   const text = parseMarkdown(file.source).plain.text
   const { start, end } = input
   if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end > text.length || end <= start) {
-    return { ok: false, message: `text range ${start}–${end} is outside ${file.path} (plain text is ${text.length} characters)` }
+    return {
+      ok: false,
+      message: `text range ${start}–${end} is outside ${file.path} (plain text is ${text.length} characters)`,
+    }
   }
   const quote = text.slice(start, end)
-  if (!/[\p{L}\p{N}]/u.test(quote)) return { ok: false, message: 'a text comment must cover some words' }
-  if (quote.includes('\n')) return { ok: false, message: 'a text comment must stay within one block' }
+  if (!/[\p{L}\p{N}]/u.test(quote)) {
+    return { ok: false, message: 'a text comment must cover some words' }
+  }
+  if (quote.includes('\n')) {
+    return { ok: false, message: 'a text comment must stay within one block' }
+  }
   return { ok: true, anchor: { kind: 'text', file: file.id, start, end, quote } }
 }

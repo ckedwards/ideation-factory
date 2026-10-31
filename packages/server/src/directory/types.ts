@@ -80,7 +80,11 @@ export interface Permission {
   owner: boolean
 }
 
-export type GrantSubject = { kind: 'user'; id: string } | { kind: 'group'; id: string } | { kind: 'team'; id: string } | { kind: 'everyone' }
+export type GrantSubject =
+  | { kind: 'user'; id: string }
+  | { kind: 'group'; id: string }
+  | { kind: 'team'; id: string }
+  | { kind: 'everyone' }
 
 export interface Grant {
   subject: GrantSubject
@@ -140,7 +144,11 @@ export interface Directory {
   group(idOrHandle: string): Promise<Group | null>
   teams(options?: { query?: string; cursor?: string; limit?: number }): Promise<Page<Team>>
   groups(options?: { query?: string; cursor?: string; limit?: number }): Promise<Page<Group>>
-  updateTeam(actor: string, team: string, changes: { createPolicy?: CreatePolicy; defaults?: TeamDefaults }): Promise<Result<Team>>
+  updateTeam(
+    actor: string,
+    team: string,
+    changes: { createPolicy?: CreatePolicy; defaults?: TeamDefaults },
+  ): Promise<Result<Team>>
   members(kind: ContainerKind, id: string, options?: { cursor?: string; limit?: number }): Promise<Page<Member>>
   addMember(actor: string, kind: ContainerKind, id: string, user: string, role?: Role): Promise<Result<Member>>
   removeMember(actor: string, kind: ContainerKind, id: string, user: string): Promise<Result<null>>
@@ -157,9 +165,19 @@ export interface Directory {
   idea(id: string): Promise<IdeaRow | null>
   permission(idea: string, user: string): Promise<Permission>
   grants(idea: string): Promise<Grant[]>
-  setGrant(actor: string, idea: string, subject: GrantSubject, access: { edit: boolean; share: boolean } | null): Promise<Result<Grant[]>>
+  setGrant(
+    actor: string,
+    idea: string,
+    subject: GrantSubject,
+    access: { edit: boolean; share: boolean } | null,
+  ): Promise<Result<Grant[]>>
   /** What moving an idea would change, before anything changes. */
-  previewMove(actor: string, idea: string, to: string | null, adjustments?: MoveAdjustments): Promise<Result<MovePreview>>
+  previewMove(
+    actor: string,
+    idea: string,
+    to: string | null,
+    adjustments?: MoveAdjustments,
+  ): Promise<Result<MovePreview>>
   /** Moves an idea into, out of, or to another team: the old team's member grant goes, the new team's defaults are added. */
   moveIdea(actor: string, idea: string, to: string | null, adjustments?: MoveAdjustments): Promise<Result<MovePreview>>
   listIdeas(actor: string, filter?: IdeaFilter): Promise<Page<IdeaRow>>

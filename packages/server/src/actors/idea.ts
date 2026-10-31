@@ -36,7 +36,9 @@ export const idea = actor({
     for await (const message of c.queue.iter({ completable: true })) {
       try {
         const { result, events } = await service.write(message.body)
-        for (const e of events) c.broadcast(e.name, e.payload)
+        for (const e of events) {
+          c.broadcast(e.name, e.payload)
+        }
         if (events.length > 0) {
           c.state.lastActivity = Date.now()
           if (!c.state.indexDue) {
@@ -47,7 +49,10 @@ export const idea = actor({
         await message.complete(result)
       } catch (error) {
         c.log.error({ msg: 'idea write failed', error: String(error) })
-        await message.complete({ ok: false, error: { code: 'invalid', message: 'the write failed on the server; retry it with the same key' } })
+        await message.complete({
+          ok: false,
+          error: { code: 'invalid', message: 'the write failed on the server; retry it with the same key' },
+        })
       }
     }
   },
@@ -64,15 +69,29 @@ export const idea = actor({
     flushIndex: async (c) => {
       c.state.indexDue = false
       const summary = await serviceOf(c).summary()
-      if (!summary) return
+      if (!summary) {
+        return
+      }
       const directory = c.client<Registry>().directory.getOrCreate(DIRECTORY_KEY)
-      await directory.send('index', { id: summary.id, title: summary.title, status: summary.status, latest: summary.latest, updatedAt: c.state.lastActivity || Date.now() })
+      await directory.send('index', {
+        id: summary.id,
+        title: summary.title,
+        status: summary.status,
+        latest: summary.latest,
+        updatedAt: c.state.lastActivity || Date.now(),
+      })
     },
   },
 })
 
-function serviceOf(c: { key: readonly string[]; db: Parameters<typeof migrate>[0]; vars: { service: IdeaService | null } }): IdeaService {
-  if (!c.vars.service) c.vars.service = new IdeaService(c.key[0]!, { sql: c.db, ...nodeDeps() })
+function serviceOf(c: {
+  key: readonly string[]
+  db: Parameters<typeof migrate>[0]
+  vars: { service: IdeaService | null }
+}): IdeaService {
+  if (!c.vars.service) {
+    c.vars.service = new IdeaService(c.key[0]!, { sql: c.db, ...nodeDeps() })
+  }
   return c.vars.service
 }
 
@@ -80,7 +99,9 @@ async function read<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await fn()
   } catch (error) {
-    if (error instanceof Refused) throw new UserError(error.message, { code: error.error.code, metadata: error.error.details })
+    if (error instanceof Refused) {
+      throw new UserError(error.message, { code: error.error.code, metadata: error.error.details })
+    }
     throw error
   }
 }

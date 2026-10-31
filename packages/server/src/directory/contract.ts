@@ -7,7 +7,9 @@ import type { Directory, IdeaRow, MovePreview } from './types.ts'
 export function directoryContract(name: string, make: () => Promise<Directory>): void {
   async function people() {
     const d = await make()
-    for (const handle of ['riley', 'maya', 'sam', 'devon', 'outsider']) await d.ensureUser({ id: `u-${handle}`, handle, name: handle[0]!.toUpperCase() + handle.slice(1) })
+    for (const handle of ['riley', 'maya', 'sam', 'devon', 'outsider']) {
+      await d.ensureUser({ id: `u-${handle}`, handle, name: handle[0]!.toUpperCase() + handle.slice(1) })
+    }
     return d
   }
   let clock = 1_000_000
@@ -39,24 +41,47 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
       test('the creator is the first admin; handles are validated and unique', async () => {
         const d = await people()
         const team = await d.createTeam('u-riley', { handle: 'Platform', name: 'Platform' })
-        expect(team).toMatchObject({ ok: true, value: { kind: 'team', handle: 'platform', members: 1, createPolicy: 'members', defaults: { members: 'view', public: false, groups: [] } } })
-        expect((await d.members('team', (team as { value: { id: string } }).value.id)).items).toEqual([{ user: expect.objectContaining({ handle: 'riley' }), role: 'admin' }])
-        expect(await d.createTeam('u-maya', { handle: 'platform', name: 'Again' })).toMatchObject({ ok: false, error: { code: 'exists' } })
-        expect(await d.createTeam('u-maya', { handle: '-bad-', name: 'Bad' })).toMatchObject({ ok: false, error: { code: 'invalid' } })
-        expect(await d.createGroup('u-maya', { handle: 'platform', name: 'A group can share a team’s handle' })).toMatchObject({ ok: true })
+        expect(team).toMatchObject({
+          ok: true,
+          value: {
+            kind: 'team',
+            handle: 'platform',
+            members: 1,
+            createPolicy: 'members',
+            defaults: { members: 'view', public: false, groups: [] },
+          },
+        })
+        expect((await d.members('team', (team as { value: { id: string } }).value.id)).items).toEqual([
+          { user: expect.objectContaining({ handle: 'riley' }), role: 'admin' },
+        ])
+        expect(await d.createTeam('u-maya', { handle: 'platform', name: 'Again' })).toMatchObject({
+          ok: false,
+          error: { code: 'exists' },
+        })
+        expect(await d.createTeam('u-maya', { handle: '-bad-', name: 'Bad' })).toMatchObject({
+          ok: false,
+          error: { code: 'invalid' },
+        })
+        expect(
+          await d.createGroup('u-maya', { handle: 'platform', name: 'A group can share a team’s handle' }),
+        ).toMatchObject({ ok: true })
         expect((await d.team('platform'))!.id).toBe((await d.team((team as { value: { id: string } }).value.id))!.id)
       })
 
       test('creating the same team at once: one wins, the others are told it exists', async () => {
         const d = await people()
-        const results = await Promise.all(['u-riley', 'u-maya', 'u-sam'].map((u) => d.createTeam(u, { handle: 'race', name: 'Race' })))
+        const results = await Promise.all(
+          ['u-riley', 'u-maya', 'u-sam'].map((u) => d.createTeam(u, { handle: 'race', name: 'Race' })),
+        )
         expect(results.filter((r) => r.ok)).toHaveLength(1)
         expect(results.filter((r) => !r.ok).map((r) => (r.ok ? null : r.error.code))).toEqual(['exists', 'exists'])
       })
 
       test('lists are paged with cursors, and searchable', async () => {
         const d = await people()
-        for (let i = 0; i < 30; i++) await d.createTeam('u-riley', { handle: `team-${String(i).padStart(2, '0')}`, name: `Team ${i}` })
+        for (let i = 0; i < 30; i++) {
+          await d.createTeam('u-riley', { handle: `team-${String(i).padStart(2, '0')}`, name: `Team ${i}` })
+        }
         const first = await d.teams({ limit: 25 })
         expect(first.items).toHaveLength(25)
         const second = await d.teams({ limit: 25, cursor: first.next! })
@@ -67,13 +92,28 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
 
       test('maintainers add members; only admins give roles or change settings', async () => {
         const d = await people()
-        const { id } = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } }).value
+        const { id } = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
+          .value
         expect(await d.addMember('u-riley', 'team', id, 'u-maya', 'maintainer')).toMatchObject({ ok: true })
         expect(await d.addMember('u-maya', 'team', id, 'u-sam')).toMatchObject({ ok: true, value: { role: 'member' } })
-        expect(await d.addMember('u-maya', 'team', id, 'u-devon', 'admin')).toMatchObject({ ok: false, error: { code: 'forbidden' } })
-        expect(await d.addMember('u-sam', 'team', id, 'u-devon')).toMatchObject({ ok: false, error: { code: 'forbidden' } })
-        expect(await d.updateTeam('u-maya', id, { createPolicy: 'anyone' })).toMatchObject({ ok: false, error: { code: 'forbidden' } })
-        expect(await d.updateTeam('u-riley', id, { createPolicy: 'maintainers', defaults: { members: 'edit', public: true, groups: [] } })).toMatchObject({
+        expect(await d.addMember('u-maya', 'team', id, 'u-devon', 'admin')).toMatchObject({
+          ok: false,
+          error: { code: 'forbidden' },
+        })
+        expect(await d.addMember('u-sam', 'team', id, 'u-devon')).toMatchObject({
+          ok: false,
+          error: { code: 'forbidden' },
+        })
+        expect(await d.updateTeam('u-maya', id, { createPolicy: 'anyone' })).toMatchObject({
+          ok: false,
+          error: { code: 'forbidden' },
+        })
+        expect(
+          await d.updateTeam('u-riley', id, {
+            createPolicy: 'maintainers',
+            defaults: { members: 'edit', public: true, groups: [] },
+          }),
+        ).toMatchObject({
           ok: true,
           value: { createPolicy: 'maintainers', defaults: { members: 'edit', public: true } },
         })
@@ -81,24 +121,37 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
 
       test('removing and leaving; a team always keeps an admin', async () => {
         const d = await people()
-        const { id } = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } }).value
+        const { id } = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
+          .value
         await d.addMember('u-riley', 'team', id, 'u-maya', 'maintainer')
         await d.addMember('u-riley', 'team', id, 'u-sam')
-        expect(await d.removeMember('u-maya', 'team', id, 'u-riley')).toMatchObject({ ok: false, error: { code: 'forbidden' } })
+        expect(await d.removeMember('u-maya', 'team', id, 'u-riley')).toMatchObject({
+          ok: false,
+          error: { code: 'forbidden' },
+        })
         expect(await d.removeMember('u-maya', 'team', id, 'u-sam')).toEqual({ ok: true, value: null })
-        expect(await d.removeMember('u-riley', 'team', id, 'u-riley')).toMatchObject({ ok: false, error: { code: 'invalid', message: expect.stringContaining('at least one admin') } })
+        expect(await d.removeMember('u-riley', 'team', id, 'u-riley')).toMatchObject({
+          ok: false,
+          error: { code: 'invalid', message: expect.stringContaining('at least one admin') },
+        })
         expect(await d.removeMember('u-maya', 'team', id, 'u-maya')).toEqual({ ok: true, value: null })
         expect((await d.team(id))!.members).toBe(1)
       })
 
       test('joining is by request, approved or denied by a maintainer or admin', async () => {
         const d = await people()
-        const { id } = ((await d.createGroup('u-riley', { handle: 'security', name: 'Security' })) as { value: { id: string } }).value
+        const { id } = (
+          (await d.createGroup('u-riley', { handle: 'security', name: 'Security' })) as { value: { id: string } }
+        ).value
         expect(await d.requestToJoin('u-sam', 'group', id)).toEqual({ ok: true, value: { requested: true } })
         expect(await d.requestToJoin('u-sam', 'group', id)).toEqual({ ok: true, value: { requested: true } })
         await d.requestToJoin('u-devon', 'group', id)
         expect(await d.joinRequests('u-sam', 'group', id)).toMatchObject({ ok: false, error: { code: 'forbidden' } })
-        expect(((await d.joinRequests('u-riley', 'group', id)) as { value: Array<{ handle: string }> }).value.map((u) => u.handle).toSorted()).toEqual(['devon', 'sam'])
+        expect(
+          ((await d.joinRequests('u-riley', 'group', id)) as { value: Array<{ handle: string }> }).value
+            .map((u) => u.handle)
+            .toSorted(),
+        ).toEqual(['devon', 'sam'])
         expect(await d.decide('u-riley', 'group', id, 'u-sam', true)).toEqual({ ok: true, value: null })
         expect(await d.decide('u-riley', 'group', id, 'u-devon', false)).toEqual({ ok: true, value: null })
         expect((await d.members('group', id)).items.map((m) => m.user.handle)).toEqual(['riley', 'sam'])
@@ -109,7 +162,8 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
     describe('access', () => {
       async function withTeam() {
         const d = await people()
-        const team = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } }).value.id
+        const team = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
+          .value.id
         await d.addMember('u-riley', 'team', team, 'u-maya')
         return { d, team }
       }
@@ -155,17 +209,32 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
 
       test('sharing: people, groups and everyone; only with share access', async () => {
         const { d } = await withTeam()
-        const group = ((await d.createGroup('u-devon', { handle: 'security', name: 'Security' })) as { value: { id: string } }).value.id
+        const group = (
+          (await d.createGroup('u-devon', { handle: 'security', name: 'Security' })) as { value: { id: string } }
+        ).value.id
         await d.registerIdea(idea('i1'))
-        expect(await d.setGrant('u-maya', 'i1', { kind: 'user', id: 'u-maya' }, { edit: true, share: true })).toMatchObject({ ok: false, error: { code: 'forbidden' } })
-        expect(await d.setGrant('u-riley', 'i1', { kind: 'user', id: 'u-maya' }, { edit: true, share: false })).toMatchObject({ ok: true })
+        expect(
+          await d.setGrant('u-maya', 'i1', { kind: 'user', id: 'u-maya' }, { edit: true, share: true }),
+        ).toMatchObject({ ok: false, error: { code: 'forbidden' } })
+        expect(
+          await d.setGrant('u-riley', 'i1', { kind: 'user', id: 'u-maya' }, { edit: true, share: false }),
+        ).toMatchObject({ ok: true })
         expect(await d.permission('i1', 'u-maya')).toEqual({ view: true, edit: true, share: false, owner: false })
-        expect(await d.setGrant('u-riley', 'i1', { kind: 'group', id: group }, { edit: false, share: false })).toMatchObject({ ok: true })
+        expect(
+          await d.setGrant('u-riley', 'i1', { kind: 'group', id: group }, { edit: false, share: false }),
+        ).toMatchObject({ ok: true })
         expect((await d.permission('i1', 'u-devon')).view).toBe(true)
-        expect(await d.setGrant('u-riley', 'i1', { kind: 'everyone' }, { edit: true, share: false })).toMatchObject({ ok: false, error: { code: 'invalid' } })
-        expect(await d.setGrant('u-riley', 'i1', { kind: 'everyone' }, { edit: false, share: false })).toMatchObject({ ok: true })
+        expect(await d.setGrant('u-riley', 'i1', { kind: 'everyone' }, { edit: true, share: false })).toMatchObject({
+          ok: false,
+          error: { code: 'invalid' },
+        })
+        expect(await d.setGrant('u-riley', 'i1', { kind: 'everyone' }, { edit: false, share: false })).toMatchObject({
+          ok: true,
+        })
         expect(await d.permission('i1', 'u-outsider')).toEqual({ view: true, edit: false, share: false, owner: false })
-        expect(await d.setGrant('u-riley', 'i1', { kind: 'user', id: 'u-riley' }, { edit: false, share: false })).toMatchObject({ ok: false, error: { code: 'invalid' } })
+        expect(
+          await d.setGrant('u-riley', 'i1', { kind: 'user', id: 'u-riley' }, { edit: false, share: false }),
+        ).toMatchObject({ ok: false, error: { code: 'invalid' } })
         // removing a grant
         await d.setGrant('u-riley', 'i1', { kind: 'everyone' }, null)
         expect((await d.permission('i1', 'u-outsider')).view).toBe(false)
@@ -175,8 +244,10 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
     describe('moving an idea (the move wizard)', () => {
       test('the preview says who loses and gains access; nothing changes until the move', async () => {
         const d = await people()
-        const core = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } }).value.id
-        const web = ((await d.createTeam('u-devon', { handle: 'web', name: 'Web' })) as { value: { id: string } }).value.id
+        const core = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
+          .value.id
+        const web = ((await d.createTeam('u-devon', { handle: 'web', name: 'Web' })) as { value: { id: string } }).value
+          .id
         await d.addMember('u-riley', 'team', core, 'u-maya')
         await d.addMember('u-devon', 'team', web, 'u-riley')
         await d.addMember('u-devon', 'team', web, 'u-sam')
@@ -209,15 +280,21 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
 
       test('moving needs share access, and permission to create ideas in the new team', async () => {
         const d = await people()
-        const core = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } }).value.id
-        const closed = ((await d.createTeam('u-devon', { handle: 'closed', name: 'Closed' })) as { value: { id: string } }).value.id
+        const core = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
+          .value.id
+        const closed = (
+          (await d.createTeam('u-devon', { handle: 'closed', name: 'Closed' })) as { value: { id: string } }
+        ).value.id
         await d.addMember('u-riley', 'team', core, 'u-maya')
         await d.registerIdea(idea('i1', { team: core, owner: 'u-riley' }))
         expect(await d.moveIdea('u-maya', 'i1', null)).toMatchObject({ ok: false, error: { code: 'forbidden' } })
         expect(await d.moveIdea('u-riley', 'i1', closed)).toMatchObject({ ok: false, error: { code: 'forbidden' } })
         expect(await d.moveIdea('u-outsider', 'i1', null)).toMatchObject({ ok: false, error: { code: 'not_found' } })
         // out of a team: private to its owner again
-        expect(await d.moveIdea('u-riley', 'i1', null)).toMatchObject({ ok: true, value: { to: null, losing: { count: 1 } } })
+        expect(await d.moveIdea('u-riley', 'i1', null)).toMatchObject({
+          ok: true,
+          value: { to: null, losing: { count: 1 } },
+        })
         expect(await d.grants('i1')).toEqual([])
       })
     })
@@ -226,11 +303,14 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
       test('lists only what you can see, newest first, paged with cursors', async () => {
         const { d, team } = await (async () => {
           const dir = await people()
-          const t = ((await dir.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } }).value.id
+          const t = ((await dir.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
+            .value.id
           await dir.addMember('u-riley', 'team', t, 'u-maya')
           return { d: dir, team: t }
         })()
-        for (let i = 0; i < 30; i++) await d.registerIdea(idea(`team-${i}`, { team }))
+        for (let i = 0; i < 30; i++) {
+          await d.registerIdea(idea(`team-${i}`, { team }))
+        }
         await d.registerIdea(idea('private', { owner: 'u-riley' }))
         await d.registerIdea(idea('mayas', { owner: 'u-maya' }))
 
@@ -247,7 +327,9 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
 
       test("search finds the ideas you can see even when many you can't see match better", async () => {
         const d = await people()
-        for (let i = 0; i < 600; i++) await d.registerIdea(idea(`hidden-${i}`, { title: 'Sync', owner: 'u-maya' }))
+        for (let i = 0; i < 600; i++) {
+          await d.registerIdea(idea(`hidden-${i}`, { title: 'Sync', owner: 'u-maya' }))
+        }
         await d.registerIdea(idea('mine', { title: 'An older plan to sync the field app', owner: 'u-riley' }))
         expect((await d.searchIdeas('u-riley', 'sync')).items.map((i) => i.id)).toEqual(['mine'])
       })
@@ -257,7 +339,12 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
         await d.registerIdea(idea('i1', { updatedAt: 100 }))
         await d.updateIdea({ id: 'i1', title: 'Newer', status: 'requesting-review', latest: 3, updatedAt: 300 })
         await d.updateIdea({ id: 'i1', title: 'Older', status: 'draft', latest: 2, updatedAt: 200 })
-        expect(await d.idea('i1')).toMatchObject({ title: 'Newer', status: 'requesting-review', latest: 3, updatedAt: 300 })
+        expect(await d.idea('i1')).toMatchObject({
+          title: 'Newer',
+          status: 'requesting-review',
+          latest: 3,
+          updatedAt: 300,
+        })
       })
 
       test('search finds text anywhere in a title, ranks closer matches first, and respects access', async () => {

@@ -17,7 +17,9 @@ export class LocalFolderFileStore implements FileStore {
 
   async put(content: Uint8Array<ArrayBuffer>): Promise<string> {
     const hash = await contentHash(content)
-    if (await this.has(hash)) return hash
+    if (await this.has(hash)) {
+      return hash
+    }
     const path = this.#path(hash)
     await mkdir(join(this.root, hash.slice(0, 2)), { recursive: true })
     const temporary = `${path}.${crypto.randomUUID()}.tmp`
@@ -32,7 +34,9 @@ export class LocalFolderFileStore implements FileStore {
       const buffer = await readFile(this.#path(hash))
       return new Uint8Array(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength))
     } catch (error) {
-      if (isNotFound(error)) return null
+      if (isNotFound(error)) {
+        return null
+      }
       throw error
     }
   }
@@ -42,7 +46,9 @@ export class LocalFolderFileStore implements FileStore {
     try {
       return (await stat(this.#path(hash))).isFile()
     } catch (error) {
-      if (isNotFound(error)) return false
+      if (isNotFound(error)) {
+        return false
+      }
       throw error
     }
   }

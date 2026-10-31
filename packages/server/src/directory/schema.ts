@@ -26,11 +26,28 @@ export interface DB {
     /** JSON: the defaults for new ideas (TeamDefaults). */
     defaults: string
   }
-  groups: { id: string; handle: string; name: string; description: string; created_by: string; created_at: number; deleted_at: number | null }
+  groups: {
+    id: string
+    handle: string
+    name: string
+    description: string
+    created_by: string
+    created_at: number
+    deleted_at: number | null
+  }
   memberships: { kind: ContainerKind; container: string; user: string; role: Role; created_at: number }
   join_requests: { kind: ContainerKind; container: string; user: string; created_at: number }
   /** One row per idea: what lists and search show, kept up to date by the idea's actor. */
-  ideas: { id: string; title: string; team: string | null; owner: string; status: string; latest: number; created_at: number; updated_at: number }
+  ideas: {
+    id: string
+    title: string
+    team: string | null
+    owner: string
+    status: string
+    latest: number
+    created_at: number
+    updated_at: number
+  }
   /** Access to an idea. A row gives view; can_edit and can_share add to it. `subject` is a user, group or team ID, or '*' for everyone. */
   grants: { idea: string; kind: GrantKind; subject: string; can_edit: number; can_share: number; created_at: number }
   schema_version: { version: number }
@@ -119,14 +136,25 @@ const MIGRATIONS: Migration[] = [
  */
 export async function migrateDirectory(sql: Sql, extra: Array<(sql: Sql) => Promise<void>> = []): Promise<void> {
   const db = sqliteKysely<DB>(sql)
-  await db.schema.createTable('schema_version').ifNotExists().addColumn('version', 'integer', (c) => c.notNull()).execute()
+  await db.schema
+    .createTable('schema_version')
+    .ifNotExists()
+    .addColumn('version', 'integer', (c) => c.notNull())
+    .execute()
   const rows = await db.selectFrom('schema_version').select('version').execute()
-  if (rows.length === 0) await db.insertInto('schema_version').values({ version: 0 }).execute()
+  if (rows.length === 0) {
+    await db.insertInto('schema_version').values({ version: 0 }).execute()
+  }
   for (let current = rows[0]?.version ?? 0; current < MIGRATIONS.length; current++) {
     await MIGRATIONS[current]!(db)
-    await db.updateTable('schema_version').set({ version: current + 1 }).execute()
+    await db
+      .updateTable('schema_version')
+      .set({ version: current + 1 })
+      .execute()
   }
-  for (const migrate of extra) await migrate(sql)
+  for (const migrate of extra) {
+    await migrate(sql)
+  }
 }
 
 export { raw }

@@ -21,7 +21,10 @@ const ops = {
     method: 'GET',
     path: '/things/{thing}',
     kind: 'read',
-    input: z.strictObject({ thing: z.string().regex(/^t[0-9]+$/), version: z.coerce.number().int().positive().optional() }),
+    input: z.strictObject({
+      thing: z.string().regex(/^t[0-9]+$/),
+      version: z.coerce.number().int().positive().optional(),
+    }),
     output: z.object({ thing: z.string(), version: z.number().nullable() }),
   }),
   renameThing: defineOperation({
@@ -41,7 +44,9 @@ function setup(overrides: Partial<Handlers<typeof ops>> = {}) {
   const handlers: Handlers<typeof ops> = {
     getThing: async (input, context) => {
       seen.push({ input, context })
-      return input.thing === 't404' ? { ok: false, error: { code: 'not_found', message: 'no such thing' } } : { ok: true, value: { thing: input.thing, version: input.version ?? null } }
+      return input.thing === 't404'
+        ? { ok: false, error: { code: 'not_found', message: 'no such thing' } }
+        : { ok: true, value: { thing: input.thing, version: input.version ?? null } }
     },
     renameThing: async (input, context) => {
       seen.push({ input, context })
@@ -61,7 +66,9 @@ function setup(overrides: Partial<Handlers<typeof ops>> = {}) {
 describe('the router', () => {
   test('builds the input from the path and query, and passes the caller', async () => {
     const { router, seen } = setup()
-    const response = await router(new Request('http://x/things/t1?version=3', { headers: { authorization: 'Bearer good' } }))
+    const response = await router(
+      new Request('http://x/things/t1?version=3', { headers: { authorization: 'Bearer good' } }),
+    )
     expect(response!.status).toBe(200)
     expect(await response!.json()).toEqual({ thing: 't1', version: 3 })
     expect(seen[0]).toMatchObject({ input: { thing: 't1', version: 3 }, context: { caller: ME, key: null } })
@@ -70,7 +77,11 @@ describe('the router', () => {
   test('takes the body for a write, and its idempotency key', async () => {
     const { router, seen } = setup()
     const response = await router(
-      new Request('http://x/things/t1/name', { method: 'POST', headers: { authorization: 'Bearer good', 'idempotency-key': 'k1' }, body: JSON.stringify({ name: '  New  ' }) }),
+      new Request('http://x/things/t1/name', {
+        method: 'POST',
+        headers: { authorization: 'Bearer good', 'idempotency-key': 'k1' },
+        body: JSON.stringify({ name: '  New  ' }),
+      }),
     )
     expect(await response!.json()).toEqual({ name: 'New' })
     expect(seen[0]!.context.key).toBe('k1')
@@ -91,8 +102,16 @@ describe('the router', () => {
 
   test('a validation error says where the problem is', async () => {
     const { router } = setup()
-    const response = await router(new Request('http://x/things/t1/name', { method: 'POST', headers: { authorization: 'Bearer good' }, body: JSON.stringify({ name: '' }) }))
-    expect(await response!.json()).toMatchObject({ error: { code: 'invalid', message: expect.stringContaining('name:') } })
+    const response = await router(
+      new Request('http://x/things/t1/name', {
+        method: 'POST',
+        headers: { authorization: 'Bearer good' },
+        body: JSON.stringify({ name: '' }),
+      }),
+    )
+    expect(await response!.json()).toMatchObject({
+      error: { code: 'invalid', message: expect.stringContaining('name:') },
+    })
   })
 
   test("a handler's output that doesn't match its schema is a server error, not a broken response", async () => {
@@ -128,7 +147,9 @@ describe('the typed client', () => {
     let failures = 1
     const flaky = async (request: Request) => {
       keys.push(request.headers.get('idempotency-key'))
-      if (failures-- > 0) return new Response('', { status: 504 })
+      if (failures-- > 0) {
+        return new Response('', { status: 504 })
+      }
       return fetch(request)
     }
     const client = createApiClient({ baseUrl: 'http://api.test', token: 'good', fetch: flaky }, ops)
@@ -147,14 +168,28 @@ describe('the typed client', () => {
 
 describe('generated descriptions', () => {
   test('OpenAPI: every operation, with path and query parameters, bodies for writes, and the idempotency header', () => {
-    const doc = openApiDocument(operations, { title: 'Ideation Factory', version: '0' }) as { paths: Record<string, Record<string, { operationId: string; parameters: Array<{ name: string; in: string }>; requestBody?: unknown }>> }
+    const doc = openApiDocument(operations, { title: 'Ideation Factory', version: '0' }) as {
+      paths: Record<
+        string,
+        Record<string, { operationId: string; parameters: Array<{ name: string; in: string }>; requestBody?: unknown }>
+      >
+    }
     const all = Object.values(doc.paths).flatMap((p) => Object.values(p))
-    expect(all.map((o) => o.operationId).toSorted()).toEqual(Object.values(operations).map((o) => o.name).toSorted())
+    expect(all.map((o) => o.operationId).toSorted()).toEqual(
+      Object.values(operations)
+        .map((o) => o.name)
+        .toSorted(),
+    )
     const blocks = doc.paths['/ideas/{idea}/blocks']!.get!
-    expect(blocks.parameters).toEqual([expect.objectContaining({ name: 'idea', in: 'path' }), expect.objectContaining({ name: 'version', in: 'query' })])
+    expect(blocks.parameters).toEqual([
+      expect.objectContaining({ name: 'idea', in: 'path' }),
+      expect.objectContaining({ name: 'version', in: 'query' }),
+    ])
     const edit = doc.paths['/ideas/{idea}/edits']!.post!
     expect(edit.parameters).toContainEqual(expect.objectContaining({ name: 'Idempotency-Key', in: 'header' }))
-    expect(edit.requestBody).toMatchObject({ content: { 'application/json': { schema: { properties: { batch: expect.any(Object) } } } } })
+    expect(edit.requestBody).toMatchObject({
+      content: { 'application/json': { schema: { properties: { batch: expect.any(Object) } } } },
+    })
   })
 
   test('MCP: one tool per operation, reads marked read-only', () => {
@@ -162,7 +197,10 @@ describe('generated descriptions', () => {
     expect(tools.map((t) => t.name)).toEqual(Object.values(operations).map((o) => o.name))
     expect(tools.find((t) => t.name === 'show_blocks')!.annotations.readOnlyHint).toBe(true)
     expect(tools.find((t) => t.name === 'edit')!.annotations.readOnlyHint).toBe(false)
-    expect(tools.find((t) => t.name === 'edit')!.inputSchema).toMatchObject({ type: 'object', required: expect.arrayContaining(['idea', 'batch']) })
+    expect(tools.find((t) => t.name === 'edit')!.inputSchema).toMatchObject({
+      type: 'object',
+      required: expect.arrayContaining(['idea', 'batch']),
+    })
     // MCP structured output must be an object, so a list doesn't declare one
     expect(tools.find((t) => t.name === 'list_comments')!.outputSchema).toBeUndefined()
   })

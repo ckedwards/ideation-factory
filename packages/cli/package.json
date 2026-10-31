@@ -1,21 +1,21 @@
 {
   "name": "@ideaf/cli",
   "private": true,
+  "bin": {
+    "ideaf": "./src/main.ts"
+  },
   "type": "module",
   "exports": {
     "./*": "./src/*"
   },
-  "bin": {
-    "ideaf": "./src/main.ts"
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "build": "bun build --compile src/main.ts --outfile dist/ideaf"
   },
   "dependencies": {
     "@ideaf/api": "workspace:*",
     "@ideaf/core": "workspace:*",
     "diff": "^9.0.0",
     "node-diff3": "^3.2.1"
-  },
-  "scripts": {
-    "typecheck": "tsc -p .",
-    "build": "bun build --compile src/main.ts --outfile dist/ideaf"
   }
 }
