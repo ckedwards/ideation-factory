@@ -1,6 +1,7 @@
 {
-  // Shared settings. Code in core and api must run unchanged in Workers,
-  // browsers and Bun, so their lib is web standards only (no DOM, no Node).
+  // Shared settings. Code in core and api must run unchanged in browsers and
+  // Bun, so their lib is web standards only (no DOM, no Node). Bun runs the
+  // TypeScript directly, so imports name their .ts files and tsc only checks.
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
@@ -12,6 +13,7 @@
     "exactOptionalPropertyTypes": true,
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "noEmit": true
   }

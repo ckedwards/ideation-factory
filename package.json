@@ -2,11 +2,15 @@
   "name": "ideation-factory",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*"],
+  "packageManager": "bun@1.4.3",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
+    "dev": "bun run --filter '@ideaf/server' dev",
+    "test": "RIVETKIT_STORAGE_PATH=.data bun test",
     "typecheck": "bun run --filter '*' typecheck",
-    "test": "bun test",
-    "dev:server": "bun run --filter '@ideaf/server' dev"
+    "engine:stop": "pkill -x rivet-engine; pkill -x rivet-services; true"
   },
   "devDependencies": {
     "@types/bun": "^1",

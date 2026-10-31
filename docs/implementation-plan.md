@@ -31,9 +31,9 @@
 
 Day-to-day work needs only Bun, plus Node for Storybook:
 
-- **Actors:** RivetKit's default local mode stores them on the file system, with no engine. `RIVETKIT_STORAGE_PATH` sets where.
+- **Actors:** in development RivetKit starts a local Rivet Engine itself: a binary that comes with the npm package, storing data on the file system. There's nothing to install or run separately, and no Docker. `bun run dev` and `bun run test` point it at `.data/` (through `RIVETKIT_STORAGE_PATH`, which must be set before Bun starts; setting it from code doesn't reach the native runtime). The engine keeps running after the app exits; `bun run engine:stop` stops it.
 - **Files:** a local folder, behind the same files interface as S3 (Bun's built-in S3 client) in production. One set of contract tests runs against every implementation: store by hash, read back, a missing key, the same content stored twice.
-- **The real engine and buckets are for the [Rivet spike](mvp/spike-rivet.md):** the 3.0 engine, SeaweedFS and RustFS, in Docker Compose under `experiments/spike-rivet/`. Run the engine in Docker now and then before relying on behavior the local mode might not match: queue ordering under load, sleep and wake, live updates reconnecting.
+- **The real engine and buckets are for the [Rivet spike](mvp/spike-rivet.md):** the 3.0 engine, SeaweedFS and RustFS, in Docker Compose under `experiments/spike-rivet/`. The local engine is 2.x; run the 3.0 engine in Docker now and then before relying on behavior that might differ: queue ordering under load, sleep and wake, live updates reconnecting.
 
 ## First milestone: a walking skeleton
 

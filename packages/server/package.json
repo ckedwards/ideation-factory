@@ -2,11 +2,13 @@
   "name": "@ideaf/server",
   "private": true,
   "type": "module",
-  "dependencies": { "@ideaf/api": "workspace:*", "@ideaf/core": "workspace:*" },
-  "devDependencies": { "@cloudflare/workers-types": "^4", "wrangler": "^4" },
+  "dependencies": {
+    "@ideaf/api": "workspace:*",
+    "@ideaf/core": "workspace:*",
+    "rivetkit": "^2.3.31"
+  },
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "dev": "RIVETKIT_STORAGE_PATH=../../.data bun --watch src/main.ts",
     "typecheck": "tsc -p ."
   }
 }

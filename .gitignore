@@ -1,4 +1,4 @@
 node_modules/
-.wrangler/
 dist/
-.dev.vars
+# local dev data: RivetKit's actor storage and the files folder
+.data/

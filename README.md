@@ -25,10 +25,14 @@ packages/
   cli/      ideaf
 ```
 
-You need [Bun](https://bun.sh), Node (for Storybook) and Docker (for the Rivet Engine and a local S3-compatible bucket).
+You need [Bun](https://bun.sh), and Node for Storybook. Docker is only for the [Rivet spike](docs/mvp/spike-rivet.md).
 
 ```
 bun install
+bun run dev          # the server on http://localhost:8080
 bun run typecheck
-bun test
+bun run test
+bun run engine:stop  # stop the local Rivet Engine
 ```
+
+In development RivetKit starts a local Rivet Engine itself and keeps its data in `.data/`; delete that folder to start fresh. Use `bun run test` rather than plain `bun test`, which would put the engine's data in `~/.rivetkit` instead. The engine keeps running after the server or tests exit, and holds their output open, so a test run piped into another command waits until the engine is stopped.

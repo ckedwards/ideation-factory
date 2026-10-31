@@ -1,5 +1,5 @@
 // @ideaf/core: what an idea's content means, as pure functions. Web-standard
-// APIs only, so it runs unchanged in Workers, browsers and Bun.
+// APIs only, so it runs unchanged in browsers and Bun.
 //
 // Step 1 of the build plan (see docs/implementation-plan.md) fills this in:
 // Markdown blocks and sections with stable IDs, the plain-text form comments are

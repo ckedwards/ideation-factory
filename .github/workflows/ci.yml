@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      # The tests start RivetKit's local engine, which outlives the test process,
+      # so stop it afterwards whatever the result.
+      - run: |
+          code=0
+          bun run test || code=$?
+          bun run engine:stop
+          exit $code

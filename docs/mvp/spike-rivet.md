@@ -66,6 +66,7 @@ Each has a pass condition. Record results in Findings, below.
 - [ ] **Concurrent writes to one idea through a queue:** 50 clients each send 20 comments and 5 edit batches to the same idea at once. **Pass:** every write is applied once, versions are numbered without gaps, and no edit batch is applied against a stale base.
 - [ ] **The same test with plain actions** (no queue), to see what goes wrong. **Pass:** we know whether parallel actions need guarding, and the code uses queues where they do.
 - [ ] **Reads during writes:** reads keep answering while the queue drains. **Pass:** read latency at the 99th percentile stays under 100 ms.
+- [ ] **A write that fails midway:** a queue message is removed when the actor receives it, not when it completes, and isn't redelivered if handling fails (the sender times out). Crash the actor mid-write. **Pass:** the write is either fully applied or not at all, and retrying it from the client is safe (writes carry an idempotency key).
 
 ### The bucket
 
@@ -135,6 +136,8 @@ If worker threads don't meet the target, the next step is moving that heavy work
 ## Findings
 
 _To be filled in during the spike._
+
+**Early, from step 0 of the build (2026-10-31):** Bun 1.4.3 runs RivetKit 2.3.31's native runtime with no Node-only blockers. RivetKit starts a local 2.x engine itself, ready in about 0.6–2 s, and a queued write that waits for its result takes about 180 ms on a new actor. Writes through a queue were applied in order, and 25 concurrent writes were each applied once. Still to check on the 3.0 engine.
 
 ## Sources
 
