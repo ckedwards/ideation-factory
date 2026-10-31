@@ -165,8 +165,9 @@ async function fetch(req: Request): Promise<Response> {
   }
   if (p === '/spike/create-client' && req.method === 'POST') {
     try {
-      return Response.json(await authApi('adminCreateOAuthClient', await req.json()))
+      return Response.json(await authApi('adminCreateOAuthClient', await req.json(), req.headers))
     } catch (e) {
+      console.error('create-client failed', e)
       return Response.json({ error: String((e as Error).message), body: (e as { body?: unknown }).body }, { status: 400 })
     }
   }

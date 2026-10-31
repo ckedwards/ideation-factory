@@ -42,5 +42,5 @@ export const devicePage = () =>
     'Connect a device',
     `<p>Sign in first if you haven't: <a href="/login">sign in</a>.</p><form id="f"><label>Code shown in your terminal<input id="code" required></label><button>Approve</button></form>`,
     `const c=new URLSearchParams(location.search).get('user_code');if(c)$('code').value=c;
-$('f').onsubmit=async(e)=>{e.preventDefault();try{await post('/device/approve',{userCode:$('code').value.replace(/-/g,'')});msg('Approved. You can go back to your terminal.')}catch(x){msg(x.message)}};`,
+$('f').onsubmit=async(e)=>{e.preventDefault();try{const code=$('code').value.replace(/-/g,'');const r=await fetch('/api/auth/device?user_code='+encodeURIComponent(code),{credentials:'include'});if(!r.ok)throw new Error(await r.text());await post('/device/approve',{userCode:$('code').value.replace(/-/g,'')});msg('Approved. You can go back to your terminal.')}catch(x){msg(x.message)}};`,
   )

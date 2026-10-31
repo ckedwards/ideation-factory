@@ -102,6 +102,7 @@ export async function runStoreOp(db: RawSql, o: StoreOp): Promise<unknown> {
   stats.byOp[`${o.op} ${o.model}`] = (stats.byOp[`${o.op} ${o.model}`] ?? 0) + 1
   const exec = <T extends Record<string, unknown>>(sql: string, args: unknown[]) => {
     stats.statements++
+    if (process.env.SPIKE_SQL_LOG && sql.includes(process.env.SPIKE_SQL_LOG)) console.log('SQL', sql, JSON.stringify(args))
     return db.execute<T>(sql, ...args)
   }
   const table = q(o.model)

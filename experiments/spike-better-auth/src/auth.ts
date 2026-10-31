@@ -40,6 +40,7 @@ export function validHandle(h: string): boolean {
   return /^[a-z0-9](?:[a-z0-9._-]{0,37}[a-z0-9])?$/.test(h) && h.length >= 2 && !RESERVED.has(h)
 }
 
+const SITE_ADMINS = new Set((process.env.SITE_ADMINS ?? 'admin@example.com').split(','))
 const PASSKEY_WINDOW_MS = 5 * 60 * 1000
 const YEAR_S = 365 * 24 * 3600
 const ADMIN_MAX_S = 30 * 24 * 3600
@@ -78,6 +79,28 @@ const ideafRules = () =>
             const sess = s?.session as { signInMethod?: string; createdAt: Date } | undefined
             const fresh = sess && sess.signInMethod === 'email-otp' && Date.now() - new Date(sess.createdAt).getTime() < PASSKEY_WINDOW_MS
             if (!fresh) throw new APIError('FORBIDDEN', { message: 'add a passkey right after signing in with an email code' })
+          }),
+        },
+        {
+          // Personal tokens carry a purpose; site admin tokens are only for
+          // site admins and need a reason. Neither can claim admin in metadata.
+          matcher: (ctx) => ctx.path === '/api-key/create' || ctx.path === '/api-key/update',
+          handler: createAuthMiddleware(async (ctx) => {
+            const body = (ctx.body ?? {}) as { configId?: string; metadata?: Record<string, unknown>; userId?: string }
+            const meta = body.metadata ?? {}
+            if ('site_admin' in meta) throw new APIError('BAD_REQUEST', { message: 'tokens cannot carry site admin powers' })
+            if (ctx.path === '/api-key/update') return
+            if (body.configId === 'admin') {
+              const { getSessionFromCtx } = await import('better-auth/api')
+              const s = await getSessionFromCtx(ctx)
+              if (!s || !SITE_ADMINS.has(s.user.email)) throw new APIError('FORBIDDEN', { message: 'only site admins' })
+              if (typeof meta.reason !== 'string' || meta.reason.trim().length < 5) throw new APIError('BAD_REQUEST', { message: 'a site admin token needs a reason' })
+              return
+            }
+            if (body.configId !== 'personal') throw new APIError('BAD_REQUEST', { message: 'unknown token kind' })
+            const purpose = meta.purpose ?? 'me'
+            if (!['me', 'bot-for-me', 'bot'].includes(String(purpose))) throw new APIError('BAD_REQUEST', { message: 'bad purpose' })
+            if (purpose !== 'me' && !/^[a-z0-9][a-z0-9-]{0,38}$/.test(String(meta.bot ?? ''))) throw new APIError('BAD_REQUEST', { message: 'a bot needs a name' })
           }),
         },
       ],
@@ -123,6 +146,8 @@ export function authOptions(database: BetterAuthOptions['database']) {
     },
     // Rate limiting in memory (the default storage), on in development too.
     rateLimit: { enabled: true, storage: 'memory' },
+    // Behind the load balancer, the client IP comes from X-Forwarded-For.
+    advanced: { ipAddress: { ipAddressHeaders: ['x-forwarded-for'] } },
     databaseHooks: {
       user: {
         create: {
@@ -137,7 +162,7 @@ export function authOptions(database: BetterAuthOptions['database']) {
         create: {
           before: async (session, ctx) => {
             const user = ctx ? await ctx.context.internalAdapter.findUserById(session.userId) : null
-            if (user && (user as { inactive?: boolean }).inactive) return false
+            if (user && (user as { inactive?: boolean }).inactive) throw new APIError('FORBIDDEN', { message: 'this account is inactive' })
             const method = ctx?.path === '/sign-in/email-otp' ? 'email-otp' : ctx?.path?.startsWith('/passkey') ? 'passkey' : (ctx?.path ?? 'other')
             return { data: { ...session, signInMethod: method } }
           },
