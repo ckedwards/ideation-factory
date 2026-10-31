@@ -46,7 +46,7 @@ The demo for the pitch, with no UI, no real auth and no directory yet, all on a 
 
 ## Decisions to make early
 
-Each is hard to change once there's data:
+Each is hard to change once there's data. **All four are decided, in step 1:** see [core](mvp/core.md).
 
 1. **Block IDs:** how they're assigned and kept across versions, and how files get IDs, so renames work.
 2. **The source map:** the Markdown parser's positions (mdast) give the map from plain text back to source. Settle the library now, because the web app has to use the same one to place comments.

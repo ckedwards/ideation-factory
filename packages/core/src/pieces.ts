@@ -1,0 +1,208 @@
+// How a file's new text is made from old text: a list of pieces, each either
+// copied from a range of an old file (possibly a different one, for a move) or
+// new text. Because every edit says exactly where each character came from,
+// positions can be followed exactly: a comment, a block or a heading maps to
+// wherever its characters went.
+//
+// The same structure describes a command (built precisely) and an upload
+// (built from a diff), in either source offsets or plain-text offsets.
+import { cleanupSemantic, DIFF_DELETE, DIFF_EQUAL, DIFF_INSERT, makeDiff } from '@sanity/diff-match-patch'
+
+export type Piece =
+  | { kind: 'copy'; file: string; start: number; end: number; moved: boolean }
+  | {
+      kind: 'text'
+      text: string
+      /** The old range this text stands in for, if any. */
+      replaces: { file: string; start: number; end: number } | null
+      /** True for a command's own replacement (`replace`, `rename-heading`): comments on the old text move onto it. */
+      explicit: boolean
+    }
+
+export type Edit = {
+  /** Old ranges [start, end) that are removed. Must not overlap. */
+  deletes: Array<[number, number]>
+  /** Pieces inserted at an old position. Several at one position keep their order. */
+  inserts: Array<{ at: number; pieces: Piece[] }>
+}
+
+/** The pieces of one file after an edit to it. */
+export function applyEdit(file: string, length: number, edit: Edit): Piece[] {
+  const deletes = edit.deletes.filter(([s, e]) => e > s).toSorted((a, b) => a[0] - b[0])
+  const inserts = edit.inserts.map((insert, order) => ({ ...insert, order })).toSorted((a, b) => a.at - b.at || a.order - b.order)
+  for (let i = 1; i < deletes.length; i++) {
+    if (deletes[i]![0] < deletes[i - 1]![1]) throw new Error('overlapping deletes')
+  }
+  const pieces: Piece[] = []
+  let pos = 0
+  let d = 0
+  let n = 0
+  for (;;) {
+    const next = Math.min(deletes[d]?.[0] ?? Infinity, inserts[n]?.at ?? Infinity, length)
+    if (next > pos) {
+      pieces.push({ kind: 'copy', file, start: pos, end: next, moved: false })
+      pos = next
+    }
+    if (n < inserts.length && inserts[n]!.at === pos) {
+      pieces.push(...inserts[n++]!.pieces)
+      continue
+    }
+    if (n < inserts.length && inserts[n]!.at < pos) throw new Error('insert inside a deleted range')
+    if (d < deletes.length && deletes[d]![0] === pos) {
+      pos = deletes[d++]![1]
+      continue
+    }
+    if (pos >= length) break
+  }
+  return merge(pieces)
+}
+
+function merge(pieces: Piece[]): Piece[] {
+  const out: Piece[] = []
+  for (const piece of pieces) {
+    const last = out.at(-1)
+    if (piece.kind === 'copy' && piece.end === piece.start) continue
+    if (piece.kind === 'text' && piece.text === '' && !piece.replaces) continue
+    if (
+      last?.kind === 'copy' &&
+      piece.kind === 'copy' &&
+      last.file === piece.file &&
+      last.end === piece.start &&
+      last.moved === piece.moved
+    ) {
+      last.end = piece.end
+      continue
+    }
+    out.push(piece.kind === 'copy' ? { ...piece } : piece)
+  }
+  return out
+}
+
+/** Builds a file's new text from its pieces. */
+export function textOf(pieces: Piece[], oldText: (file: string) => string): string {
+  return pieces.map((p) => (p.kind === 'copy' ? oldText(p.file).slice(p.start, p.end) : p.text)).join('')
+}
+
+export type Target = { file: string; offset: number; moved: boolean }
+export type Replacement = { file: string; start: number; end: number; explicit: boolean }
+
+type Segment = { start: number; end: number; file: string; at: number; moved: boolean }
+type Replaced = { start: number; end: number; file: string; at: number; length: number; explicit: boolean }
+
+/** Answers "where did this old character go?" for a set of new files built from pieces. */
+export class PieceMap {
+  readonly #copies = new Map<string, Segment[]>()
+  readonly #replaced = new Map<string, Replaced[]>()
+
+  constructor(newFiles: Map<string, Piece[]>) {
+    for (const [file, pieces] of newFiles) {
+      let at = 0
+      for (const piece of pieces) {
+        if (piece.kind === 'copy') {
+          push(this.#copies, piece.file, { start: piece.start, end: piece.end, file, at, moved: piece.moved })
+          at += piece.end - piece.start
+        } else {
+          if (piece.replaces) {
+            push(this.#replaced, piece.replaces.file, {
+              ...piece.replaces,
+              file,
+              at,
+              length: piece.text.length,
+              explicit: piece.explicit,
+            })
+          }
+          at += piece.text.length
+        }
+      }
+    }
+    for (const list of this.#copies.values()) list.sort((a, b) => a.start - b.start)
+    for (const list of this.#replaced.values()) list.sort((a, b) => a.start - b.start)
+  }
+
+  /** Where an old character was copied to, or null if it didn't survive. */
+  map(file: string, offset: number): Target | null {
+    const segment = find(this.#copies.get(file), offset)
+    return segment ? { file: segment.file, offset: segment.at + offset - segment.start, moved: segment.moved } : null
+  }
+
+  /** The new text an old character was replaced by, if it was. */
+  replacement(file: string, offset: number): Replacement | null {
+    const replaced = find(this.#replaced.get(file), offset)
+    return replaced
+      ? { file: replaced.file, start: replaced.at, end: replaced.at + replaced.length, explicit: replaced.explicit }
+      : null
+  }
+}
+
+function push<T>(map: Map<string, T[]>, key: string, value: T): void {
+  const list = map.get(key)
+  if (list) list.push(value)
+  else map.set(key, [value])
+}
+
+function find<T extends { start: number; end: number }>(list: T[] | undefined, offset: number): T | null {
+  if (!list) return null
+  let lo = 0
+  let hi = list.length - 1
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    const item = list[mid]!
+    if (offset < item.start) hi = mid - 1
+    else if (offset >= item.end) lo = mid + 1
+    else return item
+  }
+  return null
+}
+
+/** Unchanged: every character maps to itself. */
+export function identity(file: string, length: number): Piece[] {
+  return length > 0 ? [{ kind: 'copy', file, start: 0, end: length, moved: false }] : []
+}
+
+/**
+ * Pieces from a diff of `before` to `after`, for text with no command saying
+ * what happened (an upload, or rewriting a section's body). A deletion
+ * directly followed by an insertion becomes new text that replaces it, but not
+ * explicitly, so comments on the old text don't move onto it. Short
+ * coincidental matches are cleaned up first, so a rewritten sentence reads as
+ * rewritten rather than keeping scattered letters.
+ */
+export function diffPieces(file: string, before: string, after: string, offset = 0): Piece[] {
+  const diffs = cleanupSemantic(makeDiff(before, after, { timeout: 0, checkLines: true }))
+  const pieces: Piece[] = []
+  let pos = 0
+  for (let i = 0; i < diffs.length; i++) {
+    const [op, text] = diffs[i]!
+    if (op === DIFF_EQUAL) {
+      pieces.push({ kind: 'copy', file, start: offset + pos, end: offset + pos + text.length, moved: false })
+      pos += text.length
+    } else if (op === DIFF_DELETE) {
+      const next = diffs[i + 1]
+      if (next?.[0] === DIFF_INSERT) {
+        pieces.push({
+          kind: 'text',
+          text: next[1],
+          replaces: { file, start: offset + pos, end: offset + pos + text.length },
+          explicit: false,
+        })
+        i++
+      }
+      pos += text.length
+    } else if (op === DIFF_INSERT) {
+      const next = diffs[i + 1]
+      if (next?.[0] === DIFF_DELETE) {
+        pieces.push({
+          kind: 'text',
+          text,
+          replaces: { file, start: offset + pos, end: offset + pos + next[1].length },
+          explicit: false,
+        })
+        pos += next[1].length
+        i++
+      } else {
+        pieces.push({ kind: 'text', text, replaces: null, explicit: false })
+      }
+    }
+  }
+  return merge(pieces)
+}

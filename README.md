@@ -6,7 +6,7 @@ Review and edit ideas written in Markdown, together with agents, so comments sta
 
 - [The idea](docs/idea.md) and the [market analysis](docs/market-analysis.md)
 - [Architecture](docs/architecture.md) and the [cli](docs/cli.md)
-- [MVP design](docs/mvp/architecture.md): [backend](docs/mvp/architecture-backend.md), [front end](docs/mvp/architecture-frontend.md), [cli and skills](docs/mvp/architecture-cli.md), [scale concerns](docs/mvp/scale-concerns.md), and the [Rivet](docs/mvp/spike-rivet.md) and [Better Auth](docs/mvp/spike-better-auth.md) spikes
+- [MVP design](docs/mvp/architecture.md): [backend](docs/mvp/architecture-backend.md), [front end](docs/mvp/architecture-frontend.md), [cli and skills](docs/mvp/architecture-cli.md), [core](docs/mvp/core.md), [scale concerns](docs/mvp/scale-concerns.md), and the [Rivet](docs/mvp/spike-rivet.md) and [Better Auth](docs/mvp/spike-better-auth.md) spikes
 - [Implementation plan](docs/implementation-plan.md): where to start, and in what order
 
 The prototypes are in `experiments/`.
