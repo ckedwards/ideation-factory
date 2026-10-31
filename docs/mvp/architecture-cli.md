@@ -108,7 +108,7 @@ sequenceDiagram
 
 ## Syncing safely
 
-- **What's uploaded:** the idea's Markdown files in scope, plus images they reference (up to the deployment's size limit). Never whole folders, and never code, PDFs or video. Links to those are rewritten to the code host (for example GitHub at the idea's branch), and rewritten back to relative links on pull.
+- **What's uploaded:** the idea's Markdown files in scope (within the deployment's Markdown size limits, checked before uploading), plus images they reference (up to the deployment's image size limit). Never whole folders, and never code, PDFs or video. Links to those are rewritten to the code host (for example GitHub at the idea's branch), and rewritten back to relative links on pull.
 - **Base tracking:** every file records the content it was edited from. That's how the server follows comments through an upload, and how it knows when to say "pull first".
 - **State per idea:** kept in git's shared directory (`$(git rev-parse --git-common-dir)/ideaf/<idea>.json`). It's shared by every worktree, never committed, and handles several ideas per repository. Outside git, it's `.ideaf/state/` in the synced folder.
 - **Repository config** (committed): default team, target branch, paths to exclude, code host URL, a lower image limit.

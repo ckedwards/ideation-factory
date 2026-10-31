@@ -75,13 +75,25 @@ In rough order of how likely each is to bite. Severity: **High** means likely to
 
 **When it bites:** a large idea (dozens of files, hundreds of comments) uploaded or edited repeatedly.
 
-**Mitigations:**
-- **Run `core`'s heavy work off the main thread:** a small pool of Bun worker threads per app node. `core` is pure, so this is straightforward.
-- **Limits:** a maximum number of files, file size and comments per idea.
-- **Only touch what changed:** re-anchor and diff only the files a version changed.
-- **Very large work in the background:** the actor schedules it, and marks the version "processing" until it's done.
+**Measured** (step 1's `core`, on a laptop; see [core](core.md)):
 
-**Status:** open. Measure with a deliberately large test idea, in the [Rivet spike](spike-rivet.md) ("Heavy work on one node").
+| Work | Typical idea (3 files, 7 KB) | Large idea (40 files, 890 KB, 500 comments) |
+|---|---|---|
+| Upload with every file edited | ~7 ms | ~0.7 s, or ~1.5 s if the old version isn't parsed yet |
+| A batch of 20 steps | | ~0.5 s (~25 ms a step) |
+
+Parsing is most of it: the Markdown parser takes ~715 ms for the large idea, more than half of that for GitHub's extensions (tables, task lists, footnotes). Diffing and following IDs and comments take ~150 ms. Cost grows with size, so a typical idea is no problem and a large one stalls its node for up to a second or two.
+
+**Mitigations** (to build in step 2, when the idea actor starts calling `core`):
+- **Run `core` in a pool of Bun worker threads** on each app node. `core` has no shared state, so the main thread only passes messages. This is the real fix: a large upload then slows only its own idea.
+- **Size limits, set by site admins:** a maximum Markdown file size (default 256 KB) and idea size (default 2 MB), checked before parsing (see Deployment settings in the [overview](../architecture.md)). They cap the worst case at a few seconds of worker time.
+- **Keep the latest version parsed in the actor's memory,** so a change only parses the new text.
+- **Only touch what changed:** already done in `core`. A batch step only follows the files it touches, and an upload only diffs files whose text changed.
+- **Very large work in the background,** if workers and limits aren't enough: the actor schedules it, and marks the version "processing" until it's done.
+
+A faster parser is the other option, but the web app must parse with the same libraries so comment positions agree, so that's only worth it if measurement says workers and limits aren't enough.
+
+**Status:** measured; mitigations planned for step 2, and to be confirmed in the [Rivet spike](spike-rivet.md) ("Heavy work on one node").
 
 ### 5. The inbox's read-time merge
 

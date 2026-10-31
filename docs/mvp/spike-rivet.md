@@ -90,7 +90,7 @@ Each has a pass condition. Record results in Findings, below.
 
 [Scale concerns](scale-concerns.md) concern 4: one Bun process hosts many actors on one JavaScript thread, so CPU work in one idea actor delays the rest of the node. Measure **event-loop delay** with a timer probe on each app node: a 10 ms interval that records how late each tick fires.
 
-- [ ] **Large idea, on the main thread:** an idea with 40 files and 500 comments, uploaded and edited repeatedly (re-anchoring, or a stand-in diff of the same size if `core` isn't ready), while other ideas on the same node take ordinary reads. **Pass:** event-loop delay and the other ideas' read latency are recorded, as the baseline.
+- [ ] **Large idea, on the main thread:** an idea with 40 files and 500 comments, uploaded and edited repeatedly with `core`'s real re-anchoring and edit commands, while other ideas on the same node take ordinary reads. Repeat with an idea at the default size limit (2 MB) and at the highest allowed (4 MB). **Pass:** event-loop delay and the other ideas' read latency are recorded, as the baseline.
 - [ ] **The same, with the work in Bun worker threads.** **Pass:** event-loop delay under 20 ms at the 99th percentile, and the other ideas' reads stay under 100 ms at the 99th percentile.
 - [ ] **During the bot burst** (above), on every app node. **Pass:** event-loop delay is recorded and stays under 20 ms at the 99th percentile.
 

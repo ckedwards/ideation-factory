@@ -22,6 +22,10 @@ Some decisions belong to the organization running Ideation Factory, not to a tea
 
 - **External images:** show after a click (default), always show, or never show.
 - **Maximum image upload size:** default 10 MB, from 1 to 100 MB. The server tells the cli this limit; a repository's own cli config can set a lower limit but never a higher one.
+- **Maximum Markdown file size:** default 256 KB, from 16 KB to 1 MB.
+- **Maximum idea size** (all of an idea's Markdown together): default 2 MB, from 256 KB to 4 MB.
+
+The two Markdown limits bound the work one change can cause: parsing and re-anchoring an idea at 4 MB takes a few seconds of CPU (see [scale concerns](mvp/scale-concerns.md) concern 4). An upload or batch that would leave a file or the idea over its limit is refused with an error naming the limit, before any parsing. The server tells the cli these limits, so `ideaf sync` checks them before uploading. Lowering a limit doesn't touch existing ideas: a change to an idea that's already over the new limit is accepted as long as it doesn't make it bigger.
 
 More will join this list as decisions come up that need to be made once per organization.
 
