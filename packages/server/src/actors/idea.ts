@@ -37,6 +37,7 @@ export const idea = actor({
   actions: {
     summary: (c) => read(() => serviceOf(c).summary()),
     files: (c, version?: number) => read(() => serviceOf(c).files(version)),
+    pull: (c, version?: number) => read(() => serviceOf(c).pull(version)),
     file: (c, version: number | undefined, file: string) => read(() => serviceOf(c).file(version, file)),
     outline: (c, version?: number) => read(() => serviceOf(c).outline(version)),
     comments: (c, version?: number) => read(() => serviceOf(c).comments(version)),

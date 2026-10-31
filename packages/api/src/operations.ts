@@ -1,0 +1,176 @@
+// Every operation, defined once. Step 3 covers the agent loop: create an idea,
+// read it, show its blocks, pull, sync, preview and apply edits, and comments.
+import { z } from 'zod'
+import { defineOperation } from './operation.ts'
+import {
+  AnchorInput,
+  Batch,
+  CommentId,
+  CommentOutcome,
+  CommentThread,
+  Conflict,
+  FileContent,
+  FileId,
+  FileOutline,
+  IdeaId,
+  IdeaSummary,
+  StepResult,
+  VersionParam,
+  VersionResult,
+} from './schemas.ts'
+
+const MarkdownFile = z.strictObject({ path: z.string().min(1).max(512), content: z.string() })
+
+export const operations = {
+  createIdea: defineOperation({
+    name: 'create_idea',
+    summary: 'Start an idea',
+    description:
+      'Creates an idea from one or more Markdown files, as its first version. The new idea is private to you. Retrying with the same idempotency key returns the same idea instead of creating another.',
+    method: 'POST',
+    path: '/ideas',
+    kind: 'write',
+    input: z.strictObject({
+      title: z.string().trim().min(1).max(200),
+      description: z.string().max(5000).optional(),
+      files: z.array(MarkdownFile).min(1).max(500),
+    }),
+    output: z.object({ idea: z.string(), version: z.number().int() }),
+  }),
+
+  getIdea: defineOperation({
+    name: 'get_idea',
+    summary: 'Read an idea',
+    description: "An idea's title, owner, status, latest version and version history (who made each version, and whether with commands or an upload).",
+    method: 'GET',
+    path: '/ideas/{idea}',
+    kind: 'read',
+    input: z.strictObject({ idea: IdeaId }),
+    output: IdeaSummary,
+  }),
+
+  showBlocks: defineOperation({
+    name: 'show_blocks',
+    summary: 'Show the structured view',
+    description:
+      "Each file's sections and blocks with their stable IDs and source text, plus the open comments and what they're attached to. Read this before building an edit batch: commands name their targets by these IDs.",
+    method: 'GET',
+    path: '/ideas/{idea}/blocks',
+    kind: 'read',
+    input: z.strictObject({ idea: IdeaId, version: VersionParam }),
+    output: z.object({ version: z.number().int(), files: z.array(FileOutline), comments: z.array(CommentThread) }),
+  }),
+
+  pull: defineOperation({
+    name: 'pull',
+    summary: 'Get the files',
+    description:
+      "Every file of a version (the latest by default) with its content and content hash. The hash is the file's base for the next sync: send it back so the server can follow comments through your edits and tell you to pull first if the idea moved on.",
+    method: 'GET',
+    path: '/ideas/{idea}/files',
+    kind: 'read',
+    input: z.strictObject({ idea: IdeaId, version: VersionParam }),
+    output: z.object({ version: z.number().int(), files: z.array(FileContent) }),
+  }),
+
+  sync: defineOperation({
+    name: 'sync',
+    summary: 'Upload edited files',
+    description:
+      "Uploads edited copies of files as a new version, re-anchoring comments through the diff. Each existing file must give the hash it was edited from (its base); if that isn't the latest, the upload is refused with pull_first. New files have no `file` or `base`. `force` uploads anyway, so newer changes show as undone. Editing with commands keeps comments more exactly than an upload.",
+    method: 'POST',
+    path: '/ideas/{idea}/sync',
+    kind: 'write',
+    input: z.strictObject({
+      idea: IdeaId,
+      files: z.array(z.strictObject({ file: FileId.optional(), path: z.string().min(1).max(512), content: z.string(), base: z.string().optional() })).max(500),
+      deleted: z.array(FileId).max(500).optional(),
+      force: z.boolean().optional(),
+    }),
+    output: VersionResult,
+  }),
+
+  previewEdit: defineOperation({
+    name: 'preview_edit',
+    summary: 'Dry-run an edit batch',
+    description:
+      'Shows what a batch would do, changing nothing: the new text of each changed file, and what happens to each comment (exact, moved, changed or outdated). A batch that no longer applies returns conflict, naming the steps.',
+    method: 'POST',
+    path: '/ideas/{idea}/edits/preview',
+    kind: 'read',
+    input: z.strictObject({ idea: IdeaId, batch: Batch }),
+    output: z.object({
+      base: z.number().int(),
+      comments: z.array(CommentOutcome),
+      steps: z.array(StepResult),
+      files: z.array(z.object({ file: z.string(), path: z.string(), content: z.string(), before: z.string().nullable() })),
+      deleted: z.array(z.string()),
+    }),
+  }),
+
+  edit: defineOperation({
+    name: 'edit',
+    summary: 'Apply an edit batch',
+    description:
+      "Applies a batch of edit commands (replace, insert, delete, move, rename-heading, set-section, and file commands) as one new version. All or nothing. If the idea moved on since the batch's base, it's replayed onto the latest version; any step that no longer applies makes it a conflict, with nothing changed. Steps can name the comments they address.",
+    method: 'POST',
+    path: '/ideas/{idea}/edits',
+    kind: 'write',
+    input: z.strictObject({ idea: IdeaId, batch: Batch }),
+    output: VersionResult,
+  }),
+
+  listComments: defineOperation({
+    name: 'list_comments',
+    summary: 'List comments',
+    description: 'Every comment thread as of a version (the latest by default): where it is anchored there and its state, replies, whether it is resolved, and which versions addressed it.',
+    method: 'GET',
+    path: '/ideas/{idea}/comments',
+    kind: 'read',
+    input: z.strictObject({ idea: IdeaId, version: VersionParam }),
+    output: z.array(CommentThread),
+  }),
+
+  addComment: defineOperation({
+    name: 'add_comment',
+    summary: 'Comment',
+    description:
+      "Comments on a file, a section (by its ID) or a range of a file's plain text (from show_blocks), on the latest version. If the idea has moved on, it's refused with stale_version: read it again.",
+    method: 'POST',
+    path: '/ideas/{idea}/comments',
+    kind: 'write',
+    input: z.strictObject({ idea: IdeaId, version: z.number().int().positive(), anchor: AnchorInput, body: z.string().trim().min(1).max(20_000) }),
+    output: z.object({ comment: z.string() }),
+  }),
+
+  reply: defineOperation({
+    name: 'reply',
+    summary: 'Reply to a comment',
+    description: 'Adds a reply to a comment thread.',
+    method: 'POST',
+    path: '/ideas/{idea}/comments/{comment}/replies',
+    kind: 'write',
+    input: z.strictObject({ idea: IdeaId, comment: CommentId, body: z.string().trim().min(1).max(20_000) }),
+    output: z.object({ comment: z.string() }),
+  }),
+
+  resolveComment: defineOperation({
+    name: 'resolve_comment',
+    summary: 'Resolve or reopen a comment',
+    description: 'Marks a comment thread resolved, or reopens it.',
+    method: 'POST',
+    path: '/ideas/{idea}/comments/{comment}/resolve',
+    kind: 'write',
+    input: z.strictObject({ idea: IdeaId, comment: CommentId, resolved: z.boolean() }),
+    output: z.object({ comment: z.string(), resolved: z.boolean() }),
+  }),
+} as const
+
+export type Operations = typeof operations
+export type OperationKey = keyof Operations
+
+/** Error details, for the codes that carry them. */
+export const ErrorDetails = {
+  conflict: z.object({ conflicts: z.array(Conflict) }),
+  pull_first: z.object({ latest: z.number().int(), files: z.array(z.object({ file: z.string(), path: z.string(), base: z.string().nullable(), latest: z.string() })) }),
+}

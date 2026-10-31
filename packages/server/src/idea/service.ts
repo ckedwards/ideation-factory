@@ -28,7 +28,9 @@ import type { FileStore } from '../files/store.ts'
 import { byteLength, checkSizes, type Limits, type SizeProblem } from '../limits.ts'
 import type { Sql } from './sql.ts'
 
-export type Caller = { user: string; bot: string | null; purpose: 'me' | 'bot-for-me' | 'bot' }
+import type { Caller } from '@ideaf/api'
+
+export type { Caller }
 
 const FileInput = z.strictObject({ path: z.string().min(1).max(512), content: z.string() })
 
@@ -341,6 +343,13 @@ export class IdeaService {
   async files(version?: number) {
     const v = await this.#versionNumber(version)
     return (await this.#manifest(v)).map((f) => ({ file: f.file, path: f.path, hash: f.hash, bytes: f.bytes }))
+  }
+
+  /** Every file of a version, with its content: what `ideaf pull` writes. */
+  async pull(version?: number) {
+    const v = await this.#versionNumber(version)
+    const manifest = await this.#manifest(v)
+    return { version: v, files: await Promise.all(manifest.map(async (f) => ({ file: f.file, path: f.path, hash: f.hash, content: await this.#content(f.hash) }))) }
   }
 
   async file(version: number | undefined, fileId: string) {

@@ -2,7 +2,14 @@
   "name": "@ideaf/api",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
-  "dependencies": { "@ideaf/core": "workspace:*" },
-  "scripts": { "typecheck": "tsc -p ." }
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@ideaf/core": "workspace:*",
+    "zod": "^4.6.7"
+  },
+  "scripts": {
+    "typecheck": "tsc -p ."
+  }
 }

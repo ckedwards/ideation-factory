@@ -1,9 +1,14 @@
 // @ideaf/api: every operation defined once, with a schema for its input and
-// output. From each definition come the HTTP route (and its OpenAPI
-// description), the MCP tool, and the typed client the web app and cli import.
-//
-// Step 3 of the build plan adds the registry and the first operations: create an
-// idea, sync (with base hashes and "pull first"), pull, show blocks, edit (dry
-// run and apply), and comments.
+// output. From each definition come the HTTP route (createRouter), its OpenAPI
+// description (openApiDocument), its MCP tool (mcpTools), and its method on the
+// typed client the web app and the cli import (createApiClient).
 
-export type OperationName = never
+export { type ApiClient, type CallOptions, type ClientOptions, createApiClient } from './client.ts'
+export { ApiError, ApiErrorBody, type ApiErrorCode, ERROR_STATUS, isApiErrorCode } from './errors.ts'
+export { type McpTool, mcpTools } from './mcp.ts'
+export { openApiDocument } from './openapi.ts'
+export { defineOperation, type Input, type Method, type Operation, type Output, type ParsedInput } from './operation.ts'
+export { ErrorDetails, type OperationKey, type Operations, operations } from './operations.ts'
+export { type Context, createRouter, describeIssues, type HandlerResult, type Handlers, type RouterOptions } from './router.ts'
+export * as schemas from './schemas.ts'
+export { type Caller } from './schemas.ts'

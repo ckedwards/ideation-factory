@@ -38,10 +38,13 @@ bun run engine:stop  # stop the local Rivet Engine
 Until real sign-in (step 6), the server takes one dev token: `Authorization: Bearer dev` (set `IDEAF_DEV_TOKEN` to change it). For example:
 
 ```
-curl -H 'authorization: Bearer dev' -X POST localhost:8080/ideas/demo/writes \
-  -d '{"key":"1","write":{"type":"create","title":"Demo","files":[{"path":"plan.md","content":"# Plan\n\nHello.\n"}]}}'
-curl -H 'authorization: Bearer dev' localhost:8080/ideas/demo/outline
+curl -H 'authorization: Bearer dev' -X POST localhost:8080/ideas \
+  -d '{"title":"Demo","files":[{"path":"plan.md","content":"# Plan\n\nHello.\n"}]}'
+# → {"idea":"i…","version":1}
+curl -H 'authorization: Bearer dev' localhost:8080/ideas/<idea>/blocks
 ```
+
+Every route is described at `/openapi.json`. From code, use the typed client: `createApiClient({ baseUrl, token })` from `@ideaf/api`.
 
 The Markdown size limits default to 256 KB per file and 2 MB per idea; `IDEAF_MAX_FILE_BYTES` and `IDEAF_MAX_IDEA_BYTES` change them (until the site admin page exists).
 
