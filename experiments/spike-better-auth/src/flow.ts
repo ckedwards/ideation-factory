@@ -123,6 +123,12 @@ await sql(`UPDATE "user" SET name = ? WHERE id = ?`, 'Riley', userId)
   check('session records how it was created', sess[0]?.signInMethod === 'email-otp', sess[0])
 }
 
+// A handle that's taken
+{
+  const r = await signIn(new Browser(), `dup-${run}@example.com`, handle)
+  check('handles: unique (a taken handle refused cleanly)', r.status >= 400 && r.status < 500, { status: r.status, body: r.body })
+}
+
 // The handle and the primary email can't change
 {
   const u = await riley.json('/api/auth/update-user', { method: 'POST', json: { username: `other-${run}` } })

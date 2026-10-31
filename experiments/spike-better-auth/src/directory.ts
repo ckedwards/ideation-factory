@@ -57,7 +57,9 @@ export const directoryA = actor({
 
 // One Better Auth instance per actor wake-up, bound to that wake-up's c.db.
 function authFor(c: { db: unknown; vars: { auth: Auth | null } }): Auth {
-  c.vars.auth ??= makeAuth({ dialect: new RivetSqliteDialect(c.db as RawAccess), type: 'sqlite' } as never)
+  // transaction: true makes Better Auth group multi-step writes; the dialect
+  // maps Kysely's begin/commit onto c.db.transaction.
+  c.vars.auth ??= makeAuth({ dialect: new RivetSqliteDialect(c.db as RawAccess), type: 'sqlite', transaction: process.env.SPIKE_TX !== '0' } as never)
   return c.vars.auth
 }
 
@@ -111,7 +113,7 @@ export const directoryB = actor({
     },
     userStatus: (c, id: string) => userStatus(c.db as RawAccess, id),
     setInactive: (c, id: string, inactive: boolean) => setInactive(c.db as RawAccess, id, inactive),
-    stats: () => ({ statements: dialectStats.statements }),
+    stats: () => ({ ...dialectStats }),
     sql: (c, query: string, ...args: unknown[]) => c.db.execute(query, ...args),
   },
 })

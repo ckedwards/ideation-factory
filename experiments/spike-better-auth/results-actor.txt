@@ -1,18 +1,19 @@
-# flow against http://localhost:25445 (actor) run mvwvd5po
+# flow against http://localhost:25445 (actor) run mvwvh0yp
 
 PASS  no passwords: sign-up/email and sign-in/email refused  — 400 400
 PASS  handles: invalid or reserved handles refused at sign-up  — A:400 ab!:400 -ab:400 ab-:400 admin:400 xxxxxxxx:400 Riley:400
 PASS  handles: sign-up without a handle refused  — 400
-PASS  email code: sign-up and sign-in  — {"status":200,"user":"riley-mvwvd5po"}
+PASS  email code: sign-up and sign-in  — {"status":200,"user":"riley-mvwvh0yp"}
 PASS  email code: existing user signs in without a handle  — 200
 MEASURE directory calls: sign-up 2 (); sign-in 2 ()
 PASS  session records how it was created  — {"signInMethod":"email-otp"}
-PASS  handles: not changeable  — {"status":400,"body":{"message":"Username cannot be updated","code":"USERNAME_IS_IMMUTABLE"},"now":"riley-mvwvd5po"}
+PASS  handles: unique (a taken handle refused cleanly)  — {"status":400,"body":{"message":"Username is already taken. Please try another.","code":"USERNAME_IS_ALREADY_TAKEN"}}
+PASS  handles: not changeable  — {"status":400,"body":{"message":"Username cannot be updated","code":"USERNAME_IS_IMMUTABLE"},"now":"riley-mvwvh0yp"}
 PASS  primary email: change-email paths off  — 400 400
 PASS  passkey: registration options allowed right after an email code  — 200
 PASS  passkey: refused from an older session  — 403 403
 PASS  session JWT: 15 minutes, EdDSA, verifies against /jwks  — {"lifetime":900,"claims":["iat","purpose","sid","sub","exp","iss","aud"]}
-PASS  oauth: test client registered  — {"client_id":"aMSuFlarddnkKVjjdoxxTIoqBjTlcpNA","scope":"openid profile email offline_access ideas:read ideas:write","user_id":"4wfsP1Qpf1pVFROWgZFlQMDt3eNVciWr","client_id_issued_at":1793479467,"client_name":"flow test client","redirect_uris":["http://127.0.0.1:53682/callback"],"token_endpoint_auth
+PASS  oauth: test client registered  — {"client_id":"CndziLTdCKrfxAufEMPZSuvpBixYYWlZ","scope":"openid profile email offline_access ideas:read ideas:write","user_id":"4wfsP1Qpf1pVFROWgZFlQMDt3eNVciWr","client_id_issued_at":1793479647,"client_name":"flow test client","redirect_uris":["http://127.0.0.1:53682/callback"],"token_endpoint_auth
 PASS  oauth: authorization code returned with iss (RFC 9207)  — {"iss":"http://localhost:25445","state":"st8"}
 PASS  pkce: token request without a verifier refused  — {"error_description":"Either code_verifier or client_secret is required","error":"invalid_request"}
 PASS  pkce: wrong verifier refused  — {"error_description":"code verification failed","error":"invalid_grant"}
@@ -25,11 +26,11 @@ PASS  redirect: wrong redirect URI refused (no redirect to it)  — {"status":30
 PASS  pkce: authorize without a challenge refused  — {"status":302,"location":"http://127.0.0.1:53682/callback?error=invalid_request&error_description=pkce+is+required+for+public+clients&state=st8&iss=http%3A%2F%2Flocalhost%3A25445"}
 PASS  pkce: plain method refused (S256 only)  — {"status":302,"location":"http://127.0.0.1:53682/callback?error=invalid_request&error_description=code_challenge_method+must+be+one+of%3A+S256&state=st8&iss=http%3A%2F%2Flocalhost%3A2544"}
 PASS  resource: authorize for an unknown resource refused  — {"status":302,"location":"http://127.0.0.1:53682/callback?error=invalid_target&error_description=requested+resource+https%3A%2F%2Fevil.example%2Fmcp+is+not+configured&state=st8&iss=http%"}
-PASS  mcp: 200 read calls made zero directory calls  — {"okCount":200,"dirCalls":0,"msPerRequest":"0.80"}
+PASS  mcp: 200 read calls made zero directory calls  — {"okCount":200,"dirCalls":0,"msPerRequest":"0.73"}
 PASS  mcp: action labeled from the token alone  — 🤖 planbot on behalf of Riley commented on idea-1: hello
 PASS  mcp: tampered token refused with a 401 challenge  — {"status":401,"www":"Bearer resource_metadata=\"http://localhost:25445/.well-known/oauth-protected-resource/mcp\""}
-MEASURE signature verification: 100.4 µs per token (jose, Ed25519, Bun)
-PASS  refresh: rotates (new refresh token)  — {"status":200,"body":{"access_token":"eyJ0eXAiOiJhdCtqd3QiLCJhbGciOiJFZERTQSIsImtpZCI6IlM2c0Z6VHRIS3gwOHpsOUVBTTdkaGZuc1dxRHdRMEl4In0.eyJwdXJwb3NlIjoiYm90LWZvci1tZSIsImJvdCI6InBsYW5ib3QiLCJuYW1lIjoiUmlsZXkiLCJoYW5kbGUiOiJyaWxleS1tdnd2ZDVwbyIsInN1YiI6IjVQQk9CbzdVS05yVE41MTJQS0hvNjZyR0piZWY5MFdYIiwiYX
+MEASURE signature verification: 93.6 µs per token (jose, Ed25519, Bun)
+PASS  refresh: rotates (new refresh token)  — {"status":200,"body":{"access_token":"eyJ0eXAiOiJhdCtqd3QiLCJhbGciOiJFZERTQSIsImtpZCI6IlM2c0Z6VHRIS3gwOHpsOUVBTTdkaGZuc1dxRHdRMEl4In0.eyJwdXJwb3NlIjoiYm90LWZvci1tZSIsImJvdCI6InBsYW5ib3QiLCJuYW1lIjoiUmlsZXkiLCJoYW5kbGUiOiJyaWxleS1tdnd2aDB5cCIsInN1YiI6IlBmQWw4dVRFbFRqdVZXUWhjMFlsaENuYVJqOTJCWWs4IiwiYX
 MEASURE directory calls per refresh: 1 ()
 PASS  refresh: new access token keeps purpose and bot  — {"purpose":"bot-for-me","bot":"planbot"}
 NOTE reuse within mcp()'s 30 s refreshTokenReuseInterval: 200 replayed same response
@@ -40,11 +41,11 @@ PASS  personal token: more than a year refused  — 400
 PASS  personal token: cannot claim site admin  — 400
 PASS  personal token: needs a name  — 400
 PASS  personal token: created, shown once  — {"status":200,"start":"ideaf_"}
-PASS  personal token: stored hashed  — b9F8FYpLMvDo
+PASS  personal token: stored hashed  — EcsrVIEaBMHD
 PASS  personal token: listing never shows it again  — 200
-PASS  exchange: personal token → 15-minute JWT that verifies by signature  — {"sub":"5PBOBo7UKNrTN512PKHo66rGJbef90WX","purpose":"bot-for-me","bot":"planbot","tid":"0xrAfPos0Ds3XOluu9TumyJ6ZYglx0IB","iss":"http://localhost:25445","aud":"http://localhost:25445","iat":1793479502,"exp":1793480402}
+PASS  exchange: personal token → 15-minute JWT that verifies by signature  — {"sub":"PfAl8uTElTjuVWQhc0YlhCnaRj92BYk8","purpose":"bot-for-me","bot":"planbot","tid":"je0Fl6wEbLxlyONQEbS4jSRBSJAdrp8s","iss":"http://localhost:25445","aud":"http://localhost:25445","iat":1793479682,"exp":1793480582}
 MEASURE directory calls per exchange: 3 ()
-NOTE api key row after an exchange: {"requestCount":0,"lastRequest":"2026-10-31T20:45:02.206Z"}
+NOTE api key row after an exchange: {"requestCount":0,"lastRequest":"2026-10-31T20:48:02.863Z"}
 PASS  site admin token: refused for a non-admin  — 403
 PASS  site admin token: needs a reason, at most 30 days, use logged  — 400 400 200 audit=1
 PASS  revocation: a revoked personal token gets no new JWT  — {"del":200,"delBody":{"success":true},"exchange":401}
@@ -52,10 +53,10 @@ PASS  revocation: a signed-out session gets no new JWT  — 200 401
 PASS  inactive: no new tokens (refresh, exchange, session JWT, sign-in)  — 400 401 401 403
 PASS  inactive: an issued JWT still reads until it expires  — 200
 PASS  inactive: writes refused at once  — your account is inactive
-PASS  cli: device flow → JWT access token + refresh token  — {"code":"http://localhost:25445/device?user_code=2BVX3VF9","claim":200,"approve":200,"approveBody":{"success":true},"token":200,"tokenBody":{"access_token":"eyJ0eXAiOiJhdCtqd3QiLCJhbGciOiJFZERTQSIsImtpZCI6IlM2c0Z6VHRIS3gwOHpsOUVBTTdkaGZuc1dxRHdRMEl4In0.eyJwdXJwb3NlIjoibWUiLCJuYW1lIjoiUmlsZXkiLCJoYW5
+PASS  cli: device flow → JWT access token + refresh token  — {"code":"http://localhost:25445/device?user_code=V7CPV2VS","claim":200,"approve":200,"approveBody":{"success":true},"token":200,"tokenBody":{"access_token":"eyJ0eXAiOiJhdCtqd3QiLCJhbGciOiJFZERTQSIsImtpZCI6IlM2c0Z6VHRIS3gwOHpsOUVBTTdkaGZuc1dxRHdRMEl4In0.eyJwdXJwb3NlIjoibWUiLCJuYW1lIjoiUmlsZXkiLCJoYW5
 PASS  rate limit: email codes limited per IP and path  — 200 200 200 429 429 429 429 429 429 429 429 429
 PASS  rate limit: counters not in the directory (no rateLimit table)  — _rivet_meta _rivet_runtime _rivet_actor _rivet_actor_state _rivet_schedule_events _rivet_schedule_history _rivet_conns _rivet_conn_state _rivet_queue _rivet_wf_kv _rivet_user_kv user session account verification jwks passkey apikey oauthClient oauthResource oauthClientResource oauthRefreshToken oaut
 
-MEASURE totals since start: adapter calls 0, actor statements 410
+MEASURE totals since start: adapter calls 0, actor statements 420
 
-48/48 passed
+49/49 passed

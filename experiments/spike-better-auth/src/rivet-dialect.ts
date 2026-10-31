@@ -26,7 +26,7 @@ export interface RawAccess {
   transaction<T>(callback: (tx: RawAccess) => Promise<T> | T): Promise<T>
 }
 
-export const dialectStats = { statements: 0 }
+export const dialectStats = { statements: 0, transactions: 0 }
 
 class RivetConnection implements DatabaseConnection {
   tx: RawAccess | null = null
@@ -49,6 +49,7 @@ class RivetConnection implements DatabaseConnection {
   }
 
   async begin(): Promise<void> {
+    dialectStats.transactions++
     let ready!: () => void
     const opened = new Promise<void>((r) => (ready = r))
     this.done = this.db
