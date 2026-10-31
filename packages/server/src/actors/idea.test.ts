@@ -1,23 +1,17 @@
 // The idea actor through RivetKit's local engine (started on first use and
 // shared with `bun run dev`), so each test uses its own idea key.
 import { beforeAll, expect, test } from 'bun:test'
-import { type Client, createClient } from 'rivetkit/client'
-import { inProcessCore } from '../core-pool/runner.ts'
-import { configureNode } from '../deps.ts'
-import { MemoryFileStore } from '../files/memory.ts'
+import type { Client } from 'rivetkit/client'
 import type { Caller } from '../idea/service.ts'
-import { DEFAULT_LIMITS } from '../limits.ts'
-import { registry, type Registry } from '../registry.ts'
+import type { Registry } from '../registry.ts'
+import { startTestActors } from '../testing.ts'
 
 const OWNER: Caller = { user: 'dev', bot: null, purpose: 'me' }
 const PLAN = '# Plan\n\nThe quick brown fox.\n'
 let actors: Client<Registry>
 
 beforeAll(async () => {
-  configureNode({ files: new MemoryFileStore(), core: inProcessCore(), limits: DEFAULT_LIMITS })
-  registry.config.noWelcome = true
-  await registry.startAndWait()
-  actors = createClient<Registry>(registry.parseConfig().endpoint!)
+  actors = await startTestActors()
 }, 60_000)
 
 const key = () => `test-${crypto.randomUUID()}`

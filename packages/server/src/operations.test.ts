@@ -5,22 +5,14 @@
 import { beforeAll, expect, test } from 'bun:test'
 import { ApiError, createApiClient } from '@ideaf/api'
 import { contentHash } from '@ideaf/core'
-import { createClient } from 'rivetkit/client'
 import { createApp } from './app.ts'
-import { inProcessCore } from './core-pool/runner.ts'
-import { configureNode } from './deps.ts'
-import { MemoryFileStore } from './files/memory.ts'
-import { DEFAULT_LIMITS } from './limits.ts'
 import { ideaIdFor } from './operations.ts'
-import { registry, type Registry } from './registry.ts'
+import { startTestActors } from './testing.ts'
 
 let app: (request: Request) => Promise<Response>
 
 beforeAll(async () => {
-  configureNode({ files: new MemoryFileStore(), core: inProcessCore(), limits: DEFAULT_LIMITS })
-  registry.config.noWelcome = true
-  await registry.startAndWait()
-  app = createApp({ actors: createClient<Registry>(registry.parseConfig().endpoint!), devToken: 'test-token', validateOutput: true })
+  app = createApp({ actors: await startTestActors(), devToken: 'test-token', validateOutput: true })
 }, 60_000)
 
 const client = () => createApiClient({ baseUrl: 'http://ideaf.test', token: 'test-token', fetch: (r) => app(r), validateOutput: true })

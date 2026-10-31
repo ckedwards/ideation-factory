@@ -6,22 +6,14 @@ import { dirname, join } from 'node:path'
 import { createApiClient } from '@ideaf/api'
 import { main } from '@ideaf/cli/main.ts'
 import { createApp } from '@ideaf/server/app.ts'
-import { inProcessCore } from '@ideaf/server/core-pool/runner.ts'
-import { configureNode } from '@ideaf/server/deps.ts'
-import { MemoryFileStore } from '@ideaf/server/files/memory.ts'
-import { DEFAULT_LIMITS } from '@ideaf/server/limits.ts'
-import { registry, type Registry } from '@ideaf/server/registry.ts'
-import { createClient } from 'rivetkit/client'
+import { startTestActors } from '@ideaf/server/testing.ts'
 
 const TOKEN = 'e2e-token'
 let app: ((request: Request) => Promise<Response>) | null = null
 
 export async function server(): Promise<(request: Request) => Promise<Response>> {
   if (app) return app
-  configureNode({ files: new MemoryFileStore(), core: inProcessCore(), limits: DEFAULT_LIMITS })
-  registry.config.noWelcome = true
-  await registry.startAndWait()
-  app = createApp({ actors: createClient<Registry>(registry.parseConfig().endpoint!), devToken: TOKEN, validateOutput: true })
+  app = createApp({ actors: await startTestActors(), devToken: TOKEN, validateOutput: true })
   return app
 }
 
