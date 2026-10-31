@@ -2,6 +2,9 @@
   "name": "@ideaf/server",
   "private": true,
   "type": "module",
+  "exports": {
+    "./*": "./src/*"
+  },
   "dependencies": {
     "@ideaf/api": "workspace:*",
     "@ideaf/core": "workspace:*",

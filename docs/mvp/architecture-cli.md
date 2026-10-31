@@ -141,7 +141,7 @@ Skills are packaged instructions an agent loads for a task. They're shipped with
 
 ## Distribution
 
-- **Builds** for macOS, Linux and Windows, x64 and arm64, from one machine (`bun build --compile --target …`). The executable includes the Bun runtime, so it's larger than a Go binary would be (tens of megabytes), but there's nothing else to install.
+- **Builds** for macOS, Linux and Windows, x64 and arm64, from one machine (`bun build --compile --target …`). The executable includes the Bun runtime, so it's larger than a Go binary would be (about 90 MB on Linux x64 in step 4), but there's nothing else to install.
 - **Installs** through GitHub releases and Homebrew, and as a container for CI.
 - **Self-hosted deployments** point it at their own server with `ideaf auth login --host`.
 

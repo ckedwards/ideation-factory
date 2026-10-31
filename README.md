@@ -23,6 +23,7 @@ packages/
   ui/       React components, design tokens and themes; shown in Storybook
   web/      the React app: routes, pages and data loading, built from ui
   cli/      ideaf
+  e2e/      end-to-end tests: the cli against the real server
 ```
 
 You need [Bun](https://bun.sh), and Node for Storybook. Docker is only for the [Rivet spike](docs/mvp/spike-rivet.md).
@@ -42,6 +43,18 @@ curl -H 'authorization: Bearer dev' -X POST localhost:8080/ideas \
   -d '{"title":"Demo","files":[{"path":"plan.md","content":"# Plan\n\nHello.\n"}]}'
 # → {"idea":"i…","version":1}
 curl -H 'authorization: Bearer dev' localhost:8080/ideas/<idea>/blocks
+```
+
+With the dev server running, the cli works the same way (`bun run --filter @ideaf/cli build` makes `packages/cli/dist/ideaf`, or run `bun packages/cli/src/main.ts`):
+
+```
+export IDEAF_TOKEN=dev
+ideaf start docs --title "Offline mode"   # an idea from the Markdown in docs/
+ideaf show --blocks                       # sections and blocks with their IDs
+ideaf edit batch.json --dry-run           # what a batch would do, and to each comment
+ideaf edit batch.json                     # one new version
+ideaf pull                                # the result into your files (3-way merge)
+ideaf sync                                # your local edits back up, with their bases
 ```
 
 Every route is described at `/openapi.json`. From code, use the typed client: `createApiClient({ baseUrl, token })` from `@ideaf/api`.
