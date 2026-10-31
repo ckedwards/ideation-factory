@@ -1,0 +1,15 @@
+CREATE TABLE "schema_version" ("version" integer not null);
+CREATE TABLE "users" ("id" text primary key, "handle" text not null unique, "name" text not null, "email" text unique, "inactive" integer default 0 not null, "created_at" bigint not null);
+CREATE TABLE "teams" ("id" text primary key, "handle" text not null unique, "name" text not null, "description" text not null, "created_by" text not null, "created_at" bigint not null, "archived" integer default 0 not null, "create_policy" text not null, "defaults" text not null);
+CREATE TABLE "groups" ("id" text primary key, "handle" text not null unique, "name" text not null, "description" text not null, "created_by" text not null, "created_at" bigint not null, "deleted_at" bigint);
+CREATE TABLE "memberships" ("kind" text not null, "container" text not null, "user" text not null, "role" text not null, "created_at" bigint not null, constraint "memberships_pk" primary key ("kind", "container", "user"));
+CREATE INDEX "memberships_user" on "memberships" ("user", "kind", "container");
+CREATE TABLE "join_requests" ("kind" text not null, "container" text not null, "user" text not null, "created_at" bigint not null, constraint "join_requests_pk" primary key ("kind", "container", "user"));
+CREATE TABLE "ideas" ("id" text primary key, "title" text not null, "team" text, "owner" text not null, "status" text not null, "latest" integer not null, "created_at" bigint not null, "updated_at" bigint not null);
+CREATE INDEX "ideas_updated" on "ideas" ("updated_at", "id");
+CREATE INDEX "ideas_team" on "ideas" ("team", "updated_at", "id");
+CREATE INDEX "ideas_owner" on "ideas" ("owner", "updated_at", "id");
+CREATE TABLE "grants" ("idea" text not null, "kind" text not null, "subject" text not null, "can_edit" integer not null, "can_share" integer not null, "created_at" bigint not null, constraint "grants_pk" primary key ("idea", "kind", "subject"));
+CREATE INDEX "grants_subject" on "grants" ("kind", "subject", "idea");
+CREATE VIRTUAL TABLE idea_search USING fts5(id UNINDEXED, title, tokenize = 'trigram');
+INSERT INTO schema_version (version) VALUES (1);

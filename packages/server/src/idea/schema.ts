@@ -69,13 +69,17 @@ const MIGRATIONS: string[][] = [
  * onMigrate already wraps it in a savepoint, so it must not open a transaction
  * of its own (a nested one waits on the outer one until it times out).
  */
-export async function migrate(sql: Sql): Promise<void> {
+/** The idea schema's current version: the number of migrations. */
+export const IDEA_SCHEMA_VERSION = MIGRATIONS.length
+
+/** `to` stops at an earlier version, for migration tests. */
+export async function migrate(sql: Sql, to = IDEA_SCHEMA_VERSION): Promise<void> {
   await sql.execute('CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)')
   const rows = await sql.execute<{ version: number }>('SELECT version FROM schema_version')
   if (rows.length === 0) {
     await sql.execute('INSERT INTO schema_version (version) VALUES (0)')
   }
-  for (let current = rows[0]?.version ?? 0; current < MIGRATIONS.length; current++) {
+  for (let current = rows[0]?.version ?? 0; current < to; current++) {
     for (const statement of MIGRATIONS[current]!) {
       await sql.execute(statement)
     }

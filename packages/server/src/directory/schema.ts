@@ -134,7 +134,15 @@ const MIGRATIONS: Migration[] = [
  * Brings the tables up to date. Like the idea actor's, it must not open its own
  * transaction: RivetKit's onMigrate already runs it inside a savepoint.
  */
-export async function migrateDirectory(sql: Sql, extra: Array<(sql: Sql) => Promise<void>> = []): Promise<void> {
+/** The directory schema's current version: the number of migrations. */
+export const DIRECTORY_SCHEMA_VERSION = MIGRATIONS.length
+
+/** `extra` adds what lives outside these tables (the search index); `to` stops at an earlier version, for migration tests. */
+export async function migrateDirectory(
+  sql: Sql,
+  extra: Array<(sql: Sql) => Promise<void>> = [],
+  to = DIRECTORY_SCHEMA_VERSION,
+): Promise<void> {
   const db = sqliteKysely<DB>(sql)
   await db.schema
     .createTable('schema_version')
@@ -145,7 +153,7 @@ export async function migrateDirectory(sql: Sql, extra: Array<(sql: Sql) => Prom
   if (rows.length === 0) {
     await db.insertInto('schema_version').values({ version: 0 }).execute()
   }
-  for (let current = rows[0]?.version ?? 0; current < MIGRATIONS.length; current++) {
+  for (let current = rows[0]?.version ?? 0; current < to; current++) {
     await MIGRATIONS[current]!(db)
     await db
       .updateTable('schema_version')
