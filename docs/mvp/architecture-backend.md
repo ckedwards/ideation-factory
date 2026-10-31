@@ -136,6 +136,8 @@ There's one directory database and a separate SQLite database inside every idea 
 
 **Tests** (`packages/server/src/migrations/`): every schema version is frozen as the SQL an existing database has at that version (`frozen/<schema>-v<N>.sql`, written once by `freeze.ts` and never changed). The tests check that upgrading from each frozen version gives exactly the schema a fresh database gets, which fails if a shipped migration was edited instead of a new one appended; that every version is frozen; that migrating again changes nothing; and that data written at an older version reads back through the real service afterwards. Adding a migration means appending it, running `bun packages/server/src/migrations/freeze.ts`, and adding a data test for it.
 
+**The directory's types match its schema:** `COLUMNS` in `directory/schema.ts` lists every table's columns, a type check makes it match the `DB` interface the queries are typed against, and a test compares it with a freshly migrated database. So a column added to the types without a migration (or by a migration without the types) fails typecheck or CI. The idea actor's queries are raw SQL with hand-written row types, so this doesn't cover them yet (see Follow-ups in the [implementation plan](../implementation-plan.md)).
+
 ## Editing with commands
 
 The core of the product. The web app, the cli, the MCP server and "accept suggestion" all send **batches of edit commands** to the idea's actor:
