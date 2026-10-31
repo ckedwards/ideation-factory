@@ -5,6 +5,8 @@ import { hostname, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { IdeaBusy, openWorkspace, withIdeaLock } from './workspace.ts'
 
+const HERE = import.meta.dir
+
 async function workspace() {
   const ws = openWorkspace(await mkdtemp(join(tmpdir(), 'ideaf-lock-')))
   const lock = join(ws.stateDir, 'i1.lock')
@@ -59,5 +61,23 @@ describe('the idea lock', () => {
     await writeFile(lock, JSON.stringify({ pid: 1, host: 'some-other-machine', at: Date.now() }))
     await expect(withIdeaLock(ws, 'i1', async () => 'ran', 100)).rejects.toBeInstanceOf(IdeaBusy)
     expect(JSON.parse(await readFile(lock, 'utf8')).host).toBe('some-other-machine')
+  })
+
+  test('Ctrl-C releases the lock before the process exits', async () => {
+    const { ws, lock } = await workspace()
+    const script = join(ws.root, 'hold.ts')
+    await writeFile(
+      script,
+      `import { openWorkspace, withIdeaLock } from ${JSON.stringify(join(HERE, 'workspace.ts'))}\n` +
+        `await withIdeaLock(openWorkspace(${JSON.stringify(ws.root)}), 'i1', async () => { console.log('locked'); await new Promise(() => {}) })\n`,
+    )
+    const child = Bun.spawn(['bun', script], { stdout: 'pipe', stderr: 'pipe' })
+    const reader = child.stdout.getReader()
+    const { value } = await reader.read()
+    expect(new TextDecoder().decode(value)).toContain('locked')
+    expect(existsSync(lock)).toBe(true)
+    child.kill('SIGINT')
+    expect(await child.exited).toBe(130)
+    expect(existsSync(lock)).toBe(false)
   })
 })

@@ -8,6 +8,7 @@ import { pull } from './commands/pull.ts'
 import { show } from './commands/show.ts'
 import { start } from './commands/start.ts'
 import { sync } from './commands/sync.ts'
+import { unlock } from './commands/unlock.ts'
 import { CliError, type Context, createContext, EXIT, fromApiError } from './context.ts'
 import { type Io, processIo } from './io.ts'
 
@@ -58,6 +59,13 @@ const commands: Command[] = [
     summary: 'Edit the idea in place with a batch of commands (one new version). --dry-run shows the diff and what happens to each comment',
     flags: { idea: IDEA, 'dry-run': { type: 'boolean', description: 'show what would happen, changing nothing' } },
     run: (ctx, f, args) => edit(ctx, { ...(typeof f.idea === 'string' ? { idea: f.idea } : {}), 'dry-run': f['dry-run'] === true }, args[0], () => Bun.stdin.text()),
+  },
+  {
+    name: 'unlock',
+    usage: 'ideaf unlock [--force]',
+    summary: "Remove the idea's lock, left by an ideaf that crashed or was interrupted (it says who held it)",
+    flags: { idea: IDEA, force: { type: 'boolean', description: 'remove it even if the ideaf holding it is still running' } },
+    run: (ctx, f) => unlock(ctx, { ...(typeof f.idea === 'string' ? { idea: f.idea } : {}), force: f.force === true }),
   },
   {
     name: 'version',

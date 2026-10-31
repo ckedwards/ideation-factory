@@ -40,6 +40,8 @@ export interface Context {
   idea(flag: string | undefined): Promise<{ id: string; state: IdeaState }>
   /** Like idea(), but holding the idea's lock for the whole of `fn`, with its state read inside the lock. */
   locked<T>(flag: string | undefined, fn: (idea: { id: string; state: IdeaState }) => Promise<T>): Promise<T>
+  /** The idea's ID: --idea, or the one this working tree is on (no state needed). */
+  ideaId(flag: string | undefined): Promise<string>
   /** Holds an idea's lock for `fn` (for commands that read the state themselves). */
   lock<T>(id: string, fn: () => Promise<T>): Promise<T>
   /** Prints a human line (skipped with --json). */
@@ -75,7 +77,9 @@ export function createContext(io: Io, json: boolean): Context {
     try {
       return await withIdeaLock(ws, id, fn, waitMs)
     } catch (error) {
-      if (error instanceof IdeaBusy) throw new CliError(`${error.message}; try again when it's done`, EXIT.busy, 'busy', error.holder ?? undefined)
+      if (error instanceof IdeaBusy) {
+        throw new CliError(`${error.message}; try again when it's done, or run \`ideaf unlock\` if it crashed or was interrupted`, EXIT.busy, 'busy', error.holder ?? undefined)
+      }
       throw error
     }
   }
@@ -94,6 +98,7 @@ export function createContext(io: Io, json: boolean): Context {
       return lock(id, async () => fn({ id, state: await stateOf(id) }))
     },
     lock,
+    ideaId,
     say: (text) => {
       if (!json) io.out(text)
     },

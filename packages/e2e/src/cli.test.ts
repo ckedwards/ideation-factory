@@ -217,6 +217,34 @@ describe('one ideaf at a time per idea', () => {
   })
 })
 
+describe('ideaf unlock', () => {
+  test('removes a lock left by another machine, saying who held it; then commands work again', async () => {
+    const r = await repo({ 'plan.md': PLAN }, { env: { IDEAF_LOCK_WAIT_MS: '100' } })
+    const { idea } = (await r.ideaf('start', '--title', 'Unlock', '--json')).json()
+    await r.write(`.git/ideaf/${idea}.lock`, JSON.stringify({ pid: 1, host: 'another-machine', at: Date.now() }))
+    const busy = await r.ideaf('sync')
+    expect(busy.exit).toBe(10)
+    expect(busy.err).toContain('run `ideaf unlock`')
+    const unlocked = await r.ideaf('unlock')
+    expect(unlocked.exit).toBe(0)
+    expect(unlocked.out).toContain('Removed the lock on')
+    expect(unlocked.out).toContain('pid 1 on another-machine')
+    expect((await r.ideaf('sync')).exit).toBe(0)
+    expect((await r.ideaf('unlock')).out).toContain("isn't locked")
+  })
+
+  test("won't remove a lock held by an ideaf still running here, unless forced", async () => {
+    const r = await repo({ 'plan.md': PLAN })
+    const { idea } = (await r.ideaf('start', '--title', 'Running', '--json')).json()
+    // this test process stands in for an ideaf that's still running
+    await r.write(`.git/ideaf/${idea}.lock`, JSON.stringify({ pid: process.pid, host: (await import('node:os')).hostname(), at: Date.now() }))
+    const refused = await r.ideaf('unlock')
+    expect(refused.exit).toBe(10)
+    expect(refused.err).toContain('still running')
+    expect((await r.ideaf('unlock', '--force')).exit).toBe(0)
+  })
+})
+
 describe('the basics', () => {
   test('without a token, every command says how to sign in', async () => {
     const r = await repo({ 'plan.md': PLAN }, { token: null })

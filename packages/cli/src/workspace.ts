@@ -5,7 +5,7 @@
 // (`$(git rev-parse --git-common-dir)/ideaf/<idea>.json`), so every worktree
 // sees it and it's never committed. Outside git it's `.ideaf/state/` in the
 // root. Which idea a worktree is on is kept per worktree (in its own git dir).
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { hostname } from 'node:os'
 import { dirname, join, relative, resolve, sep } from 'node:path'
@@ -174,13 +174,52 @@ export async function withIdeaLock<T>(ws: Workspace, idea: string, fn: () => Pro
       await new Promise((resolve) => setTimeout(resolve, 100))
     }
   }
+  held.set(path, me)
+  installSignalCleanup()
   try {
     return await fn()
   } finally {
-    // only remove the lock if it's still ours
-    const holder = await readHolder(path)
-    if (holder?.pid === me.pid && holder.host === me.host && holder.at === me.at) await rm(path, { force: true })
+    held.delete(path)
+    releaseIfOurs(path, me)
   }
+}
+
+/** Removes a lock file only if it still belongs to `me` (someone may have unlocked and taken it since). */
+function releaseIfOurs(path: string, me: LockHolder): void {
+  try {
+    const holder = JSON.parse(readFileSync(path, 'utf8')) as LockHolder
+    if (holder.pid === me.pid && holder.host === me.host && holder.at === me.at) rmSync(path, { force: true })
+  } catch {
+    // already gone
+  }
+}
+
+// Ctrl-C (or a kill) skips `finally`, so locks this process holds are released
+// on the way out; otherwise the next command would have to notice they're stale.
+const held = new Map<string, LockHolder>()
+let cleanupInstalled = false
+
+function installSignalCleanup(): void {
+  if (cleanupInstalled) return
+  cleanupInstalled = true
+  for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]] as const) {
+    process.on(signal, () => {
+      for (const [path, me] of held) releaseIfOurs(path, me)
+      process.exit(code)
+    })
+  }
+}
+
+/** Who holds an idea's lock, or null if nobody does. */
+export async function lockHolder(ws: Workspace, idea: string): Promise<{ holder: LockHolder | null; running: boolean } | null> {
+  const path = join(ws.stateDir, `${idea}.lock`)
+  if (!existsSync(path)) return null
+  const holder = await readHolder(path)
+  return { holder, running: !(await abandoned(path, holder)) && holder?.host === hostname() }
+}
+
+export async function removeLock(ws: Workspace, idea: string): Promise<void> {
+  await rm(join(ws.stateDir, `${idea}.lock`), { force: true })
 }
 
 async function readHolder(path: string): Promise<LockHolder | null> {
