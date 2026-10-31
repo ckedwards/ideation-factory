@@ -119,7 +119,8 @@ export const directoryOperations = {
   searchIdeas: defineOperation({
     name: 'search_ideas',
     summary: 'Search ideas',
-    description: 'Ideas you can see whose titles contain the search, closest first. A search needs at least 3 characters; it matches anywhere in a word, and shorter words in it are ignored.',
+    description:
+      'Ideas you can see whose titles contain the search, closest first. A search needs at least 3 characters; it matches anywhere in a word, and shorter words in it are ignored. `incomplete` means the search matched more ideas than one search checks (20,000), so only the best-ranked of them were: add a word to narrow it.',
     method: 'GET',
     path: '/search/ideas',
     kind: 'read',
@@ -131,7 +132,7 @@ export const directoryOperations = {
         .refine((q) => q.split(/\s+/).some((t) => [...t].length >= 3), 'a search needs a word of at least 3 characters'),
       limit: Limit,
     }),
-    output: z.object({ items: z.array(IdeaRow) }),
+    output: z.object({ items: z.array(IdeaRow), incomplete: z.boolean() }),
   }),
 
   getAccess: defineOperation({

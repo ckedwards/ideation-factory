@@ -2,11 +2,11 @@
 // what a Postgres implementation would mostly share. Writes are correct when
 // they run concurrently: unique keys, upserts and transactions, never the order
 // a queue applies them in.
-import type { Expression, ExpressionBuilder, Kysely, SqlBool } from 'kysely'
+import { type Expression, type ExpressionBuilder, type Kysely, type SqlBool, sql as raw } from 'kysely'
 import type { Sql } from '../idea/sql.ts'
 import { sqliteKysely } from './kysely.ts'
 import type { ContainerKind, DB, Role } from './schema.ts'
-import { closeness, type IdeaSearch, searchTerms } from './search.ts'
+import { type IdeaSearch, SEARCH_WORK_CAP, searchTerms } from './search.ts'
 import {
   type Container,
   type CreatePolicy,
@@ -24,6 +24,7 @@ import {
   type Page,
   type Permission,
   type Result,
+  type SearchResult,
   type Team,
   type TeamDefaults,
   type User,
@@ -75,6 +76,8 @@ export interface SqlDirectoryOptions {
   sql: Sql
   search: IdeaSearch
   now?: () => number
+  /** The most matches one search checks (default SEARCH_WORK_CAP); smaller in tests. */
+  searchCap?: number
 }
 
 export class SqlDirectory implements Directory {
@@ -82,8 +85,10 @@ export class SqlDirectory implements Directory {
   readonly #db: Kysely<DB>
   readonly #search: IdeaSearch
   readonly #now: () => number
+  readonly #searchCap: number
 
   constructor(options: SqlDirectoryOptions) {
+    this.#searchCap = options.searchCap ?? SEARCH_WORK_CAP
     this.#sql = options.sql
     this.#db = sqliteKysely<DB>(options.sql)
     this.#search = options.search
@@ -584,22 +589,25 @@ export class SqlDirectory implements Directory {
     return { items: page, next: rows.length > limit ? encodeCursor([page.at(-1)!.updatedAt, page.at(-1)!.id]) : null }
   }
 
-  async searchIdeas(actor: string, query: string, limit = 25): Promise<IdeaRow[]> {
-    const matching = this.#search.matching(searchTerms(query))
-    if (!matching) return []
-    // access is filtered in the same query, before the limit, so ideas you can't see never crowd out yours
+  async searchIdeas(actor: string, query: string, limit = 25): Promise<SearchResult> {
+    const terms = searchTerms(query)
+    const matching = this.#search.matching(terms, this.#searchCap)
+    if (!matching) return { items: [], incomplete: false }
+    // access is filtered and ranking applied in the same query, before the limit,
+    // so ideas you can't see never crowd out yours
+    const q = query.trim().toLowerCase().replace(/[%_\\]/g, '')
     const rows = await this.#db
       .selectFrom(matching)
       .innerJoin('ideas', 'ideas.id', 'm.id')
       .selectAll('ideas')
       .where((eb) => visibleTo(eb as unknown as ExpressionBuilder<DB, 'ideas'>, actor))
-      .orderBy('m.rank')
-      .limit(200)
+      .orderBy(closeness(q))
+      .orderBy('ideas.updated_at', 'desc')
+      .orderBy('ideas.id', 'desc')
+      .limit(Math.min(limit, MAX_PAGE))
       .execute()
-    return rows
-      .map(toIdea)
-      .sort((a, b) => closeness(a.title, query) - closeness(b.title, query) || b.updatedAt - a.updatedAt)
-      .slice(0, Math.min(limit, MAX_PAGE))
+    const items = rows.map(toIdea)
+    return { items, incomplete: await this.#search.exceeds(this.#db, terms, this.#searchCap) }
   }
 }
 
@@ -676,6 +684,16 @@ function toSubject(kind: DB['grants']['kind'], subject: string): GrantSubject {
 }
 
 /** Drops LIKE's wildcards from user input (escaping them differs between SQLite and Postgres). */
+/**
+ * How closely a title matches, as SQL (the same in SQLite and Postgres): an
+ * exact match first, then titles that start with it, then a word that starts
+ * with it, then anywhere.
+ */
+function closeness(q: string) {
+  const title = raw`lower(ideas.title)`
+  return raw`CASE WHEN ${title} = ${q} THEN 0 WHEN ${title} LIKE ${`${q}%`} THEN 1 WHEN ${title} LIKE ${`% ${q}%`} OR ${title} LIKE ${`%-${q}%`} THEN 2 ELSE 3 END`
+}
+
 function likeEscape(text: string): string {
   return text.replace(/[%_\\]/g, '')
 }

@@ -221,7 +221,7 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         })
       }),
 
-    searchIdeas: (input, { caller }) => read(async () => ({ items: await directory().searchIdeas(caller.user, input.q, input.limit) })),
+    searchIdeas: (input, { caller }) => read(() => directory().searchIdeas(caller.user, input.q, input.limit)),
 
     createTeam: async (input, { caller }) => fromResult(await directory().createTeam(caller.user, container(input))),
     getTeam: (input) => read(async () => (await directory().team(input.team)) ?? notFound(`no team ${input.team}`)),

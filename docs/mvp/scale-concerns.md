@@ -116,7 +116,7 @@ A faster parser is the other option, but the web app must parse with the same li
 - Require three characters: a search needs a word of at least 3 characters, and shorter words in it are ignored (decided in step 5; common for search, and it means no full scans).
 - Make large counts approximate ("about 4,000"), which is already an open question in `architecture.md`, or keep cached counters.
 
-**Status:** the three-character rule is built (step 5), and access is filtered inside the search query. Measured at 100,000 ideas: about 14 ms for a word in 10% of titles, about 100 ms for a word in every title, since each match's access is checked. If that worst case matters in the load test, let the query stop after enough visible matches instead of ranking every one first. Lists page with cursors and don't count totals yet.
+**Status:** the three-character rule is built (step 5), and access is filtered inside the search query. A work cap, like Elasticsearch's `terminate_after`, bounds the worst case: a search reads at most 20,000 matches (the most recently updated) and returns `incomplete: true` if there were more. A cap on work rather than time keeps answers the same however busy the directory is. Measured at 100,000 ideas: about 14 ms for a word in 10% of titles, about 24 ms for a word in every title (about 100 ms before the cap). If people search common words a lot, the next step is access data in the search index itself, as Elasticsearch's document-level security does. Lists page with cursors and don't count totals yet.
 
 ### 7. Big groups as reviewers
 
