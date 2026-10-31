@@ -122,6 +122,20 @@ Built in step 5 (`packages/server/src/directory/`): a `Directory` interface, `Sq
 - **Search:** FTS5 with the trigram tokenizer (confirmed in RivetKit's SQLite), behind its own interface. A search needs at least 3 characters (shorter words in it are ignored), so nothing is a full scan. Access and ranking are applied in the search query itself, before the limit, so ideas you can't see never crowd out yours; ranking is by closeness (exact title, starts with, a word starts with, anywhere), then most recently updated, in SQL that works on Postgres too. **A work cap** like Elasticsearch's `terminate_after`: one search reads at most 20,000 matches (the most recently updated), and says `incomplete` if there were more, so a very common word can't stall the directory. At 100,000 ideas: about 14 ms for a word in 10% of titles, about 24 ms for a word in every title.
 - **Until real sign-in** (step 6), dev tokens name the user: `Bearer dev` is "dev", and `Bearer dev:<handle>` is that person, added to the directory when first seen.
 
+## Schema changes
+
+There's one directory database and a separate SQLite database inside every idea actor, so a schema change reaches thousands of small databases, not one.
+
+- **Migrations are numbered lists in code** (`idea/schema.ts`, `directory/schema.ts`), with a `schema_version` table in each database. They only go forward: a change is a new migration appended to the list, and a migration that has shipped is never edited.
+- **They run on wake.** RivetKit runs `onMigrate` when an actor starts, before it serves anything, inside a savepoint, so a migration applies completely or not at all, and a running actor is always on the current schema. Migrations don't open transactions of their own.
+- **Expand, then contract.** A rolling deploy moves actors to new nodes gradually, so old app nodes call actors that already have the new schema. A change first adds what it needs (a nullable or defaulted column, a table, an index) in a way the old code ignores; a later release removes the old shape once nothing uses it. That also keeps rolling a deploy back safe.
+- **Idea actors migrate lazily,** each when it next wakes, so there's no single big run, but the migration sits on that first request. Keep per-idea migrations small. For heavy data changes, a background sweep walks the idea index and wakes each idea at a controlled rate, so the work happens before people open them; the migration code is the same either way.
+- **The directory** is one actor: its migration runs once, when it moves to the new version, on everyone's path, so the same care applies.
+- **Stored JSON** (anchors, batch steps) carries its own version and is read as it was written, converted when needed, never rewritten in bulk. File contents are stored by hash and never change, so they never migrate.
+- **Postgres,** if the directory moves there: the migrations are written with Kysely's schema builder, which gives the Postgres DDL too (search has its own). There, migrations run once at deploy time under a lock (Kysely's `Migrator`), because several app nodes could otherwise start them at once.
+
+**Tests** (`packages/server/src/migrations/`): every schema version is frozen as the SQL an existing database has at that version (`frozen/<schema>-v<N>.sql`, written once by `freeze.ts` and never changed). The tests check that upgrading from each frozen version gives exactly the schema a fresh database gets, which fails if a shipped migration was edited instead of a new one appended; that every version is frozen; that migrating again changes nothing; and that data written at an older version reads back through the real service afterwards. Adding a migration means appending it, running `bun packages/server/src/migrations/freeze.ts`, and adding a data test for it.
+
 ## Editing with commands
 
 The core of the product. The web app, the cli, the MCP server and "accept suggestion" all send **batches of edit commands** to the idea's actor:
