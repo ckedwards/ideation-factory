@@ -13,7 +13,7 @@ npm --prefix experiments/experiment2 run dev
 
 Open http://localhost:5200. The logged-in user is **Riley Park**. The dev buttons in the bottom-right corner (dev builds only) switch **site admin** on and off, open the **sign-up** preview, and show the in-memory **state**.
 
-Two ideas have a real page, on experiment 1 (http://localhost:5199/prototype/idea), so run that too: "Offline-first sync for the field app", and "Ideation Factory MVP architecture" in the Dogfood team, which shows the real `mvp/` docs. Other idea titles show a short message instead.
+Two ideas have a real page, on experiment 1 (http://localhost:5199/prototype/idea), so run that too: "Offline-first sync for the field app", and "Ideation Factory MVP architecture" in the Dogfood team, which shows the real `docs/mvp/` docs. Other idea titles show a short message instead.
 
 To show it to people, `experiments/demo` packages both prototypes as one password-protected Cloudflare site (see its README).
 
@@ -337,7 +337,7 @@ A standalone page with no site navigation, under a bar that says it's a preview 
 
 - **People:** 12. Riley Park is you. Everyone's primary email is their handle at acme.dev (riley.park@acme.dev). Riley has two passkeys (MacBook Pro, iPhone).
 - **Bots:** planbot (for Riley, and for Sam), typobot (for Devon), and archbot and secbot (automated).
-- **Dogfood:** Ideation Factory's own plans. Riley is its admin (Maya is a maintainer; Sam and Devon are members). Its one idea, **"Ideation Factory MVP architecture"**, opens the real `mvp/` docs on the idea page (experiment 1 with `?idea=mvp`). There's an unread comment from Sam on it in the inbox.
+- **Dogfood:** Ideation Factory's own plans. Riley is its admin (Maya is a maintainer; Sam and Devon are members). Its one idea, **"Ideation Factory MVP architecture"**, opens the real `docs/mvp/` docs on the idea page (experiment 1 with `?idea=mvp`). There's an unread comment from Sam on it in the inbox.
 - **Teams and their requirements:**
 
   | Team | Requirements |

@@ -7,7 +7,7 @@
 // real product would show it.
 import type { IdeaData } from '../data'
 
-const docs = import.meta.glob('../../../../mvp/*.md', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+const docs = import.meta.glob('../../../../docs/mvp/*.md', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const files: Record<string, string> = {}
 for (const [path, text] of Object.entries(docs)) files[`mvp/${path.split('/').pop()}`] = text
 

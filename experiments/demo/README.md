@@ -4,7 +4,7 @@ Both prototypes as one password-protected site on Cloudflare, for showing people
 
 - `/`: experiment 2, the site (home, notifications, teams, groups, settings, site admin, sign-up preview).
 - `/prototype/idea`: experiment 1, the idea page. "Offline-first sync for the field app" links there, and **← site** links back.
-- `/prototype/idea?idea=mvp`: the MVP architecture docs (`mvp/`) as an idea in the **Dogfood** team. The docs are read when the demo is built, so run `npm run deploy` again after changing them.
+- `/prototype/idea?idea=mvp`: the MVP architecture docs (`docs/mvp/`) as an idea in the **Dogfood** team. The docs are read when the demo is built, so run `npm run deploy` again after changing them.
 
 It's a Cloudflare Worker with static assets. Every request goes through `src/worker.js` first, which checks HTTP basic auth before serving anything. With no password set, it serves nothing.
 
