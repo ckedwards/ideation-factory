@@ -1,0 +1,4 @@
+#!/bin/sh
+# Checks the commit message against CONTRIBUTING.md. `bun install` turns this
+# folder on as the repository's hooks (git config core.hooksPath .githooks).
+exec bun "$(git rev-parse --show-toplevel)/scripts/commit-lint.ts" --file "$1"

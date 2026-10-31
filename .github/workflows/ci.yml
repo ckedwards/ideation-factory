@@ -22,3 +22,27 @@ jobs:
       # bun run test starts a fresh test engine and stops it afterwards
       - name: Test
         run: bun run test
+
+  # Every new commit's message follows CONTRIBUTING.md, including ones that
+  # skipped the local commit-msg hook (git commit --no-verify, or a tool that
+  # doesn't run hooks).
+  commits:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version-file: package.json
+      - name: Check commit messages
+        env:
+          BEFORE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          AFTER: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          # a new branch has no "before": check what it adds to master
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            BEFORE=$(git merge-base origin/master "$AFTER")
+          fi
+          bun scripts/commit-lint.ts --range "$BEFORE..$AFTER"

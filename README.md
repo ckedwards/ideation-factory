@@ -11,6 +11,10 @@ Review and edit ideas written in Markdown, together with agents, so comments sta
 
 The prototypes are in `experiments/`.
 
+## Contributing
+
+Commit messages follow [CONTRIBUTING.md](CONTRIBUTING.md) (adapted from Angular's guidelines), checked by a commit-msg hook that `bun install` turns on, and by CI. Agents read [AGENTS.md](AGENTS.md).
+
 ## Code
 
 Bun workspaces, all TypeScript:
