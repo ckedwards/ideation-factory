@@ -9,6 +9,8 @@
     "@better-auth/mcp": "1.7.14",
     "@better-auth/oauth-provider": "1.7.14",
     "@better-auth/passkey": "1.7.14",
+    "@better-auth/scim": "1.7.14",
+    "@better-auth/sso": "1.7.14",
     "@modelcontextprotocol/sdk": "1.32.2",
     "better-auth": "1.7.14",
     "rivetkit": "2.3.31",

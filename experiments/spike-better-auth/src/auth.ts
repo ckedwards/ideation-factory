@@ -9,7 +9,9 @@ import { fetchClientMetadataResource } from '@better-auth/cimd/node'
 import { mcp } from '@better-auth/mcp'
 import { oauthDeviceAuthorization } from '@better-auth/oauth-provider'
 import { passkey } from '@better-auth/passkey'
-import { type BetterAuthOptions, betterAuth } from 'better-auth'
+import { scim } from '@better-auth/scim'
+import { sso } from '@better-auth/sso'
+import { type BetterAuthOptions, betterAuth, getCurrentAdapter } from 'better-auth'
 import { APIError, createAuthEndpoint, createAuthMiddleware, sessionMiddleware } from 'better-auth/api'
 import { emailOTP, jwt, username } from 'better-auth/plugins'
 import * as z from 'zod'
@@ -54,16 +56,159 @@ export function validHandle(h: string): boolean {
   return /^[a-z0-9](?:[a-z0-9._-]{0,37}[a-z0-9])?$/.test(h) && h.length >= 2 && !RESERVED.has(h)
 }
 
-const SITE_ADMINS = new Set((process.env.SITE_ADMINS ?? 'admin@example.com').split(','))
+export const SITE_ADMINS = new Set((process.env.SITE_ADMINS ?? 'admin@example.com').split(','))
 const PASSKEY_WINDOW_MS = 5 * 60 * 1000
 const YEAR_S = 365 * 24 * 3600
 const ADMIN_MAX_S = 30 * 24 * 3600
+
+// ---------------------------------------------------------------------------
+// Single sign-on. One identity provider for the whole deployment, set by the
+// site admin; no tenants. SPIKE_SSO=1 turns the deployment over to it: email
+// codes and passkeys stop working, except an email code for site admins (the
+// break-glass way in when the provider is down).
+//
+// Two ways to configure the provider are tried: OIDC in config (defaultSSO,
+// install-time), and SAML registered at runtime by a site admin
+// (POST /sso/register, stored in ssoProvider), as a Site admin page would.
+export const SSO_MODE = process.env.SPIKE_SSO === '1'
+export const KC_URL = process.env.KC_URL ?? 'http://localhost:25447'
+export const KC_REALM = `${KC_URL}/realms/ideaf`
+export const OIDC_PROVIDER = 'acme-oidc'
+export const SAML_PROVIDER = 'acme-saml'
+/** Allowed email domains; only these can sign in with single sign-on. */
+const ALLOWED_DOMAINS = (process.env.ALLOWED_DOMAINS ?? 'acme.test').split(',')
+/** Create accounts automatically (just-in-time). Off: a site admin invites people first. */
+const SSO_JIT = process.env.SSO_JIT !== '0'
+export const SCIM_TOKEN = process.env.SCIM_TOKEN ?? 'spike-scim-token-spike-scim-token-0123'
+
+type Db = {
+  findOne: (a: { model: string; where: { field: string; value: unknown }[] }) => Promise<Record<string, unknown> | null>
+  findMany: (a: { model: string; where?: { field: string; value: unknown }[] }) => Promise<Record<string, unknown>[]>
+  update: (a: { model: string; where: { field: string; value: unknown }[]; update: Record<string, unknown> }) => Promise<unknown>
+  updateMany: (a: { model: string; where: { field: string; value: unknown }[]; update: Record<string, unknown> }) => Promise<unknown>
+  deleteMany: (a: { model: string; where: { field: string; value: unknown }[] }) => Promise<unknown>
+}
+
+/** A free handle suggested from an email's local part: "Jane.Doe+x@acme" → "jane.doe-x". */
+export async function suggestHandle(email: string, fallback: Db): Promise<string> {
+  const db = (await getCurrentAdapter(fallback as never)) as unknown as Db
+  let base = email.split('@')[0]!.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[._-]+|[._-]+$/g, '').slice(0, 34)
+  if (base.length < 2 || RESERVED.has(base)) base = `user-${base}`.replace(/-$/, '')
+  for (let n = 1; ; n++) {
+    const h = n === 1 ? base : `${base}-${n}`
+    if (!(await db.findOne({ model: 'user', where: [{ field: 'username', value: h }] }))) return h
+  }
+}
+
+const emailDomain = (email: string) => email.slice(email.lastIndexOf('@') + 1).toLowerCase()
+
+/**
+ * Which account a verified single sign-on identity belongs to. Runs inside the
+ * sign-in's transaction (Better Auth requires a native-transaction adapter
+ * for this hook).
+ * 1. The provider's subject seen before → that account. If the provider's
+ *    email changed, the primary email follows it ("under single sign-on the
+ *    provider owns the email"), unless another account has it.
+ * 2. Otherwise match on primary email, so switching an existing deployment
+ *    keeps everyone's ideas, comments and tokens.
+ * 3. Otherwise create an account, if automatic creation is on.
+ */
+export const ssoDecisions: { email: string; decision: string }[] = []
+async function ssoResolveUser(
+  input: { providerId: string; accountKey: { accountId: string }; providerUser: { email: string } },
+  { database }: { database: unknown },
+) {
+  const db = database as Db
+  const email = input.providerUser.email.toLowerCase()
+  const decide = <T extends { action: string; code?: string }>(d: T) => (ssoDecisions.push({ email, decision: d.code ?? d.action }), d)
+  if (!ALLOWED_DOMAINS.includes(emailDomain(email))) return decide({ action: 'reject' as const, code: 'domain_not_allowed', message: `${emailDomain(email)} can't sign in here` })
+  const account = await db.findOne({ model: 'account', where: [{ field: 'providerId', value: input.providerId }, { field: 'accountId', value: input.accountKey.accountId }] })
+  const byEmail = await db.findOne({ model: 'user', where: [{ field: 'email', value: email }] })
+  if (account) {
+    const user = await db.findOne({ model: 'user', where: [{ field: 'id', value: account.userId }] })
+    if (!user) return decide({ action: 'reject' as const, code: 'no_account' })
+    if (user.inactive) return decide({ action: 'reject' as const, code: 'inactive', message: 'this account is inactive' })
+    if (byEmail && byEmail.id !== user.id) return decide({ action: 'reject' as const, code: 'email_taken', message: 'another account has this email' })
+    if (user.email !== email) await db.update({ model: 'user', where: [{ field: 'id', value: user.id }], update: { email, updatedAt: new Date() } })
+    return decide({ action: 'link' as const, userId: String(user.id), profile: 'preserve' as const })
+  }
+  if (byEmail) {
+    if (byEmail.inactive) return decide({ action: 'reject' as const, code: 'inactive', message: 'this account is inactive' })
+    return decide({ action: 'link' as const, userId: String(byEmail.id), profile: 'preserve' as const })
+  }
+  if (!SSO_JIT) return decide({ action: 'reject' as const, code: 'no_account', message: 'ask a site admin to invite you' })
+  return decide({ action: 'continue' as const })
+}
+
+const ssoOptions = {
+  // Only site admins can configure a provider, and only one.
+  providersLimit: (user: { email: string }) => (SITE_ADMINS.has(user.email) ? 1 : 0),
+  resolveUser: ssoResolveUser as never,
+  saml: { enableInResponseToValidation: true },
+  defaultSSO: SSO_MODE
+    ? [
+        {
+          providerId: OIDC_PROVIDER,
+          domain: 'acme.test',
+          oidcConfig: {
+            issuer: KC_REALM,
+            discoveryEndpoint: `${KC_REALM}/.well-known/openid-configuration`,
+            clientId: 'ideaf-oidc',
+            clientSecret: process.env.OIDC_SECRET ?? 'spike-oidc-secret',
+            pkce: true,
+            scopes: ['openid', 'email', 'profile'],
+          },
+        },
+      ]
+    : [],
+}
+
+/**
+ * SCIM from the identity provider (Okta, Entra): people removed there become
+ * inactive here, with their sessions and refresh tokens gone, and new people
+ * can be created ahead of their first sign-in.
+ */
+const scimOptions = {
+  connections: [{ id: 'acme', credentials: [{ type: 'bearer' as const, id: 'idp', token: SCIM_TOKEN }] }],
+  identity: {
+    // Link an incoming SCIM user to an existing account by primary email. The
+    // SCIM credential is held only by the site admin's own identity provider.
+    resolveUser: async (input: { resource: { primaryEmail: string } }, { database }: { database: unknown }) => {
+      const u = await (database as Db).findOne({ model: 'user', where: [{ field: 'email', value: input.resource.primaryEmail.toLowerCase() }] })
+      return u ? { action: 'link' as const, userId: String(u.id), profile: 'preserve' as const } : { action: 'create' as const }
+    },
+    reconcileUser: async (state: { userId: string; active: boolean }, { database }: { database: unknown }) => {
+      const db = database as Db
+      await db.update({ model: 'user', where: [{ field: 'id', value: state.userId }], update: { inactive: !state.active } })
+      if (!state.active) {
+        await db.deleteMany({ model: 'session', where: [{ field: 'userId', value: state.userId }] })
+        await db.updateMany({ model: 'oauthRefreshToken', where: [{ field: 'userId', value: state.userId }], update: { revoked: new Date() } })
+      }
+    },
+  },
+}
 
 // Our own endpoints, as a Better Auth plugin so they share its sessions and API.
 const ideafRules = () =>
   ({
     id: 'ideaf-rules',
     endpoints: {
+      // First visit after single sign-on created the account: keep or change
+      // the suggested handle, once. After that it's fixed like any other.
+      confirmHandle: createAuthEndpoint(
+        '/ideaf/confirm-handle',
+        { method: 'POST', use: [sessionMiddleware], body: z.object({ handle: z.string() }) },
+        async (ctx) => {
+          const user = ctx.context.session.user as { id: string; username?: string; handleConfirmed?: boolean }
+          if (user.handleConfirmed !== false) throw new APIError('BAD_REQUEST', { message: 'your handle is already set' })
+          const handle = ctx.body.handle
+          if (!validHandle(handle)) throw new APIError('BAD_REQUEST', { message: 'not a valid handle' })
+          if (handle !== user.username && (await ctx.context.adapter.findOne({ model: 'user', where: [{ field: 'username', value: handle }] })))
+            throw new APIError('BAD_REQUEST', { message: 'that handle is taken' })
+          await ctx.context.internalAdapter.updateUser(user.id, { username: handle, displayUsername: handle, handleConfirmed: true })
+          return ctx.json({ ok: true, handle })
+        },
+      ),
       // The consent page records the purpose on the session just before it
       // consents; consentReferenceId reads it back (see mcp() below).
       setOAuthPurpose: createAuthEndpoint(
@@ -84,6 +229,16 @@ const ideafRules = () =>
     },
     hooks: {
       before: [
+        {
+          // Under single sign-on, email codes and passkeys are off. Site admins
+          // keep an email code, as the way in when the provider is down.
+          matcher: (ctx) => SSO_MODE && (ctx.path?.startsWith('/email-otp/') || ctx.path === '/sign-in/email-otp' || ctx.path?.startsWith('/passkey/')),
+          handler: createAuthMiddleware(async (ctx) => {
+            const email = String((ctx.body as { email?: string } | undefined)?.email ?? '').toLowerCase()
+            if (ctx.path?.startsWith('/passkey/') || !SITE_ADMINS.has(email))
+              throw new APIError('FORBIDDEN', { message: 'this site signs in with single sign-on' })
+          }),
+        },
         {
           // Passkeys can only be added right after an email-code sign-in.
           matcher: (ctx) => ctx.path === '/passkey/generate-register-options' || ctx.path === '/passkey/verify-registration',
@@ -170,6 +325,9 @@ export function authOptions(database: BetterAuthOptions['database']) {
       changeEmail: { enabled: false },
       additionalFields: {
         inactive: { type: 'boolean', defaultValue: false, input: false, required: false },
+        // False for accounts created by single sign-on or SCIM: the handle was
+        // suggested from the email and the person confirms it on first visit.
+        handleConfirmed: { type: 'boolean', defaultValue: true, input: false, required: false },
       },
     },
     session: {
@@ -184,13 +342,22 @@ export function authOptions(database: BetterAuthOptions['database']) {
     rateLimit: { enabled: true, storage: 'memory' },
     // Behind the load balancer, the client IP comes from X-Forwarded-For.
     advanced: { ipAddress: { ipAddressHeaders: ['x-forwarded-for'] } },
+    // An internal identity provider (on a private address) must be listed here.
+    trustedOrigins: [KC_URL],
     databaseHooks: {
       user: {
         create: {
-          before: async (user) => {
-            const handle = (user as { username?: string }).username
+          before: async (user, ctx) => {
+            let handle = (user as { username?: string }).username
+            let handleConfirmed = true
+            // Single sign-on and SCIM bring a name and an email but no handle:
+            // suggest one from the email, to be confirmed on first visit.
+            if (!handle && ctx && (ctx.path?.startsWith('/sso/') || ctx.path?.startsWith('/scim/'))) {
+              handle = await suggestHandle(user.email, ctx.context.adapter as never)
+              handleConfirmed = false
+            }
             if (!handle || !validHandle(handle)) throw new APIError('BAD_REQUEST', { message: 'a valid handle is required' })
-            return { data: { ...user, displayUsername: handle } }
+            return { data: { ...user, username: handle, displayUsername: handle, handleConfirmed } }
           },
         },
       },
@@ -199,7 +366,7 @@ export function authOptions(database: BetterAuthOptions['database']) {
           before: async (session, ctx) => {
             const user = ctx ? await ctx.context.internalAdapter.findUserById(session.userId) : null
             if (user && (user as { inactive?: boolean }).inactive) throw new APIError('FORBIDDEN', { message: 'this account is inactive' })
-            const method = ctx?.path === '/sign-in/email-otp' ? 'email-otp' : ctx?.path?.startsWith('/passkey') ? 'passkey' : (ctx?.path ?? 'other')
+            const method = ctx?.path === '/sign-in/email-otp' ? 'email-otp' : ctx?.path?.startsWith('/passkey') ? 'passkey' : ctx?.path?.startsWith('/sso/') ? 'sso' : (ctx?.path ?? 'other')
             return { data: { ...session, signInMethod: method } }
           },
         },
@@ -271,6 +438,8 @@ export function authOptions(database: BetterAuthOptions['database']) {
         ...(process.env.CIMD_ALLOW ? { isMetadataDocumentUrlAllowed: (url: string) => process.env.CIMD_ALLOW!.split(',').includes(new URL(url).host) } : {}),
       }),
       oauthDeviceAuthorization({ verificationUri: `${BASE}/device` }),
+      sso(ssoOptions),
+      scim(scimOptions),
       ideafRules(),
     ],
   } satisfies BetterAuthOptions

@@ -266,6 +266,156 @@ From `bun src/gen-schema.ts`: Better Auth 1.7.14 with this spike's plugins, on S
 - index (userId)
 - unique (id) [pk]
 
+## scimConnectionBinding
+
+| column | type | not null | key |
+|---|---|---|---|
+| id | TEXT | yes | primary |
+| connectionId | TEXT | yes |  |
+| connectionKey | TEXT | yes |  |
+| provisioningDomainId | TEXT | yes |  |
+| createdAt | date | yes |  |
+| decommissionedAt | date |  |  |
+| decommissionStatus | TEXT | yes |  |
+| decommissionCursorUserId | TEXT |  |  |
+| decommissionReconciledUserCount | INTEGER | yes |  |
+| decommissionBatchCount | INTEGER | yes |  |
+| decommissionRevision | INTEGER | yes |  |
+| decommissionCompletedAt | date |  |  |
+| decommissionLeaseId | TEXT |  |  |
+| decommissionLeaseExpiresAt | date |  |  |
+- index (connectionId)
+- unique (connectionKey)
+- unique (id) [pk]
+
+## scimGroup
+
+| column | type | not null | key |
+|---|---|---|---|
+| id | TEXT | yes | primary |
+| connectionId | TEXT | yes |  |
+| provisioningDomainId | TEXT | yes |  |
+| revision | INTEGER | yes |  |
+| displayName | TEXT | yes |  |
+| displayNameKey | TEXT | yes |  |
+| externalId | TEXT |  |  |
+| externalIdKey | TEXT |  |  |
+| orderKey | TEXT | yes |  |
+| createdAt | date | yes |  |
+| updatedAt | date | yes |  |
+- index (provisioningDomainId)
+- index (connectionId)
+- unique (orderKey)
+- unique (externalIdKey)
+- unique (displayNameKey)
+- unique (id) [pk]
+
+## scimGroupMember
+
+| column | type | not null | key |
+|---|---|---|---|
+| id | TEXT | yes | primary |
+| connectionId | TEXT | yes |  |
+| groupId | TEXT | yes | → scimGroup.id (CASCADE) |
+| scimUserId | TEXT | yes | → scimUser.id (CASCADE) |
+| membershipKey | TEXT | yes |  |
+| createdAt | date | yes |  |
+- index (scimUserId)
+- index (groupId)
+- index (connectionId)
+- unique (membershipKey)
+- unique (id) [pk]
+
+## scimIdentityTombstone
+
+| column | type | not null | key |
+|---|---|---|---|
+| id | TEXT | yes | primary |
+| connectionId | TEXT | yes |  |
+| provisioningDomainId | TEXT | yes |  |
+| externalId | TEXT | yes |  |
+| externalIdKey | TEXT | yes |  |
+| userId | TEXT | yes | → user.id (CASCADE) |
+| profile | TEXT | yes |  |
+| deletedAt | date | yes |  |
+- index (userId)
+- index (provisioningDomainId)
+- index (connectionId)
+- unique (externalIdKey)
+- unique (id) [pk]
+
+## scimProjectionGrant
+
+| column | type | not null | key |
+|---|---|---|---|
+| id | TEXT | yes | primary |
+| connectionId | TEXT | yes |  |
+| provisioningDomainId | TEXT | yes |  |
+| scimUserId | TEXT | yes | → scimUser.id (CASCADE) |
+| userId | TEXT | yes | → user.id (CASCADE) |
+| sourceKind | TEXT | yes |  |
+| sourceId | TEXT | yes |  |
+| sourceValue | TEXT |  |  |
+| role | TEXT | yes |  |
+| grantKey | TEXT | yes |  |
+| createdAt | date | yes |  |
+| updatedAt | date | yes |  |
+- index (userId)
+- index (scimUserId)
+- index (provisioningDomainId)
+- index (connectionId)
+- unique (grantKey)
+- unique (id) [pk]
+
+## scimSubject
+
+| column | type | not null | key |
+|---|---|---|---|
+| id | TEXT | yes | primary |
+| userId | TEXT | yes | → user.id (CASCADE) |
+| profileSourceId | TEXT |  |  |
+| revision | INTEGER | yes |  |
+| createdAt | date | yes |  |
+| updatedAt | date | yes |  |
+- index (profileSourceId)
+- unique (userId)
+- unique (id) [pk]
+
+## scimUser
+
+| column | type | not null | key |
+|---|---|---|---|
+| id | TEXT | yes | primary |
+| connectionId | TEXT | yes |  |
+| provisioningDomainId | TEXT | yes |  |
+| userId | TEXT | yes | → user.id (CASCADE) |
+| connectionUserKey | TEXT | yes |  |
+| userName | TEXT | yes |  |
+| userNameKey | TEXT | yes |  |
+| primaryEmail | TEXT | yes |  |
+| workEmailValueIndex | TEXT | yes |  |
+| emailValueIndex | TEXT | yes |  |
+| displayName | TEXT | yes |  |
+| formattedName | TEXT | yes |  |
+| givenName | TEXT |  |  |
+| familyName | TEXT |  |  |
+| serializedEmails | TEXT | yes |  |
+| serializedAttributes | TEXT |  |  |
+| externalId | TEXT |  |  |
+| externalIdKey | TEXT |  |  |
+| active | INTEGER | yes |  |
+| orderKey | TEXT | yes |  |
+| createdAt | date | yes |  |
+| updatedAt | date | yes |  |
+- index (userId)
+- index (provisioningDomainId)
+- index (connectionId)
+- unique (orderKey)
+- unique (externalIdKey)
+- unique (userNameKey)
+- unique (connectionUserKey)
+- unique (id) [pk]
+
 ## session
 
 | column | type | not null | key |
@@ -284,6 +434,21 @@ From `bun src/gen-schema.ts`: Better Auth 1.7.14 with this spike's plugins, on S
 - unique (token)
 - unique (id) [pk]
 
+## ssoProvider
+
+| column | type | not null | key |
+|---|---|---|---|
+| id | TEXT | yes | primary |
+| issuer | TEXT | yes |  |
+| oidcConfig | TEXT |  |  |
+| samlConfig | TEXT |  |  |
+| userId | TEXT | yes | → user.id (CASCADE) |
+| providerId | TEXT | yes |  |
+| organizationId | TEXT |  |  |
+| domain | TEXT | yes |  |
+- unique (providerId)
+- unique (id) [pk]
+
 ## user
 
 | column | type | not null | key |
@@ -298,6 +463,7 @@ From `bun src/gen-schema.ts`: Better Auth 1.7.14 with this spike's plugins, on S
 | username | TEXT |  |  |
 | displayUsername | TEXT |  |  |
 | inactive | INTEGER |  |  |
+| handleConfirmed | INTEGER |  |  |
 - unique (username)
 - unique (email)
 - unique (id) [pk]
