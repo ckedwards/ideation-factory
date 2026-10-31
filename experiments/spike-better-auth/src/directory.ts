@@ -61,6 +61,35 @@ function authFor(c: { db: unknown; vars: { auth: Auth | null } }): Auth {
   return c.vars.auth
 }
 
+// Better Auth's HTTP handler, plus the OAuth metadata and a small RPC for
+// server-side auth.api calls.
+async function handleAuthRequest(c: { db: unknown; vars: { auth: Auth | null } }, request: Request): Promise<Response> {
+  const auth = authFor(c)
+  // The app node passes the public URL; the actor sees its own path.
+  const original = request.headers.get('x-ideaf-url')
+  const req = original ? new Request(original, request) : request
+  const { pathname } = new URL(req.url)
+  if (pathname === '/.well-known/oauth-authorization-server' || pathname.startsWith('/.well-known/oauth-authorization-server/'))
+    return oauthProviderAuthServerMetadata(auth as never)(req)
+  if (pathname === '/.well-known/openid-configuration' || pathname.startsWith('/.well-known/openid-configuration/'))
+    return oauthProviderOpenIdConfigMetadata(auth as never)(req)
+  if (pathname === '/ideaf/outbox') return Response.json((await import('./auth.ts')).outbox)
+  if (pathname === '/ideaf/api') {
+    const { method, body, headers } = (await req.json()) as { method: string; body?: unknown; headers?: Record<string, string> }
+    try {
+      const fn = (auth.api as Record<string, (a: unknown) => Promise<unknown>>)[method]!
+      return Response.json({ ok: true, value: await fn({ body, headers: new Headers(headers ?? {}) }) })
+    } catch (e) {
+      return Response.json({ ok: false, error: String((e as Error).message ?? e), status: (e as { statusCode?: number }).statusCode })
+    }
+  }
+  return auth.handler(req)
+}
+
+/** A request carried as an action argument, so it can go over a connection. */
+export type WireRequest = { url: string; method: string; headers: [string, string][]; body?: string }
+export type WireResponse = { status: number; headers: [string, string][]; body: string }
+
 export const directoryB = actor({
   db: db({
     onMigrate: async (database) => {
@@ -71,30 +100,15 @@ export const directoryB = actor({
     },
   }),
   createVars: () => ({ auth: null as Auth | null }),
-  onRequest: async (c, request) => {
-    const auth = authFor(c)
-    // The app node passes the public URL; the actor sees its own path.
-    const original = request.headers.get('x-ideaf-url')
-    const req = original ? new Request(original, request) : request
-    const { pathname } = new URL(req.url)
-    if (pathname === '/.well-known/oauth-authorization-server' || pathname.startsWith('/.well-known/oauth-authorization-server/'))
-      return oauthProviderAuthServerMetadata(auth as never)(req)
-    if (pathname === '/.well-known/openid-configuration' || pathname.startsWith('/.well-known/openid-configuration/'))
-      return oauthProviderOpenIdConfigMetadata(auth as never)(req)
-    if (pathname === '/ideaf/outbox') return Response.json((await import('./auth.ts')).outbox)
-    if (pathname === '/ideaf/api') {
-      // server-side auth.api calls from the app node (token exchange, keys)
-      const { method, body, headers } = (await req.json()) as { method: string; body?: unknown; headers?: Record<string, string> }
-      try {
-        const fn = (auth.api as Record<string, (a: unknown) => Promise<unknown>>)[method]!
-        return Response.json({ ok: true, value: await fn({ body, headers: new Headers(headers ?? {}) }) })
-      } catch (e) {
-        return Response.json({ ok: false, error: String((e as Error).message ?? e), status: (e as { statusCode?: number }).statusCode })
-      }
-    }
-    return auth.handler(req)
-  },
+  onRequest: (c, request) => handleAuthRequest(c, request),
   actions: {
+    http: async (c, w: WireRequest): Promise<WireResponse> => {
+      const res = await handleAuthRequest(c, new Request(w.url, { method: w.method, headers: w.headers, ...(w.body !== undefined ? { body: Buffer.from(w.body, 'base64') } : {}) }))
+      const headers: [string, string][] = []
+      res.headers.forEach((v, k) => k !== 'set-cookie' && headers.push([k, v]))
+      for (const cookie of res.headers.getSetCookie()) headers.push(['set-cookie', cookie])
+      return { status: res.status, headers, body: Buffer.from(await res.arrayBuffer()).toString('base64') }
+    },
     userStatus: (c, id: string) => userStatus(c.db as RawAccess, id),
     setInactive: (c, id: string, inactive: boolean) => setInactive(c.db as RawAccess, id, inactive),
     stats: () => ({ statements: dialectStats.statements }),

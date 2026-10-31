@@ -23,8 +23,14 @@ export const registry = setup({ use: { directoryA, directoryB } })
 await registry.startAndWait()
 const { endpoint } = registry.parseConfig()
 const client = createClient<typeof registry>(endpoint!)
-const dirA = client.directoryA.getOrCreate(['main'])
-const dirB = client.directoryB.getOrCreate(['main'])
+// SPIKE_TRANSPORT=conn (default): actions over one persistent connection per
+// app node (WebSocket, ~1.6 ms per call locally). =http: stateless calls, one
+// HTTP request each (~88 ms per call on the local engine; see bench-actor.ts).
+const TRANSPORT = (process.env.SPIKE_TRANSPORT ?? 'conn') as 'conn' | 'http'
+const handleA = client.directoryA.getOrCreate(['main'])
+const handleB = client.directoryB.getOrCreate(['main'])
+const dirA = TRANSPORT === 'conn' ? handleA.connect() : handleA
+const dirB = TRANSPORT === 'conn' ? handleB.connect() : handleB
 
 /** Directory calls made by this app node, by kind (for the measures). */
 export const directoryCalls = { auth: 0, status: 0 }
@@ -39,19 +45,25 @@ async function authFetch(req: Request): Promise<Response> {
   headers.set('x-ideaf-url', req.url)
   const u = new URL(req.url)
   const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.arrayBuffer()
-  const res = await dirB.fetch(u.pathname + u.search, { method: req.method, headers, ...(body ? { body } : {}), redirect: 'manual' } as never)
-  return res
+  if (TRANSPORT === 'http') return handleB.fetch(u.pathname + u.search, { method: req.method, headers, ...(body ? { body } : {}), redirect: 'manual' } as never)
+  const w = await dirB.http({ url: req.url, method: req.method, headers: [...headers], ...(body ? { body: Buffer.from(body).toString('base64') } : {}) })
+  const out = new Headers()
+  for (const [k, v] of w.headers) out.append(k, v)
+  return new Response(w.status === 204 || w.status === 304 ? null : Buffer.from(w.body, 'base64'), { status: w.status, headers: out })
 }
 
 /** A server-side auth.api call. */
 async function authApi<T>(method: string, body: unknown, headers?: Headers): Promise<T> {
   if (localAuth) return (localAuth.api as Record<string, (a: unknown) => Promise<T>>)[method]!({ body, headers: headers ?? new Headers() })
   directoryCalls.auth++
-  const res = await dirB.fetch('/ideaf/api', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-ideaf-url': `${BASE}/ideaf/api` },
-    body: JSON.stringify({ method, body, headers: headers ? Object.fromEntries(headers) : {} }),
-  })
+  const res = await authFetch(
+    new Request(`${BASE}/ideaf/api`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ method, body, headers: headers ? Object.fromEntries(headers) : {} }),
+    }),
+  )
+  directoryCalls.auth--
   const out = (await res.json()) as { ok: boolean; value?: T; error?: string; status?: number }
   if (!out.ok) throw Object.assign(new Error(out.error), { statusCode: out.status })
   return out.value as T
@@ -145,7 +157,12 @@ async function fetch(req: Request): Promise<Response> {
   if (p === '/device') return html(devicePage())
   if (p === '/ideaf/token' && req.method === 'POST') return exchange(req)
   // spike-only introspection, for the test scripts
-  if (p === '/spike/outbox') return Response.json(localAuth ? outbox : await (await dirB.fetch('/ideaf/outbox', { headers: { 'x-ideaf-url': `${BASE}/ideaf/outbox` } })).json())
+  if (p === '/spike/outbox') {
+    if (localAuth) return Response.json(outbox)
+    const r = await (await authFetch(new Request(`${BASE}/ideaf/outbox`))).json()
+    directoryCalls.auth-- // test harness only, not part of any flow
+    return Response.json(r)
+  }
   if (p === '/spike/stats')
     return Response.json({ mode: MODE, directoryCalls, adapterCalls: calls.count, adapterLog: calls.log.slice(-200), mcpLog, adminAudit, cimdFetches: localAuth ? cimdFetches : null, actor: MODE === 'adapter' ? await dirA.stats() : await dirB.stats() })
   if (p === '/spike/reset-stats') {
@@ -171,7 +188,7 @@ async function fetch(req: Request): Promise<Response> {
       return Response.json({ error: String((e as Error).message), body: (e as { body?: unknown }).body }, { status: 400 })
     }
   }
-  if (p === '/health') return Response.json({ ok: true, mode: MODE })
+  if (p === '/health') return Response.json({ ok: true, mode: MODE, transport: TRANSPORT })
   return new Response('not found', { status: 404 })
 }
 
@@ -180,4 +197,4 @@ function html(body: string): Response {
 }
 
 const server = Bun.serve({ port, fetch, idleTimeout: 60 })
-console.log(`spike-better-auth on ${BASE} (port ${server.port}, storage: ${MODE})`)
+console.log(`spike-better-auth on ${BASE} (port ${server.port}, storage: ${MODE}, transport: ${TRANSPORT})`)

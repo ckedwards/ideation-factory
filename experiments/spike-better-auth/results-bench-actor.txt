@@ -1,0 +1,29 @@
+
+  RivetKit 2.3.31 (Engine - Serverful)
+  - Endpoint:     http://127.0.0.1:25440 (local native)
+  - Actors:       2
+
+[2m2026-10-31T20:36:30.360Z[0m [33mWARN[0m [1m[Better Auth]:[0m Field scopes in table oauthClient has a different type in the database. Expected string[] but got TEXT.
+[2m2026-10-31T20:36:30.360Z[0m [33mWARN[0m [1m[Better Auth]:[0m Field clientCredentialsScopes in table oauthClient has a different type in the database. Expected string[] but got TEXT.
+[2m2026-10-31T20:36:30.360Z[0m [33mWARN[0m [1m[Better Auth]:[0m Field contacts in table oauthClient has a different type in the database. Expected string[] but got TEXT.
+[2m2026-10-31T20:36:30.360Z[0m [33mWARN[0m [1m[Better Auth]:[0m Field redirectUris in table oauthClient has a different type in the database. Expected string[] but got TEXT.
+[2m2026-10-31T20:36:30.360Z[0m [33mWARN[0m [1m[Better Auth]:[0m Field postLogoutRedirectUris in table oauthClient has a different type in the database. Expected string[] but got TEXT.
+[2m2026-10-31T20:36:30.360Z[0m [33mWARN[0m [1m[Better Auth]:[0m Field grantTypes in table oauthClient has a different type in the database. Expected string[] but got TEXT.
+[2m2026-10-31T20:36:30.360Z[0m [33mWARN[0m [1m[Better Auth]:[0m Field responseTypes in table oauthClient has a different type in the database. Expected string[] but got TEXT.
+[2m2026-10-31T20:36:30.360Z[0m [33mWARN[0m [1m[Better Auth]:[0m Field allowedScopes in table oauthResource has a different type in the database. Expected string[] but got TEXT.
+[2m2026-10-31T20:36:30.360Z[0m [33mWARN[0m [1m[Better Auth]:[0m Field resources in table oauthRefreshToken has a different type in the database. Expected string[] but got TEXT.
+[2m2026-10-31T20:36:30.360Z[0m [33mWARN[0m [1m[Better Auth]:[0m Field requestedUserInfoClaims in table oauthRefreshToken has a different type in the database. Expected string[] but got TEXT.
+[2m2026-10-31T20:36:30.360Z[0m [33mWARN[0m [1m[Better Auth]:[0m Field scopes in table oauthRefreshToken has a different type in the database. Expected string[] but got TEXT.
+[2m2026-10-31T20:36:30.360Z[0m [33mWARN[0m [1m[Better Auth]:[0m Field resources in table oauthAccessToken has a different type in the database. Expected string[] but got TEXT.
+[2m2026-10-31T20:36:30.360Z[0m [33mWARN[0m [1m[Better Auth]:[0m Field requestedUserInfoClaims in table oauthAccessToken has a different type in the database. Expected string[] but got TEXT.
+[2m2026-10-31T20:36:30.361Z[0m [33mWARN[0m [1m[Better Auth]:[0m Field scopes in table oauthAccessToken has a different type in the database. Expected string[] but got TEXT.
+[2m2026-10-31T20:36:30.361Z[0m [33mWARN[0m [1m[Better Auth]:[0m Field resources in table oauthConsent has a different type in the database. Expected string[] but got TEXT.
+[2m2026-10-31T20:36:30.361Z[0m [33mWARN[0m [1m[Better Auth]:[0m Field requestedUserInfoClaims in table oauthConsent has a different type in the database. Expected string[] but got TEXT.
+[2m2026-10-31T20:36:30.361Z[0m [33mWARN[0m [1m[Better Auth]:[0m Field scopes in table oauthConsent has a different type in the database. Expected string[] but got TEXT.
+[2m2026-10-31T20:36:30.361Z[0m [33mWARN[0m [1m[Better Auth]:[0m Field resources in table deviceCode has a different type in the database. Expected string[] but got TEXT.
+action, no SQL (stats)                   median 88.09 ms  p95 89.77 ms
+action, SELECT 1                         median 88.04 ms  p95 90.02 ms
+action, SELECT a session row             median 87.67 ms  p95 89.75 ms
+action, UPDATE (write)                   median 87.83 ms  p95 90.09 ms
+action over a connection (websocket)     median 1.57 ms  p95 2.14 ms
+10 actions in parallel (each)            median 106.72 ms  p95 171.42 ms

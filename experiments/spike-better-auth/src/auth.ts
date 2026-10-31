@@ -121,8 +121,30 @@ const ideafRules = () =>
     },
   }) as const
 
+// Signing keys are read from storage at most every 5 minutes per process
+// (SPIKE_CACHE=0 turns this off, to measure the difference). A rotation is
+// picked up within that window.
+const JWKS_TTL_MS = 5 * 60_000
+let jwksCache: { at: number; keys: unknown[] } | null = null
+const cacheOn = process.env.SPIKE_CACHE !== '0'
 export const jwtOptions = {
   jwks: { keyPairConfig: { alg: 'EdDSA' as const, crv: 'Ed25519' as const } },
+  ...(cacheOn
+    ? {
+        adapter: {
+          getJwks: async (ctx: { context: { adapter: { findMany: (a: unknown) => Promise<unknown[]> } } }) => {
+            if (jwksCache && Date.now() - jwksCache.at < JWKS_TTL_MS) return jwksCache.keys
+            const keys = await ctx.context.adapter.findMany({ model: 'jwks' })
+            jwksCache = { at: Date.now(), keys }
+            return keys
+          },
+          createJwk: async (data: Record<string, unknown>, ctx: { context: { adapter: { create: (a: unknown) => Promise<unknown> } } }) => {
+            jwksCache = null
+            return ctx.context.adapter.create({ model: 'jwks', data: { ...data, createdAt: new Date() } })
+          },
+        },
+      }
+    : {}),
   jwt: {
     issuer: BASE,
     audience: BASE,
@@ -228,6 +250,8 @@ export function authOptions(database: BetterAuthOptions['database']) {
         loginPage: '/login',
         consentPage: '/consent',
         accessTokenExpiresIn: ACCESS_TOKEN_SECONDS,
+        // The MCP resource row changes only with a deploy: keep it in memory.
+        ...(cacheOn ? { cachedResources: new Set([MCP_RESOURCE]) } : {}),
         scopes: ['openid', 'profile', 'email', 'offline_access', 'ideas:read', 'ideas:write'],
         // The consent screen's choice, kept as the consent's reference.
         postLogin: {
