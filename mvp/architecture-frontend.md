@@ -22,6 +22,7 @@
 | Diffs | jsdiff | Version diffs and the rendered redline (inline word changes, moved blocks) |
 | Diagrams | [Pele](https://github.com/obsidianmd/pele) | Draws Mermaid as SVG: synchronous, MIT-licensed, no runtime dependencies. Its CSS variables map onto our theme tokens, so diagrams follow every theme. Drawing is asynchronous, but **preloaded**: most architecture documents have diagrams, so the app fetches Pele (in its own chunk) and the common diagram types at startup, and rarer types on demand. Drawn diagrams are cached by their source. The idea page prototype does all of this already |
 | Styling | Plain CSS, design tokens as CSS variables, `rem` only | No pixel values, so themes and zoom work; light, dark and high contrast are built in |
+| Components | The `ui` package, shown in [Storybook](https://storybook.js.org) | Pages are built from shared components; see [Components first](#components-first) |
 | API client | The shared `api` package: the backend's operation definitions and a typed client | The cli imports the same package and the hosted MCP tools come from the same definitions, so they can't drift apart |
 
 ## Structure
@@ -52,6 +53,25 @@ flowchart TB
     Live <-- "comments, versions, reviews" --> DO
     Live -- "invalidate" --> Query
 ```
+
+## Components first
+
+Pages are put together from shared components, not styled one by one. That keeps the app consistent, and a change to a component reaches every page that uses it.
+
+- **Components live in their own package, `ui`,** together with the design tokens and themes. `web` holds the routes, pages and data loading, and composes `ui` components.
+- **Pages contain no CSS:** no stylesheets in `web`, no `style` props, no one-off class names. Layout is components too: the page header, the idea page's three panes, stacks and columns. A CI check fails on any CSS in `web`.
+- **Something new is a component first.** When a page needs something no component covers, add it to `ui` (or give an existing one a new prop or variant), with its stories, and then use it. Two pages that need similar UI share one component with variants, not two copies.
+- **Components take data; they don't fetch it.** Props in, events out: no TanStack Query or API calls inside `ui`. Pages do the loading. This is what lets the viewer show every state with fixture data.
+- **Every component has stories** for each state that matters: empty, loading, error, long text, many items, agent work ("🤖 planbot on behalf of Riley"), and keyboard focus.
+
+### The component viewer
+
+Storybook, run from the `ui` package, is the site that shows every component and story:
+
+- **Themes and text size:** a toolbar switches between light, dark and high contrast, and to larger text, so every component is checked in each.
+- **Accessibility:** axe checks run on every story, in the viewer and in CI.
+- **Published:** it builds to static files, so contributors, and organizations checking a re-theme, can browse every component without running the app.
+- **Why Storybook:** it's the standard viewer for React, MIT-licensed, and builds with Vite like the app, with theme and accessibility add-ons. Stories use the open Component Story Format, which other viewers (Ladle, for one) also read, so we can switch later.
 
 ## Pages
 
