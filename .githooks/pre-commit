@@ -1,11 +1,12 @@
 #!/bin/sh
-# Checks the staged TypeScript's style: oxlint for the rules (braces around
-# every body), oxfmt for layout. `bun run format` fixes what it reports.
+# Checks the staged code's style (TypeScript, JSON and CSS): oxlint for the
+# rules (braces around every body), oxfmt for layout. `bun run format` fixes
+# what it reports.
 # `bun install` turns this folder on as the hooks.
 cd "$(git rev-parse --show-toplevel)" || exit 1
-files=$(git diff --cached --name-only --diff-filter=ACMR -- 'packages/**/*.ts' 'scripts/**/*.ts' 'packages/**/*.json' 'scripts/**/*.json')
+files=$(git diff --cached --name-only --diff-filter=ACMR -- 'packages/**/*.ts' 'packages/**/*.tsx' 'scripts/**/*.ts' 'packages/**/*.json' 'scripts/**/*.json' 'packages/**/*.css')
 [ -z "$files" ] && exit 0
-ts=$(printf '%s\n' $files | grep '\.ts$')
+ts=$(printf '%s\n' $files | grep -E '\.tsx?$')
 # shellcheck disable=SC2086
 [ -z "$ts" ] || bunx oxlint $ts || { echo "Fix the lint errors above (bun run format fixes most), then commit again." >&2; exit 1; }
 # shellcheck disable=SC2086
