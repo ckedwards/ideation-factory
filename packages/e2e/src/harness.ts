@@ -6,29 +6,39 @@ import { dirname, join } from 'node:path'
 import { createApiClient } from '@ideaf/api'
 import { main } from '@ideaf/cli/main.ts'
 import { createApp } from '@ideaf/server/app.ts'
-import { startTestActors } from '@ideaf/server/testing.ts'
+import { signIn, startTestActors, TEST_URL, testAuth } from '@ideaf/server/testing.ts'
 
-const TOKEN = 'e2e-token'
+/** The person a test is when it doesn't say. */
+const DEFAULT = 'dev'
 let app: ((request: Request) => Promise<Response>) | null = null
 
 export async function server(): Promise<(request: Request) => Promise<Response>> {
   if (app) {
     return app
   }
-  app = createApp({ actors: await startTestActors(), devToken: TOKEN, validateOutput: true })
+  app = createApp({ actors: await startTestActors(), auth: testAuth, validateOutput: true })
   return app
 }
 
-/** The dev token for a person (by handle), or for the default dev user. */
-export function token(handle?: string): string {
-  return handle ? `${TOKEN}:${handle}` : TOKEN
+/**
+ * IDEAF_TOKEN for a person (by handle), signing them up the first time; the
+ * default person without one. An access token, which the cli uses as is: a
+ * personal token would be exchanged on every run, and auth.test.ts covers that.
+ */
+export async function token(handle = DEFAULT): Promise<string> {
+  return (await signIn(await server(), handle)).jwt
+}
+
+/** A person's personal token (ideaf_…), for testing the cli's exchange. */
+export async function personalToken(handle = DEFAULT): Promise<string> {
+  return (await signIn(await server(), handle)).token
 }
 
 /** The typed API client, as another person or agent would use it (by handle, or the default dev user). */
-export function api(handle?: string) {
+export function api(handle = DEFAULT) {
   return createApiClient({
-    baseUrl: 'http://ideaf.test',
-    token: token(handle),
+    baseUrl: TEST_URL,
+    token: async () => (await signIn(await server(), handle)).jwt,
     fetch: (r) => app!(r),
     validateOutput: true,
   })
@@ -47,7 +57,8 @@ export async function repo(
   files: Record<string, string> = {},
   options: {
     git?: boolean
-    token?: string | null
+    /** IDEAF_TOKEN (from token() or personalToken()), null for none; the default person's without it. */
+    token?: string | Promise<string> | null
     env?: Record<string, string>
     /** Pretend a person is at a terminal, answering prompts with these in turn (a number picks from a list). */
     answers?: string[]
@@ -74,6 +85,7 @@ export async function repo(
     await write(path, content)
   }
   const handler = await server()
+  const defaultToken = options.token === undefined ? token() : null
   return {
     dir,
     write,
@@ -82,10 +94,10 @@ export async function repo(
     async ideaf(...argv) {
       const out: string[] = []
       const err: string[] = []
-      const token = options.token === undefined ? TOKEN : options.token
+      const token = options.token === undefined ? await defaultToken : await options.token
       const exit = await main(argv, {
         cwd: dir,
-        env: { IDEAF_URL: 'http://ideaf.test', ...(token ? { IDEAF_TOKEN: token } : {}), ...options.env },
+        env: { IDEAF_URL: TEST_URL, ...(token ? { IDEAF_TOKEN: token } : {}), ...options.env },
         out: (t) => out.push(t),
         err: (t) => err.push(t),
         interactive: options.answers !== undefined,

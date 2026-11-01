@@ -7,16 +7,22 @@ import { ApiError, createApiClient } from '@ideaf/api'
 import { contentHash } from '@ideaf/core'
 import { createApp } from './app.ts'
 import { ideaIdFor } from './operations.ts'
-import { startTestActors } from './testing.ts'
+import { signIn, startTestActors, TEST_URL, testAuth } from './testing.ts'
 
 let app: (request: Request) => Promise<Response>
 
 beforeAll(async () => {
-  app = createApp({ actors: await startTestActors(), devToken: 'test-token', validateOutput: true })
+  app = createApp({ actors: await startTestActors(), auth: testAuth, validateOutput: true })
 }, 60_000)
 
+const someone = `ops-${crypto.randomUUID().slice(0, 6)}`
 const client = () =>
-  createApiClient({ baseUrl: 'http://ideaf.test', token: 'test-token', fetch: (r) => app(r), validateOutput: true })
+  createApiClient({
+    baseUrl: TEST_URL,
+    token: async () => (await signIn(app, someone)).jwt,
+    fetch: (r) => app(r),
+    validateOutput: true,
+  })
 const PLAN = '# Plan\n\nThe quick brown fox.\n\n## Risks\n\nIt might rain.\n'
 
 test('the agent loop: create, show blocks, comment, dry run, edit, pull, sync', async () => {
@@ -117,7 +123,7 @@ test('errors come back as ApiError with their codes and details', async () => {
   await expect(api.getIdea({ idea: 'nope' })).rejects.toMatchObject({ code: 'not_found', status: 404 })
   await expect(api.pull({ idea, version: 99 })).rejects.toMatchObject({ code: 'not_found', status: 404 })
   // the wrong token
-  const outsider = createApiClient({ baseUrl: 'http://ideaf.test', token: 'wrong', fetch: (r) => app(r) })
+  const outsider = createApiClient({ baseUrl: TEST_URL, token: 'wrong', fetch: (r) => app(r) })
   await expect(outsider.getIdea({ idea })).rejects.toMatchObject({ code: 'unauthorized', status: 401 })
 })
 
@@ -133,7 +139,8 @@ test('a retried create finds the same idea instead of making another', async () 
     { idempotencyKey: key },
   )
   expect(again).toEqual(first)
-  expect(first.idea).toBe(await ideaIdFor({ user: 'dev', bot: null, purpose: 'me' }, key))
+  const { id } = await signIn(app, someone)
+  expect(first.idea).toBe(await ideaIdFor({ user: id, bot: null, purpose: 'me' }, key))
 })
 
 test('/openapi.json and /health need no token', async () => {

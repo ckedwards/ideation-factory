@@ -35,6 +35,18 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
         expect((await d.findUsers('@sa')).map((u) => u.handle)).toEqual(['sam'])
         expect(await d.findUsers('')).toEqual([])
       })
+
+      test('updateUser changes a name or status, and finds no one who isn’t there', async () => {
+        const d = await people()
+        expect(await d.updateUser('u-maya', { name: 'Maya M', inactive: true })).toEqual({
+          id: 'u-maya',
+          handle: 'maya',
+          name: 'Maya M',
+          inactive: true,
+        })
+        expect((await d.updateUser('u-maya', { inactive: false }))!.inactive).toBe(false)
+        expect(await d.updateUser('u-nobody', { name: 'X' })).toBeNull()
+      })
     })
 
     describe('teams and groups', () => {

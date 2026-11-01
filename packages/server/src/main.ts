@@ -5,6 +5,7 @@
 import { join } from 'node:path'
 import { createClient } from 'rivetkit/client'
 import { createApp } from './app.ts'
+import { authSettingsFromEnv, logMailer } from './auth/settings.ts'
 import { WorkerPool } from './core-pool/pool.ts'
 import { configureNode } from './deps.ts'
 import { LocalFolderFileStore } from './files/local-folder.ts'
@@ -13,10 +14,15 @@ import { registry, type Registry } from './registry.ts'
 
 const port = Number(process.env.PORT ?? 8080)
 const data = process.env.IDEAF_DATA ?? '.data'
-const devToken = process.env.IDEAF_DEV_TOKEN ?? 'dev'
 
 const core = new WorkerPool()
-configureNode({ files: new LocalFolderFileStore(join(data, 'files')), core, limits: limitsFromEnv(process.env) })
+const auth = authSettingsFromEnv(process.env, logMailer)
+configureNode({
+  files: new LocalFolderFileStore(join(data, 'files')),
+  core,
+  limits: limitsFromEnv(process.env),
+  auth,
+})
 
 await registry.startAndWait()
 const { endpoint } = registry.parseConfig()
@@ -25,5 +31,5 @@ if (!endpoint) {
 }
 const actors = createClient<Registry>(endpoint)
 
-const server = Bun.serve({ port, fetch: createApp({ actors, devToken }) })
+const server = Bun.serve({ port, fetch: createApp({ actors, auth }) })
 console.log(`ideaf server on http://localhost:${server.port} (${core.size} core workers)`)

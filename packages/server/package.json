@@ -10,8 +10,12 @@
     "typecheck": "tsc -p ."
   },
   "dependencies": {
+    "@better-auth/api-key": "1.7.14",
+    "@better-auth/passkey": "1.7.14",
     "@ideaf/api": "workspace:*",
     "@ideaf/core": "workspace:*",
+    "better-auth": "1.7.14",
+    "jose": "6.2.14",
     "kysely": "^0.29.7",
     "rivetkit": "^2.3.31",
     "zod": "^4.6.7"
