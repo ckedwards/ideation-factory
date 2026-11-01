@@ -1,24 +1,20 @@
-// ideaf change: make another idea this working tree's. An idea started or
-// pulled in this repository remembers its branch, so changing to it switches
-// branch (refusing to carry uncommitted changes across); if that branch is
-// checked out in another worktree, it says where, since a cli can't change your
-// shell's directory. An idea not in this repository yet is pulled here, onto
-// its branch if the server knows it and it's on one of this repository's
-// remotes: the same idea on another machine.
+// ideaf change: make another idea this working tree's. It never runs git:
+// branches are the user's to manage. An idea remembers the branch it's on
+// (locally, and on the server for other machines), so if this working tree is
+// on a different one, change says how to get there and stops, rather than tie
+// the idea to the wrong branch's files; --here ties it to this branch anyway.
+// If the branch is checked out in another worktree, it says where (and makes
+// the idea active there). An idea not in this repository yet is pulled here.
 import { realpathSync } from 'node:fs'
 import { CliError, type Context, EXIT } from '../context.ts'
 import {
   activeIdea,
   branchWhere,
-  fetchBranch,
   openWorkspace,
   readState,
   remoteKey,
   remotes,
   setActiveIdea,
-  switchBranch,
-  trackBranch,
-  trackedChanges,
   worktrees,
 } from '../workspace.ts'
 import { repositoryIdeas } from './list.ts'
@@ -40,34 +36,21 @@ export async function change(
   const named = `"${truncate(summary.title, 60)}" (${id})`
   const state = await readState(ctx.ws, id)
   const current = ctx.ws.git?.branch ?? null
-  let branch = current
 
-  if (ctx.ws.git && !flags.here) {
-    if (state?.branch && state.branch !== current) {
-      branch = (await goTo(ctx, named, id, state.branch, null)) ?? current
-    } else if (!state && summary.git && summary.git.branch !== current) {
-      // not here yet: on another machine, its branch may be on one of this repository's remotes
-      const place = summary.git
-      const remote = place.remote ? remotes(ctx.ws).find((r) => remoteKey(r.url) === remoteKey(place.remote!)) : null
-      if (remote) {
-        branch = (await goTo(ctx, named, id, place.branch, remote.name)) ?? current
-      } else {
-        ctx.say(
-          `It was last synced from ${place.branch}${place.remote ? ` of ${place.remote}, which isn't a remote of this repository` : ', which has no remote'}, so it's pulled onto ${current ?? 'this commit'}.`,
-        )
-      }
-    }
+  // the branch it's on: as this repository last saw it, or as the server says
+  const wanted = state ? state.branch : (summary.git?.branch ?? null)
+  if (ctx.ws.git && wanted && wanted !== current && !flags.here) {
+    await refuseElsewhere(ctx, named, id, wanted, state ? null : (summary.git?.remote ?? null))
   }
 
   // not in this repository yet: bring it here
   const pulled = state ? null : await ctx.lock(id, () => pullInto(ctx, id))
   const before = await activeIdea(ctx.ws)
   await setActiveIdea(ctx.ws, id)
-  const switched = branch !== current
   ctx.say(
-    before === id && !switched && !pulled
+    before === id && !pulled
       ? `Already on ${named}.`
-      : `Now on ${named}${switched ? `, on branch ${branch}` : ''}${pulled ? `, pulled here${switched || !branch ? '' : ` on ${branch}`}` : ''}.`,
+      : `Now on ${named}${pulled ? `, pulled here${current ? ` on ${current}` : ''}` : ''}.`,
   )
   if (state && state.version < summary.latest) {
     ctx.say(`v${summary.latest} is on the server (here v${state.version}): run \`ideaf pull\`.`)
@@ -75,8 +58,7 @@ export async function change(
   ctx.result({
     idea: id,
     title: summary.title,
-    branch,
-    switched,
+    branch: current,
     pulled: pulled !== null,
     ...(pulled ? { version: pulled.version, changes: pulled.changes } : {}),
   })
@@ -84,58 +66,52 @@ export async function change(
 }
 
 /**
- * Switches this working tree to the idea's branch: from here, or fetched from
- * `remote`. Refuses if it's checked out in another worktree (making the idea
- * active there) or if uncommitted changes would come along. Null if the branch
- * is gone.
+ * The idea is on another branch than this working tree. If that branch is
+ * here, or can be fetched from one of this repository's remotes, stop and say
+ * which git commands get there; if it's checked out in another worktree, point
+ * there. A branch that's nowhere to be found doesn't stop the change.
  */
-async function goTo(
+async function refuseElsewhere(
   ctx: Context,
   named: string,
   id: string,
   wanted: string,
-  remote: string | null,
-): Promise<string | null> {
+  serverRemote: string | null,
+): Promise<void> {
   const current = ctx.ws.git?.branch ?? null
   const here = realpathSync(ctx.ws.root)
   const holder = worktrees(ctx.ws).find((w) => w.branch === wanted && realpathSync(w.path) !== here)
   if (holder) {
-    // ready for when they get there
+    // ideaf's own note of the active idea, ready for when they get there
     await setActiveIdea(openWorkspace(holder.path), id)
     throw new CliError(
-      `${named} is on ${wanted}, which is checked out in another worktree: work on it there (cd ${holder.path}), where it's now the idea; or pass --here to work on it in this one without switching branch`,
+      `${named} is on ${wanted}, which is checked out in another worktree: work on it there (cd ${holder.path}), where it's now the idea; or pass --here to work on it in this one`,
       EXIT.error,
       'other_worktree',
       { worktree: holder.path, branch: wanted },
     )
   }
-  let where = branchWhere(ctx.ws, wanted)
-  if (where !== 'local' && remote) {
-    const fetched = fetchBranch(ctx.ws, remote, wanted)
-    if (!fetched.ok) {
-      ctx.say(`Couldn't fetch ${wanted} from ${remote} (${fetched.error}), so staying on ${current ?? 'this commit'}.`)
-      return null
-    }
-    where = 'remote'
-  }
-  if (!where) {
-    ctx.say(`Its branch ${wanted} is gone, so staying on ${current ?? 'this commit'}.`)
-    return null
-  }
-  const dirty = trackedChanges(ctx.ws)
-  if (dirty.length) {
-    throw new CliError(
-      `switching to ${wanted} would carry your uncommitted changes (${dirty.slice(0, 5).join(', ')}${dirty.length > 5 ? ', …' : ''}) into it: commit or stash them first, or pass --here to stay on ${current ?? 'this commit'}`,
-      EXIT.error,
-      'uncommitted',
-      { files: dirty },
+  const remote = serverRemote ? remotes(ctx.ws).find((r) => remoteKey(r.url) === remoteKey(serverRemote)) : undefined
+  const commands =
+    branchWhere(ctx.ws, wanted) !== null
+      ? [`git switch ${wanted}`]
+      : remote
+        ? [`git fetch ${remote.name} ${wanted}`, `git switch ${wanted}`]
+        : null
+  if (!commands) {
+    ctx.say(
+      serverRemote
+        ? `It was last synced from ${wanted} of ${serverRemote}, which isn't a remote of this repository.`
+        : `Its branch ${wanted} isn't in this repository.`,
     )
+    return
   }
-  const result = where === 'remote' && remote ? trackBranch(ctx.ws, remote, wanted) : switchBranch(ctx.ws, wanted)
-  if (!result.ok) {
-    throw new CliError(`couldn't switch to ${wanted}: ${result.error}`, EXIT.error, 'git')
-  }
-  return wanted
+  throw new CliError(
+    `${named} is on branch ${wanted}, and you're on ${current ?? 'no branch'}. Switch first, then run ideaf change again:\n${commands.map((c) => `  ${c}`).join('\n')}\n(or pass --here to work on it on ${current ?? 'this commit'})`,
+    EXIT.error,
+    'switch_first',
+    { branch: wanted, commands },
+  )
 }
 
 /** The idea --title names, or the one a person picks; without a terminal, a choice is an error. */

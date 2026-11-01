@@ -312,13 +312,13 @@ const commands: Array<Command | Family> = [
     name: 'change',
     usage: 'ideaf change [<idea>] [--title <words>] [--here] [--anyone]',
     summary:
-      "Make another idea this working tree's, switching to its branch; one not in this repository yet is pulled here. Asks which at a terminal",
+      "Make another idea this working tree's; one not in this repository yet is pulled here. On another branch, it says which git commands get there (it never runs git). Asks which at a terminal",
     flags: {
       title: {
         type: 'string',
         description: 'the idea whose title has these words (this repository’s first, then the server’s)',
       },
-      here: { type: 'boolean', description: 'work on it in this working tree, on this branch, without switching' },
+      here: { type: 'boolean', description: 'work on it on this branch, even though it was on another' },
       anyone: { type: 'boolean', description: 'choose from everyone’s ideas in this repository, not just yours' },
     },
     run: (ctx, f, a) =>

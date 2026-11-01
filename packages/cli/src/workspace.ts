@@ -79,21 +79,6 @@ export function branchWhere(ws: Workspace, branch: string): 'local' | 'remote' |
   return git(ws.root, ['for-each-ref', '--format=%(refname)', `refs/remotes/*/${branch}`]) ? 'remote' : null
 }
 
-/** Tracked files with uncommitted changes (untracked files are left alone by a switch). */
-export function trackedChanges(ws: Workspace): string[] {
-  // not git(): it trims, and each line starts with a two-letter status that can be a space
-  const run = Bun.spawnSync(['git', 'status', '--porcelain', '--untracked-files=no'], {
-    cwd: ws.root,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  return run.stdout
-    .toString()
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => line.slice(3))
-}
-
 /**
  * A remote URL without credentials, safe to show to everyone who can see the
  * idea: no user on http(s) (where tokens go), and no password anywhere.
@@ -137,44 +122,6 @@ export function remotes(ws: Workspace): Array<{ name: string; url: string }> {
       const url = git(ws.root, ['remote', 'get-url', name])
       return url ? [{ name, url }] : []
     })
-}
-
-/** Fetches one branch from a remote, without ever stopping to ask for a password. */
-export function fetchBranch(ws: Workspace, remote: string, branch: string): GitResult {
-  const run = Bun.spawnSync(
-    ['git', 'fetch', '--quiet', remote, `refs/heads/${branch}:refs/remotes/${remote}/${branch}`],
-    {
-      cwd: ws.root,
-      stdout: 'pipe',
-      stderr: 'pipe',
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-    },
-  )
-  return run.exitCode === 0 ? { ok: true } : { ok: false, error: run.stderr.toString().trim() }
-}
-
-/** Switches to a new local branch tracking a remote one. */
-export function trackBranch(ws: Workspace, remote: string, branch: string): GitResult {
-  return switched(ws, branch, gitRun(ws.root, ['switch', '--quiet', '-c', branch, '--track', `${remote}/${branch}`]))
-}
-
-type GitResult = { ok: true } | { ok: false; error: string }
-
-function gitRun(cwd: string, args: string[]): GitResult {
-  const run = Bun.spawnSync(['git', ...args], { cwd, stdout: 'pipe', stderr: 'pipe' })
-  return run.exitCode === 0 ? { ok: true } : { ok: false, error: run.stderr.toString().trim() }
-}
-
-/** After a switch, the workspace says which branch it's on now. */
-function switched(ws: Workspace, branch: string, result: GitResult): GitResult {
-  if (result.ok && ws.git) {
-    ws.git.branch = branch
-  }
-  return result
-}
-
-export function switchBranch(ws: Workspace, branch: string): GitResult {
-  return switched(ws, branch, gitRun(ws.root, ['switch', '--quiet', branch]))
 }
 
 const toPosix = (path: string) => path.split(sep).join('/')
