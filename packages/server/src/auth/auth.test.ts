@@ -78,7 +78,7 @@ describe('signing up', () => {
 })
 
 describe('tokens', () => {
-  test('a personal token exchanges for a JWT that works on its own; a bot token labels what it does', async () => {
+  test('a personal token works as is, and a bot token labels what it does', async () => {
     const riley = await signIn(app, h('riley'))
     const { idea } = await api(riley.jwt).createIdea({ title: 'Mine', files: [{ path: 'a.md', content: PLAN }] })
 
@@ -91,12 +91,10 @@ describe('tokens', () => {
       ),
     )
     expect(made.status).toBe(200)
-    const exchanged = await json(await post('/ideaf/token', { token: made.body.key }))
-    expect(exchanged.body).toMatchObject({ token_type: 'Bearer', expires_in: 900 })
-    const bot = api(exchanged.body.access_token)
+    expect(made.body.key).toStartWith('ideaf_')
+    const bot = api(made.body.key)
     await bot.addComment({ idea, version: 1, anchor: { kind: 'file', file: 'f1' }, body: 'From the bot' })
-    // a personal token sent as is works too (the slower path)
-    const comments = await api(made.body.key).listComments({ idea })
+    const comments = await api(riley.jwt).listComments({ idea })
     expect(comments[0]!.author).toEqual({ user: riley.id, bot: 'planbot', purpose: 'bot-for-me' })
   })
 
@@ -137,7 +135,31 @@ describe('tokens', () => {
     const forged = Buffer.from(JSON.stringify({ sub: 'someone-else', purpose: 'me' })).toString('base64url')
     await refused(`${head}.${forged}.${signature}`)
     await refused('ideaf_not-a-real-token')
-    expect((await json(await post('/ideaf/token', { token: 'ideaf_nope' }))).status).toBe(401)
+  })
+
+  test('the site decides who may make and use personal tokens', async () => {
+    const riley = await signIn(app, h('riley'))
+    const admin = await signIn(app, h('admin'), TEST_ADMIN)
+    const make = async (cookie: string) =>
+      json(await post('/api/auth/api-key/create', { configId: 'personal', name: 'ci', metadata: {} }, cookie))
+    const before = testAuth.personalTokens ?? 'on'
+    try {
+      // site admins only (the default): theirs work, everyone else's are refused, old ones included
+      testAuth.personalTokens = 'admins'
+      expect((await make(riley.cookie)).status).toBe(403)
+      await expect(api(riley.token).me({})).rejects.toMatchObject({ code: 'unauthorized' })
+      expect((await make(admin.cookie)).status).toBe(200)
+      expect(await api(admin.token).me({})).toMatchObject({ id: admin.id })
+      // off: no one's
+      testAuth.personalTokens = 'off'
+      expect((await make(admin.cookie)).body.message).toContain('turned off')
+      await expect(api(admin.token).me({})).rejects.toMatchObject({ code: 'unauthorized' })
+      // access tokens from signing in are unaffected
+      expect(await api(riley.jwt).me({})).toMatchObject({ id: riley.id })
+    } finally {
+      testAuth.personalTokens = before
+    }
+    expect(await api(riley.token).me({})).toMatchObject({ id: riley.id })
   })
 })
 
@@ -155,8 +177,8 @@ describe('an inactive account', () => {
     await expect(
       client.addComment({ idea, version: 1, anchor: { kind: 'file', file: 'f1' }, body: 'still here?' }),
     ).rejects.toMatchObject({ code: 'forbidden', message: 'this account is inactive' })
-    // no new access token, and the session is gone
-    expect((await json(await post('/ideaf/token', { token: sam.token }))).status).toBe(401)
+    // the personal token stops at once, and the session is gone
+    await expect(api(sam.token).me({})).rejects.toMatchObject({ code: 'unauthorized' })
     const session = await app(new Request(`${TEST_URL}/api/auth/get-session`, { headers: { cookie: sam.cookie } }))
     expect(await session.json()).toBeNull()
     // the directory says so too
@@ -164,6 +186,6 @@ describe('an inactive account', () => {
 
     // and back again
     await directory.setInactive(sam.id, false)
-    expect((await json(await post('/ideaf/token', { token: sam.token }))).status).toBe(200)
+    expect(await api(sam.token).me({})).toMatchObject({ id: sam.id })
   })
 })

@@ -1,6 +1,6 @@
 // The HTTP API: every operation from @ideaf/api, routed and validated by its
 // definition, plus sign-in (forwarded to Better Auth in the directory actor),
-// the personal-token exchange, a bare sign-in page, /health and /openapi.json.
+// a bare sign-in page, /health and /openapi.json.
 import { createRouter, openApiDocument, operations } from '@ideaf/api'
 import type { Client } from 'rivetkit/client'
 import { DIRECTORY_KEY } from './actors/directory.ts'
@@ -35,9 +35,6 @@ export function createApp({ actors, auth, validateOutput = false }: AppDeps): (r
     }
     if (pathname.startsWith('/api/auth/')) {
       return gateway.forward(request)
-    }
-    if (pathname === '/ideaf/token' && request.method === 'POST') {
-      return gateway.exchange(request)
     }
     if (pathname === '/login') {
       return loginPage()

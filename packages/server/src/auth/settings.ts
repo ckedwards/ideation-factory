@@ -1,13 +1,14 @@
 // Auth settings from the environment, and the mail senders for sign-in codes.
 // Real email delivery is still to come: until then a deployment logs codes.
-import type { AuthSettings, Mailer } from './config.ts'
+import { type AuthSettings, type Mailer, PERSONAL_TOKEN_POLICIES, type PersonalTokenPolicy } from './config.ts'
 
 const DEV_SECRET = 'ideaf-development-secret-not-for-production-0123456789'
 
 /**
  * IDEAF_URL is the deployment's public URL; IDEAF_AUTH_SECRET (at least 32
  * characters) signs cookies and encrypts signing keys, and is required in
- * production; IDEAF_SITE_ADMINS lists the site admins' emails, comma-separated.
+ * production; IDEAF_SITE_ADMINS lists the site admins' emails, comma-separated;
+ * IDEAF_PERSONAL_TOKENS is on, admins (the default) or off.
  */
 export function authSettingsFromEnv(env: Record<string, string | undefined>, mailer: Mailer): AuthSettings {
   const secret = env.IDEAF_AUTH_SECRET
@@ -16,6 +17,10 @@ export function authSettingsFromEnv(env: Record<string, string | undefined>, mai
   }
   if (secret && secret.length < 32) {
     throw new Error('IDEAF_AUTH_SECRET must be at least 32 characters')
+  }
+  const personalTokens = (env.IDEAF_PERSONAL_TOKENS ?? 'admins') as PersonalTokenPolicy
+  if (!PERSONAL_TOKEN_POLICIES.includes(personalTokens)) {
+    throw new Error(`IDEAF_PERSONAL_TOKENS is on, admins or off, not "${personalTokens}"`)
   }
   return {
     baseURL: (env.IDEAF_URL ?? `http://localhost:${env.PORT ?? 8080}`).replace(/\/$/, ''),
@@ -27,6 +32,7 @@ export function authSettingsFromEnv(env: Record<string, string | undefined>, mai
         .filter(Boolean),
     ),
     mailer,
+    personalTokens,
   }
 }
 
