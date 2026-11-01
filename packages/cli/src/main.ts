@@ -261,7 +261,8 @@ const comment: Family = {
 const commands: Array<Command | Family> = [
   {
     name: 'start',
-    usage: 'ideaf start [path] --title <title> [--team <team>] [--description <text>]',
+    usage:
+      'ideaf start [path] --title <title> [--team <team>] [--description <text>] [--branch <name> [--worktree <path>]]',
     summary:
       "Start an idea from the Markdown files in path (default: this folder), and make it this working tree's idea",
     flags: {
@@ -271,6 +272,14 @@ const commands: Array<Command | Family> = [
         description: 'start it in this team (its defaults decide who can see it); without one it’s private to you',
       },
       description: { type: 'string', description: 'a short description' },
+      branch: {
+        type: 'string',
+        description: 'first make this branch for it, off the default branch, and switch to it (your edits come along)',
+      },
+      worktree: {
+        type: 'string',
+        description: 'put the new --branch in a new worktree at this path instead, with copies of the files',
+      },
     },
     run: (ctx, f, args) =>
       start(
@@ -279,6 +288,8 @@ const commands: Array<Command | Family> = [
           ...(typeof f.title === 'string' ? { title: f.title } : {}),
           ...(typeof f.team === 'string' ? { team: f.team } : {}),
           ...(typeof f.description === 'string' ? { description: f.description } : {}),
+          ...(typeof f.branch === 'string' ? { branch: f.branch } : {}),
+          ...(typeof f.worktree === 'string' ? { worktree: f.worktree } : {}),
         },
         args[0],
       ),
