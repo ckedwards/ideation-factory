@@ -164,9 +164,10 @@ describe('on another machine', () => {
     return second
   }
 
-  test("the server knows the idea's branch and remote, and change says how to fetch and switch to it", async () => {
+  test("the server knows the idea's branch and repository, and change says how to fetch and switch to it", async () => {
     const { origin, idea } = await pushed()
-    expect((await api(h('riley')).getIdea({ idea })).git).toEqual({ remote: origin, branch: 'idea/travel' })
+    // a local remote is its path; a hosted one would be like github.com/acme/plans
+    expect((await api(h('riley')).getIdea({ idea })).gitHint).toEqual({ uri: origin, branch: 'idea/travel' })
 
     const second = await clone(origin)
     // a clone made after the push already has the branch from the remote: switching is enough
@@ -198,7 +199,7 @@ describe('on another machine', () => {
     first.git('switch', '-qc', 'idea/renamed')
     await first.write('docs/plan.md', '# Plan\n\nMore.\n')
     expect((await first.ideaf('sync', 'docs')).exit).toBe(0)
-    expect((await api(h('riley')).getIdea({ idea })).git).toMatchObject({ branch: 'idea/renamed' })
+    expect((await api(h('riley')).getIdea({ idea })).gitHint).toMatchObject({ branch: 'idea/renamed' })
 
     const unrelated = await repo({}, { token: token(h('riley')) })
     const changed = await unrelated.ideaf('change', idea)

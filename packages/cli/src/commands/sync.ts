@@ -4,7 +4,7 @@
 import { contentHash } from '@ideaf/core'
 import type { Context } from '../context.ts'
 import { EXIT } from '../context.ts'
-import { gitPlace, type IdeaState, readText, scanMarkdown, scopeFrom, writeState } from '../workspace.ts'
+import { gitHint, type IdeaState, readText, scanMarkdown, scopeFrom, writeState } from '../workspace.ts'
 import { describeOutcomes } from './output.ts'
 
 export function sync(
@@ -58,18 +58,18 @@ async function run(
     return EXIT.ok
   }
 
-  const git = gitPlace(ctx.ws)
+  const hint = gitHint(ctx.ws)
   const result = await ctx.api.sync({
     idea: id,
     files,
     ...(deleted.length ? { deleted } : {}),
     ...(flags.force ? { force: true } : {}),
     // the server remembers where it was last synced from, for other machines
-    ...(git ? { git } : {}),
+    ...(hint ? { gitHint: hint } : {}),
   })
   const pulled = await ctx.api.pull({ idea: id, version: result.version })
   const hashes = new Map([...local].map(([p, f]) => [p, f.hash]))
-  const next = { ...state, version: result.version, branch: git?.branch ?? state.branch, files: { ...state.files } }
+  const next = { ...state, version: result.version, branch: hint?.branch ?? state.branch, files: { ...state.files } }
   for (const p of Object.keys(next.files)) {
     if (inScope(p) && !local.has(p)) {
       delete next.files[p]

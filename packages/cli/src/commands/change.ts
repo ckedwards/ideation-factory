@@ -12,8 +12,8 @@ import {
   branchWhere,
   openWorkspace,
   readState,
-  remoteKey,
   remotes,
+  repoUri,
   setActiveIdea,
   worktrees,
 } from '../workspace.ts'
@@ -38,9 +38,9 @@ export async function change(
   const current = ctx.ws.git?.branch ?? null
 
   // the branch it's on: as this repository last saw it, or as the server says
-  const wanted = state ? state.branch : (summary.git?.branch ?? null)
+  const wanted = state ? state.branch : (summary.gitHint?.branch ?? null)
   if (ctx.ws.git && wanted && wanted !== current && !flags.here) {
-    await refuseElsewhere(ctx, named, id, wanted, state ? null : (summary.git?.remote ?? null))
+    await refuseElsewhere(ctx, named, id, wanted, state ? null : (summary.gitHint?.uri ?? null))
   }
 
   // not in this repository yet: bring it here
@@ -76,7 +76,7 @@ async function refuseElsewhere(
   named: string,
   id: string,
   wanted: string,
-  serverRemote: string | null,
+  uri: string | null,
 ): Promise<void> {
   const current = ctx.ws.git?.branch ?? null
   const here = realpathSync(ctx.ws.root)
@@ -91,7 +91,7 @@ async function refuseElsewhere(
       { worktree: holder.path, branch: wanted },
     )
   }
-  const remote = serverRemote ? remotes(ctx.ws).find((r) => remoteKey(r.url) === remoteKey(serverRemote)) : undefined
+  const remote = uri ? remotes(ctx.ws).find((r) => repoUri(r.url) === uri) : undefined
   const commands =
     branchWhere(ctx.ws, wanted) !== null
       ? [`git switch ${wanted}`]
@@ -100,8 +100,8 @@ async function refuseElsewhere(
         : null
   if (!commands) {
     ctx.say(
-      serverRemote
-        ? `It was last synced from ${wanted} of ${serverRemote}, which isn't a remote of this repository.`
+      uri
+        ? `It was last synced from ${wanted} of ${uri}, which isn't a remote of this repository.`
         : `Its branch ${wanted} isn't in this repository.`,
     )
     return

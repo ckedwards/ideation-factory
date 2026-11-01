@@ -1,5 +1,5 @@
 CREATE TABLE schema_version (version INTEGER NOT NULL);
-CREATE TABLE idea ( id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL, owner TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, latest INTEGER NOT NULL, next_comment INTEGER NOT NULL , "git_remote" text, "git_branch" text);
+CREATE TABLE idea ( id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL, owner TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, latest INTEGER NOT NULL, next_comment INTEGER NOT NULL , "git_uri" text, "git_branch" text);
 CREATE TABLE versions ( number INTEGER PRIMARY KEY, parent INTEGER, created_at INTEGER NOT NULL, created_by TEXT NOT NULL, how TEXT NOT NULL CHECK (how IN ('created', 'commands', 'upload')), next_id INTEGER NOT NULL );
 CREATE TABLE version_files ( version INTEGER NOT NULL REFERENCES versions (number), file TEXT NOT NULL, path TEXT NOT NULL, hash TEXT NOT NULL, bytes INTEGER NOT NULL, unit_ids TEXT NOT NULL, PRIMARY KEY (version, file) );
 CREATE TABLE steps ( version INTEGER NOT NULL REFERENCES versions (number), step INTEGER NOT NULL, command TEXT NOT NULL, addresses TEXT NOT NULL, PRIMARY KEY (version, step) );

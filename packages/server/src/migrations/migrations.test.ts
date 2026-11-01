@@ -123,7 +123,7 @@ describe('data survives migration', () => {
     expect(write.result).toMatchObject({ ok: true, value: { version: 2 } })
   })
 
-  test('an idea from before v2 has no git place, and gets one with its next sync', async () => {
+  test('an idea from before v2 has no git hint, and gets one with its next sync', async () => {
     const idea = SCHEMAS.find((s) => s.name === 'idea')!
     const { sql } = emptyDatabase()
     await idea.migrate(sql, 1)
@@ -137,18 +137,18 @@ describe('data survives migration', () => {
 
     await idea.migrate(sql)
     const service = new IdeaService('i1', { sql, files, core: inProcessCore(), limits: DEFAULT_LIMITS })
-    expect((await service.summary())!.git).toBeNull()
+    expect((await service.summary())!.gitHint).toBeNull()
     const write = await service.write({
       key: 'k',
       caller: { user: 'riley', bot: null, purpose: 'me' },
       write: {
         type: 'upload',
         files: [{ file: 'f1', path: 'plan.md', content: '# Plan\n\nMore.\n', base: hash }],
-        git: { remote: null, branch: 'main' },
+        gitHint: { uri: null, branch: 'main' },
       },
     })
     expect(write.result).toMatchObject({ ok: true, value: { version: 2 } })
-    expect((await service.summary())!.git).toEqual({ remote: null, branch: 'main' })
+    expect((await service.summary())!.gitHint).toEqual({ uri: null, branch: 'main' })
   })
 
   test('the directory written at v1 reads back through SqlDirectory after migrating', async () => {

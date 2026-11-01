@@ -194,7 +194,7 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
           title: input.title,
           ...(input.description !== undefined ? { description: input.description } : {}),
           files: input.files,
-          ...(input.git ? { git: input.git } : {}),
+          ...(input.gitHint ? { gitHint: input.gitHint } : {}),
         },
         (value) => {
           if (value.kind !== 'created') {
@@ -252,7 +252,7 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
             files: input.files,
             ...(input.deleted ? { deleted: input.deleted } : {}),
             ...(input.force !== undefined ? { force: input.force } : {}),
-            ...(input.git ? { git: input.git } : {}),
+            ...(input.gitHint ? { gitHint: input.gitHint } : {}),
           },
           version,
         ),

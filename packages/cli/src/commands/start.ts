@@ -3,7 +3,7 @@
 // is checked out.
 import { contentHash } from '@ideaf/core'
 import { CliError, type Context, EXIT } from '../context.ts'
-import { gitPlace, readText, scanMarkdown, scopeFrom, setActiveIdea, writeState } from '../workspace.ts'
+import { gitHint, readText, scanMarkdown, scopeFrom, setActiveIdea, writeState } from '../workspace.ts'
 
 export async function start(
   ctx: Context,
@@ -25,13 +25,13 @@ export async function start(
   }
 
   const files = await Promise.all(paths.map(async (p) => ({ path: p, content: (await readText(ctx.ws, p))! })))
-  const git = gitPlace(ctx.ws)
+  const hint = gitHint(ctx.ws)
   const created = await ctx.api.createIdea({
     title,
     ...(flags.description ? { description: flags.description } : {}),
     ...(flags.team ? { team: flags.team } : {}),
     files,
-    ...(git ? { git } : {}),
+    ...(hint ? { gitHint: hint } : {}),
   })
   const pulled = await ctx.api.pull({ idea: created.idea, version: created.version })
 

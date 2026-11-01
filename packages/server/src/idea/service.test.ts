@@ -236,47 +236,47 @@ describe('uploading an edited copy', () => {
 })
 
 describe('where an idea is in git', () => {
-  test('is set when it is created, follows each upload that says, and never holds credentials', async () => {
+  test('is set when it is created, follows each upload that says, and is never a URL', async () => {
     const { service, write } = await setup()
-    const remote = 'git@github.com:acme/plans.git'
+    const uri = 'github.com/acme/plans'
     value(
       await write({
         type: 'create',
         title: 'Plan',
         files: [{ path: 'plan.md', content: PLAN }],
-        git: { remote, branch: 'idea/plan' },
+        gitHint: { uri, branch: 'idea/plan' },
       }),
     )
-    expect((await service.summary())!.git).toEqual({ remote, branch: 'idea/plan' })
+    expect((await service.summary())!.gitHint).toEqual({ uri, branch: 'idea/plan' })
 
     let base = await contentHash(PLAN)
-    const upload = async (content: string, git?: unknown) => {
+    const upload = async (content: string, gitHint?: unknown) => {
       const result = await write({
         type: 'upload',
         files: [{ file: 'f1', path: 'plan.md', content, base }],
-        ...(git ? { git } : {}),
+        ...(gitHint ? { gitHint } : {}),
       })
       if (result.ok) {
         base = await contentHash(content)
       }
       return result
     }
-    value(await upload(PLAN.replace('rain', 'snow'), { remote: null, branch: 'elsewhere' }))
-    expect((await service.summary())!.git).toEqual({ remote: null, branch: 'elsewhere' })
+    value(await upload(PLAN.replace('rain', 'snow'), { uri: null, branch: 'elsewhere' }))
+    expect((await service.summary())!.gitHint).toEqual({ uri: null, branch: 'elsewhere' })
     // an upload that doesn't say leaves it
     value(await upload(PLAN.replace('rain', 'hail')))
-    expect((await service.summary())!.git).toEqual({ remote: null, branch: 'elsewhere' })
+    expect((await service.summary())!.gitHint).toEqual({ uri: null, branch: 'elsewhere' })
 
-    expect(await upload(PLAN, { remote: 'https://ghp_token@github.com/acme/plans.git', branch: 'x' })).toMatchObject({
+    expect(await upload(PLAN, { uri: 'https://ghp_token@github.com/acme/plans.git', branch: 'x' })).toMatchObject({
       ok: false,
       error: { code: 'invalid' },
     })
-    expect((await service.summary())!.git).toEqual({ remote: null, branch: 'elsewhere' })
+    expect((await service.summary())!.gitHint).toEqual({ uri: null, branch: 'elsewhere' })
   })
 
   test('is unknown for an idea created without it', async () => {
     const { service } = await created()
-    expect((await service.summary())!.git).toBeNull()
+    expect((await service.summary())!.gitHint).toBeNull()
   })
 })
 

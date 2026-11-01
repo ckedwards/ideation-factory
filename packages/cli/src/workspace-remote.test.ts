@@ -1,20 +1,22 @@
-// Remote URLs: what's safe to send to the server, and telling one remote from another.
+// How a git hint names a repository: the same for every way its remote is written.
 import { expect, test } from 'bun:test'
-import { publicRemote, remoteKey } from './workspace.ts'
+import { repoUri } from './workspace.ts'
 
-test('credentials never leave the machine; ssh users stay', () => {
-  expect(publicRemote('https://ghp_token@github.com/acme/plans.git')).toBe('https://github.com/acme/plans.git')
-  expect(publicRemote('https://me:secret@example.com/plans.git')).toBe('https://example.com/plans.git')
-  expect(publicRemote('ssh://me:secret@example.com/plans.git')).toBe('ssh://me@example.com/plans.git')
-  expect(publicRemote('ssh://git@github.com/acme/plans.git')).toBe('ssh://git@github.com/acme/plans.git')
-  expect(publicRemote('git@github.com:acme/plans.git')).toBe('git@github.com:acme/plans.git')
+test('https and ssh remotes of one repository give the same uri', () => {
+  expect(repoUri('https://github.com/acme/plans.git')).toBe('github.com/acme/plans')
+  expect(repoUri('git@github.com:acme/plans.git')).toBe('github.com/acme/plans')
+  expect(repoUri('github.com:acme/plans')).toBe('github.com/acme/plans')
+  expect(repoUri('ssh://git@GitHub.com:22/acme/plans')).toBe('github.com/acme/plans')
+  expect(repoUri('https://github.com/acme/plans/')).toBe('github.com/acme/plans')
+  expect(repoUri('https://github.com/acme/other.git')).toBe('github.com/acme/other')
 })
 
-test('the same remote written different ways is the same remote', () => {
-  const key = remoteKey('https://github.com/acme/plans.git')
-  expect(remoteKey('git@github.com:acme/plans.git')).toBe(key)
-  expect(remoteKey('ssh://git@GitHub.com:22/acme/plans')).toBe(key)
-  expect(remoteKey('https://github.com/acme/plans/')).toBe(key)
-  expect(remoteKey('https://github.com/acme/other.git')).not.toBe(key)
-  expect(remoteKey('/srv/git/plans.git')).toBe(remoteKey('/srv/git/plans'))
+test('credentials never make it into the uri', () => {
+  expect(repoUri('https://ghp_token@github.com/acme/plans.git')).toBe('github.com/acme/plans')
+  expect(repoUri('https://me:secret@example.com/plans.git')).toBe('example.com/plans')
+})
+
+test('a local remote is its path', () => {
+  expect(repoUri('/srv/git/plans.git')).toBe('/srv/git/plans')
+  expect(repoUri('file:///srv/git/plans.git')).toBe('/srv/git/plans')
 })

@@ -17,8 +17,8 @@ export interface IdeaDB {
     created_at: number
     latest: number
     next_comment: number
-    /** Where it was last synced from in git (v2): the remote's URL and the branch. */
-    git_remote: string | null
+    /** A hint at where it is in git (v2): the repository as host/path, and the branch last synced from. */
+    git_uri: string | null
     git_branch: string | null
   }
   versions: {
@@ -61,7 +61,7 @@ export const IDEA_COLUMNS = {
     'created_at',
     'latest',
     'next_comment',
-    'git_remote',
+    'git_uri',
     'git_branch',
   ],
   versions: ['number', 'parent', 'created_at', 'created_by', 'how', 'next_id'],
@@ -138,9 +138,9 @@ const MIGRATIONS: Migration[] = [
     `CREATE TABLE writes (key TEXT PRIMARY KEY, result TEXT NOT NULL, at INTEGER NOT NULL)`,
     `CREATE INDEX writes_at ON writes (at)`,
   ],
-  // v2: where the idea was last synced from in git, so another machine can find its branch
+  // v2: a hint at where the idea is in git, so another machine can find its branch
   async (db) => {
-    await db.schema.alterTable('idea').addColumn('git_remote', 'text').execute()
+    await db.schema.alterTable('idea').addColumn('git_uri', 'text').execute()
     await db.schema.alterTable('idea').addColumn('git_branch', 'text').execute()
   },
 ]

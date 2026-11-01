@@ -80,37 +80,30 @@ export function branchWhere(ws: Workspace, branch: string): 'local' | 'remote' |
 }
 
 /**
- * A remote URL without credentials, safe to show to everyone who can see the
- * idea: no user on http(s) (where tokens go), and no password anywhere.
+ * A remote as host and path, the way an idea's git hint names a repository:
+ * https://github.com/acme/plans.git, git@github.com:acme/plans and
+ * ssh://git@github.com:22/acme/plans are all github.com/acme/plans. Users,
+ * passwords and ports are dropped. A local remote (a path, or file://) is its path.
  */
-export function publicRemote(url: string): string {
-  return url.replace(/^([a-z][a-z0-9+.-]*):\/\/([^/@]*)@/i, (all, scheme: string, user: string) => {
-    if (/^https?$/i.test(scheme)) {
-      return `${scheme}://`
-    }
-    return user.includes(':') ? `${scheme}://${user.slice(0, user.indexOf(':'))}@` : all
-  })
-}
-
-/** One remote however it's written: https://host/a/b.git, git@host:a/b and ssh://git@host/a/b are the same. */
-export function remoteKey(url: string): string {
-  // git@host:path
-  const scp = /^[^/@:]+@([^/:]+):(.+)$/.exec(url)
+export function repoUri(url: string): string {
+  // [user@]host:path, git's scp-like form
+  const scp = /^(?:[^/@:]+@)?([^/:]{2,}):(?!\/\/)(.+)$/.exec(url)
   // scheme://[user@]host[:port]/path
-  const full = /^[a-z][a-z0-9+.-]*:\/\/(?:[^/@]*@)?([^/]+)\/(.+)$/i.exec(url)
-  const [host, path] = scp ? [scp[1]!, scp[2]!] : full ? [full[1]!.replace(/:\d+$/, ''), full[2]!] : ['', url]
-  return `${host.toLowerCase()}/${path.replace(/\/+$/, '').replace(/\.git$/, '')}`
+  const full = /^[a-z][a-z0-9+.-]*:\/\/(?:[^/@]*@)?([^/]*)(\/.*)?$/i.exec(url)
+  const [host, path] = full ? [full[1]!.replace(/:\d+$/, ''), full[2] ?? ''] : scp ? [scp[1]!, scp[2]!] : ['', url]
+  const clean = path.replace(/\/+$/, '').replace(/\.git$/, '')
+  return host ? `${host.toLowerCase()}/${clean.replace(/^\/+/, '')}` : clean
 }
 
-/** Where this working tree is in git, for the server: its branch, and that branch's remote (or origin). */
-export function gitPlace(ws: Workspace): { remote: string | null; branch: string } | undefined {
+/** Where this working tree is in git, for the server: its branch, and the repository of that branch's remote (or origin). */
+export function gitHint(ws: Workspace): { uri: string | null; branch: string } | undefined {
   const branch = ws.git?.branch
   if (!branch) {
     return undefined
   }
   const name = git(ws.root, ['config', `branch.${branch}.remote`]) ?? 'origin'
   const url = git(ws.root, ['remote', 'get-url', name])
-  return { remote: url ? publicRemote(url) : null, branch }
+  return { uri: url ? repoUri(url) : null, branch }
 }
 
 /** The repository's remotes, by name. */

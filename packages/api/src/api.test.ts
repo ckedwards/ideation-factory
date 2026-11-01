@@ -9,7 +9,7 @@ import { openApiDocument } from './openapi.ts'
 import { defineOperation } from './operation.ts'
 import { operations } from './operations.ts'
 import { type Context, createRouter, type Handlers } from './router.ts'
-import { type Caller, remoteHasCredentials } from './schemas.ts'
+import { type Caller, GitHint } from './schemas.ts'
 
 const ME: Caller = { user: 'riley', bot: null, purpose: 'me' }
 
@@ -206,12 +206,12 @@ describe('generated descriptions', () => {
   })
 })
 
-test('git remotes with credentials are refused, and ssh users are not credentials', () => {
-  expect(remoteHasCredentials('https://github.com/acme/plans.git')).toBe(false)
-  expect(remoteHasCredentials('git@github.com:acme/plans.git')).toBe(false)
-  expect(remoteHasCredentials('ssh://git@github.com/acme/plans.git')).toBe(false)
-  expect(remoteHasCredentials('/srv/git/plans.git')).toBe(false)
-  expect(remoteHasCredentials('https://ghp_token@github.com/acme/plans.git')).toBe(true)
-  expect(remoteHasCredentials('HTTPS://me:secret@example.com/plans.git')).toBe(true)
-  expect(remoteHasCredentials('ssh://me:secret@example.com/plans.git')).toBe(true)
+test('a git hint names a repository, never a URL that could carry credentials', () => {
+  const ok = (uri: string | null) => GitHint.safeParse({ uri, branch: 'main' }).success
+  expect(ok('github.com/acme/plans')).toBe(true)
+  expect(ok('/srv/git/plans')).toBe(true)
+  expect(ok(null)).toBe(true)
+  expect(ok('https://github.com/acme/plans.git')).toBe(false)
+  expect(ok('ghp_token@github.com/acme/plans')).toBe(false)
+  expect(ok('git@github.com:acme/plans.git')).toBe(false)
 })
