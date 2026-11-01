@@ -3,6 +3,7 @@
 // and --help. Prompts only appear when a person is at a terminal; agents get
 // --json output and stable exit codes.
 import { parseArgs } from 'node:util'
+import * as comments from './commands/comment.ts'
 import { edit } from './commands/edit.ts'
 import { move } from './commands/move.ts'
 import { pull } from './commands/pull.ts'
@@ -161,6 +162,100 @@ function family(kind: containers.Kind): Family {
   }
 }
 
+const stdin = () => Bun.stdin.text()
+
+/** ideaf comment …: comment threads, mostly for agents and skills. */
+const comment: Family = {
+  name: 'comment',
+  summary: 'Comments: list and read threads, comment on a file, section or quote, reply, resolve',
+  subcommands: [
+    {
+      name: 'list',
+      usage: 'ideaf comment list [--all] [--version <n>]',
+      summary: 'The open comment threads: what each is on, its state, and its replies',
+      flags: {
+        idea: IDEA,
+        all: { type: 'boolean', description: 'resolved threads too' },
+        version: { type: 'string', description: 'as of an earlier version' },
+      },
+      run: (ctx, f) =>
+        comments.list(ctx, {
+          ...(str(f, 'idea') ? { idea: str(f, 'idea')! } : {}),
+          all: f.all === true,
+          ...(str(f, 'version') ? { version: str(f, 'version')! } : {}),
+        }),
+    },
+    {
+      name: 'show',
+      usage: 'ideaf comment show <comment> [--version <n>]',
+      summary: 'One thread in full, with its replies',
+      flags: { idea: IDEA, version: { type: 'string', description: 'as of an earlier version' } },
+      run: (ctx, f, a) =>
+        comments.show(
+          ctx,
+          {
+            ...(str(f, 'idea') ? { idea: str(f, 'idea')! } : {}),
+            ...(str(f, 'version') ? { version: str(f, 'version')! } : {}),
+          },
+          containers.need(a, ['comment'], 'ideaf comment show <comment>')[0]!,
+        ),
+    },
+    {
+      name: 'add',
+      usage: 'ideaf comment add <body | -> (--quote <text> [--file <file>] | --section <id> | --file <file>)',
+      summary:
+        'Comment on the latest version: on a quote from the text, a section (IDs from `ideaf show --blocks`), or a whole file. "-" reads the body from stdin',
+      flags: {
+        idea: IDEA,
+        quote: {
+          type: 'string',
+          description: 'the text it’s on, as it reads (without Markdown); it must match once, or pass --occurrence',
+        },
+        occurrence: { type: 'string', description: 'which match of --quote, from 1' },
+        section: { type: 'string', description: 'the section it’s on, by its heading’s ID' },
+        file: { type: 'string', description: 'the file it’s on (ID or path), or where to look for --quote' },
+      },
+      run: (ctx, f, a) =>
+        comments.add(
+          ctx,
+          {
+            ...(str(f, 'idea') ? { idea: str(f, 'idea')! } : {}),
+            ...(str(f, 'quote') !== undefined ? { quote: str(f, 'quote')! } : {}),
+            ...(str(f, 'occurrence') ? { occurrence: str(f, 'occurrence')! } : {}),
+            ...(str(f, 'section') ? { section: str(f, 'section')! } : {}),
+            ...(str(f, 'file') ? { file: str(f, 'file')! } : {}),
+          },
+          containers.need(a, ['body'], 'ideaf comment add <body> --quote <text>')[0]!,
+          stdin,
+        ),
+    },
+    {
+      name: 'reply',
+      usage: 'ideaf comment reply <comment> <body | ->',
+      summary: 'Reply to a thread. "-" reads the body from stdin',
+      flags: { idea: IDEA },
+      run: (ctx, f, a) => {
+        const [id, body] = containers.need(a, ['comment', 'body'], 'ideaf comment reply <comment> <body>')
+        return comments.reply(ctx, str(f, 'idea') ? { idea: str(f, 'idea')! } : {}, id!, body!, stdin)
+      },
+    },
+    {
+      name: 'resolve',
+      usage: 'ideaf comment resolve <comment>…',
+      summary: 'Mark threads resolved',
+      flags: { idea: IDEA },
+      run: (ctx, f, a) => comments.resolve(ctx, str(f, 'idea') ? { idea: str(f, 'idea')! } : {}, a, true),
+    },
+    {
+      name: 'reopen',
+      usage: 'ideaf comment reopen <comment>…',
+      summary: 'Reopen resolved threads',
+      flags: { idea: IDEA },
+      run: (ctx, f, a) => comments.resolve(ctx, str(f, 'idea') ? { idea: str(f, 'idea')! } : {}, a, false),
+    },
+  ],
+}
+
 const commands: Array<Command | Family> = [
   {
     name: 'start',
@@ -305,6 +400,7 @@ const commands: Array<Command | Family> = [
         dryRun: f['dry-run'] === true,
       }),
   },
+  comment,
   family('team'),
   family('group'),
   {
