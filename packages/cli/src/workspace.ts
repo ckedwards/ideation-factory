@@ -177,35 +177,6 @@ export function switchBranch(ws: Workspace, branch: string): GitResult {
   return switched(ws, branch, gitRun(ws.root, ['switch', '--quiet', branch]))
 }
 
-/**
- * What new branches start from: the remote's default branch (origin/HEAD) if
- * it's known, else main or master, as a local branch if there is one.
- */
-export function defaultBranch(ws: Workspace): string | null {
-  const remoteHead = git(ws.root, ['symbolic-ref', '--short', '-q', 'refs/remotes/origin/HEAD'])
-  const candidates = [...(remoteHead ? [remoteHead.replace(/^origin\//, '')] : []), 'main', 'master']
-  for (const name of candidates) {
-    const where = branchWhere(ws, name)
-    if (where === 'local') {
-      return name
-    }
-    if (where === 'remote' && git(ws.root, ['rev-parse', '--verify', '-q', `refs/remotes/origin/${name}`])) {
-      return `origin/${name}`
-    }
-  }
-  return null
-}
-
-/** Creates a branch from `base` and switches to it, keeping uncommitted changes (git refuses if they'd conflict). */
-export function createBranch(ws: Workspace, branch: string, base: string): GitResult {
-  return gitRun(ws.root, ['switch', '--quiet', '--no-track', '-c', branch, base])
-}
-
-/** Creates a branch from `base`, checked out in a new worktree at `path`. */
-export function addWorktree(ws: Workspace, path: string, branch: string, base: string): GitResult {
-  return gitRun(ws.root, ['worktree', 'add', '--quiet', '--no-track', '-b', branch, path, base])
-}
-
 const toPosix = (path: string) => path.split(sep).join('/')
 
 /** The Markdown files under `scope` (relative to the root), as sorted root-relative paths. Git repositories respect .gitignore. */

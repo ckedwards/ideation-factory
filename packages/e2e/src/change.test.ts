@@ -143,10 +143,9 @@ describe('on another machine', () => {
     first.git('commit', '-qm', 'first')
     first.git('remote', 'add', 'origin', origin)
     first.git('push', '-q', 'origin', 'main')
+    first.git('switch', '-qc', 'idea/travel')
     await first.write('docs/plan.md', '# Plan\n')
-    const { idea } = (
-      await first.ideaf('start', 'docs', '--title', 'Travelling', '--branch', 'idea/travel', '--json')
-    ).json()
+    const { idea } = (await first.ideaf('start', 'docs', '--title', 'Travelling', '--json')).json()
     first.git('add', '.')
     first.git('commit', '-qm', 'plan')
     first.git('push', '-q', '-u', 'origin', 'idea/travel')
