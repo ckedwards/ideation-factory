@@ -9,7 +9,7 @@ import { openApiDocument } from './openapi.ts'
 import { defineOperation } from './operation.ts'
 import { operations } from './operations.ts'
 import { type Context, createRouter, type Handlers } from './router.ts'
-import type { Caller } from './schemas.ts'
+import { type Caller, remoteHasCredentials } from './schemas.ts'
 
 const ME: Caller = { user: 'riley', bot: null, purpose: 'me' }
 
@@ -204,4 +204,14 @@ describe('generated descriptions', () => {
     // MCP structured output must be an object, so a list doesn't declare one
     expect(tools.find((t) => t.name === 'list_comments')!.outputSchema).toBeUndefined()
   })
+})
+
+test('git remotes with credentials are refused, and ssh users are not credentials', () => {
+  expect(remoteHasCredentials('https://github.com/acme/plans.git')).toBe(false)
+  expect(remoteHasCredentials('git@github.com:acme/plans.git')).toBe(false)
+  expect(remoteHasCredentials('ssh://git@github.com/acme/plans.git')).toBe(false)
+  expect(remoteHasCredentials('/srv/git/plans.git')).toBe(false)
+  expect(remoteHasCredentials('https://ghp_token@github.com/acme/plans.git')).toBe(true)
+  expect(remoteHasCredentials('HTTPS://me:secret@example.com/plans.git')).toBe(true)
+  expect(remoteHasCredentials('ssh://me:secret@example.com/plans.git')).toBe(true)
 })

@@ -34,7 +34,7 @@ import { sqliteKysely } from '../sql/kysely.ts'
 import type { Sql } from '../sql/sql.ts'
 import type { IdeaDB } from './schema.ts'
 
-import type { Caller } from '@ideaf/api'
+import { type Caller, schemas } from '@ideaf/api'
 
 export type { Caller }
 
@@ -46,6 +46,7 @@ export const IdeaWrite = z.discriminatedUnion('type', [
     title: z.string().trim().min(1).max(200),
     description: z.string().max(5000).optional(),
     files: z.array(FileInput).min(1).max(500),
+    git: schemas.GitPlace.optional(),
   }),
   z.strictObject({
     type: z.literal('comment'),
@@ -76,6 +77,8 @@ export const IdeaWrite = z.discriminatedUnion('type', [
     deleted: z.array(z.string()).max(500).optional(),
     /** Upload even if a file's base isn't the latest version: the newer changes show as undone. */
     force: z.boolean().optional(),
+    /** Where in git it was synced from: replaces the idea's git place. */
+    git: schemas.GitPlace.optional(),
   }),
 ])
 export type IdeaWrite = z.infer<typeof IdeaWrite>
@@ -244,6 +247,8 @@ export class IdeaService {
           created_at: now,
           latest: 1,
           next_comment: 1,
+          git_remote: write.git?.remote ?? null,
+          git_branch: write.git?.branch ?? null,
         })
         .execute()
       await this.#insertVersion(tx, {
@@ -426,7 +431,7 @@ export class IdeaService {
       refuse('invalid', applied.problems.join('; '), { problems: applied.problems })
     }
     const ok = applied as Extract<typeof applied, { ok: true }>
-    return this.#newVersion(request, meta, latest, 'upload', ok.idea, ok.comments, [], [])
+    return this.#newVersion(request, meta, latest, 'upload', ok.idea, ok.comments, [], [], write.git)
   }
 
   async #newVersion(
@@ -438,6 +443,7 @@ export class IdeaService {
     outcomes: CommentOutcome[],
     steps: Array<{ step: number; command: unknown; addresses: string[] }>,
     stepResults: StepResult[],
+    git?: { remote: string | null; branch: string },
   ) {
     const number = meta.latest + 1
     const result: WriteResult = {
@@ -456,7 +462,10 @@ export class IdeaService {
         steps,
         outcomes,
       })
-      await tx.updateTable('idea').set({ latest: number }).execute()
+      await tx
+        .updateTable('idea')
+        .set({ latest: number, ...(git ? { git_remote: git.remote, git_branch: git.branch } : {}) })
+        .execute()
       await this.#remember(tx, request.key, result)
     })
     this.#latest = {
@@ -500,6 +509,7 @@ export class IdeaService {
       status: meta.status,
       createdAt: meta.created_at,
       latest: meta.latest,
+      git: meta.git_branch ? { remote: meta.git_remote, branch: meta.git_branch } : null,
       versions: versions.map((v) => ({
         number: v.number,
         parent: v.parent,

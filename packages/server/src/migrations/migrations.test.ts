@@ -123,6 +123,34 @@ describe('data survives migration', () => {
     expect(write.result).toMatchObject({ ok: true, value: { version: 2 } })
   })
 
+  test('an idea from before v2 has no git place, and gets one with its next sync', async () => {
+    const idea = SCHEMAS.find((s) => s.name === 'idea')!
+    const { sql } = emptyDatabase()
+    await idea.migrate(sql, 1)
+    const files = new MemoryFileStore()
+    const source = '# Plan\n'
+    const hash = await files.put(new TextEncoder().encode(source))
+    const caller = JSON.stringify({ user: 'riley', bot: null, purpose: 'me' })
+    await sql.execute("INSERT INTO idea VALUES ('i1', 'Plan', '', 'riley', 'draft', 1000, 1, 1)")
+    await sql.execute("INSERT INTO versions VALUES (1, NULL, 1000, ?, 'created', 3)", caller)
+    await sql.execute(`INSERT INTO version_files VALUES (1, 'f1', 'plan.md', ?, ?, '["s2"]')`, hash, source.length)
+
+    await idea.migrate(sql)
+    const service = new IdeaService('i1', { sql, files, core: inProcessCore(), limits: DEFAULT_LIMITS })
+    expect((await service.summary())!.git).toBeNull()
+    const write = await service.write({
+      key: 'k',
+      caller: { user: 'riley', bot: null, purpose: 'me' },
+      write: {
+        type: 'upload',
+        files: [{ file: 'f1', path: 'plan.md', content: '# Plan\n\nMore.\n', base: hash }],
+        git: { remote: null, branch: 'main' },
+      },
+    })
+    expect(write.result).toMatchObject({ ok: true, value: { version: 2 } })
+    expect((await service.summary())!.git).toEqual({ remote: null, branch: 'main' })
+  })
+
   test('the directory written at v1 reads back through SqlDirectory after migrating', async () => {
     const directory = SCHEMAS.find((s) => s.name === 'directory')!
     const { sql } = emptyDatabase()

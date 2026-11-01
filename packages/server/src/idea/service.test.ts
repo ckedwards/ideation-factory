@@ -235,6 +235,51 @@ describe('uploading an edited copy', () => {
   })
 })
 
+describe('where an idea is in git', () => {
+  test('is set when it is created, follows each upload that says, and never holds credentials', async () => {
+    const { service, write } = await setup()
+    const remote = 'git@github.com:acme/plans.git'
+    value(
+      await write({
+        type: 'create',
+        title: 'Plan',
+        files: [{ path: 'plan.md', content: PLAN }],
+        git: { remote, branch: 'idea/plan' },
+      }),
+    )
+    expect((await service.summary())!.git).toEqual({ remote, branch: 'idea/plan' })
+
+    let base = await contentHash(PLAN)
+    const upload = async (content: string, git?: unknown) => {
+      const result = await write({
+        type: 'upload',
+        files: [{ file: 'f1', path: 'plan.md', content, base }],
+        ...(git ? { git } : {}),
+      })
+      if (result.ok) {
+        base = await contentHash(content)
+      }
+      return result
+    }
+    value(await upload(PLAN.replace('rain', 'snow'), { remote: null, branch: 'elsewhere' }))
+    expect((await service.summary())!.git).toEqual({ remote: null, branch: 'elsewhere' })
+    // an upload that doesn't say leaves it
+    value(await upload(PLAN.replace('rain', 'hail')))
+    expect((await service.summary())!.git).toEqual({ remote: null, branch: 'elsewhere' })
+
+    expect(await upload(PLAN, { remote: 'https://ghp_token@github.com/acme/plans.git', branch: 'x' })).toMatchObject({
+      ok: false,
+      error: { code: 'invalid' },
+    })
+    expect((await service.summary())!.git).toEqual({ remote: null, branch: 'elsewhere' })
+  })
+
+  test('is unknown for an idea created without it', async () => {
+    const { service } = await created()
+    expect((await service.summary())!.git).toBeNull()
+  })
+})
+
 describe('size limits', () => {
   const small: Limits = { maxFileBytes: 100, maxIdeaBytes: 150 }
 

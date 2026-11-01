@@ -13,6 +13,7 @@ import {
   FileContent,
   FileId,
   FileOutline,
+  GitPlace,
   IdeaId,
   IdeaSummary,
   Ref,
@@ -37,6 +38,8 @@ export const operations = {
       description: z.string().max(5000).optional(),
       team: Ref.optional(),
       files: z.array(MarkdownFile).min(1).max(500),
+      /** The git branch (and remote) the files come from, so another machine can find it. */
+      git: GitPlace.optional(),
     }),
     output: z.object({ idea: z.string(), version: z.number().int() }),
   }),
@@ -99,6 +102,8 @@ export const operations = {
         .max(500),
       deleted: z.array(FileId).max(500).optional(),
       force: z.boolean().optional(),
+      /** The git branch (and remote) synced from: the idea's git place becomes this. */
+      git: GitPlace.optional(),
     }),
     output: VersionResult,
   }),

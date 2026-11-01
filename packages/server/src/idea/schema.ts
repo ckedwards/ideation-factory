@@ -17,6 +17,9 @@ export interface IdeaDB {
     created_at: number
     latest: number
     next_comment: number
+    /** Where it was last synced from in git (v2): the remote's URL and the branch. */
+    git_remote: string | null
+    git_branch: string | null
   }
   versions: {
     number: number
@@ -49,7 +52,18 @@ export interface IdeaDB {
 
 /** Every table's columns, as the migrations create them; checked against IdeaDB by type and against a fresh database by a test. */
 export const IDEA_COLUMNS = {
-  idea: ['id', 'title', 'description', 'owner', 'status', 'created_at', 'latest', 'next_comment'],
+  idea: [
+    'id',
+    'title',
+    'description',
+    'owner',
+    'status',
+    'created_at',
+    'latest',
+    'next_comment',
+    'git_remote',
+    'git_branch',
+  ],
   versions: ['number', 'parent', 'created_at', 'created_by', 'how', 'next_id'],
   version_files: ['version', 'file', 'path', 'hash', 'bytes', 'unit_ids'],
   steps: ['version', 'step', 'command', 'addresses'],
@@ -124,6 +138,11 @@ const MIGRATIONS: Migration[] = [
     `CREATE TABLE writes (key TEXT PRIMARY KEY, result TEXT NOT NULL, at INTEGER NOT NULL)`,
     `CREATE INDEX writes_at ON writes (at)`,
   ],
+  // v2: where the idea was last synced from in git, so another machine can find its branch
+  async (db) => {
+    await db.schema.alterTable('idea').addColumn('git_remote', 'text').execute()
+    await db.schema.alterTable('idea').addColumn('git_branch', 'text').execute()
+  },
 ]
 
 /** The idea schema's current version: the number of migrations. */

@@ -91,6 +91,26 @@ export const FileOutline = z.object({ id: z.string(), path: z.string(), entries:
 
 const VersionHow = z.enum(['created', 'commands', 'upload'])
 
+/**
+ * Whether a git remote URL carries credentials: a password, or any user on an
+ * http(s) URL (where tokens go). ssh's user (git@host) is part of the address.
+ */
+export function remoteHasCredentials(remote: string): boolean {
+  const user = /^([a-z][a-z0-9+.-]*):\/\/([^/@]*)@/i.exec(remote)
+  return Boolean(user && (user[2]!.includes(':') || /^https?$/i.test(user[1]!)))
+}
+
+/** Where an idea lives in git: the branch it was last synced from, and its remote's URL (if it has one). */
+export const GitPlace = z.strictObject({
+  remote: z
+    .string()
+    .min(1)
+    .max(500)
+    .refine((r) => !remoteHasCredentials(r), "a remote URL without credentials (they'd be shown to everyone)")
+    .nullable(),
+  branch: z.string().min(1).max(250),
+})
+
 export const IdeaSummary = z.object({
   id: z.string(),
   title: z.string(),
@@ -99,6 +119,8 @@ export const IdeaSummary = z.object({
   status: z.string(),
   createdAt: z.number(),
   latest: z.number().int(),
+  /** Where it was last synced from, if from a git branch: how another machine finds it. */
+  git: GitPlace.nullable(),
   versions: z.array(
     z.object({
       number: z.number().int(),
