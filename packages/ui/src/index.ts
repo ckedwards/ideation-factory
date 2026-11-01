@@ -1,4 +1,17 @@
 // @ideaf/ui: the React components, design tokens and themes that every page is
-// built from, shown in Storybook. Components take data as props and never
-// fetch it. Step 7 of the build plan rebuilds the prototypes' components here.
-export {}
+// built from, shown in Storybook (`bun run storybook` here). Components take
+// data as props and never fetch it. The app imports `@ideaf/ui/theme.css` once
+// for the fonts, tokens and base styles; each component brings its own CSS.
+export { Link, LinkProvider, type LinkProps } from './link/Link.tsx'
+
+export { avatarColor, initials, type Person } from './people/person.ts'
+export { Avatar, type AvatarProps, type AvatarSize } from './people/Avatar.tsx'
+export { AvatarStack, type AvatarStackProps } from './people/AvatarStack.tsx'
+export { UserName, type UserNameProps } from './people/UserName.tsx'
+export { ActorLabel, type Actor, type ActorLabelProps } from './people/ActorLabel.tsx'
+
+export { Tag, type TagProps, type TagTone } from './labels/Tag.tsx'
+export { TeamChip, type TeamChipProps, type TeamRef } from './teams/TeamChip.tsx'
+export { GroupTag, type GroupRef, type GroupTagProps } from './teams/GroupTag.tsx'
+
+export { StatusPill, type ClosedReason, type IdeaStatus, type StatusPillProps } from './ideas/StatusPill.tsx'

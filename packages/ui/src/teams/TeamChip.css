@@ -1,0 +1,30 @@
+.team-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.6;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+a.team-chip:hover {
+  color: var(--accent);
+}
+.team-chip-private {
+  background: var(--surface-3);
+}
+.team-chip-archived {
+  border: var(--hairline) dashed var(--rule-strong);
+  background: transparent;
+}
+.team-chip-note {
+  font-weight: 500;
+  color: var(--ink-3);
+}

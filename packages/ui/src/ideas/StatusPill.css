@@ -1,0 +1,49 @@
+.status-pill {
+  --c: var(--ink-3);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: var(--hairline) solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.status-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: none;
+  border-radius: 50%;
+  background: var(--c);
+}
+.status-draft {
+  --c: var(--ink-3);
+}
+.status-requesting-review {
+  --c: var(--warn);
+}
+.status-changes-in-progress {
+  --c: var(--bot);
+}
+.status-approved {
+  --c: var(--ok);
+}
+/* closed: outlined rather than filled */
+.status-closed-accepted,
+.status-closed-rejected {
+  border-color: var(--rule-strong);
+  background: transparent;
+}
+.status-closed-accepted {
+  --c: var(--ok);
+}
+.status-closed-rejected {
+  --c: var(--lost);
+}
+.status-archived {
+  border: var(--hairline) dashed var(--rule-strong);
+  background: transparent;
+}

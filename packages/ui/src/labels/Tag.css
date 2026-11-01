@@ -1,0 +1,43 @@
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.tag-bot {
+  background: var(--bot-soft);
+  color: var(--bot);
+}
+.tag-ok {
+  background: var(--ins-bg);
+  color: var(--ins-ink);
+}
+.tag-lost {
+  background: var(--del-bg);
+  color: var(--del-ink);
+}
+.tag-warn {
+  background: color-mix(in srgb, var(--warn) 14%, var(--surface));
+  color: color-mix(in srgb, var(--warn) 80%, var(--ink));
+}
+.tag-admin {
+  background: var(--admin-soft);
+  color: var(--admin);
+}
+.tag-faint {
+  padding: 0;
+  background: transparent;
+  color: var(--ink-3);
+}
+.tag-dashed {
+  border: var(--hairline) dashed var(--rule-strong);
+  background: transparent;
+  color: var(--ink-3);
+}

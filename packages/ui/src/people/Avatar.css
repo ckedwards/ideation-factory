@@ -1,0 +1,68 @@
+.avatar {
+  --c: var(--ink-3);
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  overflow: hidden;
+  border-radius: 50%;
+  border: var(--hairline) solid color-mix(in srgb, var(--c) 35%, transparent);
+  background: color-mix(in srgb, var(--c) 18%, var(--surface));
+  color: color-mix(in srgb, var(--c) 80%, var(--ink));
+  font-weight: 700;
+  line-height: 1;
+}
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.avatar-sm {
+  width: 1.375rem;
+  height: 1.375rem;
+  font-size: 0.5625rem;
+}
+.avatar-md {
+  width: 1.875rem;
+  height: 1.875rem;
+  font-size: var(--text-xs);
+}
+.avatar-lg {
+  width: 2.75rem;
+  height: 2.75rem;
+  font-size: var(--text-md);
+}
+.avatar-xl {
+  width: 4.5rem;
+  height: 4.5rem;
+  font-size: 1.5rem;
+}
+.avatar[data-color='1'] {
+  --c: var(--avatar-1);
+}
+.avatar[data-color='2'] {
+  --c: var(--avatar-2);
+}
+.avatar[data-color='3'] {
+  --c: var(--avatar-3);
+}
+.avatar[data-color='4'] {
+  --c: var(--avatar-4);
+}
+.avatar[data-color='5'] {
+  --c: var(--avatar-5);
+}
+.avatar[data-color='6'] {
+  --c: var(--avatar-6);
+}
+.avatar[data-color='7'] {
+  --c: var(--avatar-7);
+}
+.avatar[data-color='8'] {
+  --c: var(--avatar-8);
+}
+/* inactive: greyed and dashed, so it doesn't rest on color alone */
+.avatar[data-inactive] {
+  --c: var(--ink-3);
+  border-style: dashed;
+  filter: grayscale(1);
+}
