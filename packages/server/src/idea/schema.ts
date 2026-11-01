@@ -17,7 +17,7 @@ export interface IdeaDB {
     created_at: number
     latest: number
     next_comment: number
-    /** A hint at where it is in git (v2): the repository as host/path, and the branch last synced from. */
+    /** A hint at where it is in git: the repository as host/path, and the branch last synced from. */
     git_uri: string | null
     git_branch: string | null
   }
@@ -77,7 +77,11 @@ export const IDEA_COLUMNS = {
 type Missing = { [T in keyof IdeaDB]: Exclude<keyof IdeaDB[T], (typeof IDEA_COLUMNS)[T][number]> }
 export const ideaColumnsCoverDB: { [T in keyof IdeaDB]: never } = {} as Missing
 
-/** v1 shipped as raw SQL and stays exactly as it was; later migrations use Kysely's schema builder. */
+/**
+ * During the alpha there's only v1, changed in place, with no migrations (see
+ * AGENTS.md). Once something ships, v1 is frozen and later migrations are
+ * appended, written with Kysely's schema builder.
+ */
 type Migration = string[] | ((db: Kysely<IdeaDB>) => Promise<void>)
 
 const MIGRATIONS: Migration[] = [
@@ -90,7 +94,9 @@ const MIGRATIONS: Migration[] = [
       status TEXT NOT NULL,
       created_at INTEGER NOT NULL,
       latest INTEGER NOT NULL,
-      next_comment INTEGER NOT NULL
+      next_comment INTEGER NOT NULL,
+      git_uri TEXT,
+      git_branch TEXT
     )`,
     `CREATE TABLE versions (
       number INTEGER PRIMARY KEY,
@@ -138,11 +144,6 @@ const MIGRATIONS: Migration[] = [
     `CREATE TABLE writes (key TEXT PRIMARY KEY, result TEXT NOT NULL, at INTEGER NOT NULL)`,
     `CREATE INDEX writes_at ON writes (at)`,
   ],
-  // v2: a hint at where the idea is in git, so another machine can find its branch
-  async (db) => {
-    await db.schema.alterTable('idea').addColumn('git_uri', 'text').execute()
-    await db.schema.alterTable('idea').addColumn('git_branch', 'text').execute()
-  },
 ]
 
 /** The idea schema's current version: the number of migrations. */
