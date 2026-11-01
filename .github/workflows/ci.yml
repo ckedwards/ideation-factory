@@ -25,6 +25,33 @@ jobs:
       - name: Test
         run: bun run test
 
+  # The ui package's stories, as tests: each renders in headless Chromium, runs
+  # its play function and passes axe's accessibility checks, in every theme.
+  # Then Storybook builds, as it would be published. Storybook and Vitest run
+  # on Node, so this job sets up Node beside Bun.
+  storybook:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: packages/ui
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version-file: package.json
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Install Chromium
+        run: bun x playwright install --with-deps chromium-headless-shell
+      - name: Test the stories
+        run: bun run test:stories
+      - name: Build Storybook
+        run: bun run build-storybook
+
   # Every new commit's message follows CONTRIBUTING.md, including ones that
   # skipped the local commit-msg hook (git commit --no-verify, or a tool that
   # doesn't run hooks).
