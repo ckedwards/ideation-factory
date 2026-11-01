@@ -1,4 +1,5 @@
 .status-pill {
+  font-family: var(--font-ui);
   --c: var(--ink-3);
   display: inline-flex;
   align-items: center;

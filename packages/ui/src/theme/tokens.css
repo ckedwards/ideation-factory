@@ -33,7 +33,7 @@
   --mark: light-dark(rgb(255 196 61 / 0.32), rgb(255 196 61 / 0.17));
   --mark-active: light-dark(rgb(255 176 0 / 0.62), rgb(255 186 40 / 0.4));
   --mark-line: light-dark(#d49500, #c99a2e);
-  --mark-ink: inherit;
+  --mark-ink: var(--ink);
 
   /* bots: agent work is always labeled, and carries this color */
   --bot: light-dark(#6a4fd0, #a993ff);
