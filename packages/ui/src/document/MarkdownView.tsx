@@ -49,6 +49,8 @@ export interface MarkdownViewProps {
   onMarkClick?: (id: string) => void
   // before every id it gives headings and footnotes, when a page shows two files
   idPrefix?: string
+  // compact: smaller, for a comment's text
+  variant?: 'document' | 'compact'
 }
 
 interface Context extends Required<Pick<MarkdownViewProps, 'marks' | 'resolveLink' | 'imageSrc'>> {
@@ -77,7 +79,7 @@ export function MarkdownView(props: MarkdownViewProps) {
   }
   return (
     <div
-      className="prose"
+      className={props.variant === 'compact' ? 'prose prose-compact' : 'prose'}
       onClick={(event) => {
         const mark = (event.target as HTMLElement).closest<HTMLElement>('[data-comment-id]')
         if (mark?.dataset['commentId']) {

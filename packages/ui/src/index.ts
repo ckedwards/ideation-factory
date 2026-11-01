@@ -29,6 +29,7 @@ export { ApprovalProgress, type ApprovalProgressProps } from './ideas/ApprovalPr
 export { RequirementList } from './ideas/RequirementList.tsx'
 export { ReviewerStack, type ReviewerStackProps } from './ideas/ReviewerStack.tsx'
 export { IdeaRow, type IdeaRowHide, type IdeaRowProps } from './ideas/IdeaRow.tsx'
+export { StatusControl, type OpenStatus, type StatusControlProps } from './ideas/StatusControl.tsx'
 
 export { NowProvider, RelativeTime, formatAgo, useNow, type RelativeTimeProps } from './time/RelativeTime.tsx'
 
@@ -39,6 +40,7 @@ export { SearchInput, type SearchInputProps } from './controls/SearchInput.tsx'
 export { Select, type SelectOption, type SelectProps } from './controls/Select.tsx'
 export { WatchSelect, WATCH_LEVELS, type WatchLevel, type WatchSelectProps } from './controls/WatchSelect.tsx'
 export { Combobox, type ComboboxOption, type ComboboxProps } from './controls/Combobox.tsx'
+export { TextArea, type TextAreaProps } from './controls/TextArea.tsx'
 
 export { Tooltip, type TooltipProps } from './overlays/Tooltip.tsx'
 export { Dialog, type DialogProps } from './overlays/Dialog.tsx'
@@ -56,3 +58,14 @@ export {
   type ResolvedLink,
   type SectionMark,
 } from './document/MarkdownView.tsx'
+export { Toc, type TocEntry, type TocProps } from './document/Toc.tsx'
+
+export {
+  CommentCard,
+  type CommentCardProps,
+  type CommentInfo,
+  type CommentReply,
+  type CommentTarget,
+  type Suggestion,
+} from './comments/CommentCard.tsx'
+export { ViewInVersion, type ViewInVersionProps } from './comments/ViewInVersion.tsx'
