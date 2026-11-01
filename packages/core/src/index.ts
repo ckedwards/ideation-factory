@@ -26,6 +26,14 @@ export {
   pathProblem,
   textAnchor,
 } from './idea.ts'
-export { type ParsedFile, parseMarkdown, type PlainText, type Section, type Unit, type UnitKind } from './markdown.ts'
+export {
+  markdownTree,
+  type ParsedFile,
+  parseMarkdown,
+  type PlainText,
+  type Section,
+  type Unit,
+  type UnitKind,
+} from './markdown.ts'
 export { type FileOutline, type OutlineEntry, outline } from './outline.ts'
 export { applyUpload, type Upload, type UploadResult } from './upload.ts'

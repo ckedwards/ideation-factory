@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { parseMarkdown, plainIndexAt } from './markdown.ts'
+import { markdownTree, parseMarkdown, plainIndexAt } from './markdown.ts'
 
 const kinds = (source: string) => parseMarkdown(source).units.map((u) => u.kind)
 const texts = (source: string) => {
@@ -120,5 +120,14 @@ describe('the plain-text form', () => {
     const p = parseMarkdown('# A\n\nB\n')
     expect(p.plain.text).toBe('A\nB')
     expect(p.plain.unit).toEqual([0, -1, 1])
+  })
+})
+
+describe('the syntax tree', () => {
+  test("its blocks start and end where the file's units do, so the web app places comments where core does", () => {
+    const source = '---\ntitle: x\n---\n\n# Title\n\nSome *text*.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```ts\nx\n```\n'
+    const blocks = markdownTree(source).children.map((node) => [node.position?.start.offset, node.position?.end.offset])
+    const units = parseMarkdown(source).units.map((unit) => [unit.start, unit.end])
+    expect(blocks).toEqual(units)
   })
 })

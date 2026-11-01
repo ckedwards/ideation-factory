@@ -93,11 +93,17 @@ export function parseMarkdown(source: string): ParsedFile {
   return parsed
 }
 
-function parse(source: string): ParsedFile {
-  const tree: Root = fromMarkdown(source, {
+// The syntax tree (mdast), with every node's source offsets. The web app renders
+// from this, so what it shows and where comments land come from one parser.
+export function markdownTree(source: string): Root {
+  return fromMarkdown(source, {
     extensions: [gfm(), frontmatter()],
     mdastExtensions: [gfmFromMarkdown(), frontmatterFromMarkdown()],
   })
+}
+
+function parse(source: string): ParsedFile {
+  const tree = markdownTree(source)
   const units: Unit[] = []
   const chars: string[] = []
   const offsets: number[] = []
