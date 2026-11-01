@@ -45,7 +45,13 @@ export interface Repo {
 
 export async function repo(
   files: Record<string, string> = {},
-  options: { git?: boolean; token?: string | null; env?: Record<string, string> } = {},
+  options: {
+    git?: boolean
+    token?: string | null
+    env?: Record<string, string>
+    /** Pretend a person is at a terminal, answering prompts with these in turn. */
+    answers?: string[]
+  } = {},
 ): Promise<Repo> {
   const dir = await mkdtemp(join(tmpdir(), 'ideaf-e2e-'))
   const git = (...args: string[]) => {
@@ -82,8 +88,11 @@ export async function repo(
         env: { IDEAF_URL: 'http://ideaf.test', ...(token ? { IDEAF_TOKEN: token } : {}), ...options.env },
         out: (t) => out.push(t),
         err: (t) => err.push(t),
-        interactive: false,
-        prompt: () => null,
+        interactive: options.answers !== undefined,
+        prompt: (question) => {
+          out.push(question)
+          return options.answers?.shift() ?? null
+        },
         fetch: handler,
       })
       return { exit, out: out.join('\n'), err: err.join('\n'), json: () => JSON.parse(out.join('\n')) }
