@@ -94,15 +94,14 @@ const VersionHow = z.enum(['created', 'commands', 'upload'])
 /**
  * A hint at where an idea lives in git: the branch it was last synced from,
  * and the repository as host and path (`github.com/acme/plans`), the same for
- * its https and ssh remotes, or `null` without a remote. A local remote (a
- * path on disk) is its path. Never a URL, so never credentials.
+ * its https and ssh remotes. `null` without a network remote: a path on disk
+ * means nothing on another machine. Never a URL, so never credentials.
  */
 export const GitHint = z.strictObject({
   uri: z
     .string()
-    .min(1)
     .max(500)
-    .refine((u) => !u.includes('://') && !u.includes('@'), 'a repository as host/path, like github.com/acme/plans')
+    .regex(/^[a-z0-9][a-z0-9.-]*\/[^\s@:\\]+$/, 'a repository as host/path, like github.com/acme/plans')
     .nullable(),
   branch: z.string().min(1).max(250),
 })

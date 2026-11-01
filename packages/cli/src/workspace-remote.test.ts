@@ -16,7 +16,10 @@ test('credentials never make it into the uri', () => {
   expect(repoUri('https://me:secret@example.com/plans.git')).toBe('example.com/plans')
 })
 
-test('a local remote is its path', () => {
-  expect(repoUri('/srv/git/plans.git')).toBe('/srv/git/plans')
-  expect(repoUri('file:///srv/git/plans.git')).toBe('/srv/git/plans')
+test('a remote that only means something on this machine has no uri', () => {
+  expect(repoUri('/srv/git/plans.git')).toBeNull()
+  expect(repoUri('../plans.git')).toBeNull()
+  expect(repoUri('file:///srv/git/plans.git')).toBeNull()
+  expect(repoUri('C:\\repos\\plans.git')).toBeNull()
+  expect(repoUri('C:/repos/plans.git')).toBeNull()
 })

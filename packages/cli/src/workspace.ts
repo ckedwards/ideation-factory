@@ -80,19 +80,31 @@ export function branchWhere(ws: Workspace, branch: string): 'local' | 'remote' |
 }
 
 /**
- * A remote as host and path, the way an idea's git hint names a repository:
- * https://github.com/acme/plans.git, git@github.com:acme/plans and
+ * A network remote as host and path, the way an idea's git hint names a
+ * repository: https://github.com/acme/plans.git, git@github.com:acme/plans and
  * ssh://git@github.com:22/acme/plans are all github.com/acme/plans. Users,
- * passwords and ports are dropped. A local remote (a path, or file://) is its path.
+ * passwords and ports are dropped. Null for a remote that only means
+ * something on this machine: a path, or file://.
  */
-export function repoUri(url: string): string {
-  // [user@]host:path, git's scp-like form
-  const scp = /^(?:[^/@:]+@)?([^/:]{2,}):(?!\/\/)(.+)$/.exec(url)
-  // scheme://[user@]host[:port]/path
-  const full = /^[a-z][a-z0-9+.-]*:\/\/(?:[^/@]*@)?([^/]*)(\/.*)?$/i.exec(url)
-  const [host, path] = full ? [full[1]!.replace(/:\d+$/, ''), full[2] ?? ''] : scp ? [scp[1]!, scp[2]!] : ['', url]
-  const clean = path.replace(/\/+$/, '').replace(/\.git$/, '')
-  return host ? `${host.toLowerCase()}/${clean.replace(/^\/+/, '')}` : clean
+export function repoUri(url: string): string | null {
+  // scheme://[user@]host[:port]/path, for the schemes that reach another machine
+  const full = /^(?:https?|ssh|git|git\+ssh|ssh\+git):\/\/(?:[^/@]*@)?([^/]+)\/(.+)$/i.exec(url)
+  // [user@]host:path, git's scp-like form (ssh); not a path, and not another scheme
+  const scp = /^(?:[^/@:]+@)?([^/:\\]{2,}):(?!\/\/)([^\\]+)$/.exec(url)
+  const found = full ? [full[1]!.replace(/:\d+$/, ''), full[2]!] : scp ? [scp[1]!, scp[2]!] : null
+  if (!found) {
+    return null
+  }
+  const path = found[1]!
+    .replace(/^\/+/, '')
+    .replace(/\/+$/, '')
+    .replace(/\.git$/, '')
+  return path ? `${found[0]!.toLowerCase()}/${path}` : null
+}
+
+/** A remote's URL as configured: not rewritten by url.<base>.insteadOf, which is this machine's own setting. */
+function remoteUrl(ws: Workspace, name: string): string | null {
+  return git(ws.root, ['config', '--get', `remote.${name}.url`])
 }
 
 /** Where this working tree is in git, for the server: its branch, and the repository of that branch's remote (or origin). */
@@ -101,8 +113,7 @@ export function gitHint(ws: Workspace): { uri: string | null; branch: string } |
   if (!branch) {
     return undefined
   }
-  const name = git(ws.root, ['config', `branch.${branch}.remote`]) ?? 'origin'
-  const url = git(ws.root, ['remote', 'get-url', name])
+  const url = remoteUrl(ws, git(ws.root, ['config', `branch.${branch}.remote`]) ?? 'origin')
   return { uri: url ? repoUri(url) : null, branch }
 }
 
@@ -112,7 +123,7 @@ export function remotes(ws: Workspace): Array<{ name: string; url: string }> {
     .split('\n')
     .filter(Boolean)
     .flatMap((name) => {
-      const url = git(ws.root, ['remote', 'get-url', name])
+      const url = remoteUrl(ws, name)
       return url ? [{ name, url }] : []
     })
 }

@@ -137,6 +137,11 @@ describe('choosing the idea', () => {
 })
 
 describe('on another machine', () => {
+  // the shared remote: a bare repository on disk, reached through an https URL
+  // that git rewrites to it (a path itself would give no git hint, being local)
+  const REMOTE = 'https://git.example.test/acme/plans.git'
+  const reach = (origin: string) => [`url.${origin}.insteadOf`, REMOTE]
+
   /** A shared remote, and a first machine that started an idea on its own branch and pushed it. */
   async function pushed() {
     const origin = await mkdtemp(join(tmpdir(), 'ideaf-origin-'))
@@ -144,7 +149,8 @@ describe('on another machine', () => {
     const first = await repo({ 'README.md': '# Readme\n' }, { token: token(h('riley')) })
     first.git('add', '.')
     first.git('commit', '-qm', 'first')
-    first.git('remote', 'add', 'origin', origin)
+    first.git('remote', 'add', 'origin', REMOTE)
+    first.git('config', ...reach(origin))
     first.git('push', '-q', 'origin', 'main')
     first.git('switch', '-qc', 'idea/travel')
     await first.write('docs/plan.md', '# Plan\n')
@@ -158,7 +164,9 @@ describe('on another machine', () => {
   /** A second machine: a fresh clone of the remote. */
   async function clone(origin: string) {
     const second = await repo({}, { git: false, token: token(h('riley')) })
-    second.git('clone', '-q', origin, '.')
+    const [key, value] = reach(origin)
+    second.git('-c', `${key}=${value}`, 'clone', '-q', REMOTE, '.')
+    second.git('config', key!, value!)
     second.git('config', 'user.email', 'e2e@example.com')
     second.git('config', 'user.name', 'E2E')
     return second
@@ -166,8 +174,10 @@ describe('on another machine', () => {
 
   test("the server knows the idea's branch and repository, and change says how to fetch and switch to it", async () => {
     const { origin, idea } = await pushed()
-    // a local remote is its path; a hosted one would be like github.com/acme/plans
-    expect((await api(h('riley')).getIdea({ idea })).gitHint).toEqual({ uri: origin, branch: 'idea/travel' })
+    expect((await api(h('riley')).getIdea({ idea })).gitHint).toEqual({
+      uri: 'git.example.test/acme/plans',
+      branch: 'idea/travel',
+    })
 
     const second = await clone(origin)
     // a clone made after the push already has the branch from the remote: switching is enough
@@ -207,5 +217,14 @@ describe('on another machine', () => {
     expect(changed.out).toContain("which isn't a remote of this repository.")
     expect(changed.out).toContain('pulled here on main')
     expect(await unrelated.read('docs/plan.md')).toBe('# Plan\n\nMore.\n')
+  })
+
+  test('a remote that is a path on disk gives no repository, only the branch', async () => {
+    const origin = await mkdtemp(join(tmpdir(), 'ideaf-origin-'))
+    Bun.spawnSync(['git', 'init', '-q', '--bare', '-b', 'main', origin])
+    const r = await repo({ 'plan.md': '# P\n' }, { token: token(h('riley')) })
+    r.git('remote', 'add', 'origin', origin)
+    const { idea } = (await r.ideaf('start', '--title', 'Local remote', '--json')).json()
+    expect((await api(h('riley')).getIdea({ idea })).gitHint).toEqual({ uri: null, branch: 'main' })
   })
 })

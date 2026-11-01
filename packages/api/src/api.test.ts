@@ -209,9 +209,10 @@ describe('generated descriptions', () => {
 test('a git hint names a repository, never a URL that could carry credentials', () => {
   const ok = (uri: string | null) => GitHint.safeParse({ uri, branch: 'main' }).success
   expect(ok('github.com/acme/plans')).toBe(true)
-  expect(ok('/srv/git/plans')).toBe(true)
   expect(ok(null)).toBe(true)
   expect(ok('https://github.com/acme/plans.git')).toBe(false)
   expect(ok('ghp_token@github.com/acme/plans')).toBe(false)
   expect(ok('git@github.com:acme/plans.git')).toBe(false)
+  expect(ok('/srv/git/plans')).toBe(false) // a path is only meaningful on one machine
+  expect(ok('C:\\repos\\plans')).toBe(false)
 })
