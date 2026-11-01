@@ -5,11 +5,11 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 import { createApiClient } from '@ideaf/api'
 import { createApp } from './app.ts'
-import { startTestActors } from './testing.ts'
+import { signIn, startTestActors, TEST_URL, testAuth } from './testing.ts'
 
 let app: (request: Request) => Promise<Response>
 beforeAll(async () => {
-  app = createApp({ actors: await startTestActors(), devToken: 'tok', validateOutput: true })
+  app = createApp({ actors: await startTestActors(), auth: testAuth, validateOutput: true })
 }, 60_000)
 
 // each test run uses fresh handles, so tests never collide
@@ -17,8 +17,8 @@ const run = crypto.randomUUID().slice(0, 6)
 const handle = (name: string) => `${name}-${run}`
 const as = (name: string) =>
   createApiClient({
-    baseUrl: 'http://ideaf.test',
-    token: `tok:${handle(name)}`,
+    baseUrl: TEST_URL,
+    token: async () => (await signIn(app, handle(name))).jwt,
     fetch: (r) => app(r),
     validateOutput: true,
   })
@@ -152,7 +152,8 @@ describe('lists and search', () => {
       () => riley.listIdeas({ owner: handle('riley') }).then((page) => page.items.find((i) => i.id === idea)),
       (r) => r?.latest === 2,
     )
-    expect(row).toMatchObject({ latest: 2, owner: handle('riley') })
+    // owners are named by account ID; handles are for people to type
+    expect(row).toMatchObject({ latest: 2, owner: (await signIn(app, handle('riley'))).id })
     expect((await riley.listIdeas({ owner: handle('riley') })).items[0]!.id).toBe(idea)
   })
 

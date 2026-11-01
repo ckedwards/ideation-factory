@@ -1,6 +1,7 @@
-// What every idea actor shares on this app node: the file store, the core
-// worker pool and the size limits. main.ts (or a test) configures them before
+// What the actors share on this app node: the file store, the core worker
+// pool, the size limits, and the auth settings. main.ts (or a test) configures them before
 // the registry starts; actors read them when they wake.
+import type { AuthSettings } from './auth/config.ts'
 import type { CoreRunner } from './core-pool/runner.ts'
 import type { FileStore } from './files/store.ts'
 import type { Limits } from './limits.ts'
@@ -9,6 +10,7 @@ export interface NodeDeps {
   files: FileStore
   core: CoreRunner
   limits: Limits
+  auth: AuthSettings
 }
 
 let current: NodeDeps | null = null

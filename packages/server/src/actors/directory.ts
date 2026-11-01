@@ -5,6 +5,16 @@
 // sent without waiting, and are applied in batches.
 import { actor, queue, UserError } from 'rivetkit'
 import { db } from 'rivetkit/db'
+import type { Auth } from '../auth/config.ts'
+import {
+  authInDirectory,
+  exchangeToken,
+  handleAuthRequest,
+  migrateAuth,
+  setInactive,
+  type WireRequest,
+} from '../auth/in-directory.ts'
+import { nodeDeps } from '../deps.ts'
 import { migrateDirectory } from '../directory/schema.ts'
 import { fts5Search } from '../directory/search.ts'
 import { SqlDirectory } from '../directory/sql-directory.ts'
@@ -26,9 +36,15 @@ const search = fts5Search()
 export type IndexUpdate = Pick<IdeaRow, 'id' | 'title' | 'status' | 'latest' | 'updatedAt'>
 
 export const directory = actor({
-  db: db({ onMigrate: (database) => migrateDirectory(database, [search.migrate]) }),
+  db: db({
+    onMigrate: async (database) => {
+      await migrateDirectory(database, [search.migrate])
+      // Better Auth's own tables, by its own migrations (see auth/in-directory.ts)
+      await migrateAuth(database, nodeDeps().auth)
+    },
+  }),
   queues: { index: queue<IndexUpdate>() },
-  createVars: () => ({ directory: null as Directory | null }),
+  createVars: () => ({ directory: null as Directory | null, auth: null as Auth | null }),
   run: async (c) => {
     const d = directoryOf(c)
     for (;;) {
@@ -52,6 +68,11 @@ export const directory = actor({
     }
   },
   actions: {
+    // sign-in: forwarded requests, the personal-token exchange, and status
+    auth: (c, request: WireRequest) => handleAuthRequest(authOf(c), request),
+    exchange: (c, token: string) => exchangeToken(authOf(c), nodeDeps().auth, token),
+    setInactive: (c, id: string, inactive: boolean) => setInactive(authOf(c), id, inactive),
+
     ensureUser: (c, user: { id: string; handle: string; name: string; email?: string }) =>
       directoryOf(c).ensureUser(user),
     user: (c, id: string) => directoryOf(c).user(id),
@@ -93,10 +114,18 @@ export const directory = actor({
   },
 })
 
-function directoryOf(c: {
+type DirectoryContext = {
   db: Parameters<typeof migrateDirectory>[0]
-  vars: { directory: Directory | null }
-}): Directory {
+  vars: { directory: Directory | null; auth: Auth | null }
+}
+
+/** Better Auth for this wake-up, on the actor's database. */
+function authOf(c: DirectoryContext): Auth {
+  c.vars.auth ??= authInDirectory(c.db, nodeDeps().auth, directoryOf(c))
+  return c.vars.auth
+}
+
+function directoryOf(c: DirectoryContext): Directory {
   if (!c.vars.directory) {
     c.vars.directory = new SqlDirectory({ sql: c.db, search })
   }

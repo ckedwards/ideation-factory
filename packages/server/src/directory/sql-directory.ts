@@ -133,6 +133,17 @@ export class SqlDirectory implements Directory {
     return (await this.user(user.id))!
   }
 
+  async updateUser(id: string, changes: { name?: string; inactive?: boolean }): Promise<User | null> {
+    const set = {
+      ...(changes.name !== undefined ? { name: changes.name } : {}),
+      ...(changes.inactive !== undefined ? { inactive: changes.inactive ? 1 : 0 } : {}),
+    }
+    if (Object.keys(set).length > 0) {
+      await this.#db.updateTable('users').set(set).where('id', '=', id).execute()
+    }
+    return this.user(id)
+  }
+
   async user(idOrHandle: string): Promise<User | null> {
     const handle = idOrHandle.toLowerCase().replace(/^@/, '')
     const row = await this.#db

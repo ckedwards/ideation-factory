@@ -133,6 +133,8 @@ export interface IdeaFilter {
 export interface Directory {
   // people
   ensureUser(user: { id: string; handle: string; name: string; email?: string }): Promise<User>
+  /** A person's name or status changed where accounts are kept (sign-in); null if there's no such person. */
+  updateUser(id: string, changes: { name?: string; inactive?: boolean }): Promise<User | null>
   /** A person by ID or handle. */
   user(idOrHandle: string): Promise<User | null>
   findUsers(query: string, limit?: number): Promise<User[]>

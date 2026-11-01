@@ -1,54 +1,30 @@
 // The HTTP API: every operation from @ideaf/api, routed and validated by its
-// definition, plus /health and /openapi.json. Step 6 replaces the dev tokens
-// with real sign-in.
-import { type Caller, createRouter, openApiDocument, operations } from '@ideaf/api'
+// definition, plus sign-in (forwarded to Better Auth in the directory actor),
+// the personal-token exchange, a bare sign-in page, /health and /openapi.json.
+import { createRouter, openApiDocument, operations } from '@ideaf/api'
 import type { Client } from 'rivetkit/client'
 import { DIRECTORY_KEY } from './actors/directory.ts'
+import type { AuthSettings } from './auth/config.ts'
+import { authGateway } from './auth/gateway.ts'
+import { loginPage } from './auth/pages.ts'
 import { createHandlers } from './operations.ts'
 import type { Registry } from './registry.ts'
 
 export type AppDeps = {
   actors: Client<Registry>
-  devToken: string
+  /** The same settings the directory actor's Better Auth runs with: its base URL is the tokens' issuer. */
+  auth: Pick<AuthSettings, 'baseURL'>
   /** Check every response against its schema (tests turn this on). */
   validateOutput?: boolean
 }
 
-const DEV_HANDLE = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/
-
-export function createApp({
-  actors,
-  devToken,
-  validateOutput = false,
-}: AppDeps): (request: Request) => Promise<Response> {
+export function createApp({ actors, auth, validateOutput = false }: AppDeps): (request: Request) => Promise<Response> {
   const openapi = openApiDocument(operations, { title: 'Ideation Factory', version: '0.0.0' })
   const directory = actors.directory.getOrCreate(DIRECTORY_KEY)
-  const known = new Set<string>()
-
-  /**
-   * Development sign-in until step 6: "Bearer <token>" is the user "dev", and
-   * "Bearer <token>:<handle>" is that user, so several people can be tried. Each
-   * is added to the directory the first time they're seen.
-   */
-  const authenticate = async (request: Request): Promise<Caller | null> => {
-    const header = request.headers.get('authorization') ?? ''
-    if (!header.startsWith(`Bearer ${devToken}`)) {
-      return null
-    }
-    const rest = header.slice(`Bearer ${devToken}`.length)
-    const handle = rest === '' ? 'dev' : rest.startsWith(':') ? rest.slice(1) : null
-    if (!handle || !DEV_HANDLE.test(handle)) {
-      return null
-    }
-    if (!known.has(handle)) {
-      await directory.ensureUser({ id: handle, handle, name: handle })
-      known.add(handle)
-    }
-    return { user: handle, bot: null, purpose: 'me' }
-  }
+  const gateway = authGateway(directory, auth.baseURL)
 
   const route = createRouter(operations, createHandlers(actors), {
-    authenticate,
+    authenticate: gateway.authenticate,
     validateOutput,
     onError: (error, operation) => console.error(`${operation} failed:`, error),
   })
@@ -56,6 +32,15 @@ export function createApp({
     const { pathname } = new URL(request.url)
     if (pathname === '/health') {
       return Response.json({ ok: true })
+    }
+    if (pathname.startsWith('/api/auth/')) {
+      return gateway.forward(request)
+    }
+    if (pathname === '/ideaf/token' && request.method === 'POST') {
+      return gateway.exchange(request)
+    }
+    if (pathname === '/login') {
+      return loginPage()
     }
     if (pathname === '/openapi.json') {
       return Response.json(openapi)
