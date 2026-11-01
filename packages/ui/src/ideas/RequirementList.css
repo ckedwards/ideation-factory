@@ -1,0 +1,24 @@
+.requirements {
+  display: grid;
+  gap: 0.125rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.requirements li {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr);
+}
+.requirement-met .requirement-mark {
+  color: var(--ok);
+  font-weight: 700;
+}
+.requirement-open .requirement-mark {
+  color: var(--warn);
+}
+.requirement-broken {
+  color: var(--lost);
+}
+.requirement-progress {
+  color: var(--ink-3);
+}

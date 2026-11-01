@@ -1,0 +1,11 @@
+.reviewers {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+.reviewers-none {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}

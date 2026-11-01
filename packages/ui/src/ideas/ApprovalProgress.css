@@ -1,0 +1,16 @@
+.approvals {
+  gap: var(--space-1);
+  border-radius: var(--radius-sm);
+  color: var(--ink-2);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.approvals-met {
+  color: var(--ok);
+}
+.approvals-broken {
+  color: var(--lost);
+}
+.approvals-note {
+  margin: 0 0 var(--space-2);
+}

@@ -16,6 +16,21 @@ export { TeamChip, type TeamChipProps, type TeamRef } from './teams/TeamChip.tsx
 export { GroupTag, type GroupRef, type GroupTagProps } from './teams/GroupTag.tsx'
 
 export { StatusPill, type ClosedReason, type IdeaStatus, type StatusPillProps } from './ideas/StatusPill.tsx'
+export {
+  ideaState,
+  isClosed,
+  type IdeaInfo,
+  type IdeaStateKey,
+  type RequirementCheck,
+  type Reviewer,
+} from './ideas/idea.ts'
+export { IdeaState, type IdeaStateProps } from './ideas/IdeaState.tsx'
+export { ApprovalProgress, type ApprovalProgressProps } from './ideas/ApprovalProgress.tsx'
+export { RequirementList } from './ideas/RequirementList.tsx'
+export { ReviewerStack, type ReviewerStackProps } from './ideas/ReviewerStack.tsx'
+export { IdeaRow, type IdeaRowHide, type IdeaRowProps } from './ideas/IdeaRow.tsx'
+
+export { NowProvider, RelativeTime, formatAgo, useNow, type RelativeTimeProps } from './time/RelativeTime.tsx'
 
 export { Button, type ButtonProps, type ButtonVariant } from './controls/Button.tsx'
 export { SegmentedControl, type Segment, type SegmentedControlProps } from './controls/SegmentedControl.tsx'

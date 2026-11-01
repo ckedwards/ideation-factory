@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
 import type { Decorator, Preview } from '@storybook/react-vite'
 import '../src/theme/theme.css'
+import { NowProvider } from '../src/time/RelativeTime.tsx'
+import { NOW } from '../src/stories/fixtures.ts'
 
 // The toolbar's theme and text size go on <html>, where the app sets them, so
 // every story is seen as a page would show it.
@@ -16,7 +18,12 @@ const withTheme: Decorator = (Story, { globals }) => {
     }
     root.style.fontSize = textSize
   }, [theme, textSize])
-  return <Story />
+  return (
+    // a fixed "now", so relative times ("5h ago") read the same in every run
+    <NowProvider value={() => NOW}>
+      <Story />
+    </NowProvider>
+  )
 }
 
 const preview: Preview = {
