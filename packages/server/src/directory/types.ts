@@ -122,6 +122,37 @@ export interface SearchResult {
   incomplete: boolean
 }
 
+/**
+ * What a token was made to do, chosen when it was approved. It can only narrow
+ * what its owner can do: a read-only token writes nothing, and a limited one
+ * reaches only its targets' ideas and can't share, move ideas or manage teams.
+ */
+export interface TokenGrant {
+  id: string
+  user: string
+  purpose: 'me' | 'bot-for-me' | 'bot'
+  bot: string | null
+  readOnly: boolean
+  /** null: every idea its owner can see. Otherwise its reach, by team ID and idea ID. */
+  limits: TokenLimits | null
+  createdAt: number
+}
+
+export interface TokenLimits {
+  teams: string[]
+  ideas: string[]
+  /** Ideas outside any team. */
+  noTeam: boolean
+}
+
+export type TokenGrantInput = {
+  purpose: TokenGrant['purpose']
+  bot?: string
+  readOnly?: boolean
+  /** Teams by ID or handle, ideas by ID. */
+  limits?: { teams?: string[]; ideas?: string[]; noTeam?: boolean } | null
+}
+
 export interface IdeaFilter {
   team?: string
   owner?: string
@@ -158,14 +189,22 @@ export interface Directory {
   joinRequests(actor: string, kind: ContainerKind, id: string): Promise<Result<User[]>>
   decide(actor: string, kind: ContainerKind, id: string, user: string, approve: boolean): Promise<Result<null>>
 
-  // ideas: the index, access and lists
-  canCreateIdea(actor: string, team: string | null): Promise<Result<null>>
+  // tokens: what each was made to do (see TokenGrant)
+  createTokenGrant(actor: string, input: TokenGrantInput): Promise<Result<TokenGrant>>
+  /** A token grant, if it's still in force. */
+  tokenGrant(id: string): Promise<TokenGrant | null>
+  /** Ends a token grant: tokens made with it stop working. Only its owner can. */
+  revokeTokenGrant(actor: string, id: string): Promise<Result<null>>
+
+  // ideas: the index, access and lists. `token` is the caller's token grant,
+  // if their token has one: it narrows what they can do.
+  canCreateIdea(actor: string, team: string | null, token?: string | null): Promise<Result<null>>
   /** Indexes a new idea and gives it its team's default access. Safe to repeat. */
   registerIdea(row: IdeaRow): Promise<void>
   /** Updates an idea's index row (its team and owner don't change here). */
   updateIdea(row: Pick<IdeaRow, 'id' | 'title' | 'status' | 'latest' | 'updatedAt'>): Promise<void>
   idea(id: string): Promise<IdeaRow | null>
-  permission(idea: string, user: string): Promise<Permission>
+  permission(idea: string, user: string, token?: string | null): Promise<Permission>
   grants(idea: string): Promise<Grant[]>
   setGrant(
     actor: string,
@@ -182,11 +221,11 @@ export interface Directory {
   ): Promise<Result<MovePreview>>
   /** Moves an idea into, out of, or to another team: the old team's member grant goes, the new team's defaults are added. */
   moveIdea(actor: string, idea: string, to: string | null, adjustments?: MoveAdjustments): Promise<Result<MovePreview>>
-  listIdeas(actor: string, filter?: IdeaFilter): Promise<Page<IdeaRow>>
+  listIdeas(actor: string, filter?: IdeaFilter, token?: string | null): Promise<Page<IdeaRow>>
   /**
    * Ideas the actor can see whose titles contain the query's terms (each at
    * least 3 characters; shorter ones are ignored). `incomplete` means more
    * ideas matched than one search checks, so only the best-ranked were.
    */
-  searchIdeas(actor: string, query: string, limit?: number): Promise<SearchResult>
+  searchIdeas(actor: string, query: string, limit?: number, token?: string | null): Promise<SearchResult>
 }

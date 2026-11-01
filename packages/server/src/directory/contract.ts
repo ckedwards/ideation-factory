@@ -288,6 +288,119 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
       })
     })
 
+    describe('token grants', () => {
+      /** Riley owns i1 (in core), i2 (in web) and i3 (outside teams); maya can view i1. */
+      async function ideas() {
+        const d = await people()
+        const core = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
+          .value.id
+        const web = ((await d.createTeam('u-riley', { handle: 'web', name: 'Web' })) as { value: { id: string } }).value
+          .id
+        await d.registerIdea(idea('i1', { team: core }))
+        await d.registerIdea(idea('i2', { team: web }))
+        await d.registerIdea(idea('i3'))
+        await d.addMember('u-riley', 'team', core, 'u-maya')
+        return { d, core, web }
+      }
+      const value = <T>(r: { ok: boolean; value?: T }) => (r as { value: T }).value
+      const full = { view: true, edit: true, share: true, owner: true }
+
+      test('are made with a purpose and optional limits, checked as they are made', async () => {
+        const { d, core } = await ideas()
+        expect(await d.createTokenGrant('u-riley', { purpose: 'bot-for-me' })).toMatchObject({
+          ok: false,
+          error: { code: 'invalid' },
+        })
+        expect(await d.createTokenGrant('u-riley', { purpose: 'me', limits: { teams: ['nowhere'] } })).toMatchObject({
+          ok: false,
+          error: { code: 'not_found' },
+        })
+        expect(await d.createTokenGrant('u-maya', { purpose: 'me', limits: { ideas: ['i2'] } })).toMatchObject({
+          ok: false,
+          error: { code: 'not_found' }, // maya can't see i2
+        })
+        expect(await d.createTokenGrant('u-riley', { purpose: 'me', limits: {} })).toMatchObject({
+          ok: false,
+          error: { code: 'invalid' },
+        })
+        const made = value<{ id: string }>(
+          await d.createTokenGrant('u-riley', {
+            purpose: 'bot-for-me',
+            bot: 'planbot',
+            readOnly: true,
+            limits: { teams: ['core'], ideas: ['i3'] },
+          }),
+        )
+        expect(await d.tokenGrant(made.id)).toEqual({
+          id: made.id,
+          user: 'u-riley',
+          purpose: 'bot-for-me',
+          bot: 'planbot',
+          readOnly: true,
+          limits: { teams: [core], ideas: ['i3'], noTeam: false },
+          createdAt: expect.any(Number),
+        })
+      })
+
+      test('only ever narrow what their owner can do', async () => {
+        const { d } = await ideas()
+        const readOnly = value<{ id: string }>(await d.createTokenGrant('u-riley', { purpose: 'me', readOnly: true }))
+        expect(await d.permission('i2', 'u-riley', readOnly.id)).toEqual({ ...full, edit: false, share: false })
+
+        const core = value<{ id: string }>(
+          await d.createTokenGrant('u-riley', { purpose: 'me', limits: { teams: ['core'] } }),
+        )
+        expect(await d.permission('i1', 'u-riley', core.id)).toEqual({ ...full, share: false })
+        expect((await d.permission('i2', 'u-riley', core.id)).view).toBe(false)
+        expect((await d.permission('i3', 'u-riley', core.id)).view).toBe(false)
+
+        const outside = value<{ id: string }>(
+          await d.createTokenGrant('u-riley', { purpose: 'me', limits: { noTeam: true, ideas: ['i2'] } }),
+        )
+        expect((await d.permission('i3', 'u-riley', outside.id)).view).toBe(true)
+        expect((await d.permission('i2', 'u-riley', outside.id)).view).toBe(true)
+        expect((await d.permission('i1', 'u-riley', outside.id)).view).toBe(false)
+
+        // never more than the person has: maya's unlimited token still can't see i2
+        const maya = value<{ id: string }>(await d.createTokenGrant('u-maya', { purpose: 'me' }))
+        expect((await d.permission('i1', 'u-maya', maya.id)).view).toBe(true)
+        expect((await d.permission('i2', 'u-maya', maya.id)).view).toBe(false)
+        // and only its owner's: riley can't use maya's grant
+        expect((await d.permission('i1', 'u-riley', maya.id)).view).toBe(false)
+
+        // revoked: nothing, at once
+        expect(await d.revokeTokenGrant('u-maya', core.id)).toMatchObject({ ok: false, error: { code: 'not_found' } })
+        expect(await d.revokeTokenGrant('u-riley', core.id)).toEqual({ ok: true, value: null })
+        expect((await d.permission('i1', 'u-riley', core.id)).view).toBe(false)
+        expect(await d.tokenGrant(core.id)).toBeNull()
+      })
+
+      test('narrow lists, search and where ideas can be made', async () => {
+        const { d, core, web } = await ideas()
+        const grant = value<{ id: string }>(
+          await d.createTokenGrant('u-riley', { purpose: 'me', limits: { teams: ['core'] } }),
+        )
+        expect((await d.listIdeas('u-riley')).items.map((i) => i.id).sort()).toEqual(['i1', 'i2', 'i3'])
+        expect((await d.listIdeas('u-riley', {}, grant.id)).items.map((i) => i.id)).toEqual(['i1'])
+        expect((await d.searchIdeas('u-riley', 'idea', 25, grant.id)).items.map((i) => i.id)).toEqual(['i1'])
+
+        expect(await d.canCreateIdea('u-riley', core, grant.id)).toEqual({ ok: true, value: null })
+        expect(await d.canCreateIdea('u-riley', web, grant.id)).toMatchObject({
+          ok: false,
+          error: { code: 'forbidden' },
+        })
+        expect(await d.canCreateIdea('u-riley', null, grant.id)).toMatchObject({
+          ok: false,
+          error: { code: 'forbidden' },
+        })
+        const readOnly = value<{ id: string }>(await d.createTokenGrant('u-riley', { purpose: 'me', readOnly: true }))
+        expect(await d.canCreateIdea('u-riley', null, readOnly.id)).toMatchObject({
+          ok: false,
+          error: { code: 'forbidden' },
+        })
+      })
+    })
+
     describe('moving an idea (the move wizard)', () => {
       test('the preview says who loses and gains access; nothing changes until the move', async () => {
         const d = await people()

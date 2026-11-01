@@ -10,6 +10,7 @@ import { sqliteKysely } from '../sql/kysely.ts'
 export type ContainerKind = 'team' | 'group'
 export type Role = 'admin' | 'maintainer' | 'member'
 export type GrantKind = 'user' | 'group' | 'team' | 'everyone'
+export type TokenTargetKind = 'team' | 'idea' | 'no_team'
 
 export interface DB {
   users: { id: string; handle: string; name: string; email: string | null; inactive: number; created_at: number }
@@ -50,6 +51,25 @@ export interface DB {
   }
   /** Access to an idea. A row gives view; can_edit and can_share add to it. `subject` is a user, group or team ID, or '*' for everyone. */
   grants: { idea: string; kind: GrantKind; subject: string; can_edit: number; can_share: number; created_at: number }
+  /**
+   * What a token was made to do, chosen when it was approved: its purpose (and
+   * bot name), and limits that can only narrow what its owner can do. Not to
+   * be confused with `grants`, which are who an idea is shared with.
+   */
+  token_grants: {
+    id: string
+    user: string
+    purpose: string
+    bot: string | null
+    /** 1: no writes at all (comments included). */
+    read_only: number
+    /** 1: only the ideas its targets name, and no sharing, moving or team management. */
+    limited: number
+    created_at: number
+    revoked_at: number | null
+  }
+  /** A limited token's reach: a team's ideas, one idea, or ideas outside any team (target ''). */
+  token_grant_targets: { token_grant: string; kind: TokenTargetKind; target: string }
   schema_version: { version: number }
 }
 
@@ -68,6 +88,8 @@ export const COLUMNS = {
   join_requests: ['kind', 'container', 'user', 'created_at'],
   ideas: ['id', 'title', 'team', 'owner', 'status', 'latest', 'created_at', 'updated_at'],
   grants: ['idea', 'kind', 'subject', 'can_edit', 'can_share', 'created_at'],
+  token_grants: ['id', 'user', 'purpose', 'bot', 'read_only', 'limited', 'created_at', 'revoked_at'],
+  token_grant_targets: ['token_grant', 'kind', 'target'],
   schema_version: ['version'],
 } as const satisfies { [T in keyof DB]: ReadonlyArray<keyof DB[T]> }
 
@@ -149,6 +171,25 @@ const MIGRATIONS: Migration[] = [
       .addPrimaryKeyConstraint('grants_pk', ['idea', 'kind', 'subject'])
       .execute()
     await db.schema.createIndex('grants_subject').on('grants').columns(['kind', 'subject', 'idea']).execute()
+    await db.schema
+      .createTable('token_grants')
+      .addColumn('id', 'text', (c) => c.primaryKey())
+      .addColumn('user', 'text', (c) => c.notNull())
+      .addColumn('purpose', 'text', (c) => c.notNull())
+      .addColumn('bot', 'text')
+      .addColumn('read_only', 'integer', (c) => c.notNull())
+      .addColumn('limited', 'integer', (c) => c.notNull())
+      .addColumn('created_at', 'bigint', (c) => c.notNull())
+      .addColumn('revoked_at', 'bigint')
+      .execute()
+    await db.schema.createIndex('token_grants_user').on('token_grants').columns(['user', 'created_at']).execute()
+    await db.schema
+      .createTable('token_grant_targets')
+      .addColumn('token_grant', 'text', (c) => c.notNull())
+      .addColumn('kind', 'text', (c) => c.notNull())
+      .addColumn('target', 'text', (c) => c.notNull())
+      .addPrimaryKeyConstraint('token_grant_targets_pk', ['token_grant', 'kind', 'target'])
+      .execute()
   },
 ]
 

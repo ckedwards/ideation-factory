@@ -11,5 +11,8 @@ CREATE INDEX "ideas_team" on "ideas" ("team", "updated_at", "id");
 CREATE INDEX "ideas_owner" on "ideas" ("owner", "updated_at", "id");
 CREATE TABLE "grants" ("idea" text not null, "kind" text not null, "subject" text not null, "can_edit" integer not null, "can_share" integer not null, "created_at" bigint not null, constraint "grants_pk" primary key ("idea", "kind", "subject"));
 CREATE INDEX "grants_subject" on "grants" ("kind", "subject", "idea");
+CREATE TABLE "token_grants" ("id" text primary key, "user" text not null, "purpose" text not null, "bot" text, "read_only" integer not null, "limited" integer not null, "created_at" bigint not null, "revoked_at" bigint);
+CREATE INDEX "token_grants_user" on "token_grants" ("user", "created_at");
+CREATE TABLE "token_grant_targets" ("token_grant" text not null, "kind" text not null, "target" text not null, constraint "token_grant_targets_pk" primary key ("token_grant", "kind", "target"));
 CREATE VIRTUAL TABLE idea_search USING fts5(id UNINDEXED, title, tokenize = 'trigram');
 INSERT INTO schema_version (version) VALUES (1);
