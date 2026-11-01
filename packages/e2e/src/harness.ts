@@ -19,9 +19,19 @@ export async function server(): Promise<(request: Request) => Promise<Response>>
   return app
 }
 
-/** The typed API client, as another person or agent would use it. */
-export function api() {
-  return createApiClient({ baseUrl: 'http://ideaf.test', token: TOKEN, fetch: (r) => app!(r), validateOutput: true })
+/** The dev token for a person (by handle), or for the default dev user. */
+export function token(handle?: string): string {
+  return handle ? `${TOKEN}:${handle}` : TOKEN
+}
+
+/** The typed API client, as another person or agent would use it (by handle, or the default dev user). */
+export function api(handle?: string) {
+  return createApiClient({
+    baseUrl: 'http://ideaf.test',
+    token: token(handle),
+    fetch: (r) => app!(r),
+    validateOutput: true,
+  })
 }
 
 export interface Repo {
