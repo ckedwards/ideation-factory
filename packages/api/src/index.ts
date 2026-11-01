@@ -16,6 +16,7 @@ export {
   type HandlerResult,
   type Handlers,
   type RouterOptions,
+  type TokenScope,
 } from './router.ts'
 export * as schemas from './schemas.ts'
 export { type Caller } from './schemas.ts'

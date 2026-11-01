@@ -2,15 +2,26 @@
 // password), handles, 15-minute JWTs, and personal and site admin tokens. Our
 // account rules are configuration plus the hooks and the small plugin below;
 // nothing in the library is patched. It runs inside the directory actor (see
-// actors/directory.ts), on its own tables there. Single sign-on, SCIM and the
-// MCP authorization server come in later slices of step 6.
+// actors/directory.ts), on its own tables there. It's also the OAuth
+// authorization server: the cli signs in with the authorization code flow, and
+// each token's purpose and limits come from the token grant chosen on the
+// consent page. Single sign-on, SCIM and MCP clients (CIMD) come later.
 //
 // Worked out in the Better Auth spike: docs/mvp/spike-better-auth.md.
 import { apiKey } from '@better-auth/api-key'
+import { oauthProvider } from '@better-auth/oauth-provider'
 import { passkey } from '@better-auth/passkey'
 import { type BetterAuthOptions, type BetterAuthPlugin, betterAuth } from 'better-auth'
-import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
+import {
+  APIError,
+  createAuthEndpoint,
+  createAuthMiddleware,
+  getSessionFromCtx,
+  sessionMiddleware,
+} from 'better-auth/api'
 import { emailOTP, jwt, username } from 'better-auth/plugins'
+import * as z from 'zod'
+import type { Directory, TokenGrant } from '../directory/types.ts'
 
 /** How a short-lived access token lasts. */
 export const ACCESS_TOKEN_SECONDS = 15 * 60
@@ -52,6 +63,48 @@ export interface UserHooks {
   updated(user: AuthUser): Promise<void>
 }
 
+/** The directory, as Better Auth reaches it from inside the actor. */
+export interface AuthDeps {
+  users: UserHooks
+  grants: Pick<Directory, 'createTokenGrant' | 'tokenGrant'>
+}
+
+/** The cli's OAuth client: public (no secret), PKCE, a loopback redirect or the paste-a-code page. */
+export const CLI_CLIENT_ID = 'ideaf-cli'
+/** Where the authorization code goes when the cli can't listen on localhost: a page that shows it. */
+export const CLI_CODE_PATH = '/cli/code'
+
+/**
+ * A token grant's claims in an access token: who it's for (`purpose`, `bot`),
+ * the grant (`gid`), and the two things an app node checks without asking the
+ * directory: read only (`ro`) and limited to some teams or ideas (`lim`).
+ */
+export function grantClaims(grant: TokenGrant) {
+  return {
+    purpose: grant.purpose,
+    ...(grant.bot ? { bot: grant.bot } : {}),
+    gid: grant.id,
+    ro: grant.readOnly,
+    lim: grant.limits !== null,
+  }
+}
+
+const TokenGrantBody = z.object({
+  purpose: z.enum(['me', 'bot-for-me', 'bot']),
+  bot: z.string().optional(),
+  readOnly: z.boolean().optional(),
+  limits: z
+    .object({
+      teams: z.array(z.string()).max(50).optional(),
+      ideas: z.array(z.string()).max(50).optional(),
+      noTeam: z.boolean().optional(),
+    })
+    .nullable()
+    .optional(),
+  /** Use it for the OAuth consent this session is about to give. */
+  forConsent: z.boolean().optional(),
+})
+
 export type AuthUser = { id: string; email: string; name: string; username?: string | null; inactive?: boolean | null }
 
 /** A token's purpose: how activity with it is labeled. */
@@ -82,10 +135,64 @@ export function validHandle(handle: string): boolean {
   return HANDLE.test(handle) && !RESERVED.has(handle)
 }
 
-/** Our account rules on Better Auth's endpoints, as a plugin. */
-const rules = (settings: AuthSettings): BetterAuthPlugin => ({
+/** Our account rules on Better Auth's endpoints, and our own endpoints, as a plugin. */
+const rules = (settings: AuthSettings, deps?: AuthDeps): BetterAuthPlugin => ({
   id: 'ideaf-rules',
+  ...(deps
+    ? {
+        endpoints: {
+          // What a token may do, chosen on the consent page (or when making a
+          // personal token): recorded as a token grant. For a consent, the
+          // session remembers it until the consent is given, and Better Auth
+          // keeps it as the consent's reference (see oauthProvider below).
+          tokenGrant: createAuthEndpoint(
+            '/ideaf/token-grant',
+            { method: 'POST', use: [sessionMiddleware], body: TokenGrantBody },
+            async (ctx) => {
+              const { forConsent, ...input } = ctx.body
+              const made = await deps.grants.createTokenGrant(ctx.context.session.user.id, {
+                purpose: input.purpose,
+                ...(input.bot ? { bot: input.bot } : {}),
+                ...(input.readOnly ? { readOnly: true } : {}),
+                ...(input.limits
+                  ? {
+                      limits: {
+                        ...(input.limits.teams ? { teams: input.limits.teams } : {}),
+                        ...(input.limits.ideas ? { ideas: input.limits.ideas } : {}),
+                        ...(input.limits.noTeam ? { noTeam: true } : {}),
+                      },
+                    }
+                  : {}),
+              })
+              if (!made.ok) {
+                throw new APIError(made.error.code === 'not_found' ? 'NOT_FOUND' : 'BAD_REQUEST', {
+                  message: made.error.message,
+                })
+              }
+              if (forConsent) {
+                await ctx.context.internalAdapter.updateSession(ctx.context.session.session.token, {
+                  oauthGrant: made.value.id,
+                })
+              }
+              return ctx.json({ grant: made.value })
+            },
+          ),
+        },
+      }
+    : {}),
   hooks: {
+    after: [
+      {
+        // a consent uses the session's token grant once: the next one must choose again
+        matcher: (ctx) => ctx.path === '/oauth2/consent',
+        handler: createAuthMiddleware(async (ctx) => {
+          const session = await getSessionFromCtx(ctx)
+          if (session && (session.session as { oauthGrant?: string | null }).oauthGrant) {
+            await ctx.context.internalAdapter.updateSession(session.session.token, { oauthGrant: null })
+          }
+        }),
+      },
+    ],
     before: [
       {
         // A passkey can only be added right after an email-code sign-in.
@@ -141,6 +248,15 @@ const rules = (settings: AuthSettings): BetterAuthPlugin => ({
               })
             }
           }
+          if (meta.grant !== undefined) {
+            // limits chosen first (POST /ideaf/token-grant); they must be the maker's own
+            const session = await getSessionFromCtx(ctx)
+            const grant = typeof meta.grant === 'string' && deps ? await deps.grants.tokenGrant(meta.grant) : null
+            if (!grant || !session || grant.user !== session.user.id) {
+              throw new APIError('BAD_REQUEST', { message: 'no such token grant of yours' })
+            }
+            return
+          }
           const purpose = String(meta.purpose ?? 'me')
           if (!(PURPOSES as readonly string[]).includes(purpose)) {
             throw new APIError('BAD_REQUEST', { message: 'a token’s purpose is me, bot-for-me or bot' })
@@ -159,7 +275,8 @@ const rules = (settings: AuthSettings): BetterAuthPlugin => ({
 const signInMethod = (path: string | undefined) =>
   path === '/sign-in/email-otp' ? 'email-otp' : path?.startsWith('/passkey') ? 'passkey' : (path ?? 'other')
 
-export function authOptions(database: BetterAuthOptions['database'], settings: AuthSettings, hooks?: UserHooks) {
+export function authOptions(database: BetterAuthOptions['database'], settings: AuthSettings, deps?: AuthDeps) {
+  const hooks = deps?.users
   return {
     baseURL: settings.baseURL,
     basePath: '/api/auth',
@@ -179,6 +296,8 @@ export function authOptions(database: BetterAuthOptions['database'], settings: A
       cookieCache: { enabled: false },
       additionalFields: {
         signInMethod: { type: 'string', required: false, input: false },
+        /** The token grant chosen for the OAuth consent about to be given. */
+        oauthGrant: { type: 'string', required: false, input: false },
       },
     },
     // In memory, inside the directory actor: one count for the whole site.
@@ -269,12 +388,40 @@ export function authOptions(database: BetterAuthOptions['database'], settings: A
           rateLimit: { enabled: false },
         },
       ] as never),
-      rules(settings),
+      oauthProvider({
+        loginPage: '/login',
+        consentPage: '/consent',
+        scopes: ['offline_access'],
+        // the API is the one resource: its access tokens are JWTs for it, checked by signature
+        resources: [settings.baseURL],
+        enforcePerClientResources: false,
+        accessTokenExpiresIn: ACCESS_TOKEN_SECONDS,
+        allowDynamicClientRegistration: false,
+        postLogin: {
+          page: '/consent',
+          shouldRedirect: () => false,
+          // the consent's reference is the token grant chosen on the consent page
+          consentReferenceId: ({ session }) => (session as { oauthGrant?: string | null }).oauthGrant ?? undefined,
+        },
+        // on every access token, refreshes included: the grant decides, and a
+        // revoked grant (or an inactive account) gets no new token
+        customAccessTokenClaims: async ({ user, referenceId }) => {
+          if (!user || (user as { inactive?: boolean }).inactive) {
+            throw new APIError('UNAUTHORIZED', { message: 'this account is inactive' })
+          }
+          const grant = referenceId && deps ? await deps.grants.tokenGrant(referenceId) : null
+          if (!grant || grant.user !== user.id) {
+            throw new APIError('UNAUTHORIZED', { message: 'this sign-in was revoked: sign in again' })
+          }
+          return grantClaims(grant)
+        },
+      }),
+      rules(settings, deps),
     ],
   } satisfies BetterAuthOptions
 }
 
-export function makeAuth(database: BetterAuthOptions['database'], settings: AuthSettings, hooks?: UserHooks) {
-  return betterAuth(authOptions(database, settings, hooks))
+export function makeAuth(database: BetterAuthOptions['database'], settings: AuthSettings, deps?: AuthDeps) {
+  return betterAuth(authOptions(database, settings, deps))
 }
 export type Auth = ReturnType<typeof makeAuth>

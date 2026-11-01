@@ -55,7 +55,7 @@ function setup(overrides: Partial<Handlers<typeof ops>> = {}) {
     ...overrides,
   }
   const router = createRouter(ops, handlers, {
-    authenticate: async (request) => (request.headers.get('authorization') === 'Bearer good' ? ME : null),
+    authenticate: async (request) => (request.headers.get('authorization') === 'Bearer good' ? { caller: ME } : null),
     validateOutput: true,
   })
   const fetch = async (request: Request) => (await router(request)) ?? new Response('no route', { status: 404 })

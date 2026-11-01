@@ -144,10 +144,10 @@ test('a retried create finds the same idea instead of making another', async () 
 })
 
 test('/openapi.json and /health need no token', async () => {
-  const openapi = await (await app(new Request('http://ideaf.test/openapi.json'))).json()
+  const openapi = await (await app(new Request(`${TEST_URL}/openapi.json`))).json()
   expect(openapi).toMatchObject({
     openapi: '3.1.0',
     paths: { '/ideas/{idea}/edits': { post: { operationId: 'edit' } } },
   })
-  expect(await (await app(new Request('http://ideaf.test/health'))).json()).toEqual({ ok: true })
+  expect(await (await app(new Request(`${TEST_URL}/health`))).json()).toEqual({ ok: true })
 })

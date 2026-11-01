@@ -8,6 +8,7 @@ import { db } from 'rivetkit/db'
 import type { Auth } from '../auth/config.ts'
 import {
   authInDirectory,
+  ensureCliClient,
   handleAuthRequest,
   migrateAuth,
   setInactive,
@@ -45,6 +46,8 @@ export const directory = actor({
   }),
   queues: { index: queue<IndexUpdate>() },
   createVars: () => ({ directory: null as Directory | null, auth: null as Auth | null }),
+  // the cli's OAuth client, there before anyone signs in with it
+  onWake: (c) => ensureCliClient(authOf(c), nodeDeps().auth),
   run: async (c) => {
     const d = directoryOf(c)
     for (;;) {
@@ -70,7 +73,7 @@ export const directory = actor({
   actions: {
     // sign-in: forwarded requests, personal tokens, and status
     auth: (c, request: WireRequest) => handleAuthRequest(authOf(c), request),
-    verifyToken: (c, token: string) => verifyPersonalToken(authOf(c), nodeDeps().auth, token),
+    verifyToken: (c, token: string) => verifyPersonalToken(authOf(c), nodeDeps().auth, directoryOf(c), token),
     setInactive: (c, id: string, inactive: boolean) => setInactive(authOf(c), id, inactive),
 
     ensureUser: (c, user: { id: string; handle: string; name: string; email?: string }) =>
@@ -97,11 +100,14 @@ export const directory = actor({
     joinRequests: (c, by: string, kind: ContainerKind, id: string) => directoryOf(c).joinRequests(by, kind, id),
     decide: (c, by: string, kind: ContainerKind, id: string, user: string, approve: boolean) =>
       directoryOf(c).decide(by, kind, id, user, approve),
-    canCreateIdea: (c, by: string, team: string | null) => directoryOf(c).canCreateIdea(by, team),
+    canCreateIdea: (c, by: string, team: string | null, token?: string | null) =>
+      directoryOf(c).canCreateIdea(by, team, token),
+    tokenGrant: (c, id: string) => directoryOf(c).tokenGrant(id),
+    revokeTokenGrant: (c, by: string, id: string) => directoryOf(c).revokeTokenGrant(by, id),
     registerIdea: (c, row: IdeaRow) => directoryOf(c).registerIdea(row),
     updateIdea: (c, row: IndexUpdate) => directoryOf(c).updateIdea(row),
     idea: (c, id: string) => directoryOf(c).idea(id),
-    permission: (c, idea: string, user: string) => directoryOf(c).permission(idea, user),
+    permission: (c, idea: string, user: string, token?: string | null) => directoryOf(c).permission(idea, user, token),
     grants: (c, idea: string) => directoryOf(c).grants(idea),
     setGrant: (c, by: string, idea: string, subject: GrantSubject, access: { edit: boolean; share: boolean } | null) =>
       directoryOf(c).setGrant(by, idea, subject, access),
@@ -109,8 +115,10 @@ export const directory = actor({
       directoryOf(c).previewMove(by, idea, to, adjustments),
     moveIdea: (c, by: string, idea: string, to: string | null, adjustments?: MoveAdjustments) =>
       directoryOf(c).moveIdea(by, idea, to, adjustments),
-    listIdeas: (c, by: string, filter?: IdeaFilter) => directoryOf(c).listIdeas(by, filter),
-    searchIdeas: (c, by: string, query: string, limit?: number) => directoryOf(c).searchIdeas(by, query, limit),
+    listIdeas: (c, by: string, filter?: IdeaFilter, token?: string | null) =>
+      directoryOf(c).listIdeas(by, filter, token),
+    searchIdeas: (c, by: string, query: string, limit?: number, token?: string | null) =>
+      directoryOf(c).searchIdeas(by, query, limit, token),
   },
 })
 
