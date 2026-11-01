@@ -1,0 +1,52 @@
+.tokens {
+  display: grid;
+  gap: var(--space-5);
+  font-size: var(--text-sm);
+}
+.tokens h2 {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+}
+.tokens p {
+  margin: 0 0 var(--space-2);
+}
+.tokens code {
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+.tokens-swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tokens-swatches li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.tokens-swatch {
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  border: var(--hairline) solid var(--rule-strong);
+  border-radius: var(--radius-sm);
+}
+.tokens-font {
+  font-size: var(--text-lg);
+}
+.tokens-space {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.tokens-bar {
+  height: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+}

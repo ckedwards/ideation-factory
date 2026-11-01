@@ -1,0 +1,66 @@
+import { useEffect } from 'react'
+import type { Decorator, Preview } from '@storybook/react-vite'
+import '../src/theme/theme.css'
+
+// The toolbar's theme and text size go on <html>, where the app sets them, so
+// every story is seen as a page would show it.
+const withTheme: Decorator = (Story, { globals }) => {
+  const theme = String(globals['theme'] ?? 'auto')
+  const textSize = String(globals['textSize'] ?? '100%')
+  useEffect(() => {
+    const root = document.documentElement
+    if (theme === 'auto') {
+      root.removeAttribute('data-theme')
+    } else {
+      root.setAttribute('data-theme', theme)
+    }
+    root.style.fontSize = textSize
+  }, [theme, textSize])
+  return <Story />
+}
+
+const preview: Preview = {
+  decorators: [withTheme],
+  globalTypes: {
+    theme: {
+      description: 'Theme',
+      toolbar: {
+        title: 'Theme',
+        icon: 'contrast',
+        items: [
+          { value: 'auto', title: 'Auto (follows the system)' },
+          { value: 'light', title: 'Light' },
+          { value: 'dark', title: 'Dark' },
+          { value: 'contrast', title: 'High contrast' },
+        ],
+        dynamicTitle: true,
+      },
+    },
+    textSize: {
+      description: 'Text size',
+      toolbar: {
+        title: 'Text size',
+        icon: 'zoom',
+        items: [
+          { value: '100%', title: 'Text 100%' },
+          { value: '125%', title: 'Text 125%' },
+          { value: '150%', title: 'Text 150%' },
+          { value: '200%', title: 'Text 200%' },
+        ],
+        dynamicTitle: true,
+      },
+    },
+  },
+  // the story tests run once per theme (vitest.config.ts)
+  initialGlobals: { theme: import.meta.env['STORYBOOK_THEME'] ?? 'auto', textSize: '100%' },
+  parameters: {
+    layout: 'padded',
+    // the page's own background, not Storybook's, so themes show as they are
+    backgrounds: { disable: true },
+    controls: { expanded: true },
+    // axe runs on every story; a violation fails the story's check, not a warning
+    a11y: { test: 'error' },
+  },
+}
+
+export default preview

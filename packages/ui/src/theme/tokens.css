@@ -1,0 +1,150 @@
+/* Design tokens: every color, font, size, space and radius the components use.
+   An organization re-themes by overriding these on :root, with no rebuild.
+   Sizes are rem only, so zoom and larger text work.
+
+   Themes, set on <html data-theme="…">:
+     (none) or auto  follows the system's light or dark setting
+     light, dark     fixed
+     contrast        high contrast, on black
+
+   Light and dark share one list: each color is light-dark(<light>, <dark>), and
+   the theme only sets color-scheme. High contrast overrides the colors outright. */
+
+:root {
+  color-scheme: light dark;
+
+  /* surfaces and text */
+  --bg: light-dark(#f6f4ef, #151412);
+  --surface: light-dark(#fffdf9, #1c1b18);
+  --surface-2: light-dark(#efebe3, #25231f);
+  --surface-3: light-dark(#e6e1d6, #2f2c27);
+  --ink: light-dark(#1f1d1a, #ece8df);
+  --ink-2: light-dark(#514c44, #bbb4a7);
+  --ink-3: light-dark(#6f685e, #9a9387);
+  --rule: light-dark(#e3ded3, #34312b);
+  --rule-strong: light-dark(#cfc8ba, #48443c);
+
+  /* the brand color, for primary actions, links and focus */
+  --accent: light-dark(#2b6b5a, #6cc4a6);
+  --accent-ink: light-dark(#ffffff, #0d1f19);
+  --accent-soft: light-dark(#dcebe4, #1d3a30);
+
+  /* highlighted text: comment anchors and search matches */
+  --mark: light-dark(rgb(255 196 61 / 0.32), rgb(255 196 61 / 0.17));
+  --mark-active: light-dark(rgb(255 176 0 / 0.62), rgb(255 186 40 / 0.4));
+  --mark-line: light-dark(#d49500, #c99a2e);
+  --mark-ink: inherit;
+
+  /* bots: agent work is always labeled, and carries this color */
+  --bot: light-dark(#6a4fd0, #a993ff);
+  --bot-soft: light-dark(#ece7fb, #2a2443);
+
+  /* changes: inserted and deleted text, changed sections */
+  --ins-bg: light-dark(#d6efe0, #173c2a);
+  --ins-ink: light-dark(#145a37, #93e2b5);
+  --del-bg: light-dark(#fbe1dc, #4a201b);
+  --del-ink: light-dark(#9a2b1d, #ffab9d);
+  --changed: light-dark(#2b6b5a, #6cc4a6);
+
+  /* states */
+  --ok: light-dark(#2f7d4f, #74c995);
+  --warn: light-dark(#a85a07, #e3a24f);
+  --lost: light-dark(#b4232a, #ff8a8f);
+
+  /* anything a person can do only because they're a site admin */
+  --admin: light-dark(#a3195b, #ff8fc0);
+  --admin-soft: light-dark(#f9e3ee, #3d1a2b);
+
+  /* avatars without a picture: one of these, picked from the person's ID */
+  --avatar-1: light-dark(#2b6b5a, #6cc4a6);
+  --avatar-2: light-dark(#b4532a, #f09a6e);
+  --avatar-3: light-dark(#2f5fb3, #84a9f0);
+  --avatar-4: light-dark(#8a5a00, #e0b75a);
+  --avatar-5: light-dark(#1f6f8b, #6cc0dd);
+  --avatar-6: light-dark(#7a3e8e, #d29be6);
+  --avatar-7: light-dark(#5c6b1f, #b9c96a);
+  --avatar-8: light-dark(#a13d55, #f09ab0);
+
+  --shadow-color: light-dark(rgb(40 30 15 / 0.1), rgb(0 0 0 / 0.45));
+  --shadow: 0 0.5rem 1.75rem var(--shadow-color);
+  --shadow-sm: 0 0.125rem 0.5rem var(--shadow-color);
+
+  /* type */
+  --font-display: 'Source Serif 4 Variable', 'Source Serif 4', Georgia, serif;
+  --font-prose: 'Literata Variable', 'Literata', Georgia, serif;
+  --font-ui: 'Inter Variable', 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-prose: 1.125rem;
+  --leading-prose: 1.72;
+  --measure: 40rem;
+
+  /* space and shape */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4.5rem;
+  --radius-sm: 0.3125rem;
+  --radius: 0.5rem;
+  --radius-lg: 0.875rem;
+  --radius-pill: 62.5rem;
+  --hairline: 0.0625rem;
+  --rail: 0.1875rem;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+:root[data-theme='contrast'] {
+  color-scheme: dark;
+  --bg: #000000;
+  --surface: #000000;
+  --surface-2: #121212;
+  --surface-3: #1f1f1f;
+  --ink: #ffffff;
+  --ink-2: #ffffff;
+  --ink-3: #d6d6d6;
+  --rule: #ffffff;
+  --rule-strong: #ffffff;
+  --accent: #ffd60a;
+  --accent-ink: #000000;
+  --accent-soft: #3a3000;
+  --mark: #ffd60a;
+  --mark-active: #ffffff;
+  --mark-line: #ffd60a;
+  --mark-ink: #000000;
+  --bot: #d0b8ff;
+  --bot-soft: #1d0f3a;
+  --ins-bg: #00391b;
+  --ins-ink: #7dffb0;
+  --del-bg: #4d0000;
+  --del-ink: #ffb3b3;
+  --changed: #7dffb0;
+  --ok: #7dffb0;
+  --warn: #ffd60a;
+  --lost: #ff8f8f;
+  --admin: #ff9ad0;
+  --admin-soft: #3a0022;
+  --avatar-1: #7dffb0;
+  --avatar-2: #ffb38a;
+  --avatar-3: #9cc2ff;
+  --avatar-4: #ffd60a;
+  --avatar-5: #7fe7ff;
+  --avatar-6: #f0b8ff;
+  --avatar-7: #d8f07a;
+  --avatar-8: #ffadc4;
+  --shadow: none;
+  --shadow-sm: none;
+}

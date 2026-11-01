@@ -1,0 +1,8 @@
+/* The four typefaces, bundled with the app rather than loaded from a font
+   service, so a deployment makes no third-party requests. All are under the
+   SIL Open Font License. */
+@import '@fontsource-variable/source-serif-4/opsz.css';
+@import '@fontsource-variable/literata/opsz.css';
+@import '@fontsource-variable/literata/opsz-italic.css';
+@import '@fontsource-variable/inter/opsz.css';
+@import '@fontsource-variable/jetbrains-mono/index.css';
