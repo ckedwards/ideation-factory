@@ -126,7 +126,7 @@ async function teamSettings(ctx: Context, team: Team): Promise<string[]> {
 export async function create(ctx: Context, kind: Kind, handle: string, flags: { name?: string; description?: string }) {
   let name = flags.name?.trim()
   if (!name && ctx.io.interactive && !ctx.json) {
-    name = ctx.io.prompt('Name:')?.trim()
+    name = (await ctx.io.ask('Name'))?.trim()
   }
   if (!name) {
     throw new CliError(`a ${kind} needs a name: pass --name "…"`, EXIT.usage, 'no_name')

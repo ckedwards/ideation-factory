@@ -13,6 +13,7 @@
     "build": "bun build --compile src/main.ts --outfile dist/ideaf"
   },
   "dependencies": {
+    "@clack/core": "^1.5.1",
     "@ideaf/api": "workspace:*",
     "@ideaf/core": "workspace:*",
     "diff": "^9.0.0",

@@ -122,7 +122,7 @@ async function choose(ctx: Context, flags: { title?: string; anyone: boolean }):
       return matches[0]!.id
     }
     if (matches.length > 1) {
-      return pick(ctx, matches, `"${flags.title}" matches ${matches.length} of this repository's ideas`)
+      return await pick(ctx, matches, `"${flags.title}" matches ${matches.length} of this repository's ideas`)
     }
     // not in this repository: the ideas you can see on the server
     const found = (await ctx.api.searchIdeas({ q: flags.title })).items
@@ -132,7 +132,7 @@ async function choose(ctx: Context, flags: { title?: string; anyone: boolean }):
     if (found.length === 1) {
       return found[0]!.id
     }
-    return pick(
+    return await pick(
       ctx,
       found.map((i) => ({ id: i.id, title: i.title, note: 'on the server' })),
       `"${flags.title}" matches ${found.length} ideas on the server`,
@@ -147,10 +147,10 @@ async function choose(ctx: Context, flags: { title?: string; anyone: boolean }):
       'no_idea',
     )
   }
-  return pick(ctx, options, 'say which idea')
+  return await pick(ctx, options, 'say which idea')
 }
 
-function pick(ctx: Context, options: Option[], why: string): string {
+async function pick(ctx: Context, options: Option[], why: string): Promise<string> {
   if (!ctx.io.interactive || ctx.json) {
     throw new CliError(
       `${why}: name one with \`ideaf change <id>\` (${options.map((o) => `${o.id} "${truncate(o.title, 40)}"`).join(', ')})`,
@@ -159,11 +159,11 @@ function pick(ctx: Context, options: Option[], why: string): string {
       { ideas: options },
     )
   }
-  options.forEach((o, n) => {
-    ctx.say(`  ${String(n + 1).padStart(2)}) ${truncate(o.title, 60)}  ${o.id}${o.note ? `  (${o.note})` : ''}`)
-  })
-  const answer = Number(ctx.io.prompt(`Which idea? [1-${options.length}]`)?.trim())
-  const chosen = Number.isInteger(answer) ? options[answer - 1] : undefined
+  const index = await ctx.io.choose(
+    'Which idea?',
+    options.map((o) => ({ label: `${truncate(o.title, 60)}  ${o.id}`, ...(o.note ? { hint: o.note } : {}) })),
+  )
+  const chosen = index === null ? undefined : options[index]
   if (!chosen) {
     throw new CliError('no idea chosen', EXIT.usage, 'no_choice')
   }

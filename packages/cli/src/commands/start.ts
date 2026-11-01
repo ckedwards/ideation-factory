@@ -39,7 +39,7 @@ export async function start(
 
   let title = flags.title?.trim()
   if (!title && ctx.io.interactive && !ctx.json) {
-    title = ctx.io.prompt('Title:')?.trim()
+    title = (await ctx.io.ask('Title'))?.trim()
   }
   if (!title) {
     throw new CliError('an idea needs a title: pass --title "…"', EXIT.usage, 'no_title')

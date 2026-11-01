@@ -61,8 +61,8 @@ export async function move(
         shown,
       )
     }
-    const answer = ctx.io.prompt('\nMove it? [y/N]')?.trim().toLowerCase()
-    if (answer !== 'y' && answer !== 'yes') {
+    ctx.say('')
+    if (!(await ctx.io.confirm('Move it?'))) {
       ctx.say('Not moved.')
       return EXIT.ok
     }
