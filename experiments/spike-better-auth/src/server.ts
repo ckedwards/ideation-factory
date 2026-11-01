@@ -11,9 +11,9 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import { setup } from 'rivetkit'
 import { createClient } from 'rivetkit/client'
 import * as z from 'zod'
-import { ACCESS_TOKEN_SECONDS, BASE, cimdFetches, MCP_RESOURCE, makeAuth, outbox } from './auth.ts'
+import { ACCESS_TOKEN_SECONDS, BASE, cimdFetches, MCP_RESOURCE, makeAuth, OIDC_PROVIDER, outbox, SSO_MODE } from './auth.ts'
 import { directoryA, directoryB } from './directory.ts'
-import { consentPage, devicePage, loginPage } from './pages.ts'
+import { consentPage, devicePage, loginPage, ssoLoginPage } from './pages.ts'
 import { calls, directoryAdapter } from './remote-adapter.ts'
 
 const MODE = (process.env.SPIKE_STORAGE ?? 'adapter') as 'adapter' | 'actor'
@@ -27,7 +27,8 @@ const client = createClient<typeof registry>(endpoint!)
 // app node (WebSocket, ~1.6 ms per call locally). =http: stateless calls, one
 // HTTP request each (~88 ms per call on the local engine; see bench-actor.ts).
 const TRANSPORT = (process.env.SPIKE_TRANSPORT ?? 'conn') as 'conn' | 'http'
-const handleA = client.directoryA.getOrCreate(['main'])
+// SPIKE_DIR_KEY picks a fresh directory actor (approach 1 applies its schema once).
+const handleA = client.directoryA.getOrCreate([process.env.SPIKE_DIR_KEY ?? 'main'])
 const handleB = client.directoryB.getOrCreate(['main'])
 const dirA = TRANSPORT === 'conn' ? handleA.connect() : handleA
 const dirB = TRANSPORT === 'conn' ? handleB.connect() : handleB
@@ -152,7 +153,7 @@ async function fetch(req: Request): Promise<Response> {
   const p = url.pathname
   if (p.startsWith('/api/auth/') || p.startsWith('/.well-known/')) return authFetch(req)
   if (p === '/mcp') return mcpHandler(req)
-  if (p === '/login') return html(loginPage())
+  if (p === '/login') return html(SSO_MODE ? ssoLoginPage(OIDC_PROVIDER, 'Acme') : loginPage())
   if (p === '/consent') return html(consentPage())
   if (p === '/device') return html(devicePage())
   if (p === '/ideaf/token' && req.method === 'POST') return exchange(req)

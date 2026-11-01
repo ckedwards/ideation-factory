@@ -128,11 +128,11 @@ Each has a pass condition. Record results in Findings, below.
 
 ## Findings
 
-**Status (2026-10-31, day 1):** everything ran except the real clients and the stretch goals. The code is in `experiments/spike-better-auth/`. `src/flow.ts` drives every check over HTTP, the way a browser, an MCP client and the cli would, and its output is in `results-*.txt`. ✅ pass, ◐ partly checked, ⏳ not yet run.
+**Status (2026-10-31, day 1):** everything ran except the real clients and DPoP. Single sign-on, treated here as a main sign-in mode rather than a stretch goal (most companies will use it), ran against a real identity provider. The code is in `experiments/spike-better-auth/`. `src/flow.ts` drives every check over HTTP, the way a browser, an MCP client and the cli would, and its output is in `results-*.txt`. ✅ pass, ◐ partly checked, ⏳ not yet run.
 
-**Verdict so far: go, for MCP and for all of auth.** It runs on Bun with its tables in a directory actor. The MCP flow works with 15-minute JWTs and no auth read per request. Every account rule fits with configuration, hooks and one small plugin of our own, with no patching. The one open item is connecting the real clients (below).
+**Verdict so far: go, for MCP and for all of auth, single sign-on included.** It runs on Bun with its tables in a directory actor. The MCP flow works with 15-minute JWTs and no auth read per request. Every account rule fits with configuration, hooks and one small plugin of our own, with no patching. OIDC, SAML and SCIM all worked against Keycloak, and they **need approach 2** (native transactions). The one open item is connecting the real clients (below).
 
-**Versions.** MCP and CIMD aren't beta-only any more: `@better-auth/mcp` and `@better-auth/cimd` shipped in the stable 1.7 line (1.7.0, 2026-08-18). The spike pins **1.7.14** exactly: `better-auth`, `@better-auth/oauth-provider`, `@better-auth/mcp`, `@better-auth/cimd`, `@better-auth/passkey` and `@better-auth/api-key`. Email codes, usernames, JWT and device login are in `better-auth/plugins` and `@better-auth/oauth-provider`. Alongside it: `rivetkit` 2.3.31, `@modelcontextprotocol/sdk` 1.32.2 and Bun 1.4.3. 1.8 is at beta.3. Its notes so far change device-code approval and polling, and its MCP docs move to MCP SDK v2, so we stay on 1.7 until 1.8 is stable.
+**Versions.** MCP and CIMD aren't beta-only any more: `@better-auth/mcp` and `@better-auth/cimd` shipped in the stable 1.7 line (1.7.0, 2026-08-18). The spike pins **1.7.14** exactly: `better-auth`, `@better-auth/oauth-provider`, `@better-auth/mcp`, `@better-auth/cimd`, `@better-auth/passkey`, `@better-auth/api-key`, `@better-auth/sso` and `@better-auth/scim` (all MIT). The SSO plugin brings `samlify`, `@xmldom/xmldom` and `fast-xml-parser` for SAML. Email codes, usernames, JWT and device login are in `better-auth/plugins` and `@better-auth/oauth-provider`. Alongside it: `rivetkit` 2.3.31, `@modelcontextprotocol/sdk` 1.32.2 and Bun 1.4.3. 1.8 is at beta.3. Its notes so far change device-code approval and polling, and its MCP docs move to MCP SDK v2, so we stay on 1.7 until 1.8 is stable.
 
 ### Runs on Bun, stored in the directory actor
 
@@ -150,6 +150,8 @@ Each has a pass condition. Record results in Findings, below.
   | Per personal-token exchange | 3, plus 1 status read | 2, plus 1 status read |
   | Session read / email-code sign-in (local, over a connection) | 7 ms / 26 ms | 4 ms / 17 ms |
   | Rate-limit counters | In memory on each app node, so limits multiply with nodes | In memory in the actor: one count for the site |
+  | Single sign-on and SCIM | **Doesn't work:** SCIM refuses to start, and the SSO `resolveUser` hook refuses to run, without native transactions | Works |
+  | Schema changes later | `schema.sql` is applied once; adding a column (as SSO did) needs our own migration step | `getMigrations` adds new tables and columns on the next start |
 
   **What approach 2 costs:** all auth work runs on the directory actor's node: CIMD fetches to the internet, sending email, hashing and signing. Its in-memory state (rate-limit counters, the CIMD cache) is lost when the actor moves. App nodes need a small RPC for server-side `auth.api` calls (the token exchange). The **Postgres escape hatch** is simple either way: Better Auth runs on the app nodes against Postgres through its own Kysely adapter.
 - ✅ **Schema migrations** come from Better Auth's own tooling in both approaches, with no hand-written SQL. Approach 2 runs `getMigrations` inside `onMigrate`, which needs no transaction of its own (see the Rivet spike's savepoint note).
@@ -157,11 +159,11 @@ Each has a pass condition. Record results in Findings, below.
 
 ### Tables for step 6
 
-Better Auth 1.7.14 with these plugins needs **15 tables**. Every column, type and index is in `experiments/spike-better-auth/schema.md`, generated from SQLite.
+Better Auth 1.7.14 with these plugins needs **15 tables**, plus **1 for single sign-on and 7 for SCIM** (23 in all). Every column, type and index is in `experiments/spike-better-auth/schema.md`, generated from SQLite.
 
 | Table | From | What it holds |
 |---|---|---|
-| `user` | core, plus the username plugin and our `inactive` | id, name, email (unique), emailVerified, image, createdAt, updatedAt, username (unique), displayUsername, inactive |
+| `user` | core, plus the username plugin and our `inactive` and `handleConfirmed` | id, name, email (unique), emailVerified, image, createdAt, updatedAt, username (unique), displayUsername, inactive, handleConfirmed |
 | `session` | core, plus our two fields | id, token (unique), userId, expiresAt, ipAddress, userAgent, createdAt, updatedAt, signInMethod, oauthPurpose |
 | `account` | core | Per-provider credentials (password, social tokens). Required by the schema but unused here: email-code users get no account row |
 | `verification` | core | One-time codes: identifier, value, expiresAt; deleted on use |
@@ -175,6 +177,8 @@ Better Auth 1.7.14 with these plugins needs **15 tables**. Every column, type an
 | `oauthAccessToken` | OAuth provider | Opaque access tokens only; empty with JWT access tokens |
 | `oauthClientAssertion` | OAuth provider | Replay guard for `private_key_jwt` assertions |
 | `deviceCode` | device login | deviceCode, userCode, userId, status, clientId, scope, resources, expiresAt, polling fields |
+| `ssoProvider` | SSO | A provider registered at runtime: issuer, providerId, domain, userId (the admin who added it), oidcConfig or samlConfig as JSON. Empty when the provider is set in config |
+| `scimUser`, `scimSubject`, `scimConnectionBinding`, `scimIdentityTombstone`, `scimGroup`, `scimGroupMember`, `scimProjectionGrant` | SCIM | The provider's view of each person (externalId, userName, emails, active) linked to `user.id`, plus groups and lifecycle bookkeeping |
 
 **Mapping onto a minimal directory user** (ID, handle, name, email, inactive): ID ← `user.id`; handle ← `user.username`; name ← `user.name` (not null, `''` when not given); email ← `user.email`; inactive ← our `inactive` field. Better Auth also needs `emailVerified`, `image`, `createdAt` and `updatedAt`, and the username plugin adds `displayUsername` (set to the handle). `user.modelName` and `user.fields` can point Better Auth at step 5's users table and its column names, and `advanced.database.generateId` sets our ID format. All the other tables are Better Auth's own, so step 6 only maps the user.
 
@@ -249,9 +253,43 @@ Better Auth 1.7.14 with these plugins needs **15 tables**. Every column, type an
 
 - ◐ **`ideaf auth login` by device flow (RFC 8628):** `oauthDeviceAuthorization()` from `@better-auth/oauth-provider` issues real OAuth tokens: a 15-minute JWT and a refresh token. The verification page must claim the code (`GET /device?user_code=…`, signed in) before approving it. The cli side, keeping the token in `Bun.secrets`, isn't built yet. The other path, a personal token exchanged for a JWT, works (above).
 
+### Single sign-on
+
+One identity provider for the whole deployment, set by the site admin; no tenants. Checked against **Keycloak 26.8.1** in a container, through its real login form, by `src/sso-flow.ts` (35 of 35 checks, `results-sso.txt`). `src/kc-setup.ts` sets up the realm.
+
+- ✅ **OIDC and SAML 2.0 both work** with `@better-auth/sso`. OIDC was set in config (`defaultSSO`, install-time). SAML was added at runtime by a site admin from the provider's metadata (`POST /sso/register`, stored in `ssoProvider`), as a Site admin page would; our SP metadata is served for the admin to give the provider.
+- ✅ **Switching an existing deployment keeps accounts:** alice signed up with an email code and made a personal token, then signed in through OIDC and SAML. Both reached the same account (matched on primary email), with her handle kept, and her token still worked.
+- ✅ **Who gets in** is decided by one hook of ours, `resolveUser`, which runs inside the sign-in's transaction and can link, refuse or let Better Auth create the account. Ours (about 30 lines):
+  1. A provider subject seen before → that account.
+  2. Otherwise, match on primary email.
+  3. Otherwise, create an account if automatic creation is on; with it off, a new person is refused ("ask a site admin to invite you") and existing accounts still sign in.
+
+  It also refuses **emails outside the allowed domains** (no account is made) and **inactive accounts**.
+- ✅ **New accounts:** name from the provider, a handle suggested from the email (`carol.jones+x@` → `carol.jones-x`, with `-2` when taken), marked unconfirmed. On first visit the person keeps or changes it once (`/ideaf/confirm-handle`); a second change and a taken handle are refused.
+- ✅ **Email changes at the provider:** same account (matched by subject), and the primary email follows. If the new email belongs to another account, sign-in is refused.
+- ✅ **Email codes and passkeys are off while SSO is on,** except an email code for site admins, as the way in when the provider is down. Sessions record `signInMethod: sso`.
+- ✅ **Only site admins can add a provider,** and only one (`providersLimit`). By default any signed-in user could register up to 10, which, with email matching, would let them sign in as others.
+- ✅ **MCP clients under SSO:** authorize → our login page → Keycloak → back → consent → a 15-minute JWT for the right user. Better Auth carries a pending authorization through social sign-in but **not through SSO**, so the login page sends the browser back to the original authorize URL (`callbackURL`), which then continues as usual.
+- ✅ **SAML security:**
+  - the response is posted to our ACS cross-site without our cookies (as browsers do with SameSite=Lax) and works;
+  - a captured response replayed in another browser is refused (InResponseTo validation);
+  - a response edited to name another email is refused, and so is one with its signatures stripped.
+- ✅ **SCIM deprovisioning** with `@better-auth/scim` (bearer token per connection, `/api/auth/scim/v2/Users`):
+  - a person created by SCIM gets an account ahead of their first sign-in;
+  - SCIM for someone who already has an account links to it (no duplicate);
+  - `active: false` marks them **inactive, deletes their sessions and revokes their refresh tokens** (our `identity.reconcileUser`, in SCIM's transaction); SSO sign-in and token exchange are then refused, and reactivating lets them back in.
+
+  Keycloak doesn't push SCIM itself, so the checks call the endpoints as Okta or Entra would.
+- **Needs approach 2.** SCIM refuses to start without native transactions, and so does SSO's `resolveUser`. With approach 1 the server doesn't start with SCIM loaded.
+
+**Learned on the way:**
+- **SAML registration names are easy to get wrong:** the top-level `issuer` becomes *our* SP entity ID (it replaces `samlConfig.issuer`), not the provider's.
+- **Keycloak's metadata asks for signed requests,** and a mismatch shows up as a bare 500 (from `samlify`). With `authnRequestsSigned` and an SP key it works. The **SP private key is then stored in plain text** in `ssoProvider.samlConfig`: keep it in config or secrets, not in the table.
+- **A provider on a private address** (an internal IdP, or Keycloak on localhost) is refused unless its origin is in `trustedOrigins`.
+- Provider discovery and token calls go out from wherever Better Auth runs: the directory actor's node in approach 2.
+
 ### Stretch
 
-- ⏳ **Single sign-on** wasn't tried.
 - ⏳ **DPoP** wasn't tried, though the metadata advertises it (`dpop_signing_alg_values_supported`).
 
 ### Measures
@@ -265,7 +303,7 @@ Better Auth 1.7.14 with these plugins needs **15 tables**. Every column, type an
 | Lines of glue code | Recorded | about 880 (see below) | about 790 |
 
 The glue code is the same in both approaches except for storage. Shared:
-- the configuration and rules, with the consent and exchange endpoints (282 lines, with comments);
+- the configuration and rules, with the consent and exchange endpoints (282 lines, with comments; 452 with single sign-on and SCIM);
 - the server, with the MCP stub and the exchange (200 lines, including spike-only endpoints);
 - the pages (46 lines);
 - the directory actor (117 lines).

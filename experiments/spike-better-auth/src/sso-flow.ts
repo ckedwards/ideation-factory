@@ -7,7 +7,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { decodeJwt } from 'jose'
 import { KC_REALM, KC_URL, OIDC_PROVIDER, SAML_PROVIDER, SCIM_TOKEN } from './auth.ts'
-import { PASSWORD, people, SAML_SP_ENTITY, setupRealm } from './kc-setup.ts'
+import { PASSWORD, people, SAML_SP_ENTITY, setupRealm, spKeys } from './kc-setup.ts'
 
 const BASE = 'http://localhost:25445'
 const MCP = `${BASE}/mcp`
@@ -241,19 +241,22 @@ check('oidc: an email outside the allowed domains is refused, and no account is 
 const descriptor = await (await fetch(`${KC_REALM}/protocol/saml/descriptor`)).text()
 const samlBody = {
   providerId: SAML_PROVIDER,
-  issuer: KC_REALM,
+  // For SAML, the top-level issuer is *our* SP entity ID (it replaces samlConfig.issuer).
+  issuer: SAML_SP_ENTITY,
   domain: 'acme.test',
   samlConfig: {
     issuer: SAML_SP_ENTITY,
     entryPoint: `${KC_REALM}/protocol/saml`,
     idpMetadata: { metadata: descriptor },
     wantAssertionsSigned: true,
+    authnRequestsSigned: true,
+    privateKey: spKeys().privateKey,
     identifierFormat: 'urn:oasis:names:tc:SAML:2.0:nameid-format:persistent',
-    mapping: { id: 'nameID', email: 'email', firstName: 'firstName', lastName: 'lastName' },
+    mapping: { email: 'email', firstName: 'firstName', lastName: 'lastName' },
   },
 }
 const byBob = await bob.json('/api/auth/sso/register', { method: 'POST', json: { ...samlBody, providerId: `bob-idp-${run}` } })
-check('sso config: someone who is not a site admin cannot add a provider', byBob.status >= 400, { status: byBob.status, msg: byBob.body?.message })
+check('sso config: someone who is not a site admin cannot add a provider', byBob.status >= 400 && byBob.body?.code !== 'VALIDATION_ERROR', { status: byBob.status, msg: byBob.body?.message })
 await admin.json('/api/auth/sso/delete-provider', { method: 'POST', json: { providerId: SAML_PROVIDER } })
 const reg = await admin.json('/api/auth/sso/register', { method: 'POST', json: samlBody })
 check('sso config: a site admin registers the SAML provider from its metadata', reg.status === 200, { status: reg.status, body: JSON.stringify(reg.body).slice(0, 200) })
@@ -279,9 +282,9 @@ acsUrl = kept.acs ?? ''
 const replay = await postAcs(new Browser(), acsUrl, replayForm)
 check('saml: a captured response replayed in another browser is refused', kept.ok && !replay.ok, { first: kept.ok, replay: replay.error || replay.landed })
 const tampered = await samlSignIn(new Browser(), P.carol.username, { tamper: (x) => x.replaceAll(P.carol.email, P.alice.email) })
-check('saml: a response edited to say another email is refused (signature)', !tampered.ok, tampered.error || tampered.landed)
+check('saml: a response edited to say another email is refused (signature)', !!tampered.acs && !tampered.ok, tampered.error || tampered.landed)
 const unsigned = await samlSignIn(new Browser(), P.carol.username, { tamper: (x) => x.replace(/<(ds:|dsig:)?Signature[\s\S]*?<\/(ds:|dsig:)?Signature>/g, '') })
-check('saml: a response with its signatures stripped is refused', !unsigned.ok, unsigned.error || unsigned.landed)
+check('saml: a response with its signatures stripped is refused', !!unsigned.acs && !unsigned.ok, unsigned.error || unsigned.landed)
 
 // 6. Changes at the provider
 const bobUser = (await kc('GET', `/realms/ideaf/users?username=${P.bob.username}&exact=true`))[0]
@@ -328,9 +331,11 @@ const hn = await oidcSignIn(new Browser(), `heidi-${run}`)
 check('automatic creation off: existing accounts sign in; a new person is refused', cn.ok && !hn.ok && hn.landed.includes('no_account'), { carol: cn.ok, heidi: hn.landed || hn.error })
 
 // 9. Approach 1 (custom adapter, no native transactions)
-restart({ SPIKE_STORAGE: 'adapter', SPIKE_SSO: '1' })
-const a1 = await oidcSignIn(new Browser(), P.carol.username)
-check('approach 1: SSO sign-in fails, as resolveUser needs native transactions (expected)', !a1.ok, a1.landed || a1.error)
+restart({ SPIKE_STORAGE: 'adapter', SPIKE_SSO: '1', SPIKE_DIR_KEY: `sso-${run}` })
+const a1 = await oidcSignIn(new Browser(), P.carol.username).catch((e) => ({ ok: false, landed: '', error: `server down: ${(e as Error).message}` }))
+const a1log = await Bun.file(import.meta.dir + '/../out/server-adapter.log').text()
+const a1why = a1log.match(/requires a database adapter with native transaction support/)?.[0] ?? ''
+check('approach 1: SSO fails because SCIM and resolveUser need native transactions (expected)', !a1.ok && !!a1why, a1log.match(/BetterAuthError: [^\n]+/)?.[0] ?? (a1.landed || a1.error))
 
 restart({ SPIKE_STORAGE: 'actor' })
 const failed = results.filter((r) => !r[1])

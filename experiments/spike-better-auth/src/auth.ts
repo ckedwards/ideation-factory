@@ -439,7 +439,8 @@ export function authOptions(database: BetterAuthOptions['database']) {
       }),
       oauthDeviceAuthorization({ verificationUri: `${BASE}/device` }),
       sso(ssoOptions),
-      scim(scimOptions),
+      // SCIM needs native transactions, which approach 1's adapter lacks: only with SSO on.
+      ...(SSO_MODE ? [scim(scimOptions)] : []),
       ideafRules(),
     ],
   } satisfies BetterAuthOptions

@@ -12,6 +12,16 @@ const $=(id)=>document.getElementById(id);const msg=(m)=>$('msg').textContent=m;
 ${script}
 </script></body></html>`
 
+// Under single sign-on: one button. An MCP client's authorize request comes
+// back here with its query; after the provider, the browser returns to that
+// same authorize request (Better Auth doesn't carry it through SSO itself).
+export const ssoLoginPage = (providerId: string, providerName: string) =>
+  shell(
+    'Sign in',
+    `<button id="go">Continue with ${providerName}</button>`,
+    `$('go').onclick=async()=>{try{const p=new URLSearchParams(location.search);for(const k of ['sig','exp','ba_param','ba_iat','ba_pl'])p.delete(k);const callbackURL=p.has('client_id')?'/api/auth/oauth2/authorize?'+p:'/';done(await post('/sign-in/sso',{providerId:${JSON.stringify(providerId)},callbackURL}))}catch(x){msg(x.message)}};`,
+  )
+
 export const loginPage = () =>
   shell(
     'Sign in',

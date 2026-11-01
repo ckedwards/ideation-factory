@@ -1,0 +1,44 @@
+NOTE  run mvx4pjpy; Keycloak realm http://localhost:25447/realms/ideaf
+NOTE  server restarted: {"SPIKE_STORAGE":"actor"} → {"ok":true,"mode":"actor","transport":""}
+PASS  before the switch: alice has an account and a personal token (email codes)  — {"aliceId":"kwCcnYwQ7fxnDq9Qk6QJ6Z9iFASZJlrz"}
+NOTE  server restarted: {"SPIKE_STORAGE":"actor","SPIKE_SSO":"1"} → {"ok":true,"mode":"actor","transport":""}
+PASS  sso on: email codes refused  — {"status":403,"body":{"message":"this site signs in with single sign-on"},"location":""}
+PASS  sso on: passkey sign-in refused  — {"status":403,"body":{"message":"this site signs in with single sign-on"},"location":""}
+PASS  sso on: a site admin can still sign in with an email code (break-glass)  — 200
+PASS  oidc: alice signs in with Keycloak  — /welcome
+PASS  oidc: matched on primary email to her existing account (same id, handle kept)  — {"id":"kwCcnYwQ7fxnDq9Qk6QJ6Z9iFASZJlrz","username":"alice-mvx4pjpy"}
+PASS  oidc: session records sign-in method "sso"  — sso
+PASS  oidc: her personal token from before the switch still works  — 200
+PASS  oidc: bob (no account yet) gets one automatically  — /welcome
+PASS  oidc: his name comes from the provider, handle suggested from the email and unconfirmed  — {"name":"Bob Baker","username":"bob-mvx4pjpy","confirmed":false}
+PASS  first visit: bob changes his suggested handle once; a second change is refused  — {"first":200,"second":400,"now":"robert-mvx4pjpy"}
+PASS  first visit: confirming a handle someone has is refused  — {"status":400,"body":{"message":"that handle is taken"},"location":""}
+PASS  oidc: suggested handle avoids one already taken (dave → dave-…-2)  — dave-mvx4pjpy-2
+PASS  oidc: an email outside the allowed domains is refused, and no account is made  — /sso-error?error=domain_not_allowed&error_description=elsewhere.test+can%27t+sign+in+here
+PASS  mcp under sso: authorize → login → Keycloak → back to authorize → consent → token  — {"toLogin":"/login?response_type=code&redirect_uri=http%3A%2F%2Flocalhos","landed":"/api/auth/oauth2/authorize?response_type=code&client_id=http","toConsent":"/consent?response_type=code&redirect_uri=http%3A%2F%2Flocalh","sub":"kwCcnYwQ7fxnDq9Qk6QJ6Z9iFASZJlrz"}
+PASS  sso config: someone who is not a site admin cannot add a provider  — {"status":403,"msg":"SSO provider registration is disabled"}
+PASS  sso config: a site admin registers the SAML provider from its metadata  — {"status":200,"body":"{\"issuer\":\"http://localhost:25445/saml/acme\",\"oidcConfig\":null,\"samlConfig\":{\"issuer\":\"http://localhost:25445/saml/acme\",\"entryPoint\":\"http://localhost:25447/realms/ideaf/protocol/saml\",\"idpMetadata\":"}
+NOTE  ssoProvider row: {"providerId":"acme-saml","issuer":"http://localhost:25445/saml/acme","domain":"acme.test","userId":"4wfsP1Qpf1pVFROWgZFlQMDt3eNVciWr","samlLen":5506,"hasPrivateKey":1}
+PASS  saml: our SP metadata is served for the admin to give the provider  — 200
+PASS  saml: frank signs in with SAML (ACS POST cross-site, without our cookies); account created  — /welcome
+PASS  saml: name from the assertion, handle suggested  — {"name":"Frank Fisher","username":"frank-mvx4pjpy"}
+PASS  saml: alice via SAML reaches the same account as via OIDC  — /welcome
+PASS  saml: a captured response replayed in another browser is refused  — {"first":true,"replay":"http://localhost:25445/?error=invalid_saml_response&error_description=Unknown+or+expired+request+ID"}
+PASS  saml: a response edited to say another email is refused (signature)  — /sso-error?error=saml_error&error_description=Invalid+SAML+response
+PASS  saml: a response with its signatures stripped is refused  — /sso-error?error=saml_error&error_description=Invalid+SAML+response
+PASS  provider changes bob's email: same account, primary email follows  — {"ok":true,"id":true,"email":"robert-mvx4pjpy@acme.test","err":""}
+PASS  provider changes bob's email to alice's: refused  — /sso-error?error=email_taken&error_description=another+account+has+this+email
+PASS  scim: a wrong bearer token is refused  — 401
+PASS  scim: provider creates grace ahead of her first sign-in (handle suggested)  — {"status":201,"row":{"username":"grace-mvx4pjpy","handleConfirmed":0,"name":"Grace Hopper"}}
+PASS  scim: provisioning alice links her existing account (no duplicate)  — {"status":201,"users":1}
+PASS  scim: deactivating alice marks her inactive and ends her sessions  — {"status":200,"inactive":1,"sessions":0}
+PASS  scim: alice can no longer sign in, even though the provider would let her  — /sso-error?error=inactive&error_description=this+account+is+inactive
+PASS  scim: her personal token no longer gets JWTs  — 401
+PASS  scim: reactivated, she can sign in again  — /welcome
+NOTE  server restarted: {"SPIKE_STORAGE":"actor","SPIKE_SSO":"1","SSO_JIT":"0"} → {"ok":true,"mode":"actor","transport":""}
+PASS  automatic creation off: existing accounts sign in; a new person is refused  — {"carol":true,"heidi":"/sso-error?error=no_account&error_description=ask+a+site+admin+to+invite+you"}
+NOTE  server restarted: {"SPIKE_STORAGE":"adapter","SPIKE_SSO":"1","SPIKE_DIR_KEY":"sso-mvx4pjpy"} → {"ok":true,"mode":"adapter","transport":""}
+PASS  approach 1: SSO fails because SCIM and resolveUser need native transactions (expected)  — BetterAuthError: The scim plugin requires a database adapter with native transaction support.
+NOTE  server restarted: {"SPIKE_STORAGE":"actor"} → {"ok":true,"mode":"actor","transport":""}
+
+35/35 passed

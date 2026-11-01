@@ -22,6 +22,20 @@ export const people = (run: string) => ({
 })
 export const PASSWORD = 'spike-pass-1'
 
+/** Our SAML signing key and certificate (Keycloak wants signed requests). */
+export function spKeys() {
+  const dir = new URL('../out/', import.meta.url).pathname
+  const key = `${dir}sp-key.pem`
+  const cert = `${dir}sp-cert.pem`
+  if (!require('node:fs').existsSync(cert)) {
+    const p = Bun.spawnSync(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', key, '-out', cert, '-days', '30', '-subj', '/CN=ideaf-spike-sp'])
+    if (p.exitCode !== 0) throw new Error(`openssl: ${p.stderr.toString()}`)
+  }
+  const fs = require('node:fs')
+  const certPem = fs.readFileSync(cert, 'utf8') as string
+  return { privateKey: fs.readFileSync(key, 'utf8') as string, certPem, certBody: certPem.replace(/-----[A-Z ]+-----|\s+/g, '') }
+}
+
 async function adminToken() {
   const r = await fetch(`${KC_URL}/realms/master/protocol/openid-connect/token`, {
     method: 'POST',
@@ -55,7 +69,8 @@ const attr = (name: string, property: string) => ({
 export async function setupRealm(run: string) {
   const kc = await kcAdmin()
   await kc('DELETE', '/realms/ideaf')
-  await kc('POST', '/realms', { realm: 'ideaf', enabled: true, sslRequired: 'none', ssoSessionIdleTimeout: 1800 })
+  // Duplicate emails allowed, so the email_taken case can be tried.
+  await kc('POST', '/realms', { realm: 'ideaf', enabled: true, sslRequired: 'none', ssoSessionIdleTimeout: 1800, duplicateEmailsAllowed: true, loginWithEmailAllowed: false })
   for (const p of Object.values(people(run)))
     await kc('POST', '/realms/ideaf/users', { ...p, enabled: true, emailVerified: true, credentials: [{ type: 'password', value: PASSWORD, temporary: false }] })
 
@@ -79,7 +94,8 @@ export async function setupRealm(run: string) {
     attributes: {
       'saml.assertion.signature': 'true',
       'saml.server.signature': 'true',
-      'saml.client.signature': 'false',
+      'saml.client.signature': 'true',
+      'saml.signing.certificate': spKeys().certBody,
       'saml.signature.algorithm': 'RSA_SHA256',
       'saml_force_name_id_format': 'true',
       'saml_name_id_format': 'persistent',
