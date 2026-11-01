@@ -69,7 +69,7 @@ Pages are put together from shared components, not styled one by one. That keeps
 Storybook, run from the `ui` package, is the site that shows every component and story:
 
 - **Themes and text size:** a toolbar switches between light, dark and high contrast, and to larger text, so every component is checked in each.
-- **Accessibility:** axe checks run on every story, in the viewer and in CI.
+- **Accessibility:** axe checks run on every story, in the viewer and in CI. In CI, Storybook's Vitest add-on renders each story in headless Chromium, runs its play function and checks it with axe, once per theme (`bun run test:stories` in `ui`); a violation fails the run.
 - **Published:** it builds to static files, so contributors, and organizations checking a re-theme, can browse every component without running the app.
 - **Why Storybook:** it's the standard viewer for React, MIT-licensed, and builds with Vite like the app, with theme and accessibility add-ons. Stories use the open Component Story Format, which other viewers (Ladle, for one) also read, so we can switch later.
 
@@ -131,9 +131,9 @@ Changes collect in a **pending batch**. Before it's applied, a **preview** shows
 
 ## Theming and accessibility
 
-- **Tokens:** every color, size, font and radius is a CSS variable on `:root`. An organization re-themes by overriding them, with no rebuild.
+- **Tokens:** every color, size, font and radius is a CSS variable on `:root`. An organization re-themes by overriding them, with no rebuild. Light and dark share one list, each color written `light-dark(<light>, <dark>)`, so a theme only sets `color-scheme`; high contrast overrides the colors outright.
 - **Themes:** light, dark (Auto follows the system) and high contrast.
-- **Type:** Source Serif 4 for headings, Literata for reading, Inter for the interface, JetBrains Mono for code.
+- **Type:** Source Serif 4 for headings, Literata for reading, Inter for the interface, JetBrains Mono for code. They're bundled with the app (from Fontsource, under the SIL Open Font License), so a deployment makes no requests to a font service.
 - **Accessibility:**
   - every control is reachable by keyboard, and tooltips also open on focus;
   - states are never shown by color alone: icons, text and patterns too;
