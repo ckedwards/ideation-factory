@@ -46,3 +46,13 @@ export { Toast, type ToastProps } from './overlays/Toast.tsx'
 
 export { PageHeader, type PageHeaderProps } from './page/PageHeader.tsx'
 export { Empty, type EmptyProps } from './page/Empty.tsx'
+
+export {
+  MarkdownView,
+  defaultResolveLink,
+  plainText,
+  type MarkdownMark,
+  type MarkdownViewProps,
+  type ResolvedLink,
+  type SectionMark,
+} from './document/MarkdownView.tsx'
