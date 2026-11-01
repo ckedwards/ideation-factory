@@ -3,6 +3,7 @@
 // and --help. Prompts only appear when a person is at a terminal; agents get
 // --json output and stable exit codes.
 import { parseArgs } from 'node:util'
+import { change } from './commands/change.ts'
 import * as comments from './commands/comment.ts'
 import { edit } from './commands/edit.ts'
 import { list as listIdeas } from './commands/list.ts'
@@ -306,6 +307,30 @@ const commands: Array<Command | Family> = [
         ...(str(f, 'search') !== undefined ? { search: str(f, 'search')! } : {}),
         ...(str(f, 'cursor') !== undefined ? { cursor: str(f, 'cursor')! } : {}),
       }),
+  },
+  {
+    name: 'change',
+    usage: 'ideaf change [<idea>] [--title <words>] [--here] [--anyone]',
+    summary:
+      "Make another idea this working tree's, switching to its branch; one not in this repository yet is pulled here. Asks which at a terminal",
+    flags: {
+      title: {
+        type: 'string',
+        description: 'the idea whose title has these words (this repository’s first, then the server’s)',
+      },
+      here: { type: 'boolean', description: 'work on it in this working tree, on this branch, without switching' },
+      anyone: { type: 'boolean', description: 'choose from everyone’s ideas in this repository, not just yours' },
+    },
+    run: (ctx, f, a) =>
+      change(
+        ctx,
+        {
+          ...(str(f, 'title') !== undefined ? { title: str(f, 'title')! } : {}),
+          here: f.here === true,
+          anyone: f.anyone === true,
+        },
+        a.length > 1 ? containers.need(a, ['idea'], 'ideaf change [<idea>]')[0] : a[0],
+      ),
   },
   {
     name: 'sync',

@@ -31,10 +31,18 @@ export async function pull(ctx: Context, flags: { idea?: string }): Promise<numb
       'no_idea',
     )
   }
-  return ctx.lock(id, () => run(ctx, id))
+  return ctx.lock(id, async () => {
+    const pulled = await pullInto(ctx, id)
+    ctx.result({ idea: id, version: pulled.version, changes: pulled.changes })
+    return pulled.exit
+  })
 }
 
-async function run(ctx: Context, id: string): Promise<number> {
+/** Pulls an idea into the working tree (the caller holds its lock), printing what changed for people. */
+export async function pullInto(
+  ctx: Context,
+  id: string,
+): Promise<{ version: number; changes: Change[]; exit: number }> {
   const state: IdeaState = (await readState(ctx.ws, id)) ?? {
     idea: id,
     server: ctx.server,
@@ -123,6 +131,5 @@ async function run(ctx: Context, id: string): Promise<number> {
   if (conflicts.length) {
     ctx.say(`Resolve the conflict markers in ${conflicts.map((c) => c.path).join(', ')}, then run \`ideaf sync\`.`)
   }
-  ctx.result({ idea: id, version: latest.version, changes })
-  return conflicts.length ? EXIT.mergeConflicts : EXIT.ok
+  return { version: latest.version, changes, exit: conflicts.length ? EXIT.mergeConflicts : EXIT.ok }
 }

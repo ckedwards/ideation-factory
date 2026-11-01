@@ -36,16 +36,26 @@ export async function list(ctx: Context, flags: ListFlags): Promise<number> {
   return remote ? serverList(ctx, flags) : repositoryList(ctx, flags)
 }
 
-async function repositoryList(ctx: Context, flags: ListFlags): Promise<number> {
+type Summary = Output<Operations['getIdea']>
+
+/**
+ * This repository's ideas on this server: each one's local state and, if it
+ * can still be read, its summary. `elsewhere` counts those on other servers.
+ */
+export async function repositoryIdeas(ctx: Context) {
   const [states, active, me] = await Promise.all([listStates(ctx.ws), activeIdea(ctx.ws), ctx.api.me({})])
   const here = states.filter((s) => s.server === ctx.server)
-  const elsewhere = states.length - here.length
   const rows = await Promise.all(
-    here.map(async (state) => {
-      const summary = await ctx.api.getIdea({ idea: state.idea }).catch(() => null)
-      return { state, summary }
-    }),
+    here.map(async (state) => ({
+      state,
+      summary: (await ctx.api.getIdea({ idea: state.idea }).catch(() => null)) as Summary | null,
+    })),
   )
+  return { rows, active, me, elsewhere: states.length - here.length }
+}
+
+async function repositoryList(ctx: Context, flags: ListFlags): Promise<number> {
+  const { rows, active, me, elsewhere } = await repositoryIdeas(ctx)
   const shown = rows
     .filter((r) => flags.anyone || r.state.idea === active || !r.summary || r.summary.owner === me.id)
     .sort((a, b) => Number(b.state.idea === active) - Number(a.state.idea === active) || updated(b) - updated(a))

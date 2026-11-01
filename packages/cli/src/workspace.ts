@@ -56,6 +56,49 @@ export function openWorkspace(cwd: string): Workspace {
   return { root: cwd, git: null, stateDir: join(cwd, '.ideaf', 'state'), activeFile: join(cwd, '.ideaf', 'active') }
 }
 
+// --- branches and worktrees, for ideaf change -----------------------------------
+
+/** The repository's worktrees and the branch each has checked out. */
+export function worktrees(ws: Workspace): Array<{ path: string; branch: string | null }> {
+  const out = git(ws.root, ['worktree', 'list', '--porcelain']) ?? ''
+  const found: Array<{ path: string; branch: string | null }> = []
+  for (const block of out.split('\n\n')) {
+    const path = /^worktree (.+)$/m.exec(block)?.[1]
+    if (path) {
+      found.push({ path, branch: /^branch refs\/heads\/(.+)$/m.exec(block)?.[1] ?? null })
+    }
+  }
+  return found
+}
+
+/** Whether a branch exists here, or only on a remote (git switch then creates it, tracking the remote). */
+export function branchWhere(ws: Workspace, branch: string): 'local' | 'remote' | null {
+  if (git(ws.root, ['rev-parse', '--verify', '-q', `refs/heads/${branch}`]) !== null) {
+    return 'local'
+  }
+  return git(ws.root, ['for-each-ref', '--format=%(refname)', `refs/remotes/*/${branch}`]) ? 'remote' : null
+}
+
+/** Tracked files with uncommitted changes (untracked files are left alone by a switch). */
+export function trackedChanges(ws: Workspace): string[] {
+  // not git(): it trims, and each line starts with a two-letter status that can be a space
+  const run = Bun.spawnSync(['git', 'status', '--porcelain', '--untracked-files=no'], {
+    cwd: ws.root,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  return run.stdout
+    .toString()
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => line.slice(3))
+}
+
+export function switchBranch(ws: Workspace, branch: string): { ok: true } | { ok: false; error: string } {
+  const run = Bun.spawnSync(['git', 'switch', '--quiet', branch], { cwd: ws.root, stdout: 'pipe', stderr: 'pipe' })
+  return run.exitCode === 0 ? { ok: true } : { ok: false, error: run.stderr.toString().trim() }
+}
+
 const toPosix = (path: string) => path.split(sep).join('/')
 
 /** The Markdown files under `scope` (relative to the root), as sorted root-relative paths. Git repositories respect .gitignore. */
