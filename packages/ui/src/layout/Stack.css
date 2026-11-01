@@ -1,0 +1,66 @@
+.stack {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+}
+.row {
+  display: flex;
+  min-width: 0;
+}
+.row[data-wrap] {
+  flex-wrap: wrap;
+}
+:is(.stack, .row)[data-gap='0'] {
+  gap: 0;
+}
+:is(.stack, .row)[data-gap='1'] {
+  gap: var(--space-1);
+}
+:is(.stack, .row)[data-gap='2'] {
+  gap: var(--space-2);
+}
+:is(.stack, .row)[data-gap='3'] {
+  gap: var(--space-3);
+}
+:is(.stack, .row)[data-gap='4'] {
+  gap: var(--space-4);
+}
+:is(.stack, .row)[data-gap='5'] {
+  gap: var(--space-5);
+}
+:is(.stack, .row)[data-gap='6'] {
+  gap: var(--space-6);
+}
+:is(.stack, .row)[data-gap='7'] {
+  gap: var(--space-7);
+}
+:is(.stack, .row)[data-gap='8'] {
+  gap: var(--space-8);
+}
+.row[data-align='start'] {
+  align-items: flex-start;
+}
+.row[data-align='center'] {
+  align-items: center;
+}
+.row[data-align='end'] {
+  align-items: flex-end;
+}
+.row[data-align='baseline'] {
+  align-items: baseline;
+}
+.row[data-align='stretch'] {
+  align-items: stretch;
+}
+.row[data-justify='start'] {
+  justify-content: flex-start;
+}
+.row[data-justify='center'] {
+  justify-content: center;
+}
+.row[data-justify='end'] {
+  justify-content: flex-end;
+}
+.row[data-justify='between'] {
+  justify-content: space-between;
+}

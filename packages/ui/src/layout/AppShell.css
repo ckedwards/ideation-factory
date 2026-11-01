@@ -1,0 +1,29 @@
+.app-shell {
+  display: grid;
+  grid-template-columns: 16rem minmax(0, 1fr);
+  min-height: 100vh;
+}
+.app-shell-nav {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  border-right: var(--hairline) solid var(--rule);
+  background: var(--surface-2);
+}
+.app-shell-main {
+  min-width: 0;
+  outline: none;
+}
+/* narrow: the navigation above the page */
+@media (max-width: 50rem) {
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .app-shell-nav {
+    position: static;
+    height: auto;
+    border-right: none;
+    border-bottom: var(--hairline) solid var(--rule);
+  }
+}

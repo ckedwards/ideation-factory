@@ -69,3 +69,10 @@ export {
   type Suggestion,
 } from './comments/CommentCard.tsx'
 export { ViewInVersion, type ViewInVersionProps } from './comments/ViewInVersion.tsx'
+
+export { Row, Stack, type RowProps, type Space, type StackProps } from './layout/Stack.tsx'
+export { Page, Section, type PageProps, type SectionProps } from './layout/Page.tsx'
+export { AppShell, type AppShellProps } from './layout/AppShell.tsx'
+export { SideNav, type NavGroup, type NavItem, type SideNavProps } from './layout/SideNav.tsx'
+export { Tabs, type Tab, type TabsProps } from './layout/Tabs.tsx'
+export { IdeaPageLayout, type IdeaPageLayoutProps } from './layout/IdeaPageLayout.tsx'

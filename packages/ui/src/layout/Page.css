@@ -1,0 +1,38 @@
+.page {
+  display: grid;
+  align-content: start;
+  gap: var(--space-5);
+  max-width: 54rem;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-6) var(--space-8);
+}
+.page[data-width='wide'] {
+  max-width: 76rem;
+}
+@media (max-width: 40rem) {
+  .page {
+    padding: var(--space-4) var(--space-4) var(--space-7);
+  }
+}
+.page-section {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+}
+.page-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.page-section-head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+.page-section-head a {
+  color: var(--accent);
+  font-size: var(--text-sm);
+}

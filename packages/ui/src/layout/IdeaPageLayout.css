@@ -1,0 +1,59 @@
+.idea-page {
+  display: grid;
+  grid-template-columns: 17rem minmax(0, 1fr) 24rem;
+  /* one row pinned to the viewport; each pane scrolls on its own */
+  grid-template-rows: minmax(0, 1fr);
+  height: 100vh;
+  overflow: hidden;
+}
+.idea-page-no-panel {
+  grid-template-columns: 17rem minmax(0, 1fr);
+}
+.idea-page-nav,
+.idea-page-document,
+.idea-page-panel {
+  min-width: 0;
+  overflow-y: auto;
+}
+.idea-page-nav {
+  border-right: var(--hairline) solid var(--rule);
+  background: var(--surface-2);
+}
+.idea-page-document {
+  padding: var(--space-6) var(--space-7) var(--space-8);
+  outline: none;
+}
+.idea-page-document:focus-visible {
+  box-shadow: inset 0 0 0 calc(var(--hairline) * 2) var(--accent);
+}
+.idea-page-panel {
+  padding: var(--space-3) var(--space-4) var(--space-8);
+  border-left: var(--hairline) solid var(--rule);
+  background: var(--bg);
+}
+/* narrow: one column, the page scrolls */
+@media (max-width: 75rem) {
+  .idea-page,
+  .idea-page-no-panel {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    height: auto;
+    overflow: visible;
+  }
+  .idea-page-nav,
+  .idea-page-document,
+  .idea-page-panel {
+    overflow: visible;
+  }
+  .idea-page-nav {
+    border-right: none;
+    border-bottom: var(--hairline) solid var(--rule);
+  }
+  .idea-page-document {
+    padding: var(--space-5) var(--space-4) var(--space-7);
+  }
+  .idea-page-panel {
+    border-left: none;
+    border-top: var(--hairline) solid var(--rule);
+  }
+}
