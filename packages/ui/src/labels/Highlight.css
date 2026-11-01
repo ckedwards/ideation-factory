@@ -1,0 +1,6 @@
+.highlight {
+  border-radius: var(--radius-sm);
+  background: var(--mark);
+  color: var(--mark-ink);
+  box-shadow: 0 calc(var(--hairline) * 2) 0 var(--mark-line);
+}

@@ -11,7 +11,16 @@ export { UserName, type UserNameProps } from './people/UserName.tsx'
 export { ActorLabel, type Actor, type ActorLabelProps } from './people/ActorLabel.tsx'
 
 export { Tag, type TagProps, type TagTone } from './labels/Tag.tsx'
+export { Highlight, findMatch, type HighlightProps } from './labels/Highlight.tsx'
 export { TeamChip, type TeamChipProps, type TeamRef } from './teams/TeamChip.tsx'
 export { GroupTag, type GroupRef, type GroupTagProps } from './teams/GroupTag.tsx'
 
 export { StatusPill, type ClosedReason, type IdeaStatus, type StatusPillProps } from './ideas/StatusPill.tsx'
+
+export { Button, type ButtonProps, type ButtonVariant } from './controls/Button.tsx'
+export { SegmentedControl, type Segment, type SegmentedControlProps } from './controls/SegmentedControl.tsx'
+export { ThemeToggle, applyTheme, type Theme, type ThemeToggleProps } from './controls/ThemeToggle.tsx'
+export { SearchInput, type SearchInputProps } from './controls/SearchInput.tsx'
+export { Select, type SelectOption, type SelectProps } from './controls/Select.tsx'
+export { WatchSelect, WATCH_LEVELS, type WatchLevel, type WatchSelectProps } from './controls/WatchSelect.tsx'
+export { Combobox, type ComboboxOption, type ComboboxProps } from './controls/Combobox.tsx'

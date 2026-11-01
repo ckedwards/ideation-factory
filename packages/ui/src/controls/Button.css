@@ -1,0 +1,62 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: var(--hairline) solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.button-md {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+}
+.button-sm {
+  padding: 0 var(--space-2);
+  font-size: var(--text-xs);
+}
+.button:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+.button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.button-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+.button-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 88%, var(--ink));
+}
+.button-ghost {
+  border-color: transparent;
+  background: transparent;
+}
+.button-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+.button-link:hover:not(:disabled) {
+  background: none;
+  text-decoration-thickness: 0.12em;
+}
+.button-danger {
+  border-color: color-mix(in srgb, var(--lost) 60%, transparent);
+  color: var(--lost);
+}
+.button-danger:hover:not(:disabled) {
+  background: var(--del-bg);
+}
