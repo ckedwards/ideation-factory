@@ -559,7 +559,15 @@ export async function main(argv: string[], io: Io = processIo()): Promise<number
     const ctx = createContext(io, json)
     return await command.run(ctx, parsed.values, parsed.positionals, io)
   } catch (raw) {
-    const error = fromApiError(raw)
+    let error = fromApiError(raw)
+    if (error.code === 'unauthorized' && io.env.IDEAF_TOKEN) {
+      const server = (io.env.IDEAF_URL ?? 'http://localhost:8080').replace(/\/$/, '')
+      error = new CliError(
+        `IDEAF_TOKEN was refused: it's unknown, expired or revoked, its owner is inactive, or this site doesn't allow personal tokens. Make a new one at ${server}/login`,
+        error.exit,
+        error.code,
+      )
+    }
     if (json) {
       io.out(
         JSON.stringify(

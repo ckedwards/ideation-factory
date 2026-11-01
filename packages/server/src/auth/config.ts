@@ -32,9 +32,19 @@ export interface AuthSettings {
   /** Emails of the site admins: only they get site admin tokens. */
   siteAdmins: ReadonlySet<string>
   mailer: Mailer
+  /**
+   * Who may make and use personal tokens, a stopgap for CI where nobody can
+   * sign in (people and agents use OAuth): everyone, site admins only (the
+   * default), or no one. Turning them off refuses existing ones too. Site admin
+   * tokens aren't affected.
+   */
+  personalTokens?: PersonalTokenPolicy
   /** Rate limits on sign-in (on unless false: tests sign up many people from one address). */
   rateLimit?: boolean
 }
+
+export const PERSONAL_TOKEN_POLICIES = ['on', 'admins', 'off'] as const
+export type PersonalTokenPolicy = (typeof PERSONAL_TOKEN_POLICIES)[number]
 
 /** What the directory does when Better Auth adds or changes a person. */
 export interface UserHooks {
@@ -118,6 +128,18 @@ const rules = (settings: AuthSettings): BetterAuthPlugin => ({
           }
           if (body.configId !== 'personal') {
             throw new APIError('BAD_REQUEST', { message: 'a token is personal (or, for site admins, admin)' })
+          }
+          const policy = settings.personalTokens ?? 'admins'
+          if (policy !== 'on') {
+            const session = await getSessionFromCtx(ctx)
+            if (policy === 'off' || !session || !settings.siteAdmins.has(session.user.email.toLowerCase())) {
+              throw new APIError('FORBIDDEN', {
+                message:
+                  policy === 'off'
+                    ? 'personal tokens are turned off on this site: sign in with `ideaf auth login` instead'
+                    : 'only site admins can make personal tokens on this site: sign in with `ideaf auth login` instead',
+              })
+            }
           }
           const purpose = String(meta.purpose ?? 'me')
           if (!(PURPOSES as readonly string[]).includes(purpose)) {

@@ -62,50 +62,20 @@ export function createContext(io: Io, json: boolean): Context {
   const ws = openWorkspace(io.cwd)
   const server = (io.env.IDEAF_URL ?? 'http://localhost:8080').replace(/\/$/, '')
   const token = io.env.IDEAF_TOKEN
-  const send = io.fetch ?? ((request: Request) => fetch(request))
-  // a personal token is exchanged once per run for a 15-minute access token,
-  // so the server checks it by signature instead of asking the directory
-  let access: Promise<string> | null = null
-  const exchange = async (personal: string): Promise<string> => {
-    let response: Response
-    try {
-      response = await send(
-        new Request(`${server}/ideaf/token`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ token: personal }),
-        }),
-      )
-    } catch (error) {
-      throw new CliError(`couldn't reach ${server}: ${(error as Error).message}`, EXIT.unreachable, 'timed_out')
-    }
-    const body = (await response.json().catch(() => null)) as { access_token?: string; message?: string } | null
-    if (!response.ok || !body?.access_token) {
-      throw new CliError(
-        `IDEAF_TOKEN was refused: ${body?.message ?? `HTTP ${response.status}`}. Make a new one at ${server}/login`,
-        EXIT.unauthorized,
-        'unauthorized',
-      )
-    }
-    return body.access_token
-  }
+  // IDEAF_TOKEN goes as is: a personal token (a stopgap for CI), or an access token
   const api = createApiClient({
     baseUrl: server,
     token: () => {
       if (!token) {
         throw new CliError(
-          `no token: sign in at ${server}/login, make a personal token, and set IDEAF_TOKEN to it`,
+          `no token: set IDEAF_TOKEN to a personal token (made at ${server}/login)`,
           EXIT.unauthorized,
           'unauthorized',
         )
       }
-      if (!token.startsWith('ideaf_')) {
-        return token
-      }
-      access ??= exchange(token)
-      return access
+      return token
     },
-    fetch: send,
+    ...(io.fetch ? { fetch: io.fetch } : {}),
   })
   const ideaId = async (flag: string | undefined) => {
     const id = flag ?? (await activeIdea(ws))

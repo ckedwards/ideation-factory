@@ -22,14 +22,15 @@ export async function server(): Promise<(request: Request) => Promise<Response>>
 
 /**
  * IDEAF_TOKEN for a person (by handle), signing them up the first time; the
- * default person without one. An access token, which the cli uses as is: a
- * personal token would be exchanged on every run, and auth.test.ts covers that.
+ * default person without one. An access token from their session, so the
+ * server checks it by signature; personal tokens (checked in the directory on
+ * every request) are covered by auth.test.ts.
  */
 export async function token(handle = DEFAULT): Promise<string> {
   return (await signIn(await server(), handle)).jwt
 }
 
-/** A person's personal token (ideaf_…), for testing the cli's exchange. */
+/** A person's personal token (ideaf_…), as CI would use. */
 export async function personalToken(handle = DEFAULT): Promise<string> {
   return (await signIn(await server(), handle)).token
 }

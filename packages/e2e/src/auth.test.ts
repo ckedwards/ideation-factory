@@ -1,5 +1,5 @@
-// The cli signed in for real: a personal token in IDEAF_TOKEN is exchanged for
-// a 15-minute access token once per run, and a bad one fails clearly.
+// The cli with a personal token in IDEAF_TOKEN (the stopgap for CI), sent as
+// is, and a bad or missing one failing clearly.
 import { beforeAll, expect, test } from 'bun:test'
 import { personalToken, repo, server } from './harness.ts'
 

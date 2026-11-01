@@ -23,6 +23,8 @@ export const testAuth: AuthSettings = {
   secret: 'ideaf-test-secret-0123456789abcdef-0123456789',
   siteAdmins: new Set([TEST_ADMIN]),
   mailer: testMailer,
+  // everyone, so tests can make personal tokens; the default is site admins only
+  personalTokens: 'on',
   rateLimit: false,
 }
 
@@ -48,14 +50,14 @@ export function startTestActors(deps: Partial<NodeDeps> = {}): Promise<Client<Re
 }
 
 type App = (request: Request) => Promise<Response>
-/** A signed-in test person: their session cookie, a personal token, and a 15-minute access token from exchanging it. */
+/** A signed-in test person: their session cookie, a 15-minute access token from it, and a personal token. */
 export type SignedIn = { id: string; handle: string; email: string; cookie: string; token: string; jwt: string }
 const signedIn = new WeakMap<App, Map<string, Promise<SignedIn>>>()
 
 /**
  * Signs up (or in) as this handle through the real flow: an email code to
- * <handle>@example.test, then a personal token made with the session and
- * exchanged for an access token. Once per handle per app; `email` overrides the address (for a site admin, say).
+ * <handle>@example.test, then an access token from the session (as the web
+ * app gets one) and a personal token. Once per handle per app; `email` overrides the address (for a site admin, say).
  */
 export function signIn(app: App, handle: string, email = `${handle}@example.test`): Promise<SignedIn> {
   let known = signedIn.get(app)
@@ -102,10 +104,9 @@ export function signIn(app: App, handle: string, email = `${handle}@example.test
           cookie,
         )
       ).json()) as { key: string }
-      const { access_token } = (await (await post('/ideaf/token', { token: key.key })).json()) as {
-        access_token: string
-      }
-      return { id: user.id, handle, email, cookie, token: key.key, jwt: access_token }
+      const access = await app(new Request(`${TEST_URL}/api/auth/token`, { headers: { cookie, origin: TEST_URL } }))
+      const { token: jwt } = (await access.json()) as { token: string }
+      return { id: user.id, handle, email, cookie, token: key.key, jwt }
     })()
     known.set(handle, found)
   }

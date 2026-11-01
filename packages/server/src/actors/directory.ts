@@ -8,10 +8,10 @@ import { db } from 'rivetkit/db'
 import type { Auth } from '../auth/config.ts'
 import {
   authInDirectory,
-  exchangeToken,
   handleAuthRequest,
   migrateAuth,
   setInactive,
+  verifyPersonalToken,
   type WireRequest,
 } from '../auth/in-directory.ts'
 import { nodeDeps } from '../deps.ts'
@@ -68,9 +68,9 @@ export const directory = actor({
     }
   },
   actions: {
-    // sign-in: forwarded requests, the personal-token exchange, and status
+    // sign-in: forwarded requests, personal tokens, and status
     auth: (c, request: WireRequest) => handleAuthRequest(authOf(c), request),
-    exchange: (c, token: string) => exchangeToken(authOf(c), nodeDeps().auth, token),
+    verifyToken: (c, token: string) => verifyPersonalToken(authOf(c), nodeDeps().auth, token),
     setInactive: (c, id: string, inactive: boolean) => setInactive(authOf(c), id, inactive),
 
     ensureUser: (c, user: { id: string; handle: string; name: string; email?: string }) =>

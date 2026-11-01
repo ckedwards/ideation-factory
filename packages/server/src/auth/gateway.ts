@@ -1,16 +1,16 @@
 // Sign-in on an app node. Better Auth runs in the directory actor, so this
-// forwards /api/auth/* there and serves the personal-token exchange. Every API
-// request carries a 15-minute JWT, checked here by signature alone: no
-// directory call. A personal token sent as is (a quick script) still works, on
-// a slower path that asks the directory each time.
+// forwards /api/auth/* there. Every API request from a person or an agent
+// carries a 15-minute JWT (from OAuth, or a browser session), checked here by
+// signature alone: no directory call. A personal token (a stopgap for CI) is
+// checked in the directory on every request instead.
 import type { ApiErrorBody, Caller, Operation } from '@ideaf/api'
 import { createLocalJWKSet, errors, type JSONWebKeySet, jwtVerify } from 'jose'
-import type { Claims, Exchanged, WireRequest, WireResponse } from './in-directory.ts'
+import type { Claims, WireRequest, WireResponse } from './in-directory.ts'
 
 /** The directory actor's sign-in actions, as an app node calls them. */
 export interface AuthDirectory {
   auth(request: WireRequest): Promise<WireResponse>
-  exchange(token: string): Promise<Exchanged | null>
+  verifyToken(token: string): Promise<Claims | null>
   user(id: string): Promise<{ inactive: boolean } | null>
 }
 
@@ -65,22 +65,6 @@ export function authGateway(directory: AuthDirectory, baseURL: string) {
   return {
     forward,
 
-    /** POST /ideaf/token: a personal token for a 15-minute access token. */
-    async exchange(request: Request): Promise<Response> {
-      const body = (await request.json().catch(() => null)) as { token?: unknown } | null
-      if (typeof body?.token !== 'string') {
-        return Response.json({ error: 'invalid_request', message: 'send {"token": "ideaf_…"}' }, { status: 400 })
-      }
-      const exchanged = await directory.exchange(body.token)
-      if (!exchanged) {
-        return Response.json(
-          { error: 'invalid_token', message: 'that token is unknown, expired or revoked, or its owner is inactive' },
-          { status: 401 },
-        )
-      }
-      return Response.json({ access_token: exchanged.token, token_type: 'Bearer', expires_in: exchanged.expiresIn })
-    },
-
     /** Who's calling; for a write, also that their account is still active. */
     async authenticate(request: Request, operation: Operation): Promise<Caller | ApiErrorBody | null> {
       const header = request.headers.get('authorization') ?? ''
@@ -88,9 +72,7 @@ export function authGateway(directory: AuthDirectory, baseURL: string) {
       if (!token) {
         return null
       }
-      const claims = PERSONAL_TOKEN.test(token)
-        ? ((await directory.exchange(token))?.claims ?? null)
-        : await verify(token)
+      const claims = PERSONAL_TOKEN.test(token) ? await directory.verifyToken(token) : await verify(token)
       if (!claims) {
         return null
       }
