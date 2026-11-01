@@ -61,8 +61,9 @@ flowchart TB
 |---|---|
 | `ideaf auth login` / `status` | Sign in, or use a token (`IDEAF_TOKEN` in CI). Tokens are kept in the OS keychain |
 | `ideaf start` | Start an idea: title, description, team (or none, which makes it private to you). Optionally create a branch or worktree for it |
-| `ideaf share` | Show who has access, give or remove view, edit or share access to people, groups or the team's members, or make it public or private |
-| `ideaf move` | Move the idea into, out of, or to another team. Prints who would lose or gain access and asks to confirm; adjustments as flags, and `--yes` for agents |
+| `ideaf share` | Show who has access, give or remove view, edit or share access to people, groups or a team's members, or make it public or private. Who is written the same way in and out: `maya` or `@maya`, `group:<handle>`, `team:<handle>`, `everyone` |
+| `ideaf move` | Move the idea into, out of, or to another team. Prints who would lose or gain access and asks to confirm; adjustments as flags (`--keep`, `--skip`), `--dry-run`, and `--yes` for agents (without a terminal it won't move without it) |
+| `ideaf team …` / `ideaf group …` | List, show and create them; members, adding and removing people, leaving, and joining by request (`join`, `requests`, `approve`, `deny`). `ideaf team settings` changes who can create ideas in a team and what new ideas start with |
 | `ideaf list` / `ideaf change` | The ideas in this repository (the active one first), and switching between them, including switching branch or worktree |
 | `ideaf sync [path]` | Upload the idea's Markdown and the images it references. Refuses with "pull first" if the idea has moved on; `--force` overrides |
 | `ideaf pull` | Bring the latest version into your files (accepted suggestions, edits made remotely), merging with local edits like git |
