@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { createApiClient } from '@ideaf/api'
+import { memoryStore } from '@ideaf/cli/credentials.ts'
 import { main } from '@ideaf/cli/main.ts'
 import { createApp } from '@ideaf/server/app.ts'
 import { signIn, startTestActors, TEST_URL, testAuth } from '@ideaf/server/testing.ts'
@@ -63,6 +64,13 @@ export async function repo(
     env?: Record<string, string>
     /** Pretend a person is at a terminal, answering prompts with these in turn (a number picks from a list). */
     answers?: string[]
+    /**
+     * A browser signed in as this person (by handle), approving \`ideaf auth
+     * login\` with what the cli asked for. `local`: it opens here and hands the
+     * code to the cli's listener on 127.0.0.1. `remote`: there's no browser
+     * here, so it's opened elsewhere and the code pasted when the cli asks.
+     */
+    browser?: { as: string; mode?: 'local' | 'remote' }
   } = {},
 ): Promise<Repo> {
   const dir = await mkdtemp(join(tmpdir(), 'ideaf-e2e-'))
@@ -87,6 +95,9 @@ export async function repo(
   }
   const handler = await server()
   const defaultToken = options.token === undefined ? token() : null
+  // this "machine's" sign-ins: never the real keychain
+  const credentials = memoryStore()
+  let lastOutput: string[] = []
   return {
     dir,
     write,
@@ -95,6 +106,7 @@ export async function repo(
     async ideaf(...argv) {
       const out: string[] = []
       const err: string[] = []
+      lastOutput = out
       const token = options.token === undefined ? await defaultToken : await options.token
       const exit = await main(argv, {
         cwd: dir,
@@ -105,6 +117,12 @@ export async function repo(
         // each prompt is recorded in the output, with its options numbered from 1
         ask: async (question) => {
           out.push(`? ${question}`)
+          if (question === 'Code' && options.browser) {
+            // open the link the cli printed elsewhere, and paste what the page shows
+            const link = lastOutput.join('\n').match(/https?:\/\/\S+\/oauth2\/authorize\?\S+/)?.[0]
+            const shown = new URL(await approve(link!, options.browser.as))
+            return `${shown.searchParams.get('code')}.${shown.searchParams.get('state')}`
+          }
           return options.answers?.shift() ?? null
         },
         confirm: async (question) => {
@@ -118,8 +136,70 @@ export async function repo(
           return Number.isInteger(answer) ? answer - 1 : null
         },
         fetch: handler,
+        credentials: async () => credentials,
+        openBrowser: async (url) => {
+          if (options.browser?.mode === 'remote' || !options.browser) {
+            return false
+          }
+          // the browser lands on the cli's own listener, for real
+          void approve(url, options.browser.as)
+            .then((back) => fetch(back))
+            .catch((error) => console.error('the pretend browser failed:', error))
+          return true
+        },
       })
       return { exit, out: out.join('\n'), err: err.join('\n'), json: () => JSON.parse(out.join('\n')) }
     },
   }
+}
+
+/**
+ * A person's browser approving a sign-in: the authorize link, the consent page
+ * (choosing what the cli asked for, as the page starts from it), and consent.
+ * Returns where the browser is sent next, with the code.
+ */
+async function approve(link: string, handle: string): Promise<string> {
+  const app = await server()
+  const { cookie } = await signIn(app, handle)
+  const authorize = await app(new Request(link, { headers: { cookie }, redirect: 'manual' }))
+  const consent = new URL(authorize.headers.get('location')!, TEST_URL)
+  const asked = consent.searchParams
+  const list = (value: string | null) => (value ? value.split(',') : [])
+  const limits = {
+    teams: list(asked.get('ideaf_teams')),
+    ideas: list(asked.get('ideaf_ideas')),
+    noTeam: asked.get('ideaf_no_team') === '1',
+  }
+  const post = (path: string, body: unknown) =>
+    app(
+      new Request(`${TEST_URL}${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: TEST_URL, cookie },
+        body: JSON.stringify(body),
+      }),
+    )
+  const chose = await post('/api/auth/ideaf/token-grant', {
+    purpose: asked.get('ideaf_bot') ? (asked.get('ideaf_purpose') ?? 'bot-for-me') : 'me',
+    ...(asked.get('ideaf_bot') ? { bot: asked.get('ideaf_bot') } : {}),
+    readOnly: asked.get('ideaf_read_only') === '1',
+    limits: limits.teams.length || limits.ideas.length || limits.noTeam ? limits : null,
+    forConsent: true,
+  })
+  if (!chose.ok) {
+    throw new Error(`choosing the token grant failed: ${await chose.text()}`)
+  }
+  // the signed part of the query, as the consent page hands it back
+  const names = new Set(asked.getAll('ba_param'))
+  const signed = new URLSearchParams()
+  for (const [name, value] of asked.entries()) {
+    if (name === 'sig' || name === 'ba_param' || names.has(name)) {
+      signed.append(name, value)
+    }
+  }
+  const given = (await (
+    await post('/api/auth/oauth2/consent', { accept: true, oauth_query: signed.toString() })
+  ).json()) as {
+    url: string
+  }
+  return given.url
 }

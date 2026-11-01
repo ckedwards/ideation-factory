@@ -1,6 +1,8 @@
 // What every command gets: io, the workspace, the API client, output that
 // respects --json, and errors with stable exit codes.
 import { type ApiClient, ApiError, createApiClient } from '@ideaf/api'
+import { CliError, EXIT } from './errors.ts'
+import { accessToken } from './oauth.ts'
 import type { Io } from './io.ts'
 import {
   activeIdea,
@@ -12,31 +14,7 @@ import {
   withIdeaLock,
 } from './workspace.ts'
 
-/** Stable exit codes, so scripts and agents can tell outcomes apart. */
-export const EXIT = {
-  ok: 0,
-  error: 1,
-  usage: 2,
-  pullFirst: 3,
-  conflict: 4,
-  notFound: 5,
-  unauthorized: 6,
-  mergeConflicts: 7,
-  localChanges: 8,
-  unreachable: 9,
-  busy: 10,
-} as const
-
-export class CliError extends Error {
-  constructor(
-    message: string,
-    readonly exit: number,
-    readonly code: string,
-    readonly details?: unknown,
-  ) {
-    super(message)
-  }
-}
+export { CliError, EXIT }
 
 export interface Context {
   io: Io
@@ -62,20 +40,13 @@ export function createContext(io: Io, json: boolean): Context {
   const ws = openWorkspace(io.cwd)
   const server = (io.env.IDEAF_URL ?? 'http://localhost:8080').replace(/\/$/, '')
   const token = io.env.IDEAF_TOKEN
-  // IDEAF_TOKEN goes as is: a personal token (a stopgap for CI), or an access token
+  const send = io.fetch ?? ((request: Request) => fetch(request))
+  // IDEAF_TOKEN (for CI: a personal token, or an access token) goes as is;
+  // otherwise the sign-in from `ideaf auth login`, refreshed as needed
   const api = createApiClient({
     baseUrl: server,
-    token: () => {
-      if (!token) {
-        throw new CliError(
-          `no token: set IDEAF_TOKEN to a personal token (made at ${server}/login)`,
-          EXIT.unauthorized,
-          'unauthorized',
-        )
-      }
-      return token
-    },
-    ...(io.fetch ? { fetch: io.fetch } : {}),
+    token: async () => token ?? accessToken(send, server, await io.credentials()),
+    fetch: send,
   })
   const ideaId = async (flag: string | undefined) => {
     const id = flag ?? (await activeIdea(ws))

@@ -3,6 +3,7 @@
 // and --help. Prompts only appear when a person is at a terminal; agents get
 // --json output and stable exit codes.
 import { parseArgs } from 'node:util'
+import * as auth from './commands/auth.ts'
 import { change } from './commands/change.ts'
 import * as comments from './commands/comment.ts'
 import { edit } from './commands/edit.ts'
@@ -258,7 +259,62 @@ const comment: Family = {
   ],
 }
 
+/** ideaf auth …: signing in with OAuth, and the sign-in's limits. */
+const authFamily: Family = {
+  name: 'auth',
+  summary: 'Sign in (in the browser), see who you are signed in as, and sign out',
+  subcommands: [
+    {
+      name: 'login',
+      usage:
+        'ideaf auth login [--bot <name> [--own-bot]] [--team <team>]… [--idea <id>]… [--outside-teams] [--read-only] [--no-browser]',
+      summary:
+        'Sign in in your browser and choose what this sign-in may do; the flags fill in the choices. Without a browser here, paste a code shown on any device',
+      flags: {
+        bot: { type: 'string', description: 'act as this bot, on your behalf (for an agent that runs ideaf)' },
+        'own-bot': { type: 'boolean', description: 'a bot of its own, not on your behalf' },
+        team: { type: 'string', multiple: true, description: 'only ideas in this team (repeatable)' },
+        idea: { type: 'string', multiple: true, description: 'only this idea (repeatable)' },
+        'outside-teams': {
+          type: 'boolean',
+          description: 'only ideas outside any team (with --team and --idea, as well)',
+        },
+        'read-only': { type: 'boolean', description: 'read only: no edits, syncs or comments' },
+        'no-browser': {
+          type: 'boolean',
+          description: 'show a link to open on any device, and paste the code it gives',
+        },
+      },
+      run: (ctx, f) =>
+        auth.login(ctx, {
+          ...(str(f, 'bot') !== undefined ? { bot: str(f, 'bot')! } : {}),
+          botOfItsOwn: f['own-bot'] === true,
+          teams: list(f, 'team'),
+          ideas: list(f, 'idea'),
+          outsideTeams: f['outside-teams'] === true,
+          readOnly: f['read-only'] === true,
+          noBrowser: f['no-browser'] === true,
+        }),
+    },
+    {
+      name: 'status',
+      usage: 'ideaf auth status',
+      summary: 'Who you are signed in as, and what this sign-in may do',
+      flags: {},
+      run: (ctx) => auth.status(ctx),
+    },
+    {
+      name: 'logout',
+      usage: 'ideaf auth logout',
+      summary: 'Sign out: ends the sign-in on the server, and forgets its tokens here',
+      flags: {},
+      run: (ctx) => auth.logout(ctx),
+    },
+  ],
+}
+
 const commands: Array<Command | Family> = [
+  authFamily,
   {
     name: 'start',
     usage: 'ideaf start [path] --title <title> [--team <team>] [--description <text>]',
@@ -495,7 +551,8 @@ function help(io: Io, command?: Command | Family, prefix = 'ideaf'): void {
     io.out(`  ${c.name.padEnd(width)}${c.summary}`)
   }
   io.out(`
-Environment: IDEAF_URL (default http://localhost:8080) and IDEAF_TOKEN.
+Environment: IDEAF_URL (default http://localhost:8080), and IDEAF_TOKEN (for CI: it
+wins over \`ideaf auth login\`).
 Exit codes: 0 ok, 1 error, 2 usage or invalid input, 3 pull first, 4 conflict,
 5 not found, 6 not signed in or not allowed, 7 merge conflicts left in files,
 8 local edits not synced, 9 server unreachable, 10 another ideaf is busy with the idea.`)
