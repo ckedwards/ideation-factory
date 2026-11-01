@@ -1,7 +1,8 @@
 // ideaf change, end to end: switching ideas and their branches, worktrees,
 // ideas not in the repository yet, --title, and the picker.
 import { beforeAll, describe, expect, test } from 'bun:test'
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, readFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { api, repo, server, token } from './harness.ts'
 
@@ -129,5 +130,64 @@ describe('choosing the idea', () => {
     expect((await r.ideaf('change')).exit).toBe(2)
     // with --json, never a prompt
     expect((await r.ideaf('change', '--json')).json().error.code).toBe('choose')
+  })
+})
+
+describe('on another machine', () => {
+  /** A shared remote, and a first machine that started an idea on its own branch and pushed it. */
+  async function pushed() {
+    const origin = await mkdtemp(join(tmpdir(), 'ideaf-origin-'))
+    Bun.spawnSync(['git', 'init', '-q', '--bare', '-b', 'main', origin])
+    const first = await repo({ 'README.md': '# Readme\n' }, { token: token(h('riley')) })
+    first.git('add', '.')
+    first.git('commit', '-qm', 'first')
+    first.git('remote', 'add', 'origin', origin)
+    first.git('push', '-q', 'origin', 'main')
+    await first.write('docs/plan.md', '# Plan\n')
+    const { idea } = (
+      await first.ideaf('start', 'docs', '--title', 'Travelling', '--branch', 'idea/travel', '--json')
+    ).json()
+    first.git('add', '.')
+    first.git('commit', '-qm', 'plan')
+    first.git('push', '-q', '-u', 'origin', 'idea/travel')
+    return { origin, first, idea: idea as string }
+  }
+
+  /** A second machine: a fresh clone of the remote. */
+  async function clone(origin: string) {
+    const second = await repo({}, { git: false, token: token(h('riley')) })
+    second.git('clone', '-q', origin, '.')
+    second.git('config', 'user.email', 'e2e@example.com')
+    second.git('config', 'user.name', 'E2E')
+    return second
+  }
+
+  test("the server knows the idea's branch and remote, and change fetches that branch and switches to it", async () => {
+    const { origin, idea } = await pushed()
+    expect((await api(h('riley')).getIdea({ idea })).git).toEqual({ remote: origin, branch: 'idea/travel' })
+
+    const second = await clone(origin)
+    expect(second.git('branch', '--show-current')).toBe('main')
+    const changed = await second.ideaf('change', idea, '--json')
+    expect(changed.exit).toBe(0)
+    expect(changed.json()).toMatchObject({ idea, branch: 'idea/travel', switched: true, pulled: true, changes: [] })
+    expect(second.git('branch', '--show-current')).toBe('idea/travel')
+    expect(second.git('rev-parse', '--abbrev-ref', '@{upstream}')).toBe('origin/idea/travel')
+    expect(await second.read('docs/plan.md')).toBe('# Plan\n')
+    expect((await second.ideaf('sync', 'docs')).out).toBe('Nothing to sync.')
+  })
+
+  test('each sync moves where the server says it is; a remote this repository lacks just pulls here', async () => {
+    const { first, idea } = await pushed()
+    first.git('switch', '-qc', 'idea/renamed')
+    await first.write('docs/plan.md', '# Plan\n\nMore.\n')
+    expect((await first.ideaf('sync', 'docs')).exit).toBe(0)
+    expect((await api(h('riley')).getIdea({ idea })).git).toMatchObject({ branch: 'idea/renamed' })
+
+    const unrelated = await repo({}, { token: token(h('riley')) })
+    const changed = await unrelated.ideaf('change', idea)
+    expect(changed.exit).toBe(0)
+    expect(changed.out).toContain("which isn't a remote of this repository, so it's pulled onto main")
+    expect(await unrelated.read('docs/plan.md')).toBe('# Plan\n\nMore.\n')
   })
 })
