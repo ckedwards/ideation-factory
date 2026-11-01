@@ -29,31 +29,33 @@ const activeOf = async (r: { ideaf: (...argv: string[]) => Promise<{ json: () =>
   (await r.ideaf('list', '--anyone', '--json')).json().items.find((i: { active: boolean }) => i.active)?.id
 
 describe('ideaf change', () => {
-  test("switches to the idea's branch, and back", async () => {
+  test('on another branch, says how to switch and changes nothing; after the switch, changes', async () => {
     const { r, a, b } = await twoBranches()
-    const changed = await r.ideaf('change', a)
-    expect(changed.exit).toBe(0)
-    expect(changed.out).toBe(`Now on "Plan alpha" (${a}), on branch main.`)
-    expect(r.git('branch', '--show-current')).toBe('main')
-    expect(await activeOf(r)).toBe(a)
-
-    expect((await r.ideaf('change', b, '--json')).json()).toMatchObject({ idea: b, branch: 'feat-b', switched: true })
-    expect(r.git('branch', '--show-current')).toBe('feat-b')
-    expect((await r.ideaf('change', b)).out).toBe(`Already on "Plan beta" (${b}).`)
-  })
-
-  test("won't carry uncommitted changes to another branch, unless told to stay with --here", async () => {
-    const { r, a } = await twoBranches()
-    await r.write('b/plan.md', '# B, edited\n')
     const refused = await r.ideaf('change', a)
     expect(refused.exit).toBe(1)
-    expect(refused.err).toContain('commit or stash them first')
-    expect(refused.err).toContain('b/plan.md')
-    expect(r.git('branch', '--show-current')).toBe('feat-b')
+    expect(refused.err).toContain(`"Plan alpha" (${a}) is on branch main, and you're on feat-b`)
+    expect(refused.err).toContain('  git switch main')
+    expect(r.git('branch', '--show-current')).toBe('feat-b') // ideaf never runs git
+    expect(await activeOf(r)).toBe(b)
+    expect((await r.ideaf('change', a, '--json')).json().error).toMatchObject({
+      code: 'switch_first',
+      details: { branch: 'main', commands: ['git switch main'] },
+    })
 
+    // the user switches; now it changes
+    r.git('switch', '-q', 'main')
+    const changed = await r.ideaf('change', a)
+    expect(changed.exit).toBe(0)
+    expect(changed.out).toBe(`Now on "Plan alpha" (${a}).`)
+    expect(await activeOf(r)).toBe(a)
+    expect((await r.ideaf('change', a)).out).toBe(`Already on "Plan alpha" (${a}).`)
+  })
+
+  test('with --here, ties the idea to this branch without asking for a switch', async () => {
+    const { r, a } = await twoBranches()
     const here = await r.ideaf('change', a, '--here', '--json')
     expect(here.exit).toBe(0)
-    expect(here.json()).toMatchObject({ idea: a, branch: 'feat-b', switched: false })
+    expect(here.json()).toMatchObject({ idea: a, branch: 'feat-b' })
     expect(await activeOf(r)).toBe(a)
   })
 
@@ -118,13 +120,14 @@ describe('choosing the idea', () => {
   test('from a list, when a person is at a terminal', async () => {
     const answers: string[] = []
     const { r, a } = await twoBranches(answers)
+    r.git('switch', '-q', 'main')
     answers.push('2')
     const picked = await r.ideaf('change')
     expect(picked.exit).toBe(0)
     expect(picked.out).toContain('? Which idea?')
     expect(picked.out).toMatch(/ 1\) Plan beta .*\(this working tree’s, on feat-b\)/)
     expect(picked.out).toMatch(/ 2\) Plan alpha /)
-    expect(picked.out).toContain(`Now on "Plan alpha" (${a}), on branch main.`)
+    expect(picked.out).toContain(`Now on "Plan alpha" (${a}).`)
 
     answers.push('9')
     expect((await r.ideaf('change')).exit).toBe(2)
@@ -161,17 +164,31 @@ describe('on another machine', () => {
     return second
   }
 
-  test("the server knows the idea's branch and remote, and change fetches that branch and switches to it", async () => {
+  test("the server knows the idea's branch and remote, and change says how to fetch and switch to it", async () => {
     const { origin, idea } = await pushed()
     expect((await api(h('riley')).getIdea({ idea })).git).toEqual({ remote: origin, branch: 'idea/travel' })
 
     const second = await clone(origin)
+    // a clone made after the push already has the branch from the remote: switching is enough
+    expect((await second.ideaf('change', idea, '--json')).json().error).toMatchObject({
+      details: { commands: ['git switch idea/travel'] },
+    })
+    // one made before it hasn't fetched it yet
+    second.git('update-ref', '-d', 'refs/remotes/origin/idea/travel')
+    const refused = await second.ideaf('change', idea, '--json')
+    expect(refused.exit).toBe(1)
+    expect(refused.json().error).toMatchObject({
+      code: 'switch_first',
+      details: { commands: ['git fetch origin idea/travel', 'git switch idea/travel'] },
+    })
     expect(second.git('branch', '--show-current')).toBe('main')
+
+    // the user runs them, and changes again
+    second.git('fetch', '-q', 'origin', 'idea/travel')
+    second.git('switch', '-q', 'idea/travel')
     const changed = await second.ideaf('change', idea, '--json')
     expect(changed.exit).toBe(0)
-    expect(changed.json()).toMatchObject({ idea, branch: 'idea/travel', switched: true, pulled: true, changes: [] })
-    expect(second.git('branch', '--show-current')).toBe('idea/travel')
-    expect(second.git('rev-parse', '--abbrev-ref', '@{upstream}')).toBe('origin/idea/travel')
+    expect(changed.json()).toMatchObject({ idea, branch: 'idea/travel', pulled: true, changes: [] })
     expect(await second.read('docs/plan.md')).toBe('# Plan\n')
     expect((await second.ideaf('sync', 'docs')).out).toBe('Nothing to sync.')
   })
@@ -186,7 +203,8 @@ describe('on another machine', () => {
     const unrelated = await repo({}, { token: token(h('riley')) })
     const changed = await unrelated.ideaf('change', idea)
     expect(changed.exit).toBe(0)
-    expect(changed.out).toContain("which isn't a remote of this repository, so it's pulled onto main")
+    expect(changed.out).toContain("which isn't a remote of this repository.")
+    expect(changed.out).toContain('pulled here on main')
     expect(await unrelated.read('docs/plan.md')).toBe('# Plan\n\nMore.\n')
   })
 })
