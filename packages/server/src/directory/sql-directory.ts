@@ -27,6 +27,8 @@ import {
   type SearchResult,
   type Team,
   type TeamDefaults,
+  type TokenGrant,
+  type TokenGrantInput,
   type User,
 } from './types.ts'
 
@@ -572,7 +574,7 @@ export class SqlDirectory implements Directory {
 
   // --- ideas: the index, access and lists -------------------------------------------------
 
-  async canCreateIdea(actor: string, teamId: string | null): Promise<Result<null>> {
+  async canCreateIdea(actor: string, teamId: string | null, token?: string | null): Promise<Result<null>> {
     const user = await this.user(actor)
     if (!user) {
       return fail('forbidden', 'unknown user')
@@ -580,12 +582,24 @@ export class SqlDirectory implements Directory {
     if (user.inactive) {
       return fail('forbidden', 'inactive users can’t create ideas')
     }
+    const grant = token ? await this.tokenGrant(token) : null
+    if (token && (!grant || grant.user !== actor)) {
+      return fail('forbidden', 'this token was revoked')
+    }
+    if (grant?.readOnly) {
+      return fail('forbidden', 'this token is read only')
+    }
     if (teamId === null) {
-      return ok(null)
+      return grant?.limits && !grant.limits.noTeam
+        ? fail('forbidden', 'this token can only create ideas in the teams it was given')
+        : ok(null)
     }
     const team = await this.team(teamId)
     if (!team) {
       return fail('not_found', `no team ${teamId}`)
+    }
+    if (grant?.limits && !grant.limits.teams.includes(team.id)) {
+      return fail('forbidden', `this token wasn't given team ${team.handle}`)
     }
     if (team.archived) {
       return fail('forbidden', `${team.handle} is archived`)
@@ -659,7 +673,114 @@ export class SqlDirectory implements Directory {
     return row ? toIdea(row) : null
   }
 
-  async permission(ideaId: string, user: string): Promise<Permission> {
+  // --- tokens -------------------------------------------------------------------
+
+  async createTokenGrant(actor: string, input: TokenGrantInput): Promise<Result<TokenGrant>> {
+    const user = await this.user(actor)
+    if (!user || user.inactive) {
+      return fail('forbidden', 'unknown or inactive user')
+    }
+    if (!['me', 'bot-for-me', 'bot'].includes(input.purpose)) {
+      return fail('invalid', 'a token’s purpose is me, bot-for-me or bot')
+    }
+    const bot = input.purpose === 'me' ? null : (input.bot ?? '')
+    if (bot !== null && !BOT_NAME.test(bot)) {
+      return fail('invalid', 'a bot token needs a bot name: lowercase letters, digits and dashes')
+    }
+    let targets: Array<{ kind: 'team' | 'idea' | 'no_team'; target: string }> = []
+    if (input.limits) {
+      for (const ref of input.limits.teams ?? []) {
+        const team = await this.team(ref)
+        if (!team) {
+          return fail('not_found', `no team ${ref}`)
+        }
+        targets.push({ kind: 'team', target: team.id })
+      }
+      for (const id of input.limits.ideas ?? []) {
+        if (!(await this.permission(id, actor)).view) {
+          return fail('not_found', `no idea ${id} that you can see`)
+        }
+        targets.push({ kind: 'idea', target: id })
+      }
+      if (input.limits.noTeam) {
+        targets.push({ kind: 'no_team', target: '' })
+      }
+      if (targets.length === 0) {
+        return fail('invalid', 'a limited token needs at least one team, idea, or ideas outside teams')
+      }
+      targets = [...new Map(targets.map((t) => [`${t.kind}:${t.target}`, t])).values()]
+    }
+    const id = newId('tg')
+    const now = this.#now()
+    await this.#transaction(async (db) => {
+      await db
+        .insertInto('token_grants')
+        .values({
+          id,
+          user: actor,
+          purpose: input.purpose,
+          bot,
+          read_only: input.readOnly ? 1 : 0,
+          limited: input.limits ? 1 : 0,
+          created_at: now,
+          revoked_at: null,
+        })
+        .execute()
+      if (targets.length > 0) {
+        await db
+          .insertInto('token_grant_targets')
+          .values(targets.map((t) => ({ token_grant: id, ...t })))
+          .execute()
+      }
+    })
+    return ok((await this.tokenGrant(id))!)
+  }
+
+  async tokenGrant(id: string): Promise<TokenGrant | null> {
+    const row = await this.#db
+      .selectFrom('token_grants')
+      .selectAll()
+      .where('id', '=', id)
+      .where('revoked_at', 'is', null)
+      .executeTakeFirst()
+    if (!row) {
+      return null
+    }
+    const targets =
+      row.limited === 1
+        ? await this.#db.selectFrom('token_grant_targets').selectAll().where('token_grant', '=', id).execute()
+        : []
+    return {
+      id: row.id,
+      user: row.user,
+      purpose: row.purpose as TokenGrant['purpose'],
+      bot: row.bot,
+      readOnly: row.read_only === 1,
+      limits:
+        row.limited === 1
+          ? {
+              teams: targets.filter((t) => t.kind === 'team').map((t) => t.target),
+              ideas: targets.filter((t) => t.kind === 'idea').map((t) => t.target),
+              noTeam: targets.some((t) => t.kind === 'no_team'),
+            }
+          : null,
+      createdAt: Number(row.created_at),
+    }
+  }
+
+  async revokeTokenGrant(actor: string, id: string): Promise<Result<null>> {
+    const revoked = await this.#db
+      .updateTable('token_grants')
+      .set({ revoked_at: this.#now() })
+      .where('id', '=', id)
+      .where('user', '=', actor)
+      .where('revoked_at', 'is', null)
+      .returning('id')
+      .execute()
+    return revoked.length > 0 ? ok(null) : fail('not_found', `no token grant ${id} of yours`)
+  }
+
+  async permission(ideaId: string, user: string, token?: string | null): Promise<Permission> {
     const none: Permission = { view: false, edit: false, share: false, owner: false }
     const idea = await this.#db
       .selectFrom('ideas')
@@ -669,6 +790,36 @@ export class SqlDirectory implements Directory {
     if (!idea) {
       return none
     }
+    const base = await this.#basePermission(ideaId, idea, user)
+    if (!token || !base.view) {
+      return base
+    }
+    // a token's grant only narrows what its owner can do
+    const grant = await this.tokenGrant(token)
+    if (!grant || grant.user !== user) {
+      return none
+    }
+    const reaches =
+      !grant.limits ||
+      (idea.team !== null && grant.limits.teams.includes(idea.team)) ||
+      (idea.team === null && grant.limits.noTeam) ||
+      grant.limits.ideas.includes(ideaId)
+    if (!reaches) {
+      return none
+    }
+    return {
+      view: true,
+      edit: base.edit && !grant.readOnly,
+      share: base.share && !grant.readOnly && !grant.limits,
+      owner: base.owner,
+    }
+  }
+
+  async #basePermission(
+    ideaId: string,
+    idea: { owner: string; team: string | null },
+    user: string,
+  ): Promise<Permission> {
     if (idea.owner === user) {
       return { view: true, edit: true, share: true, owner: true }
     }
@@ -902,13 +1053,14 @@ export class SqlDirectory implements Directory {
     return { count: ids.length, people, everyone: false }
   }
 
-  async listIdeas(actor: string, filter: IdeaFilter = {}): Promise<Page<IdeaRow>> {
+  async listIdeas(actor: string, filter: IdeaFilter = {}, token?: string | null): Promise<Page<IdeaRow>> {
     const limit = pageSize(filter.limit)
     const after = decodeCursor(filter.cursor)
     let query = this.#db
       .selectFrom('ideas')
       .selectAll()
       .where((eb) => visibleTo(eb, actor))
+      .where((eb) => (token ? tokenReaches(eb, actor, token) : eb.lit(true)))
       .orderBy('updated_at', 'desc')
       .orderBy('id', 'desc')
       .limit(limit + 1)
@@ -932,7 +1084,7 @@ export class SqlDirectory implements Directory {
     return { items: page, next: rows.length > limit ? encodeCursor([page.at(-1)!.updatedAt, page.at(-1)!.id]) : null }
   }
 
-  async searchIdeas(actor: string, query: string, limit = 25): Promise<SearchResult> {
+  async searchIdeas(actor: string, query: string, limit = 25, token?: string | null): Promise<SearchResult> {
     const terms = searchTerms(query)
     const matching = this.#search.matching(terms, this.#searchCap)
     if (!matching) {
@@ -949,6 +1101,9 @@ export class SqlDirectory implements Directory {
       .innerJoin('ideas', 'ideas.id', 'm.id')
       .selectAll('ideas')
       .where((eb) => visibleTo(eb as unknown as ExpressionBuilder<DB, 'ideas'>, actor))
+      .where((eb) =>
+        token ? tokenReaches(eb as unknown as ExpressionBuilder<DB, 'ideas'>, actor, token) : eb.lit(true),
+      )
       .orderBy(closeness(q))
       .orderBy('ideas.updated_at', 'desc')
       .orderBy('ideas.id', 'desc')
@@ -1004,6 +1159,48 @@ function visibleTo(eb: ExpressionBuilder<DB, 'ideas'>, user: string): Expression
     ),
   ])
 }
+
+/**
+ * A token grant's reach, as part of the same indexed query: the grant is still
+ * in force and its owner's, and either unlimited or naming the idea's team, the
+ * idea itself, or (for an idea outside any team) ideas outside teams.
+ */
+function tokenReaches(eb: ExpressionBuilder<DB, 'ideas'>, user: string, token: string): Expression<SqlBool> {
+  return eb.exists(
+    eb
+      .selectFrom('token_grants')
+      .select('token_grants.id')
+      .where('token_grants.id', '=', token)
+      .where('token_grants.user', '=', user)
+      .where('token_grants.revoked_at', 'is', null)
+      .where((g) =>
+        g.or([
+          g('token_grants.limited', '=', 0),
+          g.exists(
+            g
+              .selectFrom('token_grant_targets')
+              .select('token_grant_targets.token_grant')
+              .whereRef('token_grant_targets.token_grant', '=', 'token_grants.id')
+              .where((t) =>
+                t.or([
+                  t.and([
+                    t('token_grant_targets.kind', '=', 'team'),
+                    t('token_grant_targets.target', '=', t.ref('ideas.team')),
+                  ]),
+                  t.and([
+                    t('token_grant_targets.kind', '=', 'idea'),
+                    t('token_grant_targets.target', '=', t.ref('ideas.id')),
+                  ]),
+                  t.and([t('token_grant_targets.kind', '=', 'no_team'), t('ideas.team', 'is', null)]),
+                ]),
+              ),
+          ),
+        ]),
+      ),
+  )
+}
+
+const BOT_NAME = /^[a-z0-9][a-z0-9-]{0,38}$/
 
 type GrantRow = { kind: DB['grants']['kind']; subject: string; edit: boolean; share: boolean }
 
