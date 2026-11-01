@@ -1,0 +1,42 @@
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.page-header-text {
+  min-width: 0;
+}
+.page-header h1 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.page-header-crumbs {
+  margin-bottom: var(--space-2);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+.page-header-crumbs a {
+  color: var(--accent);
+}
+.page-header-sub {
+  max-width: 44rem;
+  margin: var(--space-2) 0 0;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+.page-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}

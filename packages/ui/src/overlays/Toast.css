@@ -1,0 +1,22 @@
+.toast-region {
+  position: fixed;
+  bottom: var(--space-5);
+  left: 50%;
+  z-index: 90;
+  translate: -50% 0;
+}
+.toast {
+  max-width: min(36rem, calc(100vw - var(--space-6)));
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+  box-shadow: var(--shadow);
+  color: var(--bg);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+:root[data-theme='contrast'] .toast {
+  border: var(--hairline) solid var(--ink);
+  background: var(--surface);
+  color: var(--ink);
+}

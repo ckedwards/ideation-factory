@@ -1,0 +1,17 @@
+.empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border: var(--hairline) dashed var(--rule-strong);
+  border-radius: var(--radius-lg);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+.empty p {
+  margin: 0;
+}
+.empty a {
+  color: var(--accent);
+}
