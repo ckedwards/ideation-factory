@@ -21,8 +21,12 @@ export type Handlers<Ops extends Record<string, Operation>> = {
 }
 
 export interface RouterOptions {
-  /** Who's calling, or null if the request isn't signed in. */
-  authenticate(request: Request): Promise<Caller | null>
+  /**
+   * Who's calling: null if the request isn't signed in, or an error to refuse
+   * it with (an inactive account's write, say). Gets the operation, so it can
+   * check more for writes than for reads.
+   */
+  authenticate(request: Request, operation: Operation): Promise<Caller | ApiErrorBody | null>
   /** Check every response against its schema (on in tests, to catch drift). */
   validateOutput?: boolean
   onError?(error: unknown, operation: string): void
@@ -59,9 +63,12 @@ export function createRouter<Ops extends Record<string, Operation>>(
     }
     const { operation, key } = route
 
-    const caller = await options.authenticate(request)
+    const caller = await options.authenticate(request, operation)
     if (!caller) {
       return error('unauthorized', 'sign in, or send a token as "Authorization: Bearer <token>"')
+    }
+    if ('code' in caller) {
+      return error(caller.code, caller.message)
     }
 
     const idempotencyKey = request.headers.get('idempotency-key')
