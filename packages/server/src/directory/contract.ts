@@ -239,6 +239,41 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
         await d.setGrant('u-riley', 'i1', { kind: 'everyone' }, null)
         expect((await d.permission('i1', 'u-outsider')).view).toBe(false)
       })
+
+      test('people, groups and teams can be named by handle, and are stored by ID', async () => {
+        const { d, team } = await withTeam()
+        const group = (
+          (await d.createGroup('u-devon', { handle: 'security', name: 'Security' })) as { value: { id: string } }
+        ).value.id
+        await d.registerIdea(idea('i1'))
+        const view = { edit: false, share: false }
+        expect(await d.setGrant('u-riley', 'i1', { kind: 'user', id: '@sam' }, view)).toMatchObject({ ok: true })
+        expect(await d.setGrant('u-riley', 'i1', { kind: 'group', id: 'security' }, view)).toMatchObject({ ok: true })
+        expect(await d.setGrant('u-riley', 'i1', { kind: 'team', id: '@core' }, view)).toMatchObject({ ok: true })
+        expect(await d.grants('i1')).toEqual([
+          { subject: { kind: 'group', id: group }, ...view },
+          { subject: { kind: 'team', id: team }, ...view },
+          { subject: { kind: 'user', id: 'u-sam' }, ...view },
+        ])
+        expect((await d.permission('i1', 'u-devon')).view).toBe(true)
+        // and removed by handle
+        await d.setGrant('u-riley', 'i1', { kind: 'group', id: 'security' }, null)
+        expect((await d.permission('i1', 'u-devon')).view).toBe(false)
+        expect(await d.setGrant('u-riley', 'i1', { kind: 'group', id: 'nobody' }, view)).toMatchObject({
+          ok: false,
+          error: { code: 'not_found' },
+        })
+
+        // a team's default groups, too
+        const updated = await d.updateTeam('u-riley', team, {
+          defaults: { members: 'view', public: false, groups: [{ group: 'security', edit: true }] },
+        })
+        expect((updated as { value: { defaults: { groups: unknown } } }).value.defaults.groups).toEqual([
+          { group, edit: true },
+        ])
+        await d.registerIdea(idea('i2', { team }))
+        expect((await d.permission('i2', 'u-devon')).edit).toBe(true)
+      })
     })
 
     describe('moving an idea (the move wizard)', () => {
@@ -270,6 +305,18 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
         // keep the old team's access, as the wizard allows
         const kept = await d.previewMove('u-riley', 'i1', web, { keep: [{ kind: 'team', id: core }] })
         expect((kept as { value: MovePreview }).value.losing.count).toBe(0)
+        // the adjustments can name teams by handle
+        const byHandle = await d.previewMove('u-riley', 'i1', web, {
+          keep: [{ kind: 'team', id: 'core' }],
+          skip: [{ kind: 'team', id: '@web' }],
+        })
+        expect((byHandle as { value: MovePreview }).value.grants.after).toEqual([
+          { subject: { kind: 'team', id: core }, edit: false, share: false },
+        ])
+        expect(await d.previewMove('u-riley', 'i1', web, { keep: [{ kind: 'team', id: 'nowhere' }] })).toMatchObject({
+          ok: false,
+          error: { code: 'not_found' },
+        })
 
         const moved = await d.moveIdea('u-riley', 'i1', web)
         expect(moved.ok).toBe(true)

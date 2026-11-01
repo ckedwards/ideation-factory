@@ -244,18 +244,19 @@ export class SqlDirectory implements Directory {
         .where('container', '=', id)
         .executeTakeFirstOrThrow()
         .then((r) => Number(r.n))
+    const handle = idOrHandle.toLowerCase().replace(/^@/, '')
     if (kind === 'team') {
       const row = await this.#db
         .selectFrom('teams')
         .selectAll()
-        .where((eb) => eb.or([eb('id', '=', idOrHandle), eb('handle', '=', idOrHandle.toLowerCase())]))
+        .where((eb) => eb.or([eb('id', '=', idOrHandle), eb('handle', '=', handle)]))
         .executeTakeFirst()
       return row ? this.#toTeam(row, await members(row.id)) : null
     }
     const row = await this.#db
       .selectFrom('groups')
       .selectAll()
-      .where((eb) => eb.or([eb('id', '=', idOrHandle), eb('handle', '=', idOrHandle.toLowerCase())]))
+      .where((eb) => eb.or([eb('id', '=', idOrHandle), eb('handle', '=', handle)]))
       .executeTakeFirst()
     return row ? this.#toGroup(row, await members(row.id)) : null
   }
@@ -345,11 +346,16 @@ export class SqlDirectory implements Directory {
       if (!['none', 'view', 'edit'].includes(d.members) || typeof d.public !== 'boolean' || !Array.isArray(d.groups)) {
         return fail('invalid', 'defaults are { members, public, groups }')
       }
+      const groups: TeamDefaults['groups'] = []
       for (const g of d.groups) {
-        if (!(await this.group(g.group))) {
+        const group = await this.group(g.group)
+        if (!group) {
           return fail('invalid', `no group ${g.group}`)
         }
+        // stored by ID, whether named by ID or handle
+        groups.push({ group: group.id, edit: g.edit })
       }
+      changes = { ...changes, defaults: { ...d, groups } }
     }
     await this.#db
       .updateTable('teams')
@@ -686,10 +692,24 @@ export class SqlDirectory implements Directory {
     }))
   }
 
+  /** A grant subject by ID, whether it was named by ID or by handle. */
+  async #subject(named: GrantSubject): Promise<Result<GrantSubject>> {
+    if (named.kind === 'everyone') {
+      return ok(named)
+    }
+    const found =
+      named.kind === 'user'
+        ? await this.user(named.id)
+        : named.kind === 'group'
+          ? await this.group(named.id)
+          : await this.team(named.id)
+    return found ? ok({ kind: named.kind, id: found.id }) : fail('not_found', `no ${named.kind} ${named.id}`)
+  }
+
   async setGrant(
     actor: string,
     ideaId: string,
-    subject: GrantSubject,
+    named: GrantSubject,
     access: { edit: boolean; share: boolean } | null,
   ): Promise<Result<Grant[]>> {
     const idea = await this.idea(ideaId)
@@ -699,19 +719,13 @@ export class SqlDirectory implements Directory {
     if (!(await this.permission(ideaId, actor)).share) {
       return fail('forbidden', 'you need share access to change who can see this idea')
     }
-    if (subject.kind === 'user') {
-      if (subject.id === idea.owner) {
-        return fail('invalid', 'the owner always has full access')
-      }
-      if (!(await this.user(subject.id))) {
-        return fail('not_found', `no user ${subject.id}`)
-      }
+    const found = await this.#subject(named)
+    if (!found.ok) {
+      return found
     }
-    if (subject.kind === 'group' && !(await this.group(subject.id))) {
-      return fail('not_found', `no group ${subject.id}`)
-    }
-    if (subject.kind === 'team' && !(await this.team(subject.id))) {
-      return fail('not_found', `no team ${subject.id}`)
+    const subject = found.value
+    if (subject.kind === 'user' && subject.id === idea.owner) {
+      return fail('invalid', 'the owner always has full access')
     }
     if (subject.kind === 'everyone' && access && (access.edit || access.share)) {
       return fail('invalid', 'everyone can only be given view access')
@@ -757,8 +771,18 @@ export class SqlDirectory implements Directory {
     if (!allowed.ok) {
       return allowed
     }
+    const resolved: Required<MoveAdjustments> = { keep: [], skip: [] }
+    for (const which of ['keep', 'skip'] as const) {
+      for (const named of adjustments[which] ?? []) {
+        const found = await this.#subject(named)
+        if (!found.ok) {
+          return found
+        }
+        resolved[which].push(found.value)
+      }
+    }
     const now = await this.grants(ideaId)
-    const after = moveGrants(now, idea.team, target, adjustments)
+    const after = moveGrants(now, idea.team, target, resolved)
     const [before, later] = await Promise.all([
       this.#viewers(idea.owner, idea.team, now),
       this.#viewers(idea.owner, target?.id ?? null, after),
