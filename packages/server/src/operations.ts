@@ -351,6 +351,8 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
       }),
 
     findUsers: (input) => read(async () => ({ items: await directory().findUsers(input.q, input.limit) })),
+    getUser: (input) =>
+      read(async () => (await directory().user(input.user)) ?? notFound(`no one is called ${input.user}`)),
 
     listIdeas: (input, { caller }) =>
       read(async () => {

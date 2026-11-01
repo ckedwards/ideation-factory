@@ -161,6 +161,11 @@ describe('lists and search', () => {
     expect((await riley.findUsers({ q: handle('riley').slice(0, 9) })).items.map((u) => u.handle)).toEqual([
       handle('riley'),
     ])
+    // a grant names a person by ID; get_person finds them by ID or handle
+    const me = await riley.me({})
+    expect(await riley.getUser({ user: me.id })).toEqual(me)
+    expect(await riley.getUser({ user: `@${me.handle}` })).toEqual(me)
+    await expect(riley.getUser({ user: handle('nobody') })).rejects.toMatchObject({ code: 'not_found' })
     await riley.createTeam({ handle: handle('typeahead'), name: 'Type-ahead team' })
     expect((await riley.listTeams({ q: handle('typeahead') })).items.map((t) => t.handle)).toEqual([
       handle('typeahead'),

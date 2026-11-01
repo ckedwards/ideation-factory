@@ -128,6 +128,16 @@ export const directoryOperations = {
     input: z.strictObject({ q: z.string().trim().min(1).max(100), limit: Limit }),
     output: z.object({ items: z.array(User) }),
   }),
+  getUser: defineOperation({
+    name: 'get_person',
+    summary: 'Read a person',
+    description: "A person's handle and name, by ID or handle: for showing who an idea's grants are for.",
+    method: 'GET',
+    path: '/people/{user}',
+    kind: 'read',
+    input: z.strictObject({ user: Ref }),
+    output: User,
+  }),
 
   listIdeas: defineOperation({
     name: 'list_ideas',
