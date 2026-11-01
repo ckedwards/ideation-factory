@@ -109,7 +109,6 @@ Built in step 2 (`packages/server/src/idea/`). The logic is a plain `IdeaService
 - **core runs in a pool of worker threads**, and each idea always goes to the same worker, whose parse cache then holds that idea's latest version. Measured on the large idea (890 KB): an upload stalled the main thread for 901 ms in process, and at most 2 ms through the pool. The latest version's sources and open comments are also kept in the actor's memory.
 - **Size limits** are checked before parsing for uploads and new ideas, and on the result for batches (see Deployment settings in the [overview](../architecture.md)).
 - **Live updates:** after each write the actor broadcasts `version`, `comment` or `resolved` to everyone connected.
-- **Until access grants exist** (step 5), only the owner edits, and a single dev token stands in for sign-in.
 
 ## Inside the directory actor
 
@@ -120,7 +119,7 @@ Built in step 5 (`packages/server/src/directory/`): a `Directory` interface, `Sq
 - **Index updates come through the queue:** after a write, an idea actor schedules one update of its index row about 2 seconds later, however many writes happen meanwhile, and sends it without waiting. The directory applies them in batches, keeping only the newest per idea, and never moves a row's updated time backwards.
 - **Access:** the app node checks the caller's permission on an idea in the directory before every idea operation (one indexed read). An idea you can't view is "not found". Lists and search filter by access inside their own indexed query.
 - **Search:** FTS5 with the trigram tokenizer (confirmed in RivetKit's SQLite), behind its own interface. A search needs at least 3 characters (shorter words in it are ignored), so nothing is a full scan. Access and ranking are applied in the search query itself, before the limit, so ideas you can't see never crowd out yours; ranking is by closeness (exact title, starts with, a word starts with, anywhere), then most recently updated, in SQL that works on Postgres too. **A work cap** like Elasticsearch's `terminate_after`: one search reads at most 20,000 matches (the most recently updated), and says `incomplete` if there were more, so a very common word can't stall the directory. At 100,000 ideas: about 14 ms for a word in 10% of titles, about 24 ms for a word in every title.
-- **Until real sign-in** (step 6), dev tokens name the user: `Bearer dev` is "dev", and `Bearer dev:<handle>` is that person, added to the directory when first seen.
+- **Accounts** are Better Auth's own tables in the same actor (see Auth and access). The directory keeps its `users` table, filled in from Better Auth's hooks when an account is created or changes, rather than pointing Better Auth at it: Better Auth stores dates as strings and adds columns of its own, and the directory's queries stay the same either way.
 
 ## Schema changes
 
@@ -211,7 +210,8 @@ Anything else becomes **outdated** and links to the last version where it applie
 - **Sessions:** a `HttpOnly`, `Secure`, `SameSite` cookie, backed by a session row in the directory actor.
 - **Tokens** for the cli and agents: each has a purpose ("me", "a bot for me", "a bot") that decides how its activity is labeled. Only a hash is stored; a token expires within a year; tokens never carry site admin powers.
 - **MCP clients** sign in with OAuth 2.1 and get a token with a purpose chosen on the consent screen.
-- **The library:** [Better Auth](https://better-auth.com) is the candidate for all of this (email codes, passkeys, sessions, JWT signing, and the MCP authorization server). It's being evaluated in the [Better Auth spike](spike-better-auth.md), including how its storage maps onto the directory actor.
+- **The library:** [Better Auth](https://better-auth.com) 1.7.14, chosen in the [Better Auth spike](spike-better-auth.md). It runs **inside the directory actor** (the spike's approach 2), on its own Kysely SQLite adapter over the actor's database (`auth/dialect.ts`, with real transactions), and its tables are made by its own migrations when the actor starts. App nodes forward `/api/auth/*` to the actor as an action.
+- **Built so far (step 6, part 1):** email codes (logged by the dev server until email delivery exists), handles, sessions, passkeys (only right after an email code), personal and site admin tokens, the exchange at `POST /ideaf/token`, 15-minute EdDSA JWTs checked on every request by signature alone, with the public keys cached on each app node for 5 minutes, and inactive accounts (no new tokens, writes refused at once). The code is in `packages/server/src/auth/`. **Still to come:** single sign-on (OIDC, SAML) and SCIM, then `ideaf auth login`, then MCP OAuth and CIMD.
 
 ### Checking who's calling, without a database read
 

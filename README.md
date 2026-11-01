@@ -42,19 +42,22 @@ bun run test
 bun run engine:stop  # stop the local Rivet Engine
 ```
 
-Until real sign-in (step 6), the server takes a dev token: `Authorization: Bearer dev` signs you in as "dev", and `Bearer dev:maya` as "maya", so several people can be tried (set `IDEAF_DEV_TOKEN` to change the `dev` part). For example:
+**Signing in.** Open http://localhost:8080/login, enter any email, and use the code the dev server prints in its log (there's no email delivery yet). The first time, pick a handle. Then make a personal token there: it starts `ideaf_` and is shown once. Sign in with other emails to try several people. API requests carry it as a bearer token; it's exchanged for a 15-minute access token, which is what the server checks:
 
 ```
-curl -H 'authorization: Bearer dev' -X POST localhost:8080/ideas \
+export IDEAF_TOKEN=ideaf_…
+curl -H "authorization: Bearer $IDEAF_TOKEN" -X POST localhost:8080/ideas \
   -d '{"title":"Demo","files":[{"path":"plan.md","content":"# Plan\n\nHello.\n"}]}'
 # → {"idea":"i…","version":1}
-curl -H 'authorization: Bearer dev' localhost:8080/ideas/<idea>/blocks
+curl -X POST localhost:8080/ideaf/token -d "{\"token\":\"$IDEAF_TOKEN\"}"
+# → {"access_token":"eyJ…","token_type":"Bearer","expires_in":900}
 ```
 
-With the dev server running, the cli works the same way (`bun run --filter @ideaf/cli build` makes `packages/cli/dist/ideaf`, or run `bun packages/cli/src/main.ts`):
+In production, set `IDEAF_AUTH_SECRET` (at least 32 random characters) and `IDEAF_URL` (the public URL); `IDEAF_SITE_ADMINS` lists the site admins' emails.
+
+With the dev server running and `IDEAF_TOKEN` set, the cli works too (`bun run --filter @ideaf/cli build` makes `packages/cli/dist/ideaf`, or run `bun packages/cli/src/main.ts`). It exchanges the token once per run:
 
 ```
-export IDEAF_TOKEN=dev
 ideaf start docs --title "Offline mode"   # an idea from the Markdown in docs/
 ideaf show --blocks                       # sections and blocks with their IDs
 ideaf edit batch.json --dry-run           # what a batch would do, and to each comment
