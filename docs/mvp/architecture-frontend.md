@@ -63,6 +63,8 @@ Pages are put together from shared components, not styled one by one. That keeps
 - **Something new is a component first.** When a page needs something no component covers, add it to `ui` (or give an existing one a new prop or variant), with its stories, and then use it. Two pages that need similar UI share one component with variants, not two copies.
 - **Components take data; they don't fetch it.** Props in, events out: no TanStack Query or API calls inside `ui`. Pages do the loading. This is what lets the viewer show every state with fixture data.
 - **Every component has stories** for each state that matters: empty, loading, error, long text, many items, agent work ("🤖 planbot on behalf of Riley"), and keyboard focus.
+- **Links and time come from the app.** A component knows where a link goes, not how the app navigates: it renders `Link`, and the app passes TanStack Router's link in through `LinkProvider`. Relative times ("5h ago") read "now" from `NowProvider`, which the stories fix to one moment so every run reads the same.
+- **The document renders core's syntax tree.** `MarkdownView` takes the tree from `core`'s `markdownTree`, the same parse `core` anchors comments on, and renders it to React elements, never an HTML string, so raw HTML in a file is shown as text. Every block carries its source offsets, and comments and changes are given as source ranges.
 
 ### The component viewer
 

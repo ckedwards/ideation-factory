@@ -60,3 +60,9 @@ Each is hard to change once there's data. **All four are decided, in step 1:** s
 - **Shared fixtures:** the cli and the server use the same `core`, so content hashing and batch validation are tested once.
 - **A large-idea fixture** (dozens of files, hundreds of comments), for scale concern 4.
 - **Stories for `ui`:** axe accessibility checks on every story in CI, and a CI check that fails on CSS in `web`.
+
+## Follow-ups
+
+Smaller pieces of work that came up along the way and aren't part of a step yet:
+
+- **The rest of the idea page's components (step 7).** The `ui` package has the step's components, but the idea page needs a few more before step 8 can build it: the rendered redline for compare mode (inline word changes, added, removed and moved blocks); diagrams, drawn with Pele through `MarkdownView`'s `renderCode`; the media states (uploaded and changed images, images not uploaded, external images per the deployment setting); text comments placed level with their text in the panel; the selection menu for commenting, suggesting an edit or commenting on a section; and the idea's heading at the top of the left pane.
