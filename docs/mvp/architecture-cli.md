@@ -59,7 +59,7 @@ flowchart TB
 
 | Command | What it does |
 |---|---|
-| `ideaf auth login` / `status` | Sign in, or use a token (`IDEAF_TOKEN` in CI). Tokens are kept in the OS keychain |
+| `ideaf auth login` / `status` / `logout` | Sign in with OAuth (the authorization code flow with PKCE): the browser opens to sign in and choose what this sign-in may do (who acts with it: you, a bot for you, or a bot; read only or not; which teams or ideas), and hands the code back to a listener on 127.0.0.1. Without a browser of its own (over SSH) or with `--no-browser`, it shows a link to open on any device and asks for the code. Flags fill in the choices (`--bot`, `--team`, `--idea`, `--outside-teams`, `--read-only`). Tokens are kept in the OS keychain (or a file only you can read) and refreshed as needed; logout ends the sign-in on the server too. `IDEAF_TOKEN` (a personal token, for CI) wins over it |
 | `ideaf start` | Start an idea: title, description, team (or none, which makes it private to you). Optionally create a branch or worktree for it |
 | `ideaf share` | Show who has access, give or remove view, edit or share access to people, groups or a team's members, or make it public or private. Who is written the same way in and out: `maya` or `@maya`, `group:<handle>`, `team:<handle>`, `everyone` |
 | `ideaf move` | Move the idea into, out of, or to another team. Prints who would lose or gain access and asks to confirm; adjustments as flags (`--keep`, `--skip`), `--dry-run`, and `--yes` for agents (without a terminal it won't move without it) |
