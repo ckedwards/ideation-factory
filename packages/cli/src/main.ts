@@ -4,27 +4,164 @@
 // --json output and stable exit codes.
 import { parseArgs } from 'node:util'
 import { edit } from './commands/edit.ts'
+import { move } from './commands/move.ts'
 import { pull } from './commands/pull.ts'
+import { share } from './commands/share.ts'
 import { show } from './commands/show.ts'
+import { WHO } from './commands/subjects.ts'
+import * as containers from './commands/teams.ts'
 import { start } from './commands/start.ts'
 import { sync } from './commands/sync.ts'
 import { unlock } from './commands/unlock.ts'
 import { CliError, type Context, createContext, EXIT, fromApiError } from './context.ts'
 import { type Io, processIo } from './io.ts'
 
-type Flag = { type: 'string' | 'boolean'; short?: string; description: string }
+type Flag = { type: 'string' | 'boolean'; short?: string; multiple?: boolean; description: string }
+type Values = Record<string, string | boolean | string[] | undefined>
 
 type Command = {
   name: string
   usage: string
   summary: string
   flags: Record<string, Flag>
-  run(ctx: Context, flags: Record<string, string | boolean | undefined>, args: string[], io: Io): Promise<number>
+  run(ctx: Context, flags: Values, args: string[], io: Io): Promise<number>
 }
+
+/** A command made of subcommands, like `ideaf team add`. */
+type Family = { name: string; summary: string; subcommands: Command[] }
+
+const str = (f: Values, name: string) => (typeof f[name] === 'string' ? (f[name] as string) : undefined)
+const list = (f: Values, name: string) => (Array.isArray(f[name]) ? (f[name] as string[]) : [])
 
 const IDEA: Flag = { type: 'string', description: 'act on this idea instead of the one this working tree is on' }
 
-const commands: Command[] = [
+/** The membership subcommands, the same for teams and groups. */
+function family(kind: containers.Kind): Family {
+  const k = kind
+  const cursor: Flag = { type: 'string', description: 'the next page, from the last list' }
+  const sub = (
+    name: string,
+    args: string[],
+    summary: string,
+    run: (ctx: Context, a: string[], f: Values) => Promise<number>,
+    flags: Record<string, Flag> = {},
+    extra = '',
+  ): Command => {
+    const usage = `ideaf ${k} ${name}${args.map((a) => ` <${a}>`).join('')}${extra}`
+    return { name, usage, summary, flags, run: (ctx, f, a) => run(ctx, containers.need(a, args, usage), f) }
+  }
+  return {
+    name: kind,
+    summary:
+      kind === 'team'
+        ? "Teams: list, create, members, joining and settings (an idea in a team gets the team's defaults)"
+        : 'Groups: list, create, members and joining (ideas can be shared with a group)',
+    subcommands: [
+      {
+        name: 'list',
+        usage: `ideaf ${k} list [search]`,
+        summary: `${kind === 'team' ? 'Teams' : 'Groups'} by handle, optionally matching a search`,
+        flags: { cursor },
+        run: (ctx, f, a) => containers.list(ctx, k, a.join(' ') || undefined, str(f, 'cursor')),
+      },
+      sub(
+        'show',
+        [k],
+        `A ${k}'s name and members${k === 'team' ? ', who can create ideas in it, and its defaults' : ''}`,
+        (ctx, [ref]) => containers.show(ctx, k, ref!),
+      ),
+      sub(
+        'create',
+        ['handle'],
+        `Create a ${k}, with you as its admin (${k}s are invite only)`,
+        (ctx, [handle], f) =>
+          containers.create(ctx, k, handle!, {
+            ...(str(f, 'name') ? { name: str(f, 'name')! } : {}),
+            ...(str(f, 'description') ? { description: str(f, 'description')! } : {}),
+          }),
+        {
+          name: { type: 'string', description: `the ${k}'s name (asked for at a terminal if missing)` },
+          description: { type: 'string', description: 'a short description' },
+        },
+        ' --name <name> [--description <text>]',
+      ),
+      sub(
+        'members',
+        [k],
+        `A ${k}'s members and their roles`,
+        (ctx, [ref], f) => containers.members(ctx, k, ref!, str(f, 'cursor')),
+        {
+          cursor,
+        },
+      ),
+      sub(
+        'add',
+        [k, 'person'],
+        `Add someone to a ${k} (maintainers and admins), or change their role (admins)`,
+        (ctx, [ref, person], f) => containers.add(ctx, k, ref!, person!, str(f, 'role')),
+        { role: { type: 'string', description: 'admin, maintainer or member (the default)' } },
+        ' [--role <role>]',
+      ),
+      sub(
+        'remove',
+        [k, 'person'],
+        `Remove someone from a ${k}; their access through it ends at once`,
+        (ctx, [ref, person]) => containers.remove(ctx, k, ref!, person!),
+      ),
+      sub('leave', [k], `Leave a ${k}`, (ctx, [ref]) => containers.leave(ctx, k, ref!)),
+      sub('join', [k], `Ask to join a ${k}: its maintainers and admins decide`, (ctx, [ref]) =>
+        containers.join(ctx, k, ref!),
+      ),
+      sub('requests', [k], `People waiting to join a ${k}`, (ctx, [ref]) => containers.requests(ctx, k, ref!)),
+      sub('approve', [k, 'person'], `Let someone into a ${k}`, (ctx, [ref, person]) =>
+        containers.decide(ctx, k, ref!, person!, true),
+      ),
+      sub('deny', [k, 'person'], `Turn down someone's request to join a ${k}`, (ctx, [ref, person]) =>
+        containers.decide(ctx, k, ref!, person!, false),
+      ),
+      ...(kind === 'team'
+        ? [
+            sub(
+              'settings',
+              ['team'],
+              'Show or change who can create ideas in a team, and what new ideas in it start with (admins; existing ideas keep their access)',
+              (ctx, [ref], f) =>
+                containers.settings(ctx, ref!, {
+                  ...(str(f, 'create') ? { create: str(f, 'create')! } : {}),
+                  ...(str(f, 'members') ? { members: str(f, 'members')! } : {}),
+                  public: f.public === true,
+                  private: f.private === true,
+                  group: list(f, 'group'),
+                  removeGroup: list(f, 'remove-group'),
+                }),
+              {
+                create: { type: 'string', description: 'who can create ideas in it: anyone, members or maintainers' },
+                members: {
+                  type: 'string',
+                  description: "new ideas' access for the team's members: none, view or edit",
+                },
+                public: { type: 'boolean', description: 'new ideas start public (everyone can view)' },
+                private: { type: 'boolean', description: "new ideas don't start public" },
+                group: {
+                  type: 'string',
+                  multiple: true,
+                  description: 'new ideas start shared with this group: <group>[=view|edit] (repeatable)',
+                },
+                'remove-group': {
+                  type: 'string',
+                  multiple: true,
+                  description: 'stop sharing new ideas with this group',
+                },
+              },
+              ' [--create <who>] [--members <access>] [--public | --private] [--group <group>[=edit]]…',
+            ),
+          ]
+        : []),
+    ],
+  }
+}
+
+const commands: Array<Command | Family> = [
   {
     name: 'start',
     usage: 'ideaf start [path] --title <title> [--team <team>] [--description <text>]',
@@ -111,6 +248,66 @@ const commands: Command[] = [
     run: (ctx, f) => unlock(ctx, { ...(typeof f.idea === 'string' ? { idea: f.idea } : {}), force: f.force === true }),
   },
   {
+    name: 'share',
+    usage: 'ideaf share [<who>…] [--edit] [--share] [--remove]',
+    summary: 'Who can see the idea; or give <who> view access (and edit or share), or --remove it. <who> is ' + WHO,
+    flags: {
+      idea: IDEA,
+      edit: { type: 'boolean', description: 'they can edit it too' },
+      share: { type: 'boolean', description: 'they can change who can see it too' },
+      remove: { type: 'boolean', description: 'take their access away' },
+    },
+    run: (ctx, f, args) =>
+      share(
+        ctx,
+        {
+          ...(str(f, 'idea') ? { idea: str(f, 'idea')! } : {}),
+          edit: f.edit === true,
+          share: f.share === true,
+          remove: f.remove === true,
+        },
+        args,
+      ),
+  },
+  {
+    name: 'move',
+    usage: 'ideaf move (--team <team> | --out) [--keep <who>]… [--skip <who>]… [--dry-run] [--yes]',
+    summary: 'Move the idea into, out of, or to another team. Shows who would lose or gain access, and asks first',
+    flags: {
+      idea: IDEA,
+      team: { type: 'string', description: 'the team to move it to' },
+      out: { type: 'boolean', description: 'take it out of its team (private to its owner and who it’s shared with)' },
+      keep: {
+        type: 'string',
+        multiple: true,
+        description: 'keep the old team’s access (team:<handle>) instead of removing it (repeatable)',
+      },
+      skip: {
+        type: 'string',
+        multiple: true,
+        description: 'don’t add this new-team default: team:<handle>, group:<handle> or everyone (repeatable)',
+      },
+      'dry-run': { type: 'boolean', description: 'show what would change, moving nothing' },
+      yes: {
+        type: 'boolean',
+        short: 'y',
+        description: 'move without asking (needed without a terminal, or with --json)',
+      },
+    },
+    run: (ctx, f) =>
+      move(ctx, {
+        ...(str(f, 'idea') ? { idea: str(f, 'idea')! } : {}),
+        ...(str(f, 'team') ? { team: str(f, 'team')! } : {}),
+        out: f.out === true,
+        keep: list(f, 'keep'),
+        skip: list(f, 'skip'),
+        yes: f.yes === true,
+        dryRun: f['dry-run'] === true,
+      }),
+  },
+  family('team'),
+  family('group'),
+  {
     name: 'version',
     usage: 'ideaf version',
     summary: 'Print the version',
@@ -128,7 +325,16 @@ const GLOBAL: Record<string, Flag> = {
   help: { type: 'boolean', short: 'h', description: 'show help' },
 }
 
-function help(io: Io, command?: Command): void {
+function help(io: Io, command?: Command | Family, prefix = 'ideaf'): void {
+  if (command && 'subcommands' in command) {
+    io.out(`${command.summary}.\n\nUsage: ${prefix} ${command.name} <command> [options]\n`)
+    const width = Math.max(...command.subcommands.map((c) => c.name.length)) + 2
+    for (const c of command.subcommands) {
+      io.out(`  ${c.name.padEnd(width)}${c.summary}`)
+    }
+    io.out(`\nRun "${prefix} ${command.name} <command> --help" for its options.`)
+    return
+  }
   if (command) {
     io.out(`${command.summary}.\n\nUsage: ${command.usage}\n`)
     for (const [name, flag] of Object.entries({ ...command.flags, ...GLOBAL })) {
@@ -137,8 +343,9 @@ function help(io: Io, command?: Command): void {
     return
   }
   io.out('Usage: ideaf <command> [options]\n')
+  const width = Math.max(...commands.map((c) => c.name.length)) + 2
   for (const c of commands) {
-    io.out(`  ${c.name.padEnd(9)}${c.summary}`)
+    io.out(`  ${c.name.padEnd(width)}${c.summary}`)
   }
   io.out(`
 Environment: IDEAF_URL (default http://localhost:8080) and IDEAF_TOKEN.
@@ -147,22 +354,43 @@ Exit codes: 0 ok, 1 error, 2 usage or invalid input, 3 pull first, 4 conflict,
 8 local edits not synced, 9 server unreachable, 10 another ideaf is busy with the idea.`)
 }
 
+const isHelp = (arg: string | undefined) => arg === '--help' || arg === '-h' || arg === 'help'
+
 export async function main(argv: string[], io: Io = processIo()): Promise<number> {
-  const [name, ...rest] = argv
-  if (!name || name === '--help' || name === '-h' || name === 'help') {
-    help(
-      io,
-      commands.find((c) => c.name === rest[0]),
-    )
+  const [first, ...afterFirst] = argv
+  if (!first || isHelp(first)) {
+    const found = commands.find((c) => c.name === afterFirst[0])
+    const sub = found && 'subcommands' in found ? found.subcommands.find((c) => c.name === afterFirst[1]) : undefined
+    help(io, sub ?? found)
     return EXIT.ok
   }
-  const command = commands.find((c) => c.name === name)
-  if (!command) {
-    io.err(`ideaf: unknown command "${name}". Run "ideaf --help".`)
+  const found = commands.find((c) => c.name === first)
+  if (!found) {
+    io.err(`ideaf: unknown command "${first}". Run "ideaf --help".`)
     return EXIT.usage
   }
+  let name = first
+  let rest = afterFirst
+  let command: Command
+  if ('subcommands' in found) {
+    const [subName, ...afterSub] = afterFirst
+    if (!subName || isHelp(subName)) {
+      help(io, found)
+      return EXIT.ok
+    }
+    const sub = found.subcommands.find((c) => c.name === subName)
+    if (!sub) {
+      io.err(`ideaf ${first}: unknown command "${subName}". Run "ideaf ${first} --help".`)
+      return EXIT.usage
+    }
+    command = sub
+    name = `${first} ${subName}`
+    rest = afterSub
+  } else {
+    command = found
+  }
 
-  let parsed: { values: Record<string, string | boolean | undefined>; positionals: string[] }
+  let parsed: { values: Values; positionals: string[] }
   try {
     parsed = parseArgs({
       args: rest,
