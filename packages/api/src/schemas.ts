@@ -216,6 +216,23 @@ export const GrantSubject = z.discriminatedUnion('kind', [
 export const Grant = z.object({ subject: GrantSubject, edit: z.boolean(), share: z.boolean() })
 export const Permission = z.object({ view: z.boolean(), edit: z.boolean(), share: z.boolean(), owner: z.boolean() })
 
+/** What a token may do: see current_token. */
+export const TokenInfo = z.object({
+  user: User,
+  purpose: z.enum(['me', 'bot-for-me', 'bot']),
+  bot: z.string().nullable(),
+  readOnly: z.boolean(),
+  limits: z
+    .object({
+      teams: z.array(z.object({ id: z.string(), handle: z.string() })),
+      ideas: z.array(z.string()),
+      noTeam: z.boolean(),
+    })
+    .nullable(),
+  /** The token grant's ID, or null for a token without one. */
+  grant: z.string().nullable(),
+})
+
 const AccessChange = z.object({ count: z.number().int(), people: z.array(User), everyone: z.boolean() })
 export const MovePreview = z.object({
   from: z.string().nullable(),

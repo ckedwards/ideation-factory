@@ -15,7 +15,8 @@ import { registry, type Registry } from './registry.ts'
 let started: Promise<Client<Registry>> | null = null
 
 /** Where tests reach the app, and the sign-in codes it sends. */
-export const TEST_URL = 'http://ideaf.test'
+// a loopback host: OAuth allows plain http redirects only there (a deployment uses https)
+export const TEST_URL = 'http://localhost:4100'
 export const testMailer = new CapturingMailer()
 export const TEST_ADMIN = 'admin@example.test'
 export const testAuth: AuthSettings = {

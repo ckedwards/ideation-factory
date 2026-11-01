@@ -6,7 +6,8 @@ import type { Client } from 'rivetkit/client'
 import { DIRECTORY_KEY } from './actors/directory.ts'
 import type { AuthSettings } from './auth/config.ts'
 import { authGateway } from './auth/gateway.ts'
-import { loginPage } from './auth/pages.ts'
+import { cliCodePage, consentPage, loginPage } from './auth/pages.ts'
+import { CLI_CODE_PATH } from './auth/config.ts'
 import { createHandlers } from './operations.ts'
 import type { Registry } from './registry.ts'
 
@@ -38,6 +39,12 @@ export function createApp({ actors, auth, validateOutput = false }: AppDeps): (r
     }
     if (pathname === '/login') {
       return loginPage()
+    }
+    if (pathname === '/consent') {
+      return consentPage()
+    }
+    if (pathname === CLI_CODE_PATH) {
+      return cliCodePage()
     }
     if (pathname === '/openapi.json') {
       return Response.json(openapi)

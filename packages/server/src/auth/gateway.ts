@@ -3,7 +3,7 @@
 // carries a 15-minute JWT (from OAuth, or a browser session), checked here by
 // signature alone: no directory call. A personal token (a stopgap for CI) is
 // checked in the directory on every request instead.
-import type { ApiErrorBody, Caller, Operation } from '@ideaf/api'
+import type { ApiErrorBody, Caller, Operation, TokenScope } from '@ideaf/api'
 import { createLocalJWKSet, errors, type JSONWebKeySet, jwtVerify } from 'jose'
 import type { Claims, WireRequest, WireResponse } from './in-directory.ts'
 
@@ -17,6 +17,8 @@ export interface AuthDirectory {
 /** Public signing keys are fetched again at most this often (and at once for a key not seen before). */
 const KEYS_TTL_MS = 5 * 60_000
 const PERSONAL_TOKEN = /^ideaf_/
+/** What a token limited to some teams or ideas may still write: those ideas' content. */
+const CONTENT_WRITES = new Set(['create_idea', 'sync', 'edit', 'add_comment', 'reply', 'resolve_comment'])
 
 export function authGateway(directory: AuthDirectory, baseURL: string) {
   /** A request forwarded to Better Auth in the directory actor. */
@@ -65,8 +67,14 @@ export function authGateway(directory: AuthDirectory, baseURL: string) {
   return {
     forward,
 
-    /** Who's calling; for a write, also that their account is still active. */
-    async authenticate(request: Request, operation: Operation): Promise<Caller | ApiErrorBody | null> {
+    /**
+     * Who's calling, and what their token's grant allows. For a write, also
+     * that the token may write it and the account is still active.
+     */
+    async authenticate(
+      request: Request,
+      operation: Operation,
+    ): Promise<{ caller: Caller; token: TokenScope | null } | ApiErrorBody | null> {
       const header = request.headers.get('authorization') ?? ''
       const token = /^Bearer\s+(\S+)$/i.exec(header)?.[1]
       if (!token) {
@@ -76,14 +84,25 @@ export function authGateway(directory: AuthDirectory, baseURL: string) {
       if (!claims) {
         return null
       }
-      if (operation.kind === 'write') {
+      const scope = claims.gid ? { id: claims.gid, readOnly: Boolean(claims.ro), limited: Boolean(claims.lim) } : null
+      // a token can always revoke itself, whatever else it may not do
+      if (operation.kind === 'write' && operation.name !== 'revoke_token') {
+        if (scope?.readOnly) {
+          return { code: 'forbidden', message: 'this token is read only' }
+        }
+        if (scope?.limited && !CONTENT_WRITES.has(operation.name)) {
+          return {
+            code: 'forbidden',
+            message: 'this token is limited to some teams or ideas, so it can’t share, move ideas or manage teams',
+          }
+        }
         // reads ride out a token's last minutes; writes check status every time
         const user = await directory.user(claims.sub)
         if (!user || user.inactive) {
           return { code: 'forbidden', message: 'this account is inactive' }
         }
       }
-      return { user: claims.sub, bot: claims.bot ?? null, purpose: claims.purpose }
+      return { caller: { user: claims.sub, bot: claims.bot ?? null, purpose: claims.purpose }, token: scope }
     },
   }
 }
@@ -94,5 +113,12 @@ function toClaims(payload: Record<string, unknown>): Claims | null {
   }
   const purpose = payload.purpose === 'bot-for-me' || payload.purpose === 'bot' ? payload.purpose : 'me'
   const bot = typeof payload.bot === 'string' && purpose !== 'me' ? payload.bot : undefined
-  return { sub: payload.sub, purpose, ...(bot ? { bot } : {}) }
+  return {
+    sub: payload.sub,
+    purpose,
+    ...(bot ? { bot } : {}),
+    ...(typeof payload.gid === 'string'
+      ? { gid: payload.gid, ro: payload.ro === true, lim: payload.lim === true }
+      : {}),
+  }
 }

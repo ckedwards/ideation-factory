@@ -12,6 +12,7 @@ import {
   type Handlers,
   isApiErrorCode,
   type Operations,
+  type TokenScope,
 } from '@ideaf/api'
 import type { Client } from 'rivetkit/client'
 import { DIRECTORY_KEY } from './actors/directory.ts'
@@ -28,14 +29,17 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
   const directory = () => actors.directory.getOrCreate(DIRECTORY_KEY)
 
   /** The caller's permission on an idea, or the error to return if it isn't enough. */
+  /** The caller, and their token's grant if it has one (which narrows what they can do). */
+  type Who = { caller: Caller; token: TokenScope | null }
+
   const access = async (
     idea: string,
-    caller: Caller,
+    { caller, token }: Who,
     need: Need,
   ): Promise<
     { ok: true; permission: Permission } | { ok: false; error: { code: 'not_found' | 'forbidden'; message: string } }
   > => {
-    const permission = await directory().permission(idea, caller.user)
+    const permission = await directory().permission(idea, caller.user, token?.id ?? null)
     if (!permission.view) {
       return { ok: false, error: { code: 'not_found', message: "this idea doesn't exist, or you can't see it" } }
     }
@@ -57,11 +61,11 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
   /** Runs `fn` only if the caller has `need` on the idea. */
   const withAccess = async <T>(
     idea: string,
-    caller: Caller,
+    who: Who,
     need: Need,
     fn: () => Promise<HandlerResult<T>>,
   ): Promise<HandlerResult<T>> => {
-    const checked = await access(idea, caller, need)
+    const checked = await access(idea, who, need)
     return checked.ok ? fn() : { ok: false, error: checked.error }
   }
 
@@ -178,7 +182,11 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
     // --- ideas ---------------------------------------------------------------------
 
     createIdea: async (input, context) => {
-      const allowed = await directory().canCreateIdea(context.caller.user, input.team ?? null)
+      const allowed = await directory().canCreateIdea(
+        context.caller.user,
+        input.team ?? null,
+        context.token?.id ?? null,
+      )
       if (!allowed.ok) {
         return allowed
       }
@@ -221,16 +229,16 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
       return created
     },
 
-    getIdea: (input, { caller }) =>
-      withAccess(input.idea, caller, 'view', () =>
+    getIdea: (input, { caller, token }) =>
+      withAccess(input.idea, { caller, token }, 'view', () =>
         read(async () => {
           const summary = await ideaOf(input.idea).summary()
           return summary ?? notFound("this idea doesn't exist")
         }),
       ),
 
-    showBlocks: (input, { caller }) =>
-      withAccess(input.idea, caller, 'view', () =>
+    showBlocks: (input, { caller, token }) =>
+      withAccess(input.idea, { caller, token }, 'view', () =>
         read(async () => {
           const idea = ideaOf(input.idea)
           const v = input.version ?? (await idea.summary())?.latest ?? notFound("this idea doesn't exist")
@@ -239,11 +247,11 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         }),
       ),
 
-    pull: (input, { caller }) =>
-      withAccess(input.idea, caller, 'view', () => read(() => ideaOf(input.idea).pull(input.version))),
+    pull: (input, { caller, token }) =>
+      withAccess(input.idea, { caller, token }, 'view', () => read(() => ideaOf(input.idea).pull(input.version))),
 
     sync: (input, context) =>
-      withAccess(input.idea, context.caller, 'edit', () =>
+      withAccess(input.idea, context, 'edit', () =>
         write(
           input.idea,
           context,
@@ -258,8 +266,8 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         ),
       ),
 
-    previewEdit: (input, { caller }) =>
-      withAccess(input.idea, caller, 'edit', async () => {
+    previewEdit: (input, { caller, token }) =>
+      withAccess(input.idea, { caller, token }, 'edit', async () => {
         const result = await read(() => ideaOf(input.idea).preview(input.batch))
         if (!result.ok) {
           return result
@@ -268,15 +276,15 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
       }),
 
     edit: (input, context) =>
-      withAccess(input.idea, context.caller, 'edit', () =>
+      withAccess(input.idea, context, 'edit', () =>
         write(input.idea, context, { type: 'edit', batch: input.batch }, version),
       ),
 
-    listComments: (input, { caller }) =>
-      withAccess(input.idea, caller, 'view', () => read(() => ideaOf(input.idea).comments(input.version))),
+    listComments: (input, { caller, token }) =>
+      withAccess(input.idea, { caller, token }, 'view', () => read(() => ideaOf(input.idea).comments(input.version))),
 
     addComment: (input, context) =>
-      withAccess(input.idea, context.caller, 'view', () =>
+      withAccess(input.idea, context, 'view', () =>
         write(
           input.idea,
           context,
@@ -286,12 +294,12 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
       ),
 
     reply: (input, context) =>
-      withAccess(input.idea, context.caller, 'view', () =>
+      withAccess(input.idea, context, 'view', () =>
         write(input.idea, context, { type: 'reply', parent: input.comment, body: input.body }, comment),
       ),
 
     resolveComment: (input, context) =>
-      withAccess(input.idea, context.caller, 'view', () =>
+      withAccess(input.idea, context, 'view', () =>
         write(input.idea, context, { type: 'resolve', comment: input.comment, resolved: input.resolved }, (value) => {
           if (value.kind !== 'resolved') {
             throw new Error(`expected a resolved comment, got ${value.kind}`)
@@ -302,17 +310,17 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
 
     // --- access --------------------------------------------------------------------
 
-    getAccess: (input, { caller }) =>
+    getAccess: (input, { caller, token }) =>
       read(async () => {
-        const checked = await access(input.idea, caller, 'view')
+        const checked = await access(input.idea, { caller, token }, 'view')
         if (!checked.ok) {
           return notFound(checked.error.message)
         }
         return { you: checked.permission, grants: await directory().grants(input.idea) }
       }),
 
-    setAccess: async (input, { caller }) => {
-      const checked = await access(input.idea, caller, 'view')
+    setAccess: async (input, { caller, token }) => {
+      const checked = await access(input.idea, { caller, token }, 'view')
       if (!checked.ok) {
         return { ok: false, error: checked.error }
       }
@@ -356,7 +364,7 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
     getUser: (input) =>
       read(async () => (await directory().user(input.user)) ?? notFound(`no one is called ${input.user}`)),
 
-    listIdeas: (input, { caller }) =>
+    listIdeas: (input, { caller, token }) =>
       read(async () => {
         const team = input.team ? await directory().team(input.team) : null
         if (input.team && !team) {
@@ -366,16 +374,58 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         if (input.owner && !owner) {
           return notFound(`no one is called ${input.owner}`)
         }
-        return directory().listIdeas(caller.user, {
-          ...(team ? { team: team.id } : {}),
-          ...(owner ? { owner: owner.id } : {}),
-          ...(input.status ? { status: input.status } : {}),
-          ...(input.cursor ? { cursor: input.cursor } : {}),
-          ...(input.limit ? { limit: input.limit } : {}),
-        })
+        return directory().listIdeas(
+          caller.user,
+          {
+            ...(team ? { team: team.id } : {}),
+            ...(owner ? { owner: owner.id } : {}),
+            ...(input.status ? { status: input.status } : {}),
+            ...(input.cursor ? { cursor: input.cursor } : {}),
+            ...(input.limit ? { limit: input.limit } : {}),
+          },
+          token?.id ?? null,
+        )
       }),
 
-    searchIdeas: (input, { caller }) => read(() => directory().searchIdeas(caller.user, input.q, input.limit)),
+    searchIdeas: (input, { caller, token }) =>
+      read(() => directory().searchIdeas(caller.user, input.q, input.limit, token?.id ?? null)),
+
+    currentToken: (_input, { caller, token }) =>
+      read(async () => {
+        const user = await directory().user(caller.user)
+        if (!user) {
+          return notFound('unknown user')
+        }
+        const grant = token ? await directory().tokenGrant(token.id) : null
+        const limits = grant?.limits
+          ? {
+              teams: await Promise.all(
+                grant.limits.teams.map(async (id) => ({ id, handle: (await directory().team(id))?.handle ?? id })),
+              ),
+              ideas: grant.limits.ideas,
+              noTeam: grant.limits.noTeam,
+            }
+          : null
+        return {
+          user,
+          purpose: caller.purpose,
+          bot: caller.bot,
+          readOnly: token?.readOnly ?? false,
+          limits,
+          grant: token?.id ?? null,
+        }
+      }),
+
+    revokeToken: async (_input, { caller, token }) => {
+      if (!token) {
+        return {
+          ok: false,
+          error: { code: 'invalid', message: 'this token has no grant to revoke (sign out of a browser instead)' },
+        }
+      }
+      const revoked = await directory().revokeTokenGrant(caller.user, token.id)
+      return revoked.ok ? { ok: true, value: { revoked: true } } : revoked
+    },
 
     createTeam: async (input, { caller }) => fromResult(await directory().createTeam(caller.user, container(input))),
     getTeam: (input) => read(async () => (await directory().team(input.team)) ?? notFound(`no team ${input.team}`)),

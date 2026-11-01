@@ -7,8 +7,17 @@ import { type ApiErrorBody, ERROR_STATUS } from './errors.ts'
 import { type Operation, type Output, type ParsedInput, pathParams } from './operation.ts'
 import type { Caller } from './schemas.ts'
 
+/**
+ * What the caller's token was made to do, when it has a token grant: the grant,
+ * and the two things checked on every request without asking anyone. The
+ * handlers pass `id` on, so the directory narrows access to the grant's reach.
+ */
+export type TokenScope = { id: string; readOnly: boolean; limited: boolean }
+
 export type Context = {
   caller: Caller
+  /** The token's grant, or null for a token without one (a session's, say). */
+  token: TokenScope | null
   /** The write's idempotency key (the Idempotency-Key header), or null for reads. */
   key: string | null
   request: Request
@@ -26,7 +35,10 @@ export interface RouterOptions {
    * it with (an inactive account's write, say). Gets the operation, so it can
    * check more for writes than for reads.
    */
-  authenticate(request: Request, operation: Operation): Promise<Caller | ApiErrorBody | null>
+  authenticate(
+    request: Request,
+    operation: Operation,
+  ): Promise<{ caller: Caller; token?: TokenScope | null } | ApiErrorBody | null>
   /** Check every response against its schema (on in tests, to catch drift). */
   validateOutput?: boolean
   onError?(error: unknown, operation: string): void
@@ -63,13 +75,14 @@ export function createRouter<Ops extends Record<string, Operation>>(
     }
     const { operation, key } = route
 
-    const caller = await options.authenticate(request, operation)
-    if (!caller) {
+    const who = await options.authenticate(request, operation)
+    if (!who) {
       return error('unauthorized', 'sign in, or send a token as "Authorization: Bearer <token>"')
     }
-    if ('code' in caller) {
-      return error(caller.code, caller.message)
+    if ('code' in who) {
+      return error(who.code, who.message)
     }
+    const { caller, token = null } = who
 
     const idempotencyKey = request.headers.get('idempotency-key')
     if (idempotencyKey !== null && (idempotencyKey.length === 0 || idempotencyKey.length > 128)) {
@@ -109,6 +122,7 @@ export function createRouter<Ops extends Record<string, Operation>>(
       const handler = handlers[key as keyof Ops]
       const result = await handler(parsed.data as never, {
         caller,
+        token,
         key: operation.kind === 'write' ? idempotencyKey : null,
         request,
       })

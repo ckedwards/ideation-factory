@@ -20,6 +20,7 @@ import {
   Role,
   Team,
   TeamDefaults,
+  TokenInfo,
   User,
 } from './schemas.ts'
 
@@ -117,6 +118,28 @@ export const directoryOperations = {
     kind: 'read',
     input: z.strictObject({}),
     output: User,
+  }),
+  currentToken: defineOperation({
+    name: 'current_token',
+    summary: 'What this token may do',
+    description:
+      'Who the token is for, its purpose (and bot name), whether it is read only, and the teams and ideas it is limited to (null: everything you can see). A token without a grant, such as a browser session’s, has no limits and `grant: null`.',
+    method: 'GET',
+    path: '/token',
+    kind: 'read',
+    input: z.strictObject({}),
+    output: TokenInfo,
+  }),
+  revokeToken: defineOperation({
+    name: 'revoke_token',
+    summary: 'Revoke this token',
+    description:
+      'Ends the token grant this token was made with: it, and every token refreshed from the same sign-in, stop working at once. For signing out. Refused for a token without a grant.',
+    method: 'POST',
+    path: '/token/revoke',
+    kind: 'write',
+    input: z.strictObject({}),
+    output: z.object({ revoked: z.boolean() }),
   }),
   findUsers: defineOperation({
     name: 'find_people',
