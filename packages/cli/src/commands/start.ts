@@ -10,6 +10,7 @@ import {
   branchWhere,
   createBranch,
   defaultBranch,
+  gitPlace,
   openWorkspace,
   readText,
   scanMarkdown,
@@ -47,11 +48,13 @@ export async function start(
 
   const files = await Promise.all(paths.map(async (p) => ({ path: p, content: (await readText(ctx.ws, p))! })))
   const ws = flags.branch === undefined ? ctx.ws : await branchFor(ctx, flags.branch, flags.worktree, files)
+  const git = gitPlace(ws)
   const created = await ctx.api.createIdea({
     title,
     ...(flags.description ? { description: flags.description } : {}),
     ...(flags.team ? { team: flags.team } : {}),
     files,
+    ...(git ? { git } : {}),
   })
   const pulled = await ctx.api.pull({ idea: created.idea, version: created.version })
 

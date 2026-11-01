@@ -94,6 +94,70 @@ export function trackedChanges(ws: Workspace): string[] {
     .map((line) => line.slice(3))
 }
 
+/**
+ * A remote URL without credentials, safe to show to everyone who can see the
+ * idea: no user on http(s) (where tokens go), and no password anywhere.
+ */
+export function publicRemote(url: string): string {
+  return url.replace(/^([a-z][a-z0-9+.-]*):\/\/([^/@]*)@/i, (all, scheme: string, user: string) => {
+    if (/^https?$/i.test(scheme)) {
+      return `${scheme}://`
+    }
+    return user.includes(':') ? `${scheme}://${user.slice(0, user.indexOf(':'))}@` : all
+  })
+}
+
+/** One remote however it's written: https://host/a/b.git, git@host:a/b and ssh://git@host/a/b are the same. */
+export function remoteKey(url: string): string {
+  // git@host:path
+  const scp = /^[^/@:]+@([^/:]+):(.+)$/.exec(url)
+  // scheme://[user@]host[:port]/path
+  const full = /^[a-z][a-z0-9+.-]*:\/\/(?:[^/@]*@)?([^/]+)\/(.+)$/i.exec(url)
+  const [host, path] = scp ? [scp[1]!, scp[2]!] : full ? [full[1]!.replace(/:\d+$/, ''), full[2]!] : ['', url]
+  return `${host.toLowerCase()}/${path.replace(/\/+$/, '').replace(/\.git$/, '')}`
+}
+
+/** Where this working tree is in git, for the server: its branch, and that branch's remote (or origin). */
+export function gitPlace(ws: Workspace): { remote: string | null; branch: string } | undefined {
+  const branch = ws.git?.branch
+  if (!branch) {
+    return undefined
+  }
+  const name = git(ws.root, ['config', `branch.${branch}.remote`]) ?? 'origin'
+  const url = git(ws.root, ['remote', 'get-url', name])
+  return { remote: url ? publicRemote(url) : null, branch }
+}
+
+/** The repository's remotes, by name. */
+export function remotes(ws: Workspace): Array<{ name: string; url: string }> {
+  return (git(ws.root, ['remote']) ?? '')
+    .split('\n')
+    .filter(Boolean)
+    .flatMap((name) => {
+      const url = git(ws.root, ['remote', 'get-url', name])
+      return url ? [{ name, url }] : []
+    })
+}
+
+/** Fetches one branch from a remote, without ever stopping to ask for a password. */
+export function fetchBranch(ws: Workspace, remote: string, branch: string): GitResult {
+  const run = Bun.spawnSync(
+    ['git', 'fetch', '--quiet', remote, `refs/heads/${branch}:refs/remotes/${remote}/${branch}`],
+    {
+      cwd: ws.root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    },
+  )
+  return run.exitCode === 0 ? { ok: true } : { ok: false, error: run.stderr.toString().trim() }
+}
+
+/** Switches to a new local branch tracking a remote one. */
+export function trackBranch(ws: Workspace, remote: string, branch: string): GitResult {
+  return switched(ws, branch, gitRun(ws.root, ['switch', '--quiet', '-c', branch, '--track', `${remote}/${branch}`]))
+}
+
 type GitResult = { ok: true } | { ok: false; error: string }
 
 function gitRun(cwd: string, args: string[]): GitResult {
@@ -101,8 +165,16 @@ function gitRun(cwd: string, args: string[]): GitResult {
   return run.exitCode === 0 ? { ok: true } : { ok: false, error: run.stderr.toString().trim() }
 }
 
+/** After a switch, the workspace says which branch it's on now. */
+function switched(ws: Workspace, branch: string, result: GitResult): GitResult {
+  if (result.ok && ws.git) {
+    ws.git.branch = branch
+  }
+  return result
+}
+
 export function switchBranch(ws: Workspace, branch: string): GitResult {
-  return gitRun(ws.root, ['switch', '--quiet', branch])
+  return switched(ws, branch, gitRun(ws.root, ['switch', '--quiet', branch]))
 }
 
 /**
