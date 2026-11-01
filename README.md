@@ -2,6 +2,8 @@
 
 Review and edit ideas written in Markdown, together with agents, so comments stay with the text they're about. Licensed under Apache-2.0.
 
+> **Alpha software.** Nothing has shipped yet, and there are no migrations during the alpha: schemas and APIs change in place, so data from an earlier build won't carry over to a later one.
+
 ## Docs
 
 - [The idea](docs/idea.md) and the [market analysis](docs/market-analysis.md)

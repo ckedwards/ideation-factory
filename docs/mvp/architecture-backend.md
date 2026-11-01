@@ -124,6 +124,8 @@ Built in step 5 (`packages/server/src/directory/`): a `Directory` interface, `Sq
 
 ## Schema changes
 
+**During the alpha there are no migrations** (see `AGENTS.md`): a schema change edits v1 in place and re-freezes it, and local data is thrown away. What follows is the process for once something ships.
+
 There's one directory database and a separate SQLite database inside every idea actor, so a schema change reaches thousands of small databases, not one.
 
 - **Migrations are numbered lists in code** (`idea/schema.ts`, `directory/schema.ts`), with a `schema_version` table in each database. They only go forward: a change is a new migration appended to the list, and a migration that has shipped is never edited.

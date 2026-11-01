@@ -2,6 +2,14 @@
 
 TypeScript on Bun, with Rivet actors. The design is in `docs/`; build order and status in `docs/implementation-plan.md`.
 
+## Alpha
+
+This is alpha software: nothing has shipped, so there's no backward compatibility to keep, and **no migrations during the alpha**.
+
+- A schema change edits the v1 migration in place (`packages/server/src/idea/schema.ts`, `packages/server/src/directory/schema.ts`) and re-freezes it: delete `packages/server/src/migrations/frozen/<schema>-v1.sql`, then run `bun packages/server/src/migrations/freeze.ts`. Never append a v2.
+- Local data from before a schema change won't match it: run `bun run engine:stop` and delete the worktree's `.data/`. Tests always start from fresh data.
+- APIs, schemas and stored formats change freely, with no compatibility shims or deprecation paths.
+
 ## Commits
 
 Every commit message follows `CONTRIBUTING.md`; a hook and CI check it, and `bun scripts/commit-lint.ts --message "…"` checks one before committing.
