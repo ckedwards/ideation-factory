@@ -42,9 +42,11 @@ bun run test
 bun run engine:stop  # stop the local Rivet Engine
 ```
 
-**Signing in.** Open http://localhost:8080/login, enter any email, and use the code the dev server prints in its log (there's no email delivery yet). The first time, pick a handle. Sign in with other emails to try several people.
+**Signing in.** The sign-in page is http://localhost:8080/login: enter any email, and use the code the dev server prints in its log (there's no email delivery yet). The first time, pick a handle. Sign in with other emails to try several people.
 
-Until `ideaf auth login` exists, the cli needs a **personal token**: a stopgap meant for CI, where nobody can sign in. Only site admins can make them by default, so start the dev server with your email in `IDEAF_SITE_ADMINS` (or `IDEAF_PERSONAL_TOKENS=on` for everyone), then make one on the sign-in page. It starts `ideaf_`, is shown once, and goes in requests as a bearer token:
+The cli signs in with **`ideaf auth login`**: it opens your browser to sign in, and to choose what this sign-in may do (who acts with it, read only or not, and which teams or ideas it reaches; flags like `--bot planbot --team core --read-only` fill those in). With no browser of its own (over SSH, say) or with `--no-browser`, it shows a link to open on any device and asks for the code that page shows. Its tokens are kept in the OS keychain and refreshed as needed; `ideaf auth status` shows the sign-in and `ideaf auth logout` ends it.
+
+**In CI**, where nobody can sign in, use a personal token instead. They're a stopgap, and only site admins can make them by default, so start the dev server with your email in `IDEAF_SITE_ADMINS` (or `IDEAF_PERSONAL_TOKENS=on` for everyone), then make one on the sign-in page. It starts `ideaf_`, is shown once, and goes in `IDEAF_TOKEN` (which wins over `ideaf auth login`) or a request's bearer token:
 
 ```
 IDEAF_SITE_ADMINS=you@example.com bun run dev
@@ -56,7 +58,7 @@ curl -H "authorization: Bearer $IDEAF_TOKEN" -X POST localhost:8080/ideas \
 
 In production, set `IDEAF_AUTH_SECRET` (at least 32 random characters) and `IDEAF_URL` (the public URL); `IDEAF_SITE_ADMINS` lists the site admins' emails, and `IDEAF_PERSONAL_TOKENS` (`on`, `admins` or `off`; `admins` by default) decides who may use personal tokens. Turning them off refuses existing ones too.
 
-With the dev server running and `IDEAF_TOKEN` set, the cli works too (`bun run --filter @ideaf/cli build` makes `packages/cli/dist/ideaf`, or run `bun packages/cli/src/main.ts`):
+With the dev server running and the cli signed in, it works like this (`bun run --filter @ideaf/cli build` makes `packages/cli/dist/ideaf`, or run `bun packages/cli/src/main.ts`):
 
 ```
 ideaf start docs --title "Offline mode"   # an idea from the Markdown in docs/
