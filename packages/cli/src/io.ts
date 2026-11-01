@@ -1,6 +1,7 @@
 // Everything a command touches outside itself, so tests can run the cli in
 // process: the directory, the environment, output, prompts, and how to reach
 // the server.
+import { type CredentialStore, systemStore } from './credentials.ts'
 import * as prompts from './prompts.ts'
 
 export interface Io {
@@ -19,6 +20,10 @@ export interface Io {
   choose(question: string, options: Array<{ label: string; hint?: string }>): Promise<number | null>
   /** How to send API requests (the global fetch, or the server's handler in tests). */
   fetch?: (request: Request) => Promise<Response>
+  /** Where `ideaf auth login` keeps its tokens. */
+  credentials(): Promise<CredentialStore>
+  /** Opens a link in a browser on this machine; false where there's none to open (over SSH, say). */
+  openBrowser(url: string): Promise<boolean>
 }
 
 export function processIo(): Io {
@@ -31,5 +36,30 @@ export function processIo(): Io {
     ask: (question) => prompts.ask(question),
     confirm: (question) => prompts.confirm(question),
     choose: (question, options) => prompts.choose(question, options),
+    credentials: () => (store ??= systemStore(process.env)),
+    openBrowser: (url) => openBrowser(url, process.env),
+  }
+}
+
+let store: Promise<CredentialStore> | null = null
+
+/** The system's way to open a link, unless this is a session with no browser of its own. */
+async function openBrowser(url: string, env: Record<string, string | undefined>): Promise<boolean> {
+  const remote = Boolean(env.SSH_CONNECTION || env.SSH_TTY)
+  const display = process.platform !== 'linux' || Boolean(env.DISPLAY || env.WAYLAND_DISPLAY)
+  if (remote || !display) {
+    return false
+  }
+  const command =
+    process.platform === 'darwin'
+      ? ['open', url]
+      : process.platform === 'win32'
+        ? ['cmd', '/c', 'start', '', url]
+        : ['xdg-open', url]
+  try {
+    const opened = Bun.spawn(command, { stdout: 'ignore', stderr: 'ignore' })
+    return (await opened.exited) === 0
+  } catch {
+    return false
   }
 }
