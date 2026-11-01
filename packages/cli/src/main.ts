@@ -5,6 +5,7 @@
 import { parseArgs } from 'node:util'
 import * as comments from './commands/comment.ts'
 import { edit } from './commands/edit.ts'
+import { list as listIdeas } from './commands/list.ts'
 import { move } from './commands/move.ts'
 import { pull } from './commands/pull.ts'
 import { share } from './commands/share.ts'
@@ -280,6 +281,31 @@ const commands: Array<Command | Family> = [
         },
         args[0],
       ),
+  },
+  {
+    name: 'list',
+    usage: 'ideaf list [--anyone] [--server] [--team <team>] [--owner <person>] [--status <status>] [--search <words>]',
+    summary:
+      "This repository's ideas, this working tree's first; or, with --server or a filter, the ideas you can see. Yours unless --anyone",
+    flags: {
+      anyone: { type: 'boolean', description: 'whoever owns them, not just yours' },
+      server: { type: 'boolean', description: 'ideas on the server you can see, not just this repository’s' },
+      team: { type: 'string', description: 'ideas in this team (on the server)' },
+      owner: { type: 'string', description: 'ideas this person owns (on the server)' },
+      status: { type: 'string', description: 'ideas with this status (on the server)' },
+      search: { type: 'string', description: 'ideas whose titles match, closest first (on the server)' },
+      cursor: { type: 'string', description: 'the next page, from the last --server list' },
+    },
+    run: (ctx, f) =>
+      listIdeas(ctx, {
+        anyone: f.anyone === true,
+        server: f.server === true,
+        ...(str(f, 'team') !== undefined ? { team: str(f, 'team')! } : {}),
+        ...(str(f, 'owner') !== undefined ? { owner: str(f, 'owner')! } : {}),
+        ...(str(f, 'status') !== undefined ? { status: str(f, 'status')! } : {}),
+        ...(str(f, 'search') !== undefined ? { search: str(f, 'search')! } : {}),
+        ...(str(f, 'cursor') !== undefined ? { cursor: str(f, 'cursor')! } : {}),
+      }),
   },
   {
     name: 'sync',

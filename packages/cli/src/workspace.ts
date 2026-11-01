@@ -127,6 +127,20 @@ export async function readState(ws: Workspace, idea: string): Promise<IdeaState 
   }
 }
 
+/** Every idea with state here: the repository's (shared by its worktrees), or this folder's outside git. */
+export async function listStates(ws: Workspace): Promise<IdeaState[]> {
+  let names: string[]
+  try {
+    names = await readdir(ws.stateDir)
+  } catch {
+    return []
+  }
+  const states = await Promise.all(
+    names.filter((n) => n.endsWith('.json')).map((n) => readState(ws, n.slice(0, -'.json'.length))),
+  )
+  return states.filter((s): s is IdeaState => s !== null).sort((a, b) => a.idea.localeCompare(b.idea))
+}
+
 export async function writeState(ws: Workspace, state: IdeaState): Promise<void> {
   await mkdir(ws.stateDir, { recursive: true })
   const file = join(ws.stateDir, `${state.idea}.json`)
