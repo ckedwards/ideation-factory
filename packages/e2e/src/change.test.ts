@@ -120,8 +120,9 @@ describe('choosing the idea', () => {
     answers.push('2')
     const picked = await r.ideaf('change')
     expect(picked.exit).toBe(0)
+    expect(picked.out).toContain('? Which idea?')
     expect(picked.out).toMatch(/ 1\) Plan beta .*\(this working tree’s, on feat-b\)/)
-    expect(picked.out).toContain('Which idea? [1-2]')
+    expect(picked.out).toMatch(/ 2\) Plan alpha /)
     expect(picked.out).toContain(`Now on "Plan alpha" (${a}), on branch main.`)
 
     answers.push('9')

@@ -49,7 +49,7 @@ export async function repo(
     git?: boolean
     token?: string | null
     env?: Record<string, string>
-    /** Pretend a person is at a terminal, answering prompts with these in turn. */
+    /** Pretend a person is at a terminal, answering prompts with these in turn (a number picks from a list). */
     answers?: string[]
   } = {},
 ): Promise<Repo> {
@@ -89,9 +89,20 @@ export async function repo(
         out: (t) => out.push(t),
         err: (t) => err.push(t),
         interactive: options.answers !== undefined,
-        prompt: (question) => {
-          out.push(question)
+        // each prompt is recorded in the output, with its options numbered from 1
+        ask: async (question) => {
+          out.push(`? ${question}`)
           return options.answers?.shift() ?? null
+        },
+        confirm: async (question) => {
+          out.push(`? ${question} [y/N]`)
+          return /^y(es)?$/i.test(options.answers?.shift() ?? '')
+        },
+        choose: async (question, choices) => {
+          out.push(`? ${question}`)
+          choices.forEach((c, i) => out.push(`  ${i + 1}) ${c.label}${c.hint ? ` (${c.hint})` : ''}`))
+          const answer = Number(options.answers?.shift())
+          return Number.isInteger(answer) ? answer - 1 : null
         },
         fetch: handler,
       })
