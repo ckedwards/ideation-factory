@@ -29,7 +29,10 @@ import { z } from 'zod'
 import type { CoreRunner } from '../core-pool/runner.ts'
 import type { FileStore } from '../files/store.ts'
 import { byteLength, checkSizes, type Limits, type SizeProblem } from '../limits.ts'
+import { type Kysely, sql as raw } from 'kysely'
+import { sqliteKysely } from '../sql/kysely.ts'
 import type { Sql } from '../sql/sql.ts'
+import type { IdeaDB } from './schema.ts'
 
 import type { Caller } from '@ideaf/api'
 
@@ -113,16 +116,8 @@ export interface IdeaDeps {
   now?: () => number
 }
 
-type Meta = {
-  id: string
-  title: string
-  description: string
-  owner: string
-  status: string
-  created_at: number
-  latest: number
-  next_comment: number
-}
+/** The idea's own row. */
+type Meta = IdeaDB['idea']
 
 type Latest = {
   version: number
@@ -148,6 +143,7 @@ const KEEP_RESULTS_MS = 7 * 24 * 60 * 60 * 1000
 
 export class IdeaService {
   readonly #sql: Sql
+  readonly #db: Kysely<IdeaDB>
   readonly #files: FileStore
   readonly #core: CoreRunner
   readonly #limits: Limits
@@ -160,10 +156,16 @@ export class IdeaService {
     deps: IdeaDeps,
   ) {
     this.#sql = deps.sql
+    this.#db = sqliteKysely<IdeaDB>(deps.sql)
     this.#files = deps.files
     this.#core = deps.core
     this.#limits = deps.limits
     this.#now = deps.now ?? Date.now
+  }
+
+  /** A transaction through RivetKit's own (c.db.transaction), with a Kysely bound to it. */
+  #transaction<T>(fn: (db: Kysely<IdeaDB>) => Promise<T>): Promise<T> {
+    return this.#sql.transaction((tx) => fn(sqliteKysely<IdeaDB>(tx)))
   }
 
   // --- writes -------------------------------------------------------------------
@@ -178,9 +180,9 @@ export class IdeaService {
         events: [],
       }
     }
-    const done = await this.#sql.execute<{ result: string }>('SELECT result FROM writes WHERE key = ?', request.key)
-    if (done[0]) {
-      return { result: JSON.parse(done[0].result) as WriteResult, events: [] }
+    const done = await this.#db.selectFrom('writes').select('result').where('key', '=', request.key).executeTakeFirst()
+    if (done) {
+      return { result: JSON.parse(done.result) as WriteResult, events: [] }
     }
 
     const parsed = IdeaWrite.safeParse(request.write)
@@ -208,7 +210,7 @@ export class IdeaService {
         throw error
       }
       const result: WriteResult = { ok: false, error: error.error }
-      await this.#remember(this.#sql, request.key, result)
+      await this.#remember(this.#db, request.key, result)
       return { result, events: [] }
     }
   }
@@ -230,16 +232,20 @@ export class IdeaService {
     const now = this.#now()
     const result: WriteResult = { ok: true, value: { kind: 'created', version: 1 } }
     const stored = await this.#storeContents(idea)
-    await this.#sql.transaction(async (tx) => {
-      await tx.execute(
-        'INSERT INTO idea (id, title, description, owner, status, created_at, latest, next_comment) VALUES (?, ?, ?, ?, ?, ?, 1, 1)',
-        this.id,
-        write.title,
-        write.description ?? '',
-        request.caller.user,
-        'draft',
-        now,
-      )
+    await this.#transaction(async (tx) => {
+      await tx
+        .insertInto('idea')
+        .values({
+          id: this.id,
+          title: write.title,
+          description: write.description ?? '',
+          owner: request.caller.user,
+          status: 'draft',
+          created_at: now,
+          latest: 1,
+          next_comment: 1,
+        })
+        .execute()
       await this.#insertVersion(tx, {
         number: 1,
         parent: null,
@@ -272,22 +278,27 @@ export class IdeaService {
     const anchor = (checked as { anchor: Anchor }).anchor
     const id = `c${meta.next_comment}`
     const result: WriteResult = { ok: true, value: { kind: 'comment', comment: id } }
-    await this.#sql.transaction(async (tx) => {
-      await tx.execute(
-        'INSERT INTO comments (id, parent, version, author, created_at, body) VALUES (?, NULL, ?, ?, ?, ?)',
-        id,
-        meta.latest,
-        JSON.stringify(request.caller),
-        this.#now(),
-        write.body,
-      )
-      await tx.execute(
-        "INSERT INTO anchors (comment, version, state, anchor) VALUES (?, ?, 'exact', ?)",
-        id,
-        meta.latest,
-        JSON.stringify(anchor),
-      )
-      await tx.execute('UPDATE idea SET next_comment = next_comment + 1')
+    await this.#transaction(async (tx) => {
+      await tx
+        .insertInto('comments')
+        .values({
+          id,
+          parent: null,
+          version: meta.latest,
+          author: JSON.stringify(request.caller),
+          created_at: this.#now(),
+          body: write.body,
+          resolved: 0,
+        })
+        .execute()
+      await tx
+        .insertInto('anchors')
+        .values({ comment: id, version: meta.latest, state: 'exact', anchor: JSON.stringify(anchor) })
+        .execute()
+      await tx
+        .updateTable('idea')
+        .set((eb) => ({ next_comment: eb('next_comment', '+', 1) }))
+        .execute()
       await this.#remember(tx, request.key, result)
     })
     latest.comments.push({ id, anchor })
@@ -302,17 +313,23 @@ export class IdeaService {
     const parent = await this.#rootComment(write.parent)
     const id = `c${meta.next_comment}`
     const result: WriteResult = { ok: true, value: { kind: 'comment', comment: id } }
-    await this.#sql.transaction(async (tx) => {
-      await tx.execute(
-        'INSERT INTO comments (id, parent, version, author, created_at, body) VALUES (?, ?, ?, ?, ?, ?)',
-        id,
-        parent,
-        meta.latest,
-        JSON.stringify(request.caller),
-        this.#now(),
-        write.body,
-      )
-      await tx.execute('UPDATE idea SET next_comment = next_comment + 1')
+    await this.#transaction(async (tx) => {
+      await tx
+        .insertInto('comments')
+        .values({
+          id,
+          parent,
+          version: meta.latest,
+          author: JSON.stringify(request.caller),
+          created_at: this.#now(),
+          body: write.body,
+          resolved: 0,
+        })
+        .execute()
+      await tx
+        .updateTable('idea')
+        .set((eb) => ({ next_comment: eb('next_comment', '+', 1) }))
+        .execute()
       await this.#remember(tx, request.key, result)
     })
     return {
@@ -325,8 +342,12 @@ export class IdeaService {
     await this.#requireMeta()
     const id = await this.#rootComment(write.comment)
     const result: WriteResult = { ok: true, value: { kind: 'resolved', comment: id, resolved: write.resolved } }
-    await this.#sql.transaction(async (tx) => {
-      await tx.execute('UPDATE comments SET resolved = ? WHERE id = ?', write.resolved ? 1 : 0, id)
+    await this.#transaction(async (tx) => {
+      await tx
+        .updateTable('comments')
+        .set({ resolved: write.resolved ? 1 : 0 })
+        .where('id', '=', id)
+        .execute()
       await this.#remember(tx, request.key, result)
     })
     return {
@@ -424,7 +445,7 @@ export class IdeaService {
       value: { kind: 'version', version: number, comments: outcomes, steps: stepResults },
     }
     const stored = await this.#storeContents(idea)
-    await this.#sql.transaction(async (tx) => {
+    await this.#transaction(async (tx) => {
       await this.#insertVersion(tx, {
         number,
         parent: latest.version,
@@ -435,7 +456,7 @@ export class IdeaService {
         steps,
         outcomes,
       })
-      await tx.execute('UPDATE idea SET latest = ?', number)
+      await tx.updateTable('idea').set({ latest: number }).execute()
       await this.#remember(tx, request.key, result)
     })
     this.#latest = {
@@ -459,17 +480,18 @@ export class IdeaService {
     if (!meta) {
       return null
     }
-    const versions = await this.#sql.execute<{
-      number: number
-      parent: number | null
-      created_at: number
-      created_by: string
-      how: VersionHow
-      steps: number
-    }>(
-      `SELECT v.number, v.parent, v.created_at, v.created_by, v.how, (SELECT count(*) FROM steps s WHERE s.version = v.number) AS steps
-       FROM versions v ORDER BY v.number`,
-    )
+    const versions = await this.#db
+      .selectFrom('versions as v')
+      .select(['v.number', 'v.parent', 'v.created_at', 'v.created_by', 'v.how'])
+      .select((eb) =>
+        eb
+          .selectFrom('steps as s')
+          .select((e) => e.fn.countAll<number>().as('n'))
+          .whereRef('s.version', '=', 'v.number')
+          .as('steps'),
+      )
+      .orderBy('v.number')
+      .execute()
     return {
       id: meta.id,
       title: meta.title,
@@ -484,7 +506,7 @@ export class IdeaService {
         createdAt: v.created_at,
         by: JSON.parse(v.created_by) as Caller,
         how: v.how,
-        steps: v.steps,
+        steps: Number(v.steps ?? 0),
       })),
     }
   }
@@ -524,10 +546,12 @@ export class IdeaService {
 
   /** The steps that made a version (empty for an upload). */
   async steps(version: number) {
-    const rows = await this.#sql.execute<{ step: number; command: string; addresses: string }>(
-      'SELECT step, command, addresses FROM steps WHERE version = ? ORDER BY step',
-      version,
-    )
+    const rows = await this.#db
+      .selectFrom('steps')
+      .select(['step', 'command', 'addresses'])
+      .where('version', '=', version)
+      .orderBy('step')
+      .execute()
     return rows.map((r) => ({
       step: r.step,
       command: JSON.parse(r.command) as unknown,
@@ -542,39 +566,36 @@ export class IdeaService {
    */
   async comments(version?: number) {
     const v = await this.#versionNumber(version)
-    const rows = await this.#sql.execute<{
-      id: string
-      parent: string | null
-      version: number
-      author: string
-      created_at: number
-      body: string
-      resolved: number
-    }>(
-      'SELECT id, parent, version, author, created_at, body, resolved FROM comments WHERE version <= ? ORDER BY created_at, id',
-      v,
-    )
+    const rows = await this.#db
+      .selectFrom('comments')
+      .select(['id', 'parent', 'version', 'author', 'created_at', 'body', 'resolved'])
+      .where('version', '<=', v)
+      .orderBy('created_at')
+      .orderBy('id')
+      .execute()
     const anchors = new Map(
       (
-        await this.#sql.execute<{ comment: string; state: AnchorState; anchor: string | null }>(
-          'SELECT comment, state, anchor FROM anchors WHERE version = ?',
-          v,
-        )
+        await this.#db.selectFrom('anchors').select(['comment', 'state', 'anchor']).where('version', '=', v).execute()
       ).map((a) => [a.comment, a]),
     )
     const last = new Map(
       (
-        await this.#sql.execute<{ comment: string; version: number }>(
-          "SELECT comment, max(version) AS version FROM anchors WHERE state != 'outdated' AND version <= ? GROUP BY comment",
-          v,
-        )
-      ).map((r) => [r.comment, r.version]),
+        await this.#db
+          .selectFrom('anchors')
+          .select((eb) => ['comment', eb.fn.max('version').as('version')])
+          .where('state', '!=', 'outdated')
+          .where('version', '<=', v)
+          .groupBy('comment')
+          .execute()
+      ).map((r) => [r.comment, Number(r.version)]),
     )
     const addressed = new Map<string, number[]>()
-    for (const step of await this.#sql.execute<{ version: number; addresses: string }>(
-      "SELECT version, addresses FROM steps WHERE version <= ? AND addresses != '[]'",
-      v,
-    )) {
+    for (const step of await this.#db
+      .selectFrom('steps')
+      .select(['version', 'addresses'])
+      .where('version', '<=', v)
+      .where('addresses', '!=', '[]')
+      .execute()) {
       for (const id of JSON.parse(step.addresses) as string[]) {
         addressed.set(id, [...new Set([...(addressed.get(id) ?? []), step.version])])
       }
@@ -652,7 +673,7 @@ export class IdeaService {
   // --- storage ------------------------------------------------------------------
 
   async #meta(): Promise<Meta | null> {
-    return (await this.#sql.execute<Meta>('SELECT * FROM idea LIMIT 1'))[0] ?? null
+    return (await this.#db.selectFrom('idea').selectAll().limit(1).executeTakeFirst()) ?? null
   }
 
   async #requireMeta(): Promise<Meta> {
@@ -664,9 +685,7 @@ export class IdeaService {
   }
 
   async #rootComment(id: string): Promise<string> {
-    const row = (
-      await this.#sql.execute<{ id: string; parent: string | null }>('SELECT id, parent FROM comments WHERE id = ?', id)
-    )[0]
+    const row = await this.#db.selectFrom('comments').select(['id', 'parent']).where('id', '=', id).executeTakeFirst()
     if (!row) {
       refuse('not_found', `no comment ${id}`)
     }
@@ -697,10 +716,13 @@ export class IdeaService {
   }
 
   async #manifest(version: number) {
-    return this.#sql.execute<{ file: string; path: string; hash: string; bytes: number; unit_ids: string }>(
-      'SELECT file, path, hash, bytes, unit_ids FROM version_files WHERE version = ? ORDER BY rowid',
-      version,
-    )
+    // in the order the files were written (idea actors are SQLite only, so rowid is fine)
+    return this.#db
+      .selectFrom('version_files')
+      .select(['file', 'path', 'hash', 'bytes', 'unit_ids'])
+      .where('version', '=', version)
+      .orderBy(raw`rowid`)
+      .execute()
   }
 
   async #content(hash: string): Promise<string> {
@@ -713,9 +735,11 @@ export class IdeaService {
 
   async #loadIdea(version: number): Promise<Idea> {
     const manifest = await this.#manifest(version)
-    const nextId = (
-      await this.#sql.execute<{ next_id: number }>('SELECT next_id FROM versions WHERE number = ?', version)
-    )[0]!.next_id
+    const { next_id: nextId } = await this.#db
+      .selectFrom('versions')
+      .select('next_id')
+      .where('number', '=', version)
+      .executeTakeFirstOrThrow()
     const files = await Promise.all(
       manifest.map(async (f) => ({
         id: f.file,
@@ -734,17 +758,23 @@ export class IdeaService {
     }
     const idea = await this.#loadIdea(meta.latest)
     const manifest = await this.#manifest(meta.latest)
-    const rows = await this.#sql.execute<{ comment: string; anchor: string }>(
-      `SELECT a.comment, a.anchor FROM anchors a JOIN comments c ON c.id = a.comment
-       WHERE a.version = ? AND a.state != 'outdated' AND a.anchor IS NOT NULL AND c.parent IS NULL ORDER BY c.created_at, c.id`,
-      meta.latest,
-    )
+    const rows = await this.#db
+      .selectFrom('anchors as a')
+      .innerJoin('comments as c', 'c.id', 'a.comment')
+      .select(['a.comment', 'a.anchor'])
+      .where('a.version', '=', meta.latest)
+      .where('a.state', '!=', 'outdated')
+      .where('a.anchor', 'is not', null)
+      .where('c.parent', 'is', null)
+      .orderBy('c.created_at')
+      .orderBy('c.id')
+      .execute()
     this.#latest = {
       version: meta.latest,
       idea,
       hashes: new Map(manifest.map((f) => [f.file, f.hash])),
       bytes: new Map(manifest.map((f) => [f.file, f.bytes])),
-      comments: rows.map((r) => ({ id: r.comment, anchor: JSON.parse(r.anchor) as Anchor })),
+      comments: rows.map((r) => ({ id: r.comment, anchor: JSON.parse(r.anchor!) as Anchor })),
     }
     return this.#latest
   }
@@ -766,7 +796,7 @@ export class IdeaService {
   }
 
   async #insertVersion(
-    tx: Sql,
+    tx: Kysely<IdeaDB>,
     v: {
       number: number
       parent: number | null
@@ -778,55 +808,65 @@ export class IdeaService {
       outcomes: CommentOutcome[]
     },
   ): Promise<void> {
-    await tx.execute(
-      'INSERT INTO versions (number, parent, created_at, created_by, how, next_id) VALUES (?, ?, ?, ?, ?, ?)',
-      v.number,
-      v.parent,
-      this.#now(),
-      JSON.stringify(v.caller),
-      v.how,
-      v.idea.nextId,
-    )
+    await tx
+      .insertInto('versions')
+      .values({
+        number: v.number,
+        parent: v.parent,
+        created_at: this.#now(),
+        created_by: JSON.stringify(v.caller),
+        how: v.how,
+        next_id: v.idea.nextId,
+      })
+      .execute()
     for (const file of v.idea.files) {
-      await tx.execute(
-        'INSERT INTO version_files (version, file, path, hash, bytes, unit_ids) VALUES (?, ?, ?, ?, ?, ?)',
-        v.number,
-        file.id,
-        file.path,
-        v.stored.hashes.get(file.id)!,
-        v.stored.bytes.get(file.id)!,
-        JSON.stringify(file.unitIds),
-      )
+      await tx
+        .insertInto('version_files')
+        .values({
+          version: v.number,
+          file: file.id,
+          path: file.path,
+          hash: v.stored.hashes.get(file.id)!,
+          bytes: v.stored.bytes.get(file.id)!,
+          unit_ids: JSON.stringify(file.unitIds),
+        })
+        .execute()
     }
     for (const step of v.steps) {
-      await tx.execute(
-        'INSERT INTO steps (version, step, command, addresses) VALUES (?, ?, ?, ?)',
-        v.number,
-        step.step,
-        JSON.stringify(step.command),
-        JSON.stringify(step.addresses),
-      )
+      await tx
+        .insertInto('steps')
+        .values({
+          version: v.number,
+          step: step.step,
+          command: JSON.stringify(step.command),
+          addresses: JSON.stringify(step.addresses),
+        })
+        .execute()
     }
     for (const outcome of v.outcomes) {
-      await tx.execute(
-        'INSERT INTO anchors (comment, version, state, anchor) VALUES (?, ?, ?, ?)',
-        outcome.id,
-        v.number,
-        outcome.state,
-        outcome.anchor ? JSON.stringify(outcome.anchor) : null,
-      )
+      await tx
+        .insertInto('anchors')
+        .values({
+          comment: outcome.id,
+          version: v.number,
+          state: outcome.state,
+          anchor: outcome.anchor ? JSON.stringify(outcome.anchor) : null,
+        })
+        .execute()
     }
   }
 
-  async #remember(sql: Sql, key: string, result: WriteResult): Promise<void> {
+  async #remember(db: Kysely<IdeaDB>, key: string, result: WriteResult): Promise<void> {
     const now = this.#now()
-    await sql.execute(
-      'INSERT OR REPLACE INTO writes (key, result, at) VALUES (?, ?, ?)',
-      key,
-      JSON.stringify(result),
-      now,
-    )
-    await sql.execute('DELETE FROM writes WHERE at < ?', now - KEEP_RESULTS_MS)
+    await db
+      .insertInto('writes')
+      .values({ key, result: JSON.stringify(result), at: now })
+      .onConflict((oc) => oc.column('key').doUpdateSet({ result: JSON.stringify(result), at: now }))
+      .execute()
+    await db
+      .deleteFrom('writes')
+      .where('at', '<', now - KEEP_RESULTS_MS)
+      .execute()
   }
 }
 
