@@ -10,7 +10,7 @@
     "prepare": "git config core.hooksPath .githooks || true",
     "dev": "bun run --filter '@ideaf/server' dev",
     "test": "bun scripts/worktree.ts test -- bun test",
-    "typecheck": "bun run --filter '*' typecheck && tsc -p scripts",
+    "typecheck": "bun run --filter '*' typecheck && bun check -p scripts",
     "engine:stop": "bun scripts/worktree.ts stop",
     "worktree": "bun scripts/worktree.ts info",
     "lint:commits": "bun scripts/commit-lint.ts --range",

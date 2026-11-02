@@ -1,7 +1,7 @@
 {
   // Shared settings. Code in core and api must run unchanged in browsers and
   // Bun, so their lib is web standards only (no DOM, no Node). Bun runs the
-  // TypeScript directly, so imports name their .ts files and tsc only checks.
+  // TypeScript directly, so imports name their .ts files and `bun check` only checks.
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
