@@ -31,7 +31,11 @@ const SCRIPT_BASE = `
       body: JSON.stringify(body),
     })
     const data = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(data.message || data.error_description || data.error || 'something went wrong (' + response.status + ')')
+    if (!response.ok) {
+      const error = new Error(data.message || data.error_description || data.error || 'something went wrong (' + response.status + ')')
+      error.code = data.code
+      throw error
+    }
     return data
   }
   const run = (fn) => async (event) => {
@@ -98,26 +102,34 @@ ${SCRIPT_BASE}
     $('email-form').hidden = true
     $('code-form').hidden = false
   })
+  // Signing in uses the code up, so anything that could still go wrong is
+  // checked first: whether the account is new (which needs a handle), and
+  // whether the handle is free. A first sign-in takes one code, like any other.
   $('code-form').onsubmit = run(async () => {
+    const email = $('email').value
+    const otp = $('code').value.trim()
     const handle = $('handle').value.trim()
-    let data
-    try {
-      const oauth = signedQuery()
-      data = await post('/sign-in/email-otp', {
-        email: $('email').value,
-        otp: $('code').value.trim(),
-        ...(handle ? { username: handle, name: handle } : {}),
-        ...(oauth ? { oauth_query: oauth } : {}),
-      })
-    } catch (error) {
-      // a new account: ask for a handle, then send another code
-      if (/handle/.test(error.message) && $('handle-label').hidden) {
+    if ($('handle-label').hidden) {
+      try {
+        // checks the code without using it, and says if there's no account yet
+        await post('/email-otp/check-verification-otp', { email, otp, type: 'sign-in' })
+      } catch (error) {
+        if (error.code !== 'USER_NOT_FOUND') throw error
         $('handle-label').hidden = false
-        await post('/email-otp/send-verification-otp', { email: $('email').value, type: 'sign-in' })
-        throw new Error('New here: pick a handle. We sent a new code.')
+        $('handle').focus()
+        throw new Error('New here: pick a handle, then sign in with the same code.')
       }
-      throw error
+    } else {
+      const { available } = await post('/is-username-available', { username: handle })
+      if (!available) throw new Error('@' + handle + ' is taken: pick another handle.')
     }
+    const oauth = signedQuery()
+    const data = await post('/sign-in/email-otp', {
+      email,
+      otp,
+      ...(handle ? { username: handle, name: handle } : {}),
+      ...(oauth ? { oauth_query: oauth } : {}),
+    })
     // signing in for an OAuth client (the cli): on to the consent page
     if (follow(data)) return
     $('who').textContent = '@' + (data.user.username || data.user.name)

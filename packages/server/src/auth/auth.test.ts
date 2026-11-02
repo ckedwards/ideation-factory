@@ -75,6 +75,35 @@ describe('signing up', () => {
     const password = await post('/api/auth/sign-up/email', { email: other, password: 'password1234', name: 'P' })
     expect(password.ok).toBe(false)
   })
+
+  test('a first sign-in takes one code: the login page checks it, and the handle, before using it', async () => {
+    const email = `${h('first')}@example.test`
+    await post('/api/auth/email-otp/send-verification-otp', { email, type: 'sign-in' })
+    const otp = testMailer.code(email)
+    const check = (code: string) =>
+      post('/api/auth/email-otp/check-verification-otp', { email, otp: code, type: 'sign-in' })
+
+    // a wrong code is just wrong; the right one says there's no account yet, and stays usable
+    expect((await json(await check('000000'))).body.code).toBe('INVALID_OTP')
+    expect((await json(await check(otp))).body.code).toBe('USER_NOT_FOUND')
+    expect((await json(await check(otp))).body.code).toBe('USER_NOT_FOUND')
+
+    // the handle: taken, reserved or malformed is caught before the code is used
+    await signIn(app, h('taken'))
+    const available = async (username: string) => json(await post('/api/auth/is-username-available', { username }))
+    expect((await available(h('taken'))).body).toEqual({ available: false })
+    expect((await available('settings')).status).toBe(422)
+    expect((await available('Not Valid')).status).toBe(422)
+    expect((await available(h('first'))).body).toEqual({ available: true })
+
+    // and the same code signs them up
+    const done = await json(await post('/api/auth/sign-in/email-otp', { email, otp, username: h('first') }))
+    expect(done.status).toBe(200)
+    expect(done.body.user).toMatchObject({ email, username: h('first') })
+    // a returning user's code checks out
+    await post('/api/auth/email-otp/send-verification-otp', { email, type: 'sign-in' })
+    expect((await json(await check(testMailer.code(email)))).body).toEqual({ success: true })
+  })
 })
 
 describe('tokens', () => {
