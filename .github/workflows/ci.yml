@@ -25,11 +25,42 @@ jobs:
       - name: Test
         run: bun run test
 
+  # Whether the stories could have changed: the ui package, core (whose
+  # Markdown the stories render), the dependencies, the shared TypeScript
+  # settings, or this workflow. Skipping a job counts as passing it.
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      ui: ${{ steps.diff.outputs.ui }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BEFORE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          AFTER: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          # a new branch has no "before": compare with master
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            BEFORE=origin/master
+          fi
+          # three dots: only what this branch or push changed, not what master gained since
+          if git diff --name-only "$BEFORE...$AFTER" \
+            | grep -qE '^(packages/(ui|core)/|package\.json$|bun\.lock$|tsconfig\.base\.json$|\.github/workflows/ci\.yml$)'; then
+            echo "ui=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ui=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # The ui package's stories, as tests: each renders in headless Chromium, runs
   # its play function and passes axe's accessibility checks, in every theme.
   # Then Storybook builds, as it would be published. Storybook and Vitest run
   # on Node, so this job sets up Node beside Bun.
   storybook:
+    needs: changes
+    if: needs.changes.outputs.ui == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
