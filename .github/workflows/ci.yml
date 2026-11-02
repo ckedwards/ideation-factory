@@ -26,8 +26,9 @@ jobs:
         run: bun run test
 
   # Whether the stories could have changed: the ui package, core (whose
-  # Markdown the stories render), the dependencies, the shared TypeScript
-  # settings, or this workflow. Skipping a job counts as passing it.
+  # Markdown the stories render), what either resolves to in bun.lock (not
+  # just any lockfile change), the shared TypeScript settings, or this
+  # workflow; scripts/ci-changes.ts decides. Skipping a job counts as passing it.
   changes:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -37,6 +38,9 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version-file: package.json
       - id: diff
         env:
           BEFORE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
@@ -46,13 +50,7 @@ jobs:
           if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
             BEFORE=origin/master
           fi
-          # three dots: only what this branch or push changed, not what master gained since
-          if git diff --name-only "$BEFORE...$AFTER" \
-            | grep -qE '^(packages/(ui|core)/|package\.json$|bun\.lock$|tsconfig\.base\.json$|\.github/workflows/ci\.yml$)'; then
-            echo "ui=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ui=false" >> "$GITHUB_OUTPUT"
-          fi
+          bun scripts/ci-changes.ts "$BEFORE" "$AFTER" >> "$GITHUB_OUTPUT"
 
   # The ui package's stories, as tests: each renders in headless Chromium, runs
   # its play function and passes axe's accessibility checks, in every theme.
