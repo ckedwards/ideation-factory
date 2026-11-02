@@ -58,6 +58,13 @@ curl -H "authorization: Bearer $IDEAF_TOKEN" -X POST localhost:8080/ideas \
 
 In production, set `IDEAF_AUTH_SECRET` (at least 32 random characters) and `IDEAF_URL` (the public URL); `IDEAF_SITE_ADMINS` lists the site admins' emails, and `IDEAF_PERSONAL_TOKENS` (`on`, `admins` or `off`; `admins` by default) decides who may use personal tokens. Turning them off refuses existing ones too.
 
+**Single sign-on.** To sign people in with your organization's identity provider instead of email codes, set `IDEAF_SSO` to `oidc` or `saml`, `IDEAF_SSO_DOMAINS` to the email domains that may sign in (comma-separated), and optionally `IDEAF_SSO_NAME` (the sign-in page says "Continue with <name>") and `IDEAF_SSO_AUTO_CREATE=off` (to refuse people who have no account yet; it's on by default). Then:
+
+- **OIDC:** `IDEAF_OIDC_ISSUER`, `IDEAF_OIDC_CLIENT_ID` and `IDEAF_OIDC_CLIENT_SECRET`. Register `<IDEAF_URL>/api/auth/sso/callback/ideaf-sso` as the client's redirect URI.
+- **SAML:** `IDEAF_SAML_METADATA`, a file with the provider's metadata XML. Give the provider our metadata, `<IDEAF_URL>/api/auth/sso/saml2/sp/metadata?providerId=ideaf-sso`. If it wants signed requests, add our key and certificate as files in `IDEAF_SAML_SP_KEY` and `IDEAF_SAML_SP_CERT`.
+
+People are matched on their email, so switching keeps everyone's ideas and tokens, and someone new picks a handle on their first visit. Email codes and passkeys are then off, except an email code for site admins, for when the provider is down. **SCIM:** with `IDEAF_SCIM_TOKEN` (at least 32 characters) set, the provider's SCIM client, at `<IDEAF_URL>/api/auth/scim/v2` with that bearer token, can add people ahead of their first sign-in and deactivate people removed there. To try it locally, the docker sandbox has a Keycloak ([docker/README.md](docker/README.md)).
+
 With the dev server running and the cli signed in, it works like this (`bun run --filter @ideaf/cli build` makes `packages/cli/dist/ideaf`, or run `bun packages/cli/src/main.ts`):
 
 ```

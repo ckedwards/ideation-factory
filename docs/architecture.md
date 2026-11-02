@@ -204,12 +204,14 @@ An account has three parts:
 - **Allowed email domains:** only these domains can sign in. Before saving, the switch warns how many existing people have an email outside them.
 - **Create accounts automatically** (just-in-time provisioning, optional): someone the provider signs in who has no account gets one. Their name and email come from the provider, and a handle is suggested from the email for them to confirm on first visit. With it off, a site admin has to invite people first.
 - While single sign-on is on, email codes and passkeys are turned off, and the primary email is managed by the provider. Passkeys are kept, and work again if the deployment switches back.
-- TODO: deprovisioning. Removing someone in the identity provider stops them signing in, but their account isn't marked inactive (see Inactive users in `idea.md`) until a site admin does it. SCIM could do this automatically, and could keep names and emails in sync.
+- **Deprovisioning with SCIM:** the provider's SCIM client can add people ahead of their first sign-in, keep names and emails in step, and deactivate people removed there: inactive here (see Inactive users in `idea.md`), signed out, their writes refused at once. Without SCIM, removing someone in the provider stops them signing in, but their account isn't marked inactive until a site admin does it. SCIM groups aren't taken; groups and teams stay ideaf's own.
+- **Site admins keep an email code** while single sign-on is on, as the way in when the provider is down or misconfigured. Nobody else does: there's one way in, the provider's. (Email codes for people outside the provider's domains, such as outside collaborators, may come later.)
+- In the MVP the provider is set in the deployment's configuration (environment variables), not on a Site admin page yet.
 - This is the natural place for the "OIDC for all admin actions" future requirement: with an identity provider in place, site admin actions can require a recent sign-in (step-up).
 
 Tokens for the cli and agents are separate from sign-in, and work the same way under either provider (see Bots vs humans in `idea.md`).
 
-Open questions: should handles be changeable (GitHub allows it, and redirects old @mentions and links), and how often? With single sign-on, should site admins keep an email-code break-glass sign-in in case the provider is down or misconfigured? Should a deployment be able to allow both (single sign-on for employees, email codes for outside collaborators)?
+Open questions: should handles be changeable (GitHub allows it, and redirects old @mentions and links), and how often? Should a deployment be able to allow both single sign-on (for employees) and email codes (for outside collaborators)? For now it doesn't: under single sign-on, only site admins keep an email code.
 
 ## Authorization
 
