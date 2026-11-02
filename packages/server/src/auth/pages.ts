@@ -237,8 +237,8 @@ ${STYLE}
 <body>
 <h1>Allow <span id="client">an app</span>?</h1>
 ${HANDLE_FORM}
-<p>Choose what it may do. It can never do more than you can, and you can sign it out at any time.</p>
 <form id="consent" hidden>
+  <p>Choose what it may do. It can never do more than you can, and you can sign it out at any time.</p>
   <fieldset><legend>Who acts with it</legend>
     <label><input type="radio" name="purpose" value="me" checked> Me</label>
     <label><input type="radio" name="purpose" value="bot-for-me"> A bot, on my behalf</label>
