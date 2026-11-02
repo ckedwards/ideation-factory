@@ -23,11 +23,13 @@ ideaf pull - bring the idea's latest version into your files: accepted suggestio
 
 ideaf list - list ideas for this repo (filter by your ideas by defaut) display active one first with an indication that it is the active one
 
-ideaf start - start an idea. Walk through required fields if not present in cli args. The team is optional: with no team (and no default team in config), the idea has no team and is private to you until it's moved into a team (`ideaf move --team <team>`). Allow ideas to optionally create new branch (off default branch) or worktree if in git repo.
+ideaf start - start an idea. Walk through required fields if not present in cli args. The team is optional: with no team (and no default team in config), the idea has no team and is private to you until it's moved into a team (`ideaf move --team <team>`). It never creates branches or worktrees: those are yours to manage, and the idea is tied to whatever branch you're on.
 
-ideaf change - change the idea you are working on. this should support changing worktrees and branches. the command supports allowing the user to specify the title --ideaTitle or it will list the availible ideas and let the user choose with an interative ui. default filter is the users ideas.
+ideaf change - change the idea you are working on: by ID, by `--title`, or picked from a list at a terminal (yours by default). It never runs git: if the idea is on another branch, it prints the commands that get there and stops, and `--here` ties the idea to this branch instead. If that branch is checked out in another worktree, it says where.
 
-iteaf auth - support auth staus, auth login etc. Assume a user is only ever logged in to one account, but they could have mutiple tokens for a bot or user. The cli exchanges its long-lived token for a 15-minute signed access token and refreshes it as needed, so the server only checks the long-lived token every 15 minutes (see Authorization in `architecture.md`).
+ideaf --version (or `ideaf version`) - print the cli's version.
+
+ideaf auth login | status | logout - sign in through the browser with OAuth (the code comes back on localhost, or you paste it where there's no browser), choosing what this sign-in may do: who acts with it (you, or a bot), read only or not, and which teams or ideas it reaches. One sign-in per server, kept in the OS keychain; the 15-minute access token is refreshed as needed. In CI, `IDEAF_TOKEN` (a personal token) wins over the sign-in (see `mvp/architecture-cli.md`).
 ```
 
 We also need team logic in the cli tooling.
