@@ -1,5 +1,6 @@
 {
   "name": "@ideaf/cli",
+  "version": "0.0.0",
   "private": true,
   "bin": {
     "ideaf": "./src/main.ts"
