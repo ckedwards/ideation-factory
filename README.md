@@ -42,7 +42,7 @@ bun run test
 bun run engine:stop  # stop the local Rivet Engine
 ```
 
-**Signing in.** The sign-in page is http://localhost:8080/login: enter any email, and use the code the dev server prints in its log (there's no email delivery yet). The first time, pick a handle. Sign in with other emails to try several people.
+**Signing in.** The sign-in page is http://localhost:8080/login: enter any email, and use the code the dev server prints in its log (it emails codes only when SMTP is set up, below). The first time, pick a handle. Sign in with other emails to try several people.
 
 The cli signs in with **`ideaf auth login`**: it opens your browser to sign in, and to choose what this sign-in may do (who acts with it, read only or not, and which teams or ideas it reaches; flags like `--bot planbot --team core --read-only` fill those in). With no browser of its own (over SSH, say) or with `--no-browser`, it shows a link to open on any device and asks for the code that page shows. Its tokens are kept in the OS keychain and refreshed as needed; `ideaf auth status` shows the sign-in and `ideaf auth logout` ends it.
 
@@ -57,6 +57,14 @@ curl -H "authorization: Bearer $IDEAF_TOKEN" -X POST localhost:8080/ideas \
 ```
 
 In production, set `IDEAF_AUTH_SECRET` (at least 32 random characters) and `IDEAF_URL` (the public URL); `IDEAF_SITE_ADMINS` lists the site admins' emails, and `IDEAF_PERSONAL_TOKENS` (`on`, `admins` or `off`; `admins` by default) decides who may use personal tokens. Turning them off refuses existing ones too.
+
+**Email.** Sign-in codes go out over SMTP, so any provider works (Amazon SES, Postmark, Mailgun, Resend, Google Workspace, your own server): set `IDEAF_SMTP_URL` (`smtps://user:password@host:465`, or `smtp://…:587` for STARTTLS) and `IDEAF_EMAIL_FROM` (`Ideation Factory <sign-in@example.com>`). Without them the server writes codes to its log, which production refuses unless `IDEAF_EMAIL=log` says so (say, behind single sign-on, where only site admins use codes).
+
+**Signing keys.** Access tokens are signed with a key kept in the directory, its private half encrypted with `IDEAF_AUTH_SECRET`. It's replaced every 30 days by itself, and a replaced key keeps verifying the tokens it signed for a day. To replace it now, or to withdraw every key if one may have leaked (outstanding access tokens then stop working within a minute, and clients refresh), run on the server:
+
+```
+bun packages/server/src/admin.ts rotate-signing-key [--emergency]
+```
 
 **Single sign-on.** To sign people in with your organization's identity provider instead of email codes, set `IDEAF_SSO` to `oidc` or `saml`, `IDEAF_SSO_DOMAINS` to the email domains that may sign in (comma-separated), and optionally `IDEAF_SSO_NAME` (the sign-in page says "Continue with <name>") and `IDEAF_SSO_AUTO_CREATE=off` (to refuse people who have no account yet; it's on by default). Then:
 
