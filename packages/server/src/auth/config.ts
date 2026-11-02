@@ -5,13 +5,19 @@
 // actors/directory.ts), on its own tables there. It's also the OAuth
 // authorization server: the cli signs in with the authorization code flow, and
 // each token's purpose and limits come from the token grant chosen on the
-// consent page. Single sign-on, SCIM and MCP clients (CIMD) come later.
+// consent page. A deployment can hand sign-in to its identity provider (single
+// sign-on, OIDC or SAML) and let it manage people with SCIM. MCP clients
+// (CIMD) come later.
 //
 // Worked out in the Better Auth spike: docs/mvp/spike-better-auth.md.
+import { timingSafeEqual } from 'node:crypto'
 import { apiKey } from '@better-auth/api-key'
+import { queueAfterTransactionHook } from '@better-auth/core/context'
 import { oauthProvider } from '@better-auth/oauth-provider'
 import { passkey } from '@better-auth/passkey'
-import { type BetterAuthOptions, type BetterAuthPlugin, betterAuth } from 'better-auth'
+import { scim } from '@better-auth/scim'
+import { sso } from '@better-auth/sso'
+import { type BetterAuthOptions, type BetterAuthPlugin, betterAuth, getCurrentAdapter } from 'better-auth'
 import {
   APIError,
   createAuthEndpoint,
@@ -52,7 +58,46 @@ export interface AuthSettings {
   personalTokens?: PersonalTokenPolicy
   /** Rate limits on sign-in (on unless false: tests sign up many people from one address). */
   rateLimit?: boolean
+  /**
+   * Single sign-on: the organization's identity provider signs everyone in,
+   * instead of email codes and passkeys (site admins keep an email code, the
+   * way in when the provider is down). Read on every request, so a site admin
+   * page can change it later without a restart.
+   */
+  sso?: SsoSettings | null
+  /**
+   * The bearer token the identity provider's SCIM client uses (at least 32
+   * characters): it creates people ahead of their first sign-in, keeps names
+   * and emails in step, and deactivates people removed there. Off without one.
+   */
+  scimToken?: string | null
 }
+
+/** The deployment's one identity provider: OIDC or SAML 2.0. */
+export interface SsoSettings {
+  /** Shown on the sign-in page: "Continue with <name>". */
+  name: string
+  /** Only emails in these domains sign in, or get an account. */
+  domains: readonly string[]
+  /** Make an account for someone new the provider signs in; off, a site admin adds people first (or SCIM does). */
+  autoCreate: boolean
+  oidc?: {
+    /** The provider's issuer URL; its discovery document is at <issuer>/.well-known/openid-configuration. */
+    issuer: string
+    clientId: string
+    clientSecret: string
+  }
+  saml?: {
+    /** The provider's metadata XML: its entity ID, sign-in URL and signing certificate. */
+    metadata: string
+    /** Our private key and certificate (PEM), for providers that want signed requests. */
+    spPrivateKey?: string
+    spCertificate?: string
+  }
+}
+
+/** The configured provider's ID in Better Auth: there's only ever one. */
+export const SSO_PROVIDER_ID = 'ideaf-sso'
 
 export const PERSONAL_TOKEN_POLICIES = ['on', 'admins', 'off'] as const
 export type PersonalTokenPolicy = (typeof PERSONAL_TOKEN_POLICIES)[number]
@@ -105,7 +150,15 @@ const TokenGrantBody = z.object({
   forConsent: z.boolean().optional(),
 })
 
-export type AuthUser = { id: string; email: string; name: string; username?: string | null; inactive?: boolean | null }
+export type AuthUser = {
+  id: string
+  email: string
+  name: string
+  username?: string | null
+  inactive?: boolean | null
+  /** False for an account single sign-on or SCIM made, until its person keeps or changes the suggested handle. */
+  handleConfirmed?: boolean | null
+}
 
 /** A token's purpose: how activity with it is labeled. */
 export const PURPOSES = ['me', 'bot-for-me', 'bot'] as const
@@ -133,6 +186,216 @@ const RESERVED = new Set([
 ])
 export function validHandle(handle: string): boolean {
   return HANDLE.test(handle) && !RESERVED.has(handle)
+}
+
+type Adapter = {
+  findOne(args: { model: string; where: Array<{ field: string; value: unknown }> }): Promise<unknown>
+  update(args: {
+    model: string
+    where: Array<{ field: string; value: unknown }>
+    update: Record<string, unknown>
+  }): Promise<unknown>
+  deleteMany(args: { model: string; where: Array<{ field: string; value: unknown }> }): Promise<unknown>
+}
+type UserRow = AuthUser & { id: string }
+
+/**
+ * A free handle for an account single sign-on or SCIM makes, from the email:
+ * "Jane.Doe+x@acme.test" becomes "jane-doe-x", or "jane-doe-x-2" if that's
+ * taken. Its person can keep or change it on their first visit.
+ */
+export async function suggestHandle(email: string, adapter: Adapter): Promise<string> {
+  let base = email
+    .slice(0, email.lastIndexOf('@'))
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 34)
+    .replace(/-+$/, '')
+  if (!validHandle(base)) {
+    base = `user-${base}`.replace(/-+$/, '')
+  }
+  for (let n = 1; ; n++) {
+    const handle = n === 1 ? base : `${base}-${n}`
+    if (!(await adapter.findOne({ model: 'user', where: [{ field: 'username', value: handle }] }))) {
+      return handle
+    }
+  }
+}
+
+const emailDomain = (email: string) => email.slice(email.lastIndexOf('@') + 1).toLowerCase()
+const isSiteAdmin = (settings: AuthSettings, email: string) => settings.siteAdmins.has(email.toLowerCase())
+
+/**
+ * Tells the directory about a change made straight in Better Auth's tables
+ * (which skips its hooks), once the transaction commits: the user as it is
+ * now, read inside the transaction.
+ */
+async function syncAfterCommit(adapter: Adapter, hooks: UserHooks | undefined, userId: string): Promise<void> {
+  if (!hooks) {
+    return
+  }
+  const user = (await adapter.findOne({ model: 'user', where: [{ field: 'id', value: userId }] })) as UserRow | null
+  if (user) {
+    await queueAfterTransactionHook(() => hooks.updated(user))
+  }
+}
+
+/**
+ * Which account a person the identity provider vouched for is. Runs inside
+ * the sign-in's transaction.
+ * 1. Their provider identity was seen before: that account. If the provider
+ *    changed their email, the primary email follows (under single sign-on the
+ *    provider owns it), unless another account has it.
+ * 2. Otherwise the account with their email, so switching a deployment to
+ *    single sign-on keeps everyone's ideas, comments and tokens.
+ * 3. Otherwise a new account, if the deployment makes them automatically.
+ * Emails outside the allowed domains, and inactive accounts, are refused.
+ */
+function resolveSsoUser(settings: AuthSettings, hooks: UserHooks | undefined) {
+  return async (
+    input: { providerId: string; accountKey: { accountId: string }; providerUser: { email: string } },
+    { database }: { database: unknown },
+  ) => {
+    const db = database as Adapter
+    const config = settings.sso
+    const email = input.providerUser.email.toLowerCase()
+    const reject = (code: string, message: string) => ({ action: 'reject' as const, code, message })
+    if (!config) {
+      return reject('sso_off', 'this site doesn’t sign in with single sign-on')
+    }
+    if (!config.domains.includes(emailDomain(email))) {
+      return reject('domain_not_allowed', `${emailDomain(email)} emails can’t sign in here`)
+    }
+    const account = (await db.findOne({
+      model: 'account',
+      where: [
+        { field: 'providerId', value: input.providerId },
+        { field: 'accountId', value: input.accountKey.accountId },
+      ],
+    })) as { userId: string } | null
+    const byEmail = (await db.findOne({ model: 'user', where: [{ field: 'email', value: email }] })) as UserRow | null
+    if (account) {
+      const user = (await db.findOne({
+        model: 'user',
+        where: [{ field: 'id', value: account.userId }],
+      })) as UserRow | null
+      if (!user) {
+        return reject('no_account', 'no account for this sign-in')
+      }
+      if (user.inactive) {
+        return reject('inactive', 'this account is inactive')
+      }
+      if (byEmail && byEmail.id !== user.id) {
+        return reject('email_taken', 'another account has this email')
+      }
+      if (user.email !== email) {
+        await db.update({
+          model: 'user',
+          where: [{ field: 'id', value: user.id }],
+          update: { email, updatedAt: new Date() },
+        })
+        await syncAfterCommit(db, hooks, user.id)
+      }
+      return { action: 'link' as const, userId: user.id, profile: 'preserve' as const }
+    }
+    if (byEmail) {
+      if (byEmail.inactive) {
+        return reject('inactive', 'this account is inactive')
+      }
+      return { action: 'link' as const, userId: byEmail.id, profile: 'preserve' as const }
+    }
+    if (!config.autoCreate) {
+      return reject('no_account', 'you don’t have an account here yet: ask a site admin to add you')
+    }
+    return { action: 'continue' as const }
+  }
+}
+
+/** The configured identity provider, as Better Auth's sso plugin takes it (none while single sign-on is off). */
+function ssoProviders(settings: AuthSettings) {
+  const config = settings.sso
+  if (!config) {
+    return []
+  }
+  const domain = config.domains[0]!
+  if (config.oidc) {
+    const { issuer, clientId, clientSecret } = config.oidc
+    return [
+      {
+        providerId: SSO_PROVIDER_ID,
+        domain,
+        oidcConfig: {
+          issuer,
+          discoveryEndpoint: `${issuer}/.well-known/openid-configuration`,
+          clientId,
+          clientSecret,
+          pkce: true,
+          scopes: ['openid', 'email', 'profile'],
+        },
+      },
+    ]
+  }
+  if (config.saml) {
+    const { metadata, spPrivateKey, spCertificate } = config.saml
+    return [
+      {
+        providerId: SSO_PROVIDER_ID,
+        domain,
+        samlConfig: {
+          // our entity ID, as the provider knows us
+          issuer: samlEntityId(settings),
+          entryPoint: samlSignInUrl(metadata),
+          callbackUrl: `${settings.baseURL}/api/auth/sso/saml2/sp/acs/${SSO_PROVIDER_ID}`,
+          idpMetadata: { metadata },
+          spMetadata: {},
+          wantAssertionsSigned: true,
+          ...(spPrivateKey ? { authnRequestsSigned: true, privateKey: spPrivateKey, cert: spCertificate } : {}),
+          identifierFormat: 'urn:oasis:names:tc:SAML:2.0:nameid-format:persistent',
+          mapping: { email: 'email', name: 'name', firstName: 'firstName', lastName: 'lastName' },
+        },
+      },
+    ]
+  }
+  return []
+}
+
+/** Our SAML entity ID: the metadata URL the provider is given. */
+export const samlEntityId = (settings: Pick<AuthSettings, 'baseURL'>) =>
+  `${settings.baseURL}/api/auth/sso/saml2/sp/metadata?providerId=${SSO_PROVIDER_ID}`
+
+/** Where a SAML provider takes sign-in requests, from its metadata (the redirect binding, else any). */
+function samlSignInUrl(metadata: string): string {
+  const services = [...metadata.matchAll(/<(?:\w+:)?SingleSignOnService\b[^>]*>/g)].map((m) => m[0])
+  const pick = services.find((s) => s.includes('HTTP-Redirect')) ?? services[0]
+  const location = pick?.match(/Location="([^"]+)"/)?.[1]
+  if (!location) {
+    throw new Error('the SAML metadata has no SingleSignOnService location')
+  }
+  return location
+}
+
+/** Origins Better Auth may talk to: ours, and the identity provider's (often on a private network). */
+function trustedOrigins(settings: AuthSettings): string[] {
+  const origins = [settings.baseURL]
+  const config = settings.sso
+  try {
+    if (config?.oidc) {
+      origins.push(new URL(config.oidc.issuer).origin)
+    }
+    if (config?.saml) {
+      origins.push(new URL(samlSignInUrl(config.saml.metadata)).origin)
+    }
+  } catch {
+    // a bad provider URL fails at sign-in, with its own error
+  }
+  return origins
+}
+
+const sameSecret = (a: string, b: string) => {
+  const x = Buffer.from(a)
+  const y = Buffer.from(b)
+  return x.length === y.length && timingSafeEqual(x, y)
 }
 
 /** Our account rules on Better Auth's endpoints, and our own endpoints, as a plugin. */
@@ -177,6 +440,38 @@ const rules = (settings: AuthSettings, deps?: AuthDeps): BetterAuthPlugin => ({
               return ctx.json({ grant: made.value })
             },
           ),
+          // An account single sign-on or SCIM made has a handle suggested from
+          // the email: on their first visit its person keeps or changes it,
+          // once. After that it's fixed like any other.
+          confirmHandle: createAuthEndpoint(
+            '/ideaf/confirm-handle',
+            { method: 'POST', use: [sessionMiddleware], body: z.object({ handle: z.string() }) },
+            async (ctx) => {
+              const user = ctx.context.session.user as UserRow
+              if (user.handleConfirmed !== false) {
+                throw new APIError('BAD_REQUEST', { message: 'your handle is already set' })
+              }
+              const handle = ctx.body.handle.trim()
+              if (!validHandle(handle)) {
+                throw new APIError('BAD_REQUEST', {
+                  message: 'a handle is 2 to 39 lowercase letters, digits and dashes, not at either end',
+                })
+              }
+              const taken = await ctx.context.adapter.findOne({
+                model: 'user',
+                where: [{ field: 'username', value: handle }],
+              })
+              if (taken && handle !== user.username) {
+                throw new APIError('BAD_REQUEST', { message: `@${handle} is taken: pick another handle` })
+              }
+              await ctx.context.internalAdapter.updateUser(user.id, {
+                username: handle,
+                displayUsername: handle,
+                handleConfirmed: true,
+              })
+              return ctx.json({ handle })
+            },
+          ),
         },
       }
     : {}),
@@ -194,6 +489,25 @@ const rules = (settings: AuthSettings, deps?: AuthDeps): BetterAuthPlugin => ({
       },
     ],
     before: [
+      {
+        // Under single sign-on, email codes and passkeys are off. Site admins
+        // keep an email code, as the way in when the provider is down.
+        matcher: (ctx) =>
+          Boolean(settings.sso) &&
+          Boolean(
+            ctx.path?.startsWith('/email-otp/') ||
+            ctx.path === '/sign-in/email-otp' ||
+            ctx.path?.startsWith('/passkey/'),
+          ),
+        handler: createAuthMiddleware(async (ctx) => {
+          const email = String((ctx.body as { email?: unknown } | undefined)?.email ?? '')
+          if (ctx.path.startsWith('/passkey/') || !isSiteAdmin(settings, email)) {
+            throw new APIError('FORBIDDEN', {
+              message: `this site signs in with ${settings.sso?.name ?? 'single sign-on'}`,
+            })
+          }
+        }),
+      },
       {
         // A passkey can only be added right after an email-code sign-in.
         matcher: (ctx) =>
@@ -273,7 +587,13 @@ const rules = (settings: AuthSettings, deps?: AuthDeps): BetterAuthPlugin => ({
 })
 
 const signInMethod = (path: string | undefined) =>
-  path === '/sign-in/email-otp' ? 'email-otp' : path?.startsWith('/passkey') ? 'passkey' : (path ?? 'other')
+  path === '/sign-in/email-otp'
+    ? 'email-otp'
+    : path?.startsWith('/passkey')
+      ? 'passkey'
+      : path?.startsWith('/sso/')
+        ? 'sso'
+        : (path ?? 'other')
 
 export function authOptions(database: BetterAuthOptions['database'], settings: AuthSettings, deps?: AuthDeps) {
   const hooks = deps?.users
@@ -282,6 +602,8 @@ export function authOptions(database: BetterAuthOptions['database'], settings: A
     basePath: '/api/auth',
     secret: settings.secret,
     database,
+    // ours, and the identity provider's (read live, like the rest of the single sign-on settings)
+    trustedOrigins: () => trustedOrigins(settings),
     // No passwords.
     emailAndPassword: { enabled: false },
     user: {
@@ -289,6 +611,7 @@ export function authOptions(database: BetterAuthOptions['database'], settings: A
       changeEmail: { enabled: false },
       additionalFields: {
         inactive: { type: 'boolean', defaultValue: false, input: false, required: false },
+        handleConfirmed: { type: 'boolean', defaultValue: true, input: false, required: false },
       },
     },
     session: {
@@ -307,10 +630,15 @@ export function authOptions(database: BetterAuthOptions['database'], settings: A
     databaseHooks: {
       user: {
         create: {
-          before: async (user) => {
+          before: async (user, ctx) => {
             // email-code sign-up brings the handle as `username`; the plugin's
             // own validator doesn't run on that path, so it's checked here
-            const handle = (user as { username?: string }).username
+            let handle = (user as { username?: string }).username
+            // single sign-on and SCIM bring none: suggest one, to confirm on the first visit
+            if (!handle && (ctx?.path?.startsWith('/sso/') || ctx?.path?.startsWith('/scim/'))) {
+              handle = await suggestHandle(user.email, (await getCurrentAdapter(ctx.context.adapter)) as never)
+              return { data: { ...user, username: handle, displayUsername: handle, handleConfirmed: false } }
+            }
             if (!handle || !validHandle(handle)) {
               throw new APIError('BAD_REQUEST', {
                 message:
@@ -416,6 +744,48 @@ export function authOptions(database: BetterAuthOptions['database'], settings: A
           return grantClaims(grant)
         },
       }),
+      sso({
+        // the provider comes from the settings, never registered at runtime
+        providersLimit: 0,
+        get defaultSSO() {
+          return ssoProviders(settings)
+        },
+        resolveUser: resolveSsoUser(settings, hooks) as never,
+        saml: { enableInResponseToValidation: true },
+      }),
+      // its types don't fit BetterAuthPlugin under exactOptionalPropertyTypes; it runs as one
+      scim({
+        // one connection, the identity provider's, with the bearer token from the settings
+        connections: [{ id: 'idp', credentials: [] }],
+        authentication: {
+          verifyBearerToken: ({ token }) =>
+            settings.scimToken && sameSecret(token, settings.scimToken)
+              ? { connectionId: 'idp', credentialId: 'settings', scopes: ['scim.users.read', 'scim.users.write'] }
+              : null,
+        },
+        identity: {
+          // someone who already has an account (say, from before single sign-on) is linked, not duplicated
+          resolveUser: async ({ resource }, { database }) => {
+            const email = resource.primaryEmail?.toLowerCase()
+            const user = email
+              ? ((await database.findOne({
+                  model: 'user',
+                  where: [{ field: 'email', value: email }],
+                })) as UserRow | null)
+              : null
+            return user ? { action: 'link', userId: user.id, profile: 'manage' } : { action: 'create' }
+          },
+          // removed or suspended at the provider: inactive here, signed out everywhere
+          reconcileUser: async ({ userId, active }, { database }) => {
+            const db = database as unknown as Adapter
+            await db.update({ model: 'user', where: [{ field: 'id', value: userId }], update: { inactive: !active } })
+            if (!active) {
+              await db.deleteMany({ model: 'session', where: [{ field: 'userId', value: userId }] })
+            }
+            await syncAfterCommit(db, hooks, userId)
+          },
+        },
+      }) as unknown as BetterAuthPlugin,
       rules(settings, deps),
     ],
   } satisfies BetterAuthOptions

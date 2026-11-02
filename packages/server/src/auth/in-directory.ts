@@ -49,6 +49,8 @@ export function authInDirectory(sql: Sql, settings: AuthSettings, directory: Dir
         await directory.updateUser(user.id, {
           ...(user.name ? { name: user.name } : {}),
           ...(user.inactive !== undefined && user.inactive !== null ? { inactive: Boolean(user.inactive) } : {}),
+          ...(user.username ? { handle: user.username } : {}),
+          ...(user.email ? { email: user.email } : {}),
         })
       },
     },

@@ -1,10 +1,17 @@
 // Bare pages until the web app (step 8) has real ones, talking to Better
-// Auth's endpoints from the browser: sign in (an email code, a handle the
-// first time, then optionally a personal token), the OAuth consent page (what
-// a token may do), and the page that shows the cli the code to paste.
+// Auth's endpoints from the browser: sign in (an email code and a handle the
+// first time, or the organization's single sign-on, then optionally a personal
+// token), the OAuth consent page (what a token may do), and the page that
+// shows the cli the code to paste.
 const html = (body: string) => new Response(body, { headers: { 'content-type': 'text/html; charset=utf-8' } })
 
-export const loginPage = () => html(LOGIN)
+/** The identity provider, as the sign-in page offers it; null while single sign-on is off. */
+export type SsoChoice = { name: string; providerId: string } | null
+
+/** JSON to put inside a script element. */
+const scriptJson = (value: unknown) => JSON.stringify(value).replaceAll('<', '\\u003c')
+
+export const loginPage = (sso: SsoChoice = null) => html(login(sso))
 export const consentPage = () => html(CONSENT)
 export const cliCodePage = () => html(CLI_CODE)
 
@@ -57,9 +64,33 @@ const SCRIPT_BASE = `
     if (url) { location.href = url; return true }
     return false
   }
+  const currentUser = async () => {
+    const response = await fetch('/api/auth/get-session')
+    const data = response.ok ? await response.json().catch(() => null) : null
+    return (data && data.user) || null
+  }
+  // An account single sign-on made has a handle suggested from the email: its
+  // person keeps or changes it before anything else (resolves with the user)
+  const confirmHandle = (user) => new Promise((resolve) => {
+    if (!user || user.handleConfirmed !== false) return resolve(user)
+    $('suggested').textContent = user.username
+    $('new-handle').value = user.username
+    $('handle-form').hidden = false
+    $('handle-form').onsubmit = run(async () => {
+      const { handle } = await post('/ideaf/confirm-handle', { handle: $('new-handle').value.trim() })
+      $('handle-form').hidden = true
+      resolve({ ...user, username: handle, handleConfirmed: true })
+    })
+  })
 `
 
-const LOGIN = `<!doctype html>
+const HANDLE_FORM = `<form id="handle-form" hidden>
+  <p>Welcome! Your handle is how people mention you: <strong>@<span id="suggested"></span></strong>. Keep it or pick another. You can't change it later.</p>
+  <label>Handle (lowercase letters, digits and dashes) <input id="new-handle" autocomplete="username"></label>
+  <button>Continue</button>
+</form>`
+
+const login = (sso: SsoChoice) => `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -69,6 +100,11 @@ ${STYLE}
 </head>
 <body>
 <h1>Sign in</h1>
+<section id="sso" hidden>
+  <button id="sso-button" type="button">Continue with <span id="sso-name"></span></button>
+  <p><a href="#" id="admin-link">Site admin? Sign in with an email code</a></p>
+</section>
+${HANDLE_FORM}
 <form id="email-form">
   <label>Email <input id="email" type="email" autocomplete="email" required></label>
   <button>Send me a code</button>
@@ -96,6 +132,43 @@ ${STYLE}
 <p class="error" id="error" role="alert"></p>
 <script>
 ${SCRIPT_BASE}
+  const SSO = ${scriptJson(sso)}
+  const params = new URLSearchParams(location.search)
+  const showSignedIn = (user) => {
+    for (const id of ['sso', 'email-form', 'code-form']) $(id).hidden = true
+    $('who').textContent = '@' + (user.username || user.name)
+    $('signed-in').hidden = false
+  }
+  // back from the identity provider with an error (no account, a domain that can't sign in…)
+  if (params.get('error')) $('error').textContent = params.get('error_description') || params.get('error').replaceAll('_', ' ')
+  if (SSO) {
+    // the organization's sign-in; email codes are only for site admins
+    $('sso-name').textContent = SSO.name
+    $('sso').hidden = false
+    $('email-form').hidden = true
+    $('admin-link').onclick = (event) => {
+      event.preventDefault()
+      $('admin-link').hidden = true
+      $('email-form').hidden = false
+    }
+    $('sso-button').onclick = run(async () => {
+      // Better Auth doesn't carry an OAuth sign-in (the cli's) through single
+      // sign-on: come back to its authorize request, which then goes on to consent
+      const back = signedQuery() ? '/api/auth/oauth2/authorize?' + authorizeQuery() : '/login'
+      follow(await post('/sign-in/sso', { providerId: SSO.providerId, callbackURL: back, errorCallbackURL: '/login' }))
+    })
+  }
+  // The authorize request, from the query Better Auth sent here (its own signature left out)
+  function authorizeQuery() {
+    const out = new URLSearchParams()
+    for (const [name, value] of params.entries()) if (name !== 'sig' && name !== 'ba_param' && name !== 'error' && name !== 'error_description') out.append(name, value)
+    return out.toString()
+  }
+  // signed in already (back from single sign-on, say): confirm the handle if it's new
+  currentUser().then(async (user) => {
+    if (!user) return
+    showSignedIn(await confirmHandle(user))
+  })
   $('email-form').onsubmit = run(async () => {
     await post('/email-otp/send-verification-otp', { email: $('email').value, type: 'sign-in' })
     $('sent-to').textContent = $('email').value
@@ -163,8 +236,9 @@ ${STYLE}
 </head>
 <body>
 <h1>Allow <span id="client">an app</span>?</h1>
+${HANDLE_FORM}
 <p>Choose what it may do. It can never do more than you can, and you can sign it out at any time.</p>
-<form id="consent">
+<form id="consent" hidden>
   <fieldset><legend>Who acts with it</legend>
     <label><input type="radio" name="purpose" value="me" checked> Me</label>
     <label><input type="radio" name="purpose" value="bot-for-me"> A bot, on my behalf</label>
@@ -210,6 +284,8 @@ ${SCRIPT_BASE}
   }
   document.querySelectorAll('input[type=radio]').forEach((input) => { input.onchange = sync })
   sync()
+  // a new account from single sign-on confirms its handle first
+  currentUser().then(confirmHandle).then(() => { $('consent').hidden = false })
   $('consent').onsubmit = run(async () => {
     const purpose = document.querySelector('input[name=purpose]:checked').value
     const some = document.querySelector('input[name=reach]:checked').value === 'some'
