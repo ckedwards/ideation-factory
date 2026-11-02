@@ -97,7 +97,7 @@ Five decisions carry the design:
 | Hosting | One VM to start; three or more for production (Docker Compose or Kubernetes) | Standard containers behind a load balancer. Rivet's hosted cloud is optional, never required |
 | CLI | TypeScript, compiled with Bun into a single executable | Easy to install everywhere, including CI; `gh`-style subcommands; shares the core packages with the backend and the web app |
 | Agents | A hosted MCP server (part of the backend), the cli, and skills | Works with whatever agent a team already uses; nothing to install for MCP |
-| Sign-in | Email code and passkeys; no passwords ([Better Auth](https://better-auth.com), being evaluated) | Simple and phishing-resistant; single sign-on (SAML/OIDC) comes after the MVP |
+| Sign-in | Email code and passkeys, or the organization's single sign-on (SAML or OIDC), with SCIM; no passwords ([Better Auth](https://better-auth.com)) | Simple and phishing-resistant; most companies will use their own identity provider |
 
 ## One codebase
 
@@ -134,7 +134,7 @@ packages/
 - Sign-in with an email code or a passkey.
 - **Self-hosting** on one VM or a three-node cluster, with Docker Compose, plus a Kubernetes example.
 
-**After the MVP:** single sign-on and automatic account creation, inactive users and other site-admin tools, site admin tokens, review batching, email notifications, fuzzy comment re-anchoring, and per-deployment settings in the UI (they're install-time configuration in the MVP).
+**After the MVP:** a Site admin page for single sign-on (it's configuration in the MVP), other site-admin tools, site admin tokens, review batching, email notifications, fuzzy comment re-anchoring, and per-deployment settings in the UI (they're install-time configuration in the MVP).
 
 ## Already validated
 
