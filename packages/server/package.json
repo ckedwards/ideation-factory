@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "bun ../../scripts/worktree.ts exec -- bun --watch src/main.ts",
-    "typecheck": "tsc -p ."
+    "typecheck": "bun check"
   },
   "dependencies": {
     "@better-auth/api-key": "1.7.14",

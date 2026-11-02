@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc -p ."
+    "typecheck": "bun check"
   },
   "dependencies": {
     "@ideaf/api": "workspace:*",

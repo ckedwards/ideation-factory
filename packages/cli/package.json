@@ -9,7 +9,7 @@
     "./*": "./src/*"
   },
   "scripts": {
-    "typecheck": "tsc -p .",
+    "typecheck": "bun check",
     "build": "bun build --compile src/main.ts --outfile dist/ideaf"
   },
   "dependencies": {
