@@ -9,6 +9,8 @@ import type { Auth } from '../auth/config.ts'
 import {
   authInDirectory,
   ensureCliClient,
+  ensureKeysExpire,
+  rotateSigningKeys,
   handleAuthRequest,
   migrateAuth,
   setInactive,
@@ -47,7 +49,10 @@ export const directory = actor({
   queues: { index: queue<IndexUpdate>() },
   createVars: () => ({ directory: null as Directory | null, auth: null as Auth | null }),
   // the cli's OAuth client, there before anyone signs in with it
-  onWake: (c) => ensureCliClient(authOf(c), nodeDeps().auth),
+  onWake: async (c) => {
+    await ensureCliClient(authOf(c), nodeDeps().auth)
+    await ensureKeysExpire(authOf(c))
+  },
   run: async (c) => {
     const d = directoryOf(c)
     for (;;) {
@@ -73,6 +78,8 @@ export const directory = actor({
   actions: {
     // sign-in: forwarded requests, personal tokens, and status
     auth: (c, request: WireRequest) => handleAuthRequest(authOf(c), request),
+    /** Replaces the token signing key (see rotateSigningKeys); `bun packages/server/src/admin.ts` calls it. */
+    rotateSigningKeys: (c, emergency: boolean) => rotateSigningKeys(authOf(c), emergency),
     verifyToken: (c, token: string) => verifyPersonalToken(authOf(c), nodeDeps().auth, directoryOf(c), token),
     setInactive: (c, id: string, inactive: boolean) => setInactive(authOf(c), id, inactive),
 

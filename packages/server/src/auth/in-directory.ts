@@ -16,6 +16,7 @@ import {
   grantClaims,
   makeAuth,
   type Purpose,
+  SIGNING_KEY_ROTATION_SECONDS,
 } from './config.ts'
 import { ActorSqliteDialect } from './dialect.ts'
 
@@ -206,4 +207,44 @@ export async function setInactive(auth: Auth, id: string, inactive: boolean): Pr
   }
   const u = updated as { id: string; username?: string; name: string; inactive?: boolean }
   return { id: u.id, handle: u.username ?? '', name: u.name, inactive: Boolean(u.inactive) }
+}
+
+type SigningKey = { id: string; createdAt: Date | string; expiresAt?: Date | string | null }
+
+/**
+ * Replaces the key access tokens are signed with; the next token gets a new
+ * one. Routine: the current key stops signing at once but stays published
+ * for a day, so the tokens it signed keep working until they expire (15
+ * minutes). Emergency, when a key may have leaked: every key is withdrawn, so
+ * every outstanding access token stops working once app nodes next fetch the
+ * keys (within a minute). Clients then refresh: sessions and refresh tokens
+ * aren't affected.
+ */
+export async function rotateSigningKeys(auth: Auth, emergency: boolean): Promise<{ retired: number }> {
+  const { adapter } = await auth.$context
+  const keys = (await adapter.findMany({ model: 'jwks' })) as SigningKey[]
+  const now = new Date()
+  const retire = emergency ? keys : keys.filter((k) => !k.expiresAt || new Date(k.expiresAt) > now)
+  for (const key of retire) {
+    const where = [{ field: 'id', value: key.id }]
+    if (emergency) {
+      await adapter.delete({ model: 'jwks', where })
+    } else {
+      await adapter.update({ model: 'jwks', where, update: { expiresAt: now } })
+    }
+  }
+  return { retired: retire.length }
+}
+
+/** A key made before rotation was on never expires: it gets the usual lifetime from when it was made. On wake. */
+export async function ensureKeysExpire(auth: Auth): Promise<void> {
+  const { adapter } = await auth.$context
+  const keys = (await adapter.findMany({ model: 'jwks' })) as SigningKey[]
+  for (const key of keys.filter((k) => !k.expiresAt)) {
+    await adapter.update({
+      model: 'jwks',
+      where: [{ field: 'id', value: key.id }],
+      update: { expiresAt: new Date(new Date(key.createdAt).getTime() + SIGNING_KEY_ROTATION_SECONDS * 1000) },
+    })
+  }
 }

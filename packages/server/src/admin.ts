@@ -1,0 +1,44 @@
+#!/usr/bin/env bun
+// Operator commands, run where the server runs: they talk to the Rivet Engine
+// directly (RIVET_ENDPOINT, or the local engine in development), as the
+// server does, so they need no sign-in. A site admin page can call the same
+// directory actions later.
+//
+//   bun packages/server/src/admin.ts rotate-signing-key
+//       The key access tokens are signed with is replaced. Tokens it signed
+//       keep working until they expire (15 minutes). Keys rotate by themselves
+//       every 30 days; this is for doing it sooner.
+//   bun packages/server/src/admin.ts rotate-signing-key --emergency
+//       Every signing key is withdrawn, as when one may have leaked: every
+//       outstanding access token stops working within a minute, and clients
+//       refresh (sessions and refresh tokens aren't affected).
+//
+// In development, run it through the worktree's settings:
+//   bun scripts/worktree.ts exec -- bun packages/server/src/admin.ts rotate-signing-key
+import { createClient } from 'rivetkit/client'
+import { DIRECTORY_KEY } from './actors/directory.ts'
+import type { Registry } from './registry.ts'
+
+const USAGE = 'usage: bun packages/server/src/admin.ts rotate-signing-key [--emergency]'
+
+export async function admin(argv: string[], env: Record<string, string | undefined>): Promise<number> {
+  const [command, ...flags] = argv
+  if (command !== 'rotate-signing-key' || flags.some((f) => f !== '--emergency')) {
+    console.error(USAGE)
+    return 2
+  }
+  const endpoint = env.RIVET_ENDPOINT ?? `http://127.0.0.1:${env.RIVET_RUN_ENGINE_PORT ?? 6420}`
+  const directory = createClient<Registry>(endpoint).directory.getOrCreate(DIRECTORY_KEY)
+  const emergency = flags.includes('--emergency')
+  const { retired } = await directory.rotateSigningKeys(emergency)
+  console.log(
+    emergency
+      ? `Withdrew ${retired} signing key(s): access tokens stop working within a minute, and clients refresh.`
+      : `Retired ${retired} signing key(s): new tokens get a new key, and tokens already out keep working until they expire.`,
+  )
+  return 0
+}
+
+if (import.meta.main) {
+  process.exit(await admin(process.argv.slice(2), process.env))
+}
