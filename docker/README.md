@@ -18,10 +18,10 @@ Open <http://localhost:6080/vnc.html?autoconnect=1&resize=remote> to see the cli
 
 ## Sign in
 
-On the client, `ideaf auth login` opens the sign-in page in the client's Chromium (on the noVNC screen), and the code comes back to the cli as it would on a laptop. There's no email yet: the server logs the codes.
+On the client, `ideaf auth login` opens the sign-in page in the client's Chromium (on the noVNC screen), and the code comes back to the cli as it would on a laptop. Sign-in codes are emailed, over SMTP as in production, to Mailpit: open its inbox at http://mailpit:8025 in another tab of the client's browser. Every address arrives there, so any email works. From a shell on the client (or for Claude Code), the latest code is:
 
 ```sh
-docker compose logs server | grep 'sign-in code'
+curl -s mailpit:8025/api/v1/messages | grep -o '[0-9]\{6\} is your' | head -1
 ```
 
 To make yourself a site admin, set `IDEAF_SITE_ADMINS=you@example.test` where you run `docker compose up`. `IDEAF_PERSONAL_TOKENS` passes through the same way.
