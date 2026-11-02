@@ -5,7 +5,7 @@
 import { join } from 'node:path'
 import { createClient } from 'rivetkit/client'
 import { createApp } from './app.ts'
-import { authSettingsFromEnv, logMailer } from './auth/settings.ts'
+import { authSettingsFromEnv, mailerFromEnv } from './auth/settings.ts'
 import { WorkerPool } from './core-pool/pool.ts'
 import { configureNode } from './deps.ts'
 import { LocalFolderFileStore } from './files/local-folder.ts'
@@ -16,7 +16,7 @@ const port = Number(process.env.PORT ?? 8080)
 const data = process.env.IDEAF_DATA ?? '.data'
 
 const core = new WorkerPool()
-const auth = authSettingsFromEnv(process.env, logMailer)
+const auth = authSettingsFromEnv(process.env, mailerFromEnv(process.env))
 configureNode({
   files: new LocalFolderFileStore(join(data, 'files')),
   core,

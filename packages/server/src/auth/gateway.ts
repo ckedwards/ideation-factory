@@ -14,8 +14,11 @@ export interface AuthDirectory {
   user(id: string): Promise<{ inactive: boolean } | null>
 }
 
-/** Public signing keys are fetched again at most this often (and at once for a key not seen before). */
-const KEYS_TTL_MS = 5 * 60_000
+/**
+ * Public signing keys are fetched again this often (and at once for a key not
+ * seen before): an emergency key rotation stops old tokens within this long.
+ */
+const KEYS_TTL_MS = 60_000
 const PERSONAL_TOKEN = /^ideaf_/
 /** What a token limited to some teams or ideas may still write: those ideas' content. */
 const CONTENT_WRITES = new Set(['create_idea', 'sync', 'edit', 'add_comment', 'reply', 'resolve_comment'])

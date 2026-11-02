@@ -4,7 +4,8 @@
 // real directory actor.
 import { beforeAll, describe, expect, test } from 'bun:test'
 import { createApiClient } from '@ideaf/api'
-import { SignJWT, generateKeyPair } from 'jose'
+import { SignJWT, decodeProtectedHeader, generateKeyPair } from 'jose'
+import { admin } from '../admin.ts'
 import { DIRECTORY_KEY } from '../actors/directory.ts'
 import { createApp } from '../app.ts'
 import type { Registry } from '../registry.ts'
@@ -106,7 +107,49 @@ describe('signing up', () => {
   })
 })
 
+describe('sign-in codes', () => {
+  test('a code that can’t be sent says so, so the person can try again', async () => {
+    const working = testAuth.mailer
+    testAuth.mailer = {
+      sendCode: async () => {
+        throw new Error('connect ECONNREFUSED')
+      },
+    }
+    try {
+      const sent = await json(
+        await post('/api/auth/email-otp/send-verification-otp', {
+          email: `${h('lost')}@example.test`,
+          type: 'sign-in',
+        }),
+      )
+      expect(sent.status).toBe(503)
+      expect(sent.body.message).toContain('try again')
+    } finally {
+      testAuth.mailer = working
+    }
+  })
+})
+
 describe('tokens', () => {
+  test('after the signing key is rotated (bun packages/server/src/admin.ts), old and new tokens both work', async () => {
+    const pat = await signIn(app, h('pat'))
+    const fresh = async () => {
+      const response = await app(
+        new Request(`${TEST_URL}/api/auth/token`, { headers: { cookie: pat.cookie, origin: TEST_URL } }),
+      )
+      return ((await response.json()) as { token: string }).token
+    }
+    const before = await fresh()
+    await api(before).getUser({ user: pat.handle })
+    expect(await admin(['rotate-signing-key'], process.env)).toBe(0)
+    const after = await fresh()
+    expect(decodeProtectedHeader(after).kid).not.toBe(decodeProtectedHeader(before).kid)
+    // the app node fetches the new key when it first sees it, and still has the old one
+    expect((await api(after).getUser({ user: pat.handle })).id).toBe(pat.id)
+    expect((await api(before).getUser({ user: pat.handle })).id).toBe(pat.id)
+    expect(await admin(['rotate-signing-key', '--sideways'], process.env)).toBe(2)
+  })
+
   test('a personal token works as is, and a bot token labels what it does', async () => {
     const riley = await signIn(app, h('riley'))
     const { idea } = await api(riley.jwt).createIdea({ title: 'Mine', files: [{ path: 'a.md', content: PLAN }] })

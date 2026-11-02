@@ -12,7 +12,7 @@
 // Worked out in the Better Auth spike: docs/mvp/spike-better-auth.md.
 import { timingSafeEqual } from 'node:crypto'
 import { apiKey } from '@better-auth/api-key'
-import { queueAfterTransactionHook } from '@better-auth/core/context'
+import { defineRequestState, queueAfterTransactionHook } from '@better-auth/core/context'
 import { oauthProvider } from '@better-auth/oauth-provider'
 import { passkey } from '@better-auth/passkey'
 import { scim } from '@better-auth/scim'
@@ -31,6 +31,13 @@ import type { Directory, TokenGrant } from '../directory/types.ts'
 
 /** How a short-lived access token lasts. */
 export const ACCESS_TOKEN_SECONDS = 15 * 60
+/**
+ * The key access tokens are signed with is replaced this often (Better Auth
+ * mints the next one when it's needed), and a replaced key stays published
+ * this long, well past the tokens it signed, so they keep verifying.
+ */
+export const SIGNING_KEY_ROTATION_SECONDS = 30 * 24 * 3600
+export const SIGNING_KEY_GRACE_SECONDS = 24 * 3600
 const YEAR_SECONDS = 365 * 24 * 3600
 const ADMIN_TOKEN_SECONDS = 30 * 24 * 3600
 /** A passkey can only be added this soon after signing in with an email code. */
@@ -222,6 +229,13 @@ export async function suggestHandle(email: string, adapter: Adapter): Promise<st
     }
   }
 }
+
+/**
+ * A sign-in code this request couldn't send. Better Auth logs a failed send and
+ * answers "sent" anyway; an after-hook (in rules) turns this into an error, so
+ * the person knows to try again.
+ */
+const unsentCode = defineRequestState<{ failed: boolean }>(() => ({ failed: false }))
 
 const emailDomain = (email: string) => email.slice(email.lastIndexOf('@') + 1).toLowerCase()
 const isSiteAdmin = (settings: AuthSettings, email: string) => settings.siteAdmins.has(email.toLowerCase())
@@ -478,6 +492,15 @@ const rules = (settings: AuthSettings, deps?: AuthDeps): BetterAuthPlugin => ({
   hooks: {
     after: [
       {
+        // the code was made but couldn't be sent: say so, rather than "sent"
+        matcher: (ctx) => ctx.path === '/email-otp/send-verification-otp',
+        handler: createAuthMiddleware(async () => {
+          if ((await unsentCode.get()).failed) {
+            throw new APIError('SERVICE_UNAVAILABLE', { message: 'the code couldn’t be sent: try again in a minute' })
+          }
+        }),
+      },
+      {
         // a consent uses the session's token grant once: the next one must choose again
         matcher: (ctx) => ctx.path === '/oauth2/consent',
         handler: createAuthMiddleware(async (ctx) => {
@@ -668,7 +691,14 @@ export function authOptions(database: BetterAuthOptions['database'], settings: A
         otpLength: 6,
         expiresIn: 600,
         allowedAttempts: 3,
-        sendVerificationOTP: ({ email, otp, type }) => settings.mailer.sendCode(email, otp, type),
+        sendVerificationOTP: async ({ email, otp, type }) => {
+          try {
+            await settings.mailer.sendCode(email, otp, type)
+          } catch (error) {
+            console.error(`sending a sign-in code to ${email} failed:`, error)
+            ;(await unsentCode.get()).failed = true
+          }
+        },
       }),
       username({
         minUsernameLength: 2,
@@ -678,7 +708,12 @@ export function authOptions(database: BetterAuthOptions['database'], settings: A
         immutableUsername: true,
       }),
       jwt({
-        jwks: { keyPairConfig: { alg: 'EdDSA', crv: 'Ed25519' } },
+        // kept in the directory, the private key encrypted with the auth secret
+        jwks: {
+          keyPairConfig: { alg: 'EdDSA', crv: 'Ed25519' },
+          rotationInterval: SIGNING_KEY_ROTATION_SECONDS,
+          gracePeriod: SIGNING_KEY_GRACE_SECONDS,
+        },
         jwt: {
           issuer: settings.baseURL,
           audience: settings.baseURL,
