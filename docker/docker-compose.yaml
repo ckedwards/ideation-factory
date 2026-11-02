@@ -46,7 +46,7 @@ services:
       # Claude Code's login, ideaf's tokens, Chromium's profile and ~/work
       - client-home:/home/dev
     ports:
-      - 127.0.0.1:6080:6080
+      - 127.0.0.1:${IDEAF_SANDBOX_VNC_PORT:-6080}:6080
     shm_size: 1gb
 
 volumes:

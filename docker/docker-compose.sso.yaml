@@ -1,0 +1,47 @@
+# Single sign-on in the sandbox: Keycloak as the organization's identity
+# provider (OIDC), with the server switched over to it. Layer it on the base
+# file, from this folder:
+#
+#   docker compose -f docker-compose.yaml -f docker-compose.sso.yaml up -d --build
+#
+# People: alice and bob (password = username), emails @acme.test. Keycloak's
+# own admin console is at http://keycloak:8180 from the client's browser
+# (admin / admin). See README.md here.
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: '8180'
+      # one URL for the server (discovery, tokens) and the client's browser (sign-in)
+      KC_HOSTNAME: http://keycloak:8180
+      KC_HEALTH_ENABLED: 'true'
+    volumes:
+      - ./keycloak/acme-realm.json:/opt/keycloak/data/import/acme-realm.json:ro
+    healthcheck:
+      # the image has no curl: bash's /dev/tcp asks the management port for /health/ready
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"UP"' <&3
+      interval: 3s
+      timeout: 3s
+      retries: 60
+
+  server:
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    environment:
+      IDEAF_SSO: oidc
+      IDEAF_SSO_NAME: Acme
+      IDEAF_SSO_DOMAINS: acme.test
+      IDEAF_OIDC_ISSUER: http://keycloak:8180/realms/acme
+      IDEAF_OIDC_CLIENT_ID: ideaf
+      IDEAF_OIDC_CLIENT_SECRET: sandbox-oidc-secret-not-for-real-use
+      # a site admin keeps an email code, for when the provider is down
+      IDEAF_SITE_ADMINS: ${IDEAF_SITE_ADMINS:-admin@acme.test}
