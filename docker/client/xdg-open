@@ -1,0 +1,15 @@
+#!/bin/sh
+# Opens links in the container's own Chromium, on the virtual display you see
+# through noVNC: `ideaf auth login` (and Claude Code's /login) open their
+# sign-in pages with xdg-open. A second link opens as a tab in the same
+# browser.
+#
+# No sandbox: Chromium's needs user namespaces, which Docker's default seccomp
+# profile doesn't give (--test-type hides the warning bar about it). And a
+# stopped container never shuts Chromium down cleanly, so no "restore pages?"
+# bubble either.
+nohup chromium \
+  --no-sandbox --test-type --disable-dev-shm-usage --no-first-run --no-default-browser-check \
+  --hide-crash-restore-bubble --start-maximized --user-data-dir="$HOME/.config/chromium" \
+  "$@" >/dev/null 2>&1 &
+exit 0
