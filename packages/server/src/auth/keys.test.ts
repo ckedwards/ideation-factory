@@ -7,7 +7,7 @@ import { bunSql } from '../sql/sql-bun.ts'
 import { TEST_URL, testAuth } from '../testing.ts'
 import { type Auth, makeAuth, SIGNING_KEY_ROTATION_SECONDS } from './config.ts'
 import { ActorSqliteDialect } from './dialect.ts'
-import { ensureKeysExpire, migrateAuth, rotateSigningKeys } from './in-directory.ts'
+import { migrateAuth, rotateSigningKeys } from './in-directory.ts'
 
 let auth: Auth
 beforeEach(async () => {
@@ -74,17 +74,5 @@ describe('signing keys', () => {
     const fresh = await sign()
     expect(await verifies(fresh)).toBe(true)
     expect((await published()).keys.map((k) => k.kid)).toEqual([kid(fresh)])
-  })
-
-  test('a key made before rotation was on gets the usual lifetime', async () => {
-    await sign()
-    const [key] = await keys()
-    const adapter = (await auth.$context).adapter
-    await adapter.update({ model: 'jwks', where: [{ field: 'id', value: key!.id }], update: { expiresAt: null } })
-    await ensureKeysExpire(auth)
-    const [after] = await keys()
-    expect(new Date(after!.expiresAt!).getTime()).toBe(
-      new Date(key!.createdAt).getTime() + SIGNING_KEY_ROTATION_SECONDS * 1000,
-    )
   })
 })

@@ -16,7 +16,6 @@ import {
   grantClaims,
   makeAuth,
   type Purpose,
-  SIGNING_KEY_ROTATION_SECONDS,
 } from './config.ts'
 import { ActorSqliteDialect } from './dialect.ts'
 
@@ -234,17 +233,4 @@ export async function rotateSigningKeys(auth: Auth, emergency: boolean): Promise
     }
   }
   return { retired: retire.length }
-}
-
-/** A key made before rotation was on never expires: it gets the usual lifetime from when it was made. On wake. */
-export async function ensureKeysExpire(auth: Auth): Promise<void> {
-  const { adapter } = await auth.$context
-  const keys = (await adapter.findMany({ model: 'jwks' })) as SigningKey[]
-  for (const key of keys.filter((k) => !k.expiresAt)) {
-    await adapter.update({
-      model: 'jwks',
-      where: [{ field: 'id', value: key.id }],
-      update: { expiresAt: new Date(new Date(key.createdAt).getTime() + SIGNING_KEY_ROTATION_SECONDS * 1000) },
-    })
-  }
 }
