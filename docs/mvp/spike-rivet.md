@@ -98,13 +98,12 @@ If worker threads don't meet the target, the next step is moving that heavy work
 
 ### Call latency
 
-[Scale concerns](scale-concerns.md) concern 11: on the local development engine, a one-off actor call takes about 80 ms and a call over a connection about 2 ms. Measure whether that holds on a production-like setup, on both engines (3.0, and 2.x for comparison) and with the app nodes connecting through `RIVET_ENDPOINT`, as in production.
+[Scale concerns](scale-concerns.md) concern 11: on RivetKit 2.3.31 a one-off actor call took about 88 ms, from two 40 ms stalls relaying it between the engine and the actor's process; RivetKit 3.0.0 brought it to about 4 ms on one machine. Check it stays fast on a production-like setup, with the app nodes connecting through `RIVET_ENDPOINT`, as in production.
 
 - [ ] **The same calls as in development:** an action through a handle (by key and by actor ID), a queue message that waits for its result, and an action over a connection; one node, then a call to an actor on another node. **Pass:** each is recorded, median and 99th percentile.
 - [ ] **Real requests, end to end:** a read with its access check, and a write, under steady load. **Pass:** recorded, median and 99th percentile.
-- [ ] **If one-off calls are still slow:** turn the development engine's settings (`RIVET__PEGBOARD__BASE_RETRY_TIMEOUT`, `RIVET__PEGBOARD__MIN_METADATA_POLL_INTERVAL` and the others RivetKit sets) on and off one at a time. **Pass:** the setting responsible is known, or it's shown to be in RivetKit's request path, and reported to Rivet.
 
-Then decide: if one-off calls are fast in production, give development and tests production-like settings and keep the design; if not, use the mitigations in concern 11.
+If one-off calls are slow there, use the mitigations in concern 11 and report it to Rivet.
 
 ### Waking and upgrades
 
@@ -148,7 +147,7 @@ Then decide: if one-off calls are fast in production, give development and tests
 
 _To be filled in during the spike._
 
-**Early, from step 0 of the build (2026-10-31):** Bun 1.4.3 runs RivetKit 2.3.31's native runtime with no Node-only blockers. RivetKit starts a local 2.x engine itself, ready in about 0.6–2 s, and a queued write that waits for its result takes about 180 ms on a new actor. Writes through a queue were applied in order, and 25 concurrent writes were each applied once. Still to check on the 3.0 engine.
+**Early, from step 0 of the build (2026-10-31):** Bun 1.4.3 runs RivetKit 2.3.31's native runtime with no Node-only blockers. RivetKit starts a local 2.x engine itself, ready in about 0.6–2 s, and a queued write that waits for its result takes about 180 ms on a new actor. Writes through a queue were applied in order, and 25 concurrent writes were each applied once. Since 2026-11-01 the build is on RivetKit 3.0.0, whose local engine is 3.0: it removed an 80 ms stall on every one-off actor call ([scale concern 11](scale-concerns.md)). The rest is still to check on the 3.0 engine.
 
 **From step 2 (2026-10-31):** per-actor SQLite, typed events to connected clients, and per-instance memory (`vars`) all work on Bun. **`onMigrate` already runs inside a savepoint:** opening a transaction inside it waits on the outer one until it times out (30 s), so migrations must not open their own. Ten concurrent batches on one idea were applied in order, each against the latest version, and retried writes with the same idempotency key were applied once.
 
