@@ -7,14 +7,18 @@ import { DIRECTORY_KEY } from './actors/directory.ts'
 import type { AuthSettings } from './auth/config.ts'
 import { authGateway } from './auth/gateway.ts'
 import { cliCodePage, consentPage, loginPage } from './auth/pages.ts'
-import { CLI_CODE_PATH } from './auth/config.ts'
+import { CLI_CODE_PATH, SSO_PROVIDER_ID } from './auth/config.ts'
 import { createHandlers } from './operations.ts'
 import type { Registry } from './registry.ts'
 
 export type AppDeps = {
   actors: Client<Registry>
-  /** The same settings the directory actor's Better Auth runs with: its base URL is the tokens' issuer. */
-  auth: Pick<AuthSettings, 'baseURL'>
+  /**
+   * The same settings the directory actor's Better Auth runs with: its base
+   * URL is the tokens' issuer, and the sign-in page offers single sign-on when
+   * it's on (read on every request, like the actor does).
+   */
+  auth: Pick<AuthSettings, 'baseURL' | 'sso'>
   /** Check every response against its schema (tests turn this on). */
   validateOutput?: boolean
 }
@@ -38,7 +42,7 @@ export function createApp({ actors, auth, validateOutput = false }: AppDeps): (r
       return gateway.forward(request)
     }
     if (pathname === '/login') {
-      return loginPage()
+      return loginPage(auth.sso ? { name: auth.sso.name, providerId: SSO_PROVIDER_ID } : null)
     }
     if (pathname === '/consent') {
       return consentPage()

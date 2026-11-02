@@ -47,6 +47,16 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
         expect((await d.updateUser('u-maya', { inactive: false }))!.inactive).toBe(false)
         expect(await d.updateUser('u-nobody', { name: 'X' })).toBeNull()
       })
+
+      test('updateUser changes a handle (confirmed after single sign-on) and an email (changed at the provider)', async () => {
+        const d = await people()
+        expect(await d.updateUser('u-maya', { handle: 'Maya-Moss', email: 'Maya.Moss@example.test' })).toMatchObject({
+          id: 'u-maya',
+          handle: 'maya-moss',
+        })
+        expect((await d.user('maya-moss'))!.id).toBe('u-maya')
+        expect(await d.user('maya')).toBeNull()
+      })
     })
 
     describe('teams and groups', () => {
