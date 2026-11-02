@@ -19,6 +19,7 @@ import { sync } from './commands/sync.ts'
 import { unlock } from './commands/unlock.ts'
 import { CliError, type Context, createContext, EXIT, fromApiError } from './context.ts'
 import { type Io, processIo } from './io.ts'
+import { VERSION } from './version.ts'
 
 type Flag = { type: 'string' | 'boolean'; short?: string; multiple?: boolean; description: string }
 type Values = Record<string, string | boolean | string[] | undefined>
@@ -516,8 +517,8 @@ const commands: Array<Command | Family> = [
     summary: 'Print the version',
     flags: {},
     run: async (ctx) => {
-      ctx.say('ideaf 0.0.0')
-      ctx.result({ version: '0.0.0' })
+      ctx.say(`ideaf ${VERSION}`)
+      ctx.result({ version: VERSION })
       return EXIT.ok
     },
   },
@@ -545,7 +546,7 @@ function help(io: Io, command?: Command | Family, prefix = 'ideaf'): void {
     }
     return
   }
-  io.out('Usage: ideaf <command> [options]\n')
+  io.out('Usage: ideaf <command> [options]\n       ideaf --version\n')
   const width = Math.max(...commands.map((c) => c.name.length)) + 2
   for (const c of commands) {
     io.out(`  ${c.name.padEnd(width)}${c.summary}`)
@@ -562,6 +563,10 @@ const isHelp = (arg: string | undefined) => arg === '--help' || arg === '-h' || 
 
 export async function main(argv: string[], io: Io = processIo()): Promise<number> {
   const [first, ...afterFirst] = argv
+  if (first === '--version' || first === '-v') {
+    // the same as `ideaf version`, flags and all (--json)
+    return main(['version', ...afterFirst], io)
+  }
   if (!first || isHelp(first)) {
     const found = commands.find((c) => c.name === afterFirst[0])
     const sub = found && 'subcommands' in found ? found.subcommands.find((c) => c.name === afterFirst[1]) : undefined
