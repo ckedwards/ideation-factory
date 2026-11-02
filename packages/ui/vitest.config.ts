@@ -18,6 +18,7 @@ export default defineConfig({
       define: { 'import.meta.env.STORYBOOK_THEME': JSON.stringify(theme) },
       test: {
         name: theme,
+        isolate: false,
         browser: {
           enabled: true,
           headless: true,
