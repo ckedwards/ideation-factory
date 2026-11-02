@@ -1,0 +1,54 @@
+# A server and a client machine to try ideaf end to end, with Claude Code on
+# the client. See README.md here. Run docker compose from this folder:
+#
+#   bun run --filter @ideaf/cli build      the ideaf binary the client mounts
+#   cd docker
+#   docker compose up -d --build
+#   docker compose exec client bash        then: ideaf auth login, claude
+#   open http://localhost:6080/vnc.html?autoconnect=1&resize=remote
+#
+# `docker compose down -v` starts over: server data, sign-ins and all.
+name: ideaf-sandbox
+
+services:
+  server:
+    build:
+      context: ..
+      dockerfile: docker/server.Dockerfile
+    environment:
+      # the URL tokens are issued for: the client reaches the server here too
+      IDEAF_URL: http://localhost:8080
+      IDEAF_SITE_ADMINS: ${IDEAF_SITE_ADMINS:-}
+      IDEAF_PERSONAL_TOKENS: ${IDEAF_PERSONAL_TOKENS:-admins}
+    volumes:
+      - server-data:/data
+
+  client:
+    build:
+      context: ..
+      dockerfile: docker/client.Dockerfile
+    # a fixed hostname, so Chromium's profile isn't "in use on another computer"
+    # after the container is recreated
+    hostname: client
+    depends_on:
+      server:
+        condition: service_healthy
+    environment:
+      IDEAF_URL: http://localhost:8080
+      # no keychain in here: tokens go in ~/.config/ideaf/credentials.json
+      IDEAF_CREDENTIALS: file
+      # passed through only when set where you run docker compose
+      ANTHROPIC_API_KEY:
+    volumes:
+      # a directory, not the file: a rebuild replaces the file, and a mount of
+      # the file itself would keep showing the old one
+      - ../packages/cli/dist:/opt/ideaf:ro
+      # Claude Code's login, ideaf's tokens, Chromium's profile and ~/work
+      - client-home:/home/dev
+    ports:
+      - 127.0.0.1:6080:6080
+    shm_size: 1gb
+
+volumes:
+  server-data:
+  client-home:

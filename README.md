@@ -11,7 +11,7 @@ Review and edit ideas written in Markdown, together with agents, so comments sta
 - [MVP design](docs/mvp/architecture.md): [backend](docs/mvp/architecture-backend.md), [front end](docs/mvp/architecture-frontend.md), [cli and skills](docs/mvp/architecture-cli.md), [core](docs/mvp/core.md), [scale concerns](docs/mvp/scale-concerns.md), and the [Rivet](docs/mvp/spike-rivet.md) and [Better Auth](docs/mvp/spike-better-auth.md) spikes
 - [Implementation plan](docs/implementation-plan.md): where to start, and in what order
 
-The prototypes are in `experiments/`.
+The prototypes are in `experiments/`. To try ideaf end to end, with Claude Code on a client machine, see the [docker sandbox](docker/README.md).
 
 ## Contributing
 

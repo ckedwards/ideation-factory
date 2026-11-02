@@ -1,0 +1,7 @@
+# the images copy only what they need; keep the build context small
+**/node_modules
+**/dist
+.data
+.git
+docs
+experiments
