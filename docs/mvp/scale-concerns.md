@@ -156,32 +156,27 @@ A faster parser is the other option, but the web app must parse with the same li
 
 **Status:** low priority; measure in the Rivet spike.
 
-### 11. One-off actor calls cost about 80 ms each
+### 11. One-off actor calls cost about 80 ms each (fixed in RivetKit 3.0)
 
-**Why:** the app node calls actors through RivetKit handles (`actors.idea.getOrCreate([id]).summary()`). Each call is one HTTP request to the engine's gateway, and on the local development engine each one takes about 80 ms, whatever it does. The same action over a connection (`handle.connect()`) takes about 2 ms. Every API request makes at least two calls (the access check in the directory, then the idea), and writes go through the idea's queue, which is the same kind of request, so a read pays about 170 ms and a write about 175 ms before any real work. It's also most of why the test suite grew from about 14 s to about 36 s in step 5.
+**Why:** the app node calls actors through RivetKit handles (`actors.idea.getOrCreate([id]).summary()`). Each call is one HTTP request to the engine's gateway, which relays it to the actor's process over a WebSocket. On RivetKit 2.3.31 each one took about 88 ms, whatever it did, while the same action over a connection (`handle.connect()`) took about 2 ms. Every API request makes at least two calls (the access check in the directory, then the idea), so this was most of every request's time, and most of the test suite's: 136 s, of which about 21 s was CPU.
 
-**Measured** (2026-10-31; RivetKit 2.3.31, the local 2.x engine RivetKit starts in development, one machine; first noticed by the Better Auth spike):
+**Cause:** traced with debug logging (2026-11-01). The relay sends a request's start and its body as two small WebSocket frames, and the reply the same way back; each second frame arrived about 40 ms after the first. Two 40 ms stalls is the mark of Nagle's algorithm waiting on a delayed ACK (a socket without `TCP_NODELAY`), on the link between the engine and the actor's process. Not a development setting, so it would have held in production too.
 
-| Call | Time |
-|---|---|
-| Action through a handle, by key (what the server does) | ~86 ms |
-| Action by actor ID | ~79 ms |
-| Queue message, waiting for its result (every write); the same through a handle or a connection | ~88 ms |
-| Action over a connection | ~2 ms |
-| Plain HTTP request to the engine | ~1 ms |
+**Fixed** by RivetKit 3.0.0 (with its engine), measured the same way on one machine:
 
-**Likely cause, not confirmed:** the network is fine, so it's the gateway's path for one-off requests. A steady ~80 ms whatever the call does looks like a timer, not work. In development, RivetKit starts the engine with its own settings, among them `RIVET__PEGBOARD__BASE_RETRY_TIMEOUT=100` and `RIVET__PEGBOARD__MIN_METADATA_POLL_INTERVAL=1000`, which govern how the engine routes requests to actors. A production engine, configured normally, may not have the delay at all. So this may only exist in development.
+| Call | 2.3.31 | 3.0.0 |
+|---|---|---|
+| Action through a handle, by key (what the server does) | ~88 ms | ~4 ms |
+| 10 actions at once | ~106 ms | ~12 ms |
+| Action over a connection | ~2–5 ms | ~2 ms |
+| `getIdea` through the HTTP API | ~150 ms | ~11 ms |
+| `addComment` (a queued write) | ~350 ms | ~58 ms |
+| `createIdea` | ~550 ms | ~106 ms |
+| The whole test suite | 136 s | 28 s |
 
-**When it bites:** on every request, if it holds in production; otherwise only in local development and tests.
+**Mitigations, if one-off calls get slow again:** keep connections open from each app node: one to the directory, and connections to idea actors cached by idea, closed after about a minute idle (so actors still sleep), and dropped when the actor goes away. Measured on 2.3.31 as a quick experiment: the suite went from 136 s to 52 s.
 
-**Mitigations, only if it holds in production:**
-- **Keep connections open from each app node:** one to the directory, and connections to idea actors cached by idea and closed after about a minute idle (so actors still sleep), with a cap on how many are open.
-- **Writes as an action applied one at a time in the actor** (a lock in its memory) instead of a queue message, since queue messages go out as one-off requests even over a connection. Ordering stays the same; nothing durable is lost, because a queued message is removed when received anyway, and idempotency keys already make retries safe. This changes the documented write path.
-- **Report it to Rivet** with these numbers, whichever way it turns out.
-
-If it's only a development setting, give local development and tests the production settings instead, and leave the design as it is.
-
-**Status:** measured in development only. Decide after measuring on a production-like setup in the [Rivet spike](spike-rivet.md) ("Call latency"), once the build is further along.
+**Status:** fixed by the upgrade. Measure again on a production-like setup in the [Rivet spike](spike-rivet.md) ("Call latency").
 
 ## Load test plan
 
