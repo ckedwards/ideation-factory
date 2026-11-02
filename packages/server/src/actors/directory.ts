@@ -9,7 +9,6 @@ import type { Auth } from '../auth/config.ts'
 import {
   authInDirectory,
   ensureCliClient,
-  ensureKeysExpire,
   rotateSigningKeys,
   handleAuthRequest,
   migrateAuth,
@@ -49,10 +48,7 @@ export const directory = actor({
   queues: { index: queue<IndexUpdate>() },
   createVars: () => ({ directory: null as Directory | null, auth: null as Auth | null }),
   // the cli's OAuth client, there before anyone signs in with it
-  onWake: async (c) => {
-    await ensureCliClient(authOf(c), nodeDeps().auth)
-    await ensureKeysExpire(authOf(c))
-  },
+  onWake: (c) => ensureCliClient(authOf(c), nodeDeps().auth),
   run: async (c) => {
     const d = directoryOf(c)
     for (;;) {
