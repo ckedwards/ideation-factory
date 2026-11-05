@@ -66,6 +66,13 @@ export interface AuthSettings {
   /** Rate limits on sign-in (on unless false: tests sign up many people from one address). */
   rateLimit?: boolean
   /**
+   * The reverse proxies (load balancers) in front of the app nodes, as IPs or
+   * CIDR ranges. Only a request that came through one has its client's address
+   * taken from X-Forwarded-For; otherwise the address is whoever connected.
+   * Sign-in's rate limits count per client address.
+   */
+  trustedProxies?: readonly string[]
+  /**
    * Single sign-on: the organization's identity provider signs everyone in,
    * instead of email codes and passkeys (site admins keep an email code, the
    * way in when the provider is down). Read on every request, so a site admin
@@ -102,6 +109,13 @@ export interface SsoSettings {
     spCertificate?: string
   }
 }
+
+/**
+ * The client's address, as the app node worked it out (see clientAddress in
+ * gateway.ts), on requests it forwards to Better Auth: the one place Better
+ * Auth takes it from. A client's own copy of the header is dropped.
+ */
+export const CLIENT_IP_HEADER = 'x-ideaf-client-ip'
 
 /** The configured provider's ID in Better Auth: there's only ever one. */
 export const SSO_PROVIDER_ID = 'ideaf-sso'
@@ -648,8 +662,9 @@ export function authOptions(database: BetterAuthOptions['database'], settings: A
     },
     // In memory, inside the directory actor: one count for the whole site.
     rateLimit: { enabled: settings.rateLimit !== false, storage: 'memory' },
-    // Behind a load balancer, the client's address comes from X-Forwarded-For.
-    advanced: { ipAddress: { ipAddressHeaders: ['x-forwarded-for'] } },
+    // Better Auth runs in the directory actor and never sees who connected: the
+    // app node works out the client's address and sends it in this header
+    advanced: { ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] } },
     databaseHooks: {
       user: {
         create: {
