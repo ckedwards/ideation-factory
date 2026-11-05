@@ -31,5 +31,6 @@ if (!endpoint) {
 }
 const actors = createClient<Registry>(endpoint)
 
-const server = Bun.serve({ port, fetch: createApp({ actors, auth }) })
+const app = createApp({ actors, auth })
+const server = Bun.serve({ port, fetch: (request, server) => app(request, server.requestIP(request)?.address) })
 console.log(`ideaf server on http://localhost:${server.port} (${core.size} core workers)`)

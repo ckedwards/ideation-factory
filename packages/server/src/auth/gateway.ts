@@ -4,7 +4,9 @@
 // signature alone: no directory call. A personal token (a stopgap for CI) is
 // checked in the directory on every request instead.
 import type { ApiErrorBody, Caller, Operation, TokenScope } from '@ideaf/api'
+import { getIPFromHeader } from '@better-auth/core/utils/ip'
 import { createLocalJWKSet, errors, type JSONWebKeySet, jwtVerify } from 'jose'
+import { CLIENT_IP_HEADER } from './config.ts'
 import type { Claims, WireRequest, WireResponse } from './in-directory.ts'
 
 /** The directory actor's sign-in actions, as an app node calls them. */
@@ -23,14 +25,41 @@ const PERSONAL_TOKEN = /^ideaf_/
 /** What a token limited to some teams or ideas may still write: those ideas' content. */
 const CONTENT_WRITES = new Set(['create_idea', 'sync', 'edit', 'add_comment', 'reply', 'resolve_comment'])
 
-export function authGateway(directory: AuthDirectory, baseURL: string) {
-  /** A request forwarded to Better Auth in the directory actor. */
-  const forward = async (request: Request): Promise<Response> => {
+/**
+ * Who a request came from. `peer` is whoever connected. If that's one of the
+ * trusted proxies, X-Forwarded-For is walked from the right, past any other
+ * trusted proxies, to the first address that isn't one: the client. Otherwise
+ * the peer is the client, and X-Forwarded-For (anyone can send one) is
+ * ignored. Null when there's no peer (a request made in process, in tests).
+ */
+export function clientAddress(
+  peer: string | undefined,
+  forwardedFor: string | null,
+  trustedProxies: readonly string[] = [],
+): string | null {
+  if (!peer) {
+    return null
+  }
+  if (trustedProxies.length === 0) {
+    return getIPFromHeader(peer)
+  }
+  const chain = [forwardedFor, peer].filter(Boolean).join(', ')
+  return getIPFromHeader(chain, { trustedProxies: [...trustedProxies] })
+}
+
+export function authGateway(directory: AuthDirectory, baseURL: string, trustedProxies: readonly string[] = []) {
+  /** A request forwarded to Better Auth in the directory actor, with the address it came from (`peer`). */
+  const forward = async (request: Request, peer?: string): Promise<Response> => {
     const body = request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.arrayBuffer()
+    const client = clientAddress(peer, request.headers.get('x-forwarded-for'), trustedProxies)
+    const sent: Array<[string, string]> = [...request.headers].filter(([name]) => name !== CLIENT_IP_HEADER)
+    if (client) {
+      sent.push([CLIENT_IP_HEADER, client])
+    }
     const wire = await directory.auth({
       url: request.url,
       method: request.method,
-      headers: [...request.headers],
+      headers: sent,
       ...(body && body.byteLength > 0 ? { body: Buffer.from(body).toString('base64') } : {}),
     })
     const headers = new Headers()

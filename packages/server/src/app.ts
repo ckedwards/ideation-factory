@@ -18,28 +18,33 @@ export type AppDeps = {
    * URL is the tokens' issuer, and the sign-in page offers single sign-on when
    * it's on (read on every request, like the actor does).
    */
-  auth: Pick<AuthSettings, 'baseURL' | 'sso'>
+  auth: Pick<AuthSettings, 'baseURL' | 'sso' | 'trustedProxies'>
   /** Check every response against its schema (tests turn this on). */
   validateOutput?: boolean
 }
 
-export function createApp({ actors, auth, validateOutput = false }: AppDeps): (request: Request) => Promise<Response> {
+/** The app: a request, and the address it came from (Bun's server.requestIP), which sign-in's rate limits count by. */
+export function createApp({
+  actors,
+  auth,
+  validateOutput = false,
+}: AppDeps): (request: Request, peer?: string) => Promise<Response> {
   const openapi = openApiDocument(operations, { title: 'Ideation Factory', version: '0.0.0' })
   const directory = actors.directory.getOrCreate(DIRECTORY_KEY)
-  const gateway = authGateway(directory, auth.baseURL)
+  const gateway = authGateway(directory, auth.baseURL, auth.trustedProxies)
 
   const route = createRouter(operations, createHandlers(actors), {
     authenticate: gateway.authenticate,
     validateOutput,
     onError: (error, operation) => console.error(`${operation} failed:`, error),
   })
-  return async (request) => {
+  return async (request, peer) => {
     const { pathname } = new URL(request.url)
     if (pathname === '/health') {
       return Response.json({ ok: true })
     }
     if (pathname.startsWith('/api/auth/')) {
-      return gateway.forward(request)
+      return gateway.forward(request, peer)
     }
     if (pathname === '/login') {
       return loginPage(auth.sso ? { name: auth.sso.name, providerId: SSO_PROVIDER_ID } : null)

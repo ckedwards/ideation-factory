@@ -1,6 +1,7 @@
 // Auth settings from the environment, and the mail senders for sign-in codes:
 // SMTP in production, the server log in development, a capture in tests.
 import { readFileSync } from 'node:fs'
+import { findInvalidTrustedProxies } from '@better-auth/core/utils/ip'
 import {
   type AuthSettings,
   type Mailer,
@@ -16,8 +17,10 @@ const DEV_SECRET = 'ideaf-development-secret-not-for-production-0123456789'
  * IDEAF_URL is the deployment's public URL; IDEAF_AUTH_SECRET (at least 32
  * characters) signs cookies and encrypts signing keys, and is required in
  * production; IDEAF_SITE_ADMINS lists the site admins' emails, comma-separated;
- * IDEAF_PERSONAL_TOKENS is on, admins (the default) or off. Single sign-on
- * and SCIM are in ssoFromEnv below.
+ * IDEAF_PERSONAL_TOKENS is on, admins (the default) or off;
+ * IDEAF_TRUSTED_PROXIES lists the reverse proxies in front of the app nodes
+ * (IPs or CIDR ranges, comma-separated), whose X-Forwarded-For is believed.
+ * Single sign-on and SCIM are in ssoFromEnv below.
  */
 export function authSettingsFromEnv(env: Record<string, string | undefined>, mailer: Mailer): AuthSettings {
   const secret = env.IDEAF_AUTH_SECRET
@@ -42,9 +45,22 @@ export function authSettingsFromEnv(env: Record<string, string | undefined>, mai
     ),
     mailer,
     personalTokens,
+    trustedProxies: trustedProxiesFromEnv(env),
     sso: ssoFromEnv(env),
     scimToken: scimTokenFromEnv(env),
   }
+}
+
+function trustedProxiesFromEnv(env: Record<string, string | undefined>): string[] {
+  const proxies = (env.IDEAF_TRUSTED_PROXIES ?? '')
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean)
+  const invalid = findInvalidTrustedProxies(proxies)
+  if (invalid.length > 0) {
+    throw new Error(`IDEAF_TRUSTED_PROXIES takes IP addresses and CIDR ranges, not: ${invalid.join(', ')}`)
+  }
+  return proxies
 }
 
 const list = (value: string | undefined) =>
