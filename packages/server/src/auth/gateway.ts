@@ -47,11 +47,44 @@ export function clientAddress(
   return getIPFromHeader(chain, { trustedProxies: [...trustedProxies] })
 }
 
+/**
+ * A proxy nobody listed: with no trusted proxies set, a request from this
+ * machine or a private network that carries X-Forwarded-For most likely came
+ * through a reverse proxy or load balancer, so every client is counted as that
+ * one address. What IDEAF_TRUSTED_PROXIES should probably be, or null.
+ */
+export function unlistedProxy(
+  peer: string | undefined,
+  forwardedFor: string | null,
+  trustedProxies: readonly string[],
+): string | null {
+  if (!peer || !forwardedFor || trustedProxies.length > 0) {
+    return null
+  }
+  const address = peer.replace(/^::ffff:/i, '')
+  if (address === '::1' || address.startsWith('127.')) {
+    return '127.0.0.1,::1'
+  }
+  if (/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(address) || /^f[cd][0-9a-f]{2}:/i.test(address)) {
+    return address
+  }
+  return null
+}
+
 export function authGateway(directory: AuthDirectory, baseURL: string, trustedProxies: readonly string[] = []) {
+  let warned = false
   /** A request forwarded to Better Auth in the directory actor, with the address it came from (`peer`). */
   const forward = async (request: Request, peer?: string): Promise<Response> => {
     const body = request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.arrayBuffer()
-    const client = clientAddress(peer, request.headers.get('x-forwarded-for'), trustedProxies)
+    const forwardedFor = request.headers.get('x-forwarded-for')
+    const proxy = warned ? null : unlistedProxy(peer, forwardedFor, trustedProxies)
+    if (proxy) {
+      warned = true
+      console.warn(
+        `requests from ${peer} carry X-Forwarded-For, but IDEAF_TRUSTED_PROXIES isn't set, so sign-in's rate limits count every client behind it as one. If it's your proxy, set IDEAF_TRUSTED_PROXIES=${proxy}.`,
+      )
+    }
+    const client = clientAddress(peer, forwardedFor, trustedProxies)
     const sent: Array<[string, string]> = [...request.headers].filter(([name]) => name !== CLIENT_IP_HEADER)
     if (client) {
       sent.push([CLIENT_IP_HEADER, client])
