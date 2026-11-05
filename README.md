@@ -56,7 +56,14 @@ curl -H "authorization: Bearer $IDEAF_TOKEN" -X POST localhost:8080/ideas \
 # → {"idea":"i…","version":1}
 ```
 
-In production, set `IDEAF_AUTH_SECRET` (at least 32 random characters) and `IDEAF_URL` (the public URL); `IDEAF_SITE_ADMINS` lists the site admins' emails, and `IDEAF_PERSONAL_TOKENS` (`on`, `admins` or `off`; `admins` by default) decides who may use personal tokens. Turning them off refuses existing ones too.
+In production, set `IDEAF_AUTH_SECRET` (at least 32 random characters) and `IDEAF_URL` (the public URL); `IDEAF_SITE_ADMINS` lists the site admins' emails, and `IDEAF_PERSONAL_TOKENS` (`on`, `admins` or `off`; `admins` by default) decides who may use personal tokens. Turning them off refuses existing ones too. Behind a load balancer or reverse proxy, list its addresses in `IDEAF_TRUSTED_PROXIES` (IPs or CIDR ranges, comma-separated): sign-in's rate limits count per client, and only a request through one of those has its client taken from `X-Forwarded-For`.
+
+**People who leave.** Without SCIM, a site admin deactivates them on the server: they're signed out everywhere and their writes stop at once. Their ideas and comments stay.
+
+```
+bun packages/server/src/admin.ts deactivate <handle>
+bun packages/server/src/admin.ts reactivate <handle>
+```
 
 **Email.** Sign-in codes go out over SMTP, so any provider works (Amazon SES, Postmark, Mailgun, Resend, Google Workspace, your own server): set `IDEAF_SMTP_URL` (`smtps://user:password@host:465`, or `smtp://…:587` for STARTTLS) and `IDEAF_EMAIL_FROM` (`Ideation Factory <sign-in@example.com>`). Without them the server writes codes to its log, which production refuses unless `IDEAF_EMAIL=log` says so (say, behind single sign-on, where only site admins use codes).
 
