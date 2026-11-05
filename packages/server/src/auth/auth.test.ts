@@ -236,6 +236,23 @@ describe('tokens', () => {
 })
 
 describe('an inactive account', () => {
+  test('a site admin deactivates and reactivates someone by handle (bun packages/server/src/admin.ts)', async () => {
+    const lee = await signIn(app, h('lee'))
+    const looker = api((await signIn(app, h('lee-looker'))).jwt)
+    expect(await admin(['deactivate', lee.handle], process.env)).toBe(0)
+    expect(await looker.getUser({ user: lee.handle })).toMatchObject({ inactive: true })
+    await expect(
+      api(lee.jwt).createIdea({ title: 'Gone', files: [{ path: 'a.md', content: PLAN }] }),
+    ).rejects.toMatchObject({ code: 'forbidden' })
+    const session = await app(new Request(`${TEST_URL}/api/auth/get-session`, { headers: { cookie: lee.cookie } }))
+    expect(await session.json()).toBeNull()
+
+    expect(await admin(['reactivate', lee.id], process.env)).toBe(0)
+    expect(await looker.getUser({ user: lee.handle })).toMatchObject({ inactive: false })
+    expect(await admin(['deactivate', h('nobody')], process.env)).toBe(1)
+    expect(await admin(['deactivate'], process.env)).toBe(2)
+  })
+
   test('gets no new tokens, and its writes stop at once while reads ride out the token', async () => {
     const sam = await signIn(app, h('sam'))
     const client = api(sam.jwt)
