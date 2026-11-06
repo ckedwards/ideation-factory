@@ -47,11 +47,12 @@ export const Every: Story = {
   ),
 }
 
-// Focus opens the details at once
+// Enter on it opens the details
 export const Details: Story = {
   play: async ({ canvasElement, userEvent }) => {
     await userEvent.tab()
-    const tip = await within(canvasElement.ownerDocument.body).findByRole('tooltip')
+    await userEvent.keyboard('{Enter}')
+    const tip = await within(canvasElement.ownerDocument.body).findByRole('dialog')
     await expect(tip).toHaveTextContent('In review · 1 of 2 requirements met')
     await expect(tip).toHaveTextContent('5h ago · v3')
   },

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect, within } from 'storybook/test'
+import { expect, waitFor, within } from 'storybook/test'
 import { Tooltip } from './Tooltip.tsx'
 import { Button } from '../controls/Button.tsx'
 
@@ -43,13 +43,16 @@ export const RichContent: Story = {
   },
 }
 
-// Keyboard focus opens it at once; Esc closes it
-export const KeyboardFocus: Story = {
+// From the keyboard: Enter opens it, named after its anchor; Esc closes it
+export const Keyboard: Story = {
+  args: { focusable: true, children: <span>3 of 4 requirements met</span> },
   play: async ({ canvasElement, userEvent }) => {
     await userEvent.tab()
+    await userEvent.keyboard('{Enter}')
     const page = within(canvasElement.ownerDocument.body)
-    await expect(await page.findByRole('tooltip')).toHaveTextContent('Only its members can see its ideas')
+    const details = await page.findByRole('dialog', { name: '3 of 4 requirements met' })
+    await expect(details).toHaveTextContent('Only its members can see its ideas')
     await userEvent.keyboard('{Escape}')
-    await expect(page.queryByRole('tooltip')).toBeNull()
+    await waitFor(() => expect(page.queryByRole('dialog')).toBeNull())
   },
 }

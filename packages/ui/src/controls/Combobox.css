@@ -44,27 +44,26 @@
 .combo-clear:hover {
   background: var(--surface-2);
 }
-.combo-list {
-  position: absolute;
-  top: calc(100% + var(--space-1));
-  left: 0;
+.combo-positioner {
   z-index: 45;
+}
+.combo-popup {
   width: max-content;
-  min-width: 100%;
+  min-width: var(--anchor-width);
   max-width: 22rem;
-  margin: 0;
+  max-height: min(24rem, var(--available-height));
   padding: var(--space-1);
-  list-style: none;
+  overflow-y: auto;
   border: var(--hairline) solid var(--rule-strong);
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: var(--shadow);
   color: var(--ink);
 }
-.combo-list[hidden] {
+.combo-list:empty {
   display: none;
 }
-.combo-list li {
+.combo-item {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -73,7 +72,7 @@
   font-size: var(--text-sm);
   cursor: pointer;
 }
-.combo-list li.is-active {
+.combo-item[data-highlighted] {
   background: var(--surface-2);
 }
 .combo-option {

@@ -28,11 +28,12 @@ export const NeedsFixing: Story = { args: { requirements: requirements.broken } 
 
 export const NoRequirements: Story = { args: { approvals: 3, requirements: requirements.none } }
 
-// Focus shows each requirement and where it stands
+// Enter on it shows each requirement and where it stands
 export const KeyboardFocus: Story = {
   play: async ({ canvasElement, userEvent }) => {
     await userEvent.tab()
-    const tip = await within(canvasElement.ownerDocument.body).findByRole('tooltip')
+    await userEvent.keyboard('{Enter}')
+    const tip = await within(canvasElement.ownerDocument.body).findByRole('dialog')
     await expect(tip).toHaveTextContent('All discussions resolved (2 open)')
   },
 }
