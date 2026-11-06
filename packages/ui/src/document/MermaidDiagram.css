@@ -1,0 +1,68 @@
+.diagram {
+  margin: 0 0 var(--space-4);
+  /* Pele reads its colors and font from these, so diagrams follow the theme */
+  --pele-bg: transparent;
+  --pele-fg: var(--ink);
+  --pele-muted: var(--ink-3);
+  --pele-line: var(--ink-2);
+  --pele-surface: var(--surface);
+  --pele-surface-alt: var(--surface-2);
+  --pele-border: var(--rule-strong);
+  --pele-accent: var(--accent);
+  --pele-font: var(--font-ui);
+  --pele-radius: var(--radius);
+}
+.diagram-drawing {
+  padding: var(--space-3);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow-x: auto;
+}
+.diagram-drawing svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+/* holds roughly a diagram's space, so the page doesn't jump much when it lands */
+.diagram-wait {
+  display: grid;
+  min-height: 12rem;
+  place-items: center;
+  color: var(--ink-3);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  animation: diagram-wait 1.2s ease-in-out infinite alternate;
+}
+@keyframes diagram-wait {
+  from {
+    opacity: 0.55;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .diagram-wait {
+    animation: none;
+  }
+}
+.diagram-source {
+  margin-top: var(--space-1);
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}
+.diagram-source summary {
+  width: max-content;
+  cursor: pointer;
+}
+.diagram pre {
+  margin: var(--space-2) 0 0;
+}
+.diagram figcaption {
+  margin-bottom: var(--space-1);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+}
+.diagram.is-broken figcaption {
+  color: var(--lost);
+}

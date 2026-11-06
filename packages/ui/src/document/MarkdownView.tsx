@@ -6,8 +6,10 @@
 // Every block carries its source offsets (data-start, data-end), which is how
 // the page maps between the document and comment anchors, sections and edits.
 import type { Code, Definition, Nodes, PhrasingContent, Root, RootContent, Table } from 'mdast'
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import { Link } from '../link/Link.tsx'
+import { defaultImage, type ExternalImages, type ImageMedia, MarkdownImage } from './MarkdownImage.tsx'
+import type { Deletion, RedlineBlock, SourceRange } from './redline.ts'
 import './MarkdownView.css'
 
 // A comment on some text: a range of source offsets, marked in the document.
@@ -42,8 +44,11 @@ export interface MarkdownViewProps {
   changed?: { start: number; end: number }[]
   // where a link's URL goes; by default, as written
   resolveLink?: (url: string) => ResolvedLink
-  // the uploaded copy of an image, or null when there's none to show
-  imageSrc?: (url: string) => string | null
+  // what an image's URL is in the version shown: uploaded, not uploaded (and
+  // why), or on another site; by default, web addresses are external
+  image?: (url: string) => ImageMedia
+  // the deployment's setting for images from other sites; click by default
+  externalImages?: ExternalImages
   // draws a code block itself (a Mermaid diagram), or undefined to show the code
   renderCode?: (code: Code) => ReactNode | undefined
   onMarkClick?: (id: string) => void
@@ -51,14 +56,23 @@ export interface MarkdownViewProps {
   idPrefix?: string
   // compact: smaller, for a comment's text
   variant?: 'document' | 'compact'
+  // shows these blocks, a redline, instead of the tree's; use Redline
+  redline?: {
+    blocks: RedlineBlock[]
+    // the older file's tree, for its link definitions
+    base: Root
+    // what an image's URL was in the older version
+    baseImage?: (url: string) => ImageMedia
+  }
 }
 
-interface Context extends Required<Pick<MarkdownViewProps, 'marks' | 'resolveLink' | 'imageSrc'>> {
+interface Context extends Required<Pick<MarkdownViewProps, 'marks' | 'resolveLink' | 'image' | 'externalImages'>> {
   props: MarkdownViewProps
   definitions: Map<string, Definition>
-  footnotes: Map<string, number>
-  slugs: Map<string, number>
-  tables: number
+  // shared by both files of a redline, so numbers and IDs don't repeat
+  counters: { footnotes: Map<string, number>; slugs: Map<string, number>; tables: number }
+  // the word changes of the block being drawn, in a redline
+  edit: { inserted: SourceRange[]; deleted: Deletion[]; shown: Set<Deletion> } | null
 }
 
 export function defaultResolveLink(url: string): ResolvedLink {
@@ -66,16 +80,16 @@ export function defaultResolveLink(url: string): ResolvedLink {
 }
 
 export function MarkdownView(props: MarkdownViewProps) {
-  const { tree, marks = [], resolveLink = defaultResolveLink, imageSrc = () => null } = props
+  const { tree, marks = [], resolveLink = defaultResolveLink, image = defaultImage, externalImages = 'click' } = props
   const ctx: Context = {
     props,
     marks,
     resolveLink,
-    imageSrc,
+    image,
+    externalImages,
     definitions: collectDefinitions(tree),
-    footnotes: new Map(),
-    slugs: new Map(),
-    tables: 0,
+    counters: { footnotes: new Map(), slugs: new Map(), tables: 0 },
+    edit: null,
   }
   return (
     <div
@@ -87,8 +101,97 @@ export function MarkdownView(props: MarkdownViewProps) {
         }
       }}
     >
-      {tree.children.map((node, i) => block(node, ctx, i, true))}
+      {props.redline
+        ? props.redline.blocks.map((item, i) => redlineBlock(item, ctx, i))
+        : tree.children.map((node, i) => block(node, ctx, i, true))}
     </div>
+  )
+}
+
+// One block of a redline. Every change has a rail in the margin and words for
+// screen readers; deleted text is struck through and inserted text underlined,
+// so none of it relies on color.
+function redlineBlock(item: RedlineBlock, ctx: Context, key: number): ReactNode {
+  const redline = ctx.props.redline!
+  // the older file's blocks: its definitions and images, and no comments
+  const old: Context = {
+    ...ctx,
+    marks: [],
+    props: { ...ctx.props, sectionMarks: [], changed: [] },
+    definitions: collectDefinitions(redline.base),
+    image: redline.baseImage ?? ctx.image,
+  }
+  const said = (text: string) => <span className="visually-hidden">{text}</span>
+  switch (item.kind) {
+    case 'same':
+      return block(item.node, ctx, key, true)
+    case 'added':
+      return (
+        <div key={key} className="rl rl-added">
+          {said('Added: ')}
+          {block(item.node, ctx, 0)}
+        </div>
+      )
+    case 'removed':
+      return (
+        <div key={key} className="rl rl-removed">
+          {said('Removed: ')}
+          {block(item.node, old, 0)}
+        </div>
+      )
+    case 'edited': {
+      ctx.edit = { inserted: item.inserted, deleted: item.deleted, shown: new Set() }
+      const drawn = block(item.node, ctx, 0)
+      // text taken out where nothing was left to show it in (only Markdown around it)
+      const left = item.deleted.filter((deletion) => !ctx.edit!.shown.has(deletion))
+      ctx.edit = null
+      return (
+        <div key={key} className="rl rl-edited">
+          {said('Edited: ')}
+          {drawn}
+          {left.length > 0 && <p>{left.map((deletion, i) => deleted(deletion, i))}</p>}
+        </div>
+      )
+    }
+    case 'moved':
+      return (
+        <div key={key} className="rl rl-moved">
+          <span className="rl-tag">Moved here</span>
+          {block(item.node, ctx, 0)}
+        </div>
+      )
+    case 'moved-from':
+      return (
+        <p key={key} className="rl-moved-from">
+          Moved {item.down ? 'down' : 'up'}: {item.label} <span aria-hidden>{item.down ? '↓' : '↑'}</span>
+        </p>
+      )
+    case 'image-changed':
+      return (
+        <div key={key} className="rl rl-image">
+          <span className="rl-tag">Image changed</span>
+          <div className="rl-image-pair">
+            <div className="rl-image-before">
+              <span className="rl-image-label">Before</span>
+              {block(item.before, old, 0)}
+            </div>
+            <div className="rl-image-after">
+              <span className="rl-image-label">After</span>
+              {block(item.node, ctx, 0)}
+            </div>
+          </div>
+        </div>
+      )
+  }
+}
+
+function deleted(deletion: Deletion, key: number): ReactNode {
+  return (
+    <del key={`del-${key}`}>
+      <span className="visually-hidden">[deleted: </span>
+      {deletion.text}
+      <span className="visually-hidden">]</span>
+    </del>
   )
 }
 
@@ -141,8 +244,8 @@ function slug(text: string, ctx: Context): string {
       .trim()
       .replace(/[^\p{L}\p{N}\s-]/gu, '')
       .replace(/\s/g, '-') || 'section'
-  const seen = ctx.slugs.get(base) ?? 0
-  ctx.slugs.set(base, seen + 1)
+  const seen = ctx.counters.slugs.get(base) ?? 0
+  ctx.counters.slugs.set(base, seen + 1)
   return `${ctx.props.idPrefix ?? ''}${seen === 0 ? base : `${base}-${seen}`}`
 }
 
@@ -303,18 +406,18 @@ function block(node: RootContent, ctx: Context, key: number, top = false): React
 
 // "Table 2: Case, What happens, Who decides": numbered, so each is distinct
 function tableLabel(node: Table, ctx: Context): string {
-  ctx.tables += 1
+  ctx.counters.tables += 1
   const headers = (node.children[0]?.children ?? []).map((cell) => plainText(cell).trim()).filter(Boolean)
-  return `Table ${ctx.tables}${headers.length > 0 ? `: ${headers.join(', ')}` : ''}`
+  return `Table ${ctx.counters.tables}${headers.length > 0 ? `: ${headers.join(', ')}` : ''}`
 }
 
 function footnoteNumber(identifier: string, ctx: Context): number {
-  const known = ctx.footnotes.get(identifier)
+  const known = ctx.counters.footnotes.get(identifier)
   if (known !== undefined) {
     return known
   }
-  const next = ctx.footnotes.size + 1
-  ctx.footnotes.set(identifier, next)
+  const next = ctx.counters.footnotes.size + 1
+  ctx.counters.footnotes.set(identifier, next)
   return next
 }
 
@@ -329,7 +432,11 @@ function inline(nodes: PhrasingContent[], ctx: Context): ReactNode[] {
 function phrasing(node: PhrasingContent, ctx: Context, key: number): ReactNode {
   switch (node.type) {
     case 'text':
-      return <span key={key}>{marked(node.value, node, ctx)}</span>
+      return (
+        <span key={key} {...textOffsets(node.value, node)}>
+          {marked(node.value, node, ctx)}
+        </span>
+      )
     case 'emphasis':
       return <em key={key}>{inline(node.children, ctx)}</em>
     case 'strong':
@@ -338,7 +445,11 @@ function phrasing(node: PhrasingContent, ctx: Context, key: number): ReactNode {
     case 'delete':
       return <s key={key}>{inline(node.children, ctx)}</s>
     case 'inlineCode':
-      return <code key={key}>{marked(node.value, node, ctx)}</code>
+      return (
+        <code key={key} {...textOffsets(node.value, node)}>
+          {marked(node.value, node, ctx)}
+        </code>
+      )
     case 'break':
       return <br key={key} />
     case 'link':
@@ -391,58 +502,99 @@ function link(url: string, title: string | null | undefined, children: ReactNode
 }
 
 function image(url: string, alt: string | null | undefined, ctx: Context, key: number) {
-  const src = ctx.imageSrc(url)
-  if (src) {
-    return <img key={key} className="md-image" src={src} alt={alt ?? ''} />
-  }
-  return (
-    <span key={key} className="md-image-missing">
-      <span aria-hidden>🖼 </span>
-      {alt || 'Image'} · not shown
-    </span>
-  )
+  return <MarkdownImage key={key} alt={alt ?? ''} media={ctx.image(url)} externalImages={ctx.externalImages} />
 }
 
-// Text with the comment marks that fall in it. A node whose text is its source
-// (no escapes or entities) is split exactly; otherwise a mark covers all of it.
+// Where a run of text starts and ends in the source, so a selection in the
+// page can be turned back into source offsets (see SelectionMenu). inexact:
+// its text isn't its source (an escape, an entity), so only its ends are known.
+function textOffsets(value: string, node: Nodes) {
+  const start = node.position?.start.offset
+  const end = node.position?.end.offset
+  if (start === undefined || end === undefined) {
+    return {}
+  }
+  const skip = node.type === 'inlineCode' ? (end - start - value.length) / 2 : 0
+  const exact = Number.isInteger(skip) && (node.type === 'inlineCode' || value.length === end - start)
+  return {
+    'data-text-start': start + (exact ? skip : 0),
+    'data-text-end': exact ? start + skip + value.length : end,
+    ...(exact ? {} : { 'data-inexact': '' }),
+  }
+}
+
+// Text with what falls in it: comment marks, and in a redline, inserted words
+// and the place deleted ones were. A node whose text is its source (no escapes
+// or entities) is split exactly; otherwise each covers all of it.
 function marked(value: string, node: Nodes, ctx: Context): ReactNode {
   const start = node.position?.start.offset
   const end = node.position?.end.offset
-  if (start === undefined || end === undefined || ctx.marks.length === 0) {
+  if (start === undefined || end === undefined) {
     return value
   }
   const hits = ctx.marks.filter((mark) => mark.start < end && start < mark.end)
-  if (hits.length === 0) {
+  const inserted = (ctx.edit?.inserted ?? []).filter((range) => range.start < end && start < range.end)
+  const deletions = (ctx.edit?.deleted ?? []).filter(
+    (deletion) => !ctx.edit!.shown.has(deletion) && start <= deletion.at && deletion.at <= end,
+  )
+  if (hits.length === 0 && inserted.length === 0 && deletions.length === 0) {
     return value
+  }
+  for (const deletion of deletions) {
+    ctx.edit!.shown.add(deletion)
   }
   // inline code's value leaves out its backticks: it starts one in
   const skip = node.type === 'inlineCode' ? (end - start - value.length) / 2 : 0
   const exact = Number.isInteger(skip) && (node.type === 'inlineCode' || value.length === end - start)
   if (!exact) {
-    return markElement(hits[0]!, value, 0)
+    const whole = wrap(value, hits[0], inserted.length > 0, 0)
+    return [...deletions.map((deletion, i) => deleted(deletion, i)), whole]
   }
   const from = start + skip
+  const clamp = (n: number) => Math.max(0, Math.min(value.length, n - from))
   const cuts = new Set([0, value.length])
-  for (const mark of hits) {
-    cuts.add(Math.max(0, mark.start - from))
-    cuts.add(Math.min(value.length, mark.end - from))
+  for (const range of [...hits, ...inserted]) {
+    cuts.add(clamp(range.start))
+    cuts.add(clamp(range.end))
   }
-  const points = [...cuts].filter((n) => n >= 0 && n <= value.length).sort((a, b) => a - b)
+  for (const deletion of deletions) {
+    cuts.add(clamp(deletion.at))
+  }
+  const points = [...cuts].sort((a, b) => a - b)
   const out: ReactNode[] = []
-  for (let i = 0; i < points.length - 1; i++) {
+  for (let i = 0; i < points.length; i++) {
     const a = points[i]!
-    const b = points[i + 1]!
-    const text = value.slice(a, b)
+    deletions
+      .filter((deletion) => clamp(deletion.at) === a)
+      .forEach((deletion, n) => out.push(deleted(deletion, i * 100 + n)))
+    const b = points[i + 1]
+    if (b === undefined) {
+      break
+    }
     // where marks overlap, the active one, then the shortest, shows
     const covering = hits
       .filter((mark) => mark.start <= from + a && from + b <= mark.end)
       .sort((x, y) => Number(Boolean(y.active)) - Number(Boolean(x.active)) || x.end - x.start - (y.end - y.start))
-    out.push(covering[0] ? markElement(covering[0], text, i) : text)
+    const added = inserted.some((range) => range.start <= from + a && from + b <= range.end)
+    out.push(wrap(value.slice(a, b), covering[0], added, i))
   }
   return out
 }
 
-function markElement(mark: MarkdownMark, text: string, key: number) {
+function wrap(text: string, mark: MarkdownMark | undefined, added: boolean, key: number): ReactNode {
+  const inner = added ? (
+    <ins key={`ins-${key}`}>
+      <span className="visually-hidden">[inserted: </span>
+      {text}
+      <span className="visually-hidden">]</span>
+    </ins>
+  ) : (
+    text
+  )
+  return mark ? markElement(mark, inner, key) : <Fragment key={key}>{inner}</Fragment>
+}
+
+function markElement(mark: MarkdownMark, text: ReactNode, key: number) {
   const classes = ['md-mark', mark.active && 'is-active', mark.resolved && 'is-resolved'].filter(Boolean).join(' ')
   return (
     <mark key={key} className={classes} data-comment-id={mark.id}>

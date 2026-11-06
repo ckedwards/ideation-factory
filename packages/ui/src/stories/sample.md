@@ -43,6 +43,13 @@ When two people change the same field, the server keeps both and asks the second
 
 The sync flow is in the diagram below.[^diagram]
 
+```mermaid
+flowchart LR
+  App[Field app] -- queued changes --> Sync[POST /sync]
+  Sync --> Server[(Server)]
+  Server -- conflicts --> App
+```
+
 ![Sync flow](uploads/sync-flow.svg)
 
 <details><summary>Raw HTML is shown, not run</summary><script>alert(1)</script></details>

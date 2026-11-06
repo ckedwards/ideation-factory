@@ -1,0 +1,36 @@
+.idea-heading {
+  display: grid;
+  gap: var(--space-2);
+}
+.idea-heading-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.idea-heading-button {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.idea-heading-button:hover {
+  text-decoration: underline;
+  text-decoration-thickness: var(--hairline);
+  text-underline-offset: 0.2em;
+}
+.idea-heading-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.idea-heading-meta {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}

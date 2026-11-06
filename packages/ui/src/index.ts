@@ -30,6 +30,7 @@ export { RequirementList } from './ideas/RequirementList.tsx'
 export { ReviewerStack, type ReviewerStackProps } from './ideas/ReviewerStack.tsx'
 export { IdeaRow, type IdeaRowHide, type IdeaRowProps } from './ideas/IdeaRow.tsx'
 export { StatusControl, type OpenStatus, type StatusControlProps } from './ideas/StatusControl.tsx'
+export { IdeaHeading, type IdeaHeadingProps } from './ideas/IdeaHeading.tsx'
 
 export { NowProvider, RelativeTime, formatAgo, useNow, type RelativeTimeProps } from './time/RelativeTime.tsx'
 
@@ -59,6 +60,25 @@ export {
   type SectionMark,
 } from './document/MarkdownView.tsx'
 export { Toc, type TocEntry, type TocProps } from './document/Toc.tsx'
+export {
+  MarkdownImage,
+  defaultImage,
+  formatBytes,
+  type ExternalImages,
+  type ImageMedia,
+  type MarkdownImageProps,
+} from './document/MarkdownImage.tsx'
+export { MermaidDiagram, renderMermaid, type MermaidDiagramProps } from './document/MermaidDiagram.tsx'
+export { drawDiagram, preloadDiagrams, type Drawn } from './document/diagrams.ts'
+export { Redline, type RedlineProps } from './document/Redline.tsx'
+export {
+  changedRanges,
+  redline,
+  type Deletion,
+  type MarkdownSource,
+  type RedlineBlock,
+  type SourceRange,
+} from './document/redline.ts'
 
 export {
   CommentCard,
@@ -69,6 +89,10 @@ export {
   type Suggestion,
 } from './comments/CommentCard.tsx'
 export { ViewInVersion, type ViewInVersionProps } from './comments/ViewInVersion.tsx'
+export { CommentGutter, type CommentGutterProps } from './comments/CommentGutter.tsx'
+export { layoutNotes, type GutterNote } from './comments/gutter.ts'
+export { SelectionMenu, type SelectionMenuProps } from './comments/SelectionMenu.tsx'
+export { selectionInSource, type TextSelection } from './comments/selection.ts'
 
 export { Row, Stack, type RowProps, type Space, type StackProps } from './layout/Stack.tsx'
 export { Page, Section, type PageProps, type SectionProps } from './layout/Page.tsx'
