@@ -132,19 +132,52 @@
   color: var(--ink-2);
   text-decoration: underline dotted;
 }
+/* images: uploaded ones with what they are, the rest as a notice saying why */
 .prose .md-image {
+  display: block;
+  margin: var(--space-2) 0;
+}
+.prose .md-image img {
+  display: block;
   max-width: 100%;
   height: auto;
+  border: var(--hairline) solid var(--rule);
   border-radius: var(--radius);
 }
-.prose .md-image-missing {
-  display: inline-block;
-  padding: var(--space-2) var(--space-3);
+.prose .md-image-external img {
+  border-style: dashed;
+}
+.prose .md-image-caption {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}
+.prose .md-media {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: var(--space-2) 0;
+  padding: var(--space-3) var(--space-4);
   border: var(--hairline) dashed var(--rule-strong);
   border-radius: var(--radius);
+  background: var(--surface-2);
   color: var(--ink-2);
   font-family: var(--font-ui);
   font-size: var(--text-sm);
+  line-height: 1.45;
+}
+.prose .md-media-missing {
+  border-color: var(--warn);
+}
+.prose .md-media-icon {
+  font-size: 1.25rem;
+}
+.prose .md-media-text {
+  flex: 1;
+  min-width: 12rem;
 }
 .prose .md-footnote {
   display: flex;
@@ -244,4 +277,91 @@
 }
 .prose-compact > :last-child {
   margin-bottom: 0;
+}
+
+/* the redline: what changed since the version compared against */
+.prose ins {
+  border-radius: calc(var(--radius-sm) / 2);
+  background: var(--ins-bg);
+  color: var(--ins-ink);
+  text-decoration: underline;
+  text-decoration-thickness: var(--hairline);
+  text-underline-offset: 0.2em;
+}
+.prose del {
+  border-radius: calc(var(--radius-sm) / 2);
+  background: var(--del-bg);
+  color: var(--del-ink);
+  text-decoration: line-through;
+}
+.prose .rl::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: var(--space-4);
+  left: calc(var(--space-5) * -1);
+  width: var(--rail);
+  border-radius: var(--rail);
+  background: var(--changed);
+}
+.prose .rl-added::before {
+  background: var(--ins-ink);
+}
+/* its block's margin falls outside it, so this covers just the text */
+.prose .rl-added {
+  border-radius: var(--radius-sm);
+  background: var(--ins-bg);
+}
+.prose .rl-removed::before {
+  background: var(--del-ink);
+}
+.prose .rl-removed {
+  color: var(--del-ink);
+  text-decoration: line-through;
+}
+.prose .rl-moved::before {
+  background: repeating-linear-gradient(var(--ink-3) 0 0.25rem, transparent 0.25rem 0.5rem);
+}
+.prose .rl-tag {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.prose .rl-moved-from {
+  width: fit-content;
+  padding: var(--space-1) var(--space-3);
+  border: var(--hairline) dashed var(--rule-strong);
+  border-radius: var(--radius);
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+.prose .rl-image-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-3);
+}
+.prose .rl-image-label {
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+.prose .rl-image-before .rl-image-label {
+  color: var(--del-ink);
+}
+.prose .rl-image-after .rl-image-label {
+  color: var(--ins-ink);
+}
+.prose .rl-image-before img {
+  outline: calc(var(--hairline) * 3) solid var(--del-bg);
+  opacity: 0.8;
+}
+.prose .rl-image-after img {
+  outline: calc(var(--hairline) * 3) solid var(--ins-bg);
 }

@@ -1,0 +1,110 @@
+import { useRef } from 'react'
+import type { Meta, StoryObj } from '@storybook/react-vite'
+import { markdownTree } from '@ideaf/core'
+import { expect, fn, waitFor, within } from 'storybook/test'
+import { SelectionMenu, type SelectionMenuProps } from './SelectionMenu.tsx'
+import { MarkdownView } from '../document/MarkdownView.tsx'
+import sample from '../stories/sample.md?raw'
+
+const tree = markdownTree(sample)
+
+function Document(props: Omit<SelectionMenuProps, 'documentRef'>) {
+  const document = useRef<HTMLDivElement>(null)
+  return (
+    <div ref={document}>
+      <MarkdownView tree={tree} />
+      <SelectionMenu documentRef={document} source={sample} {...props} />
+    </div>
+  )
+}
+
+// Select some text in the document, as a reader dragging over it would
+function select(root: HTMLElement, text: string) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const at = node.textContent?.indexOf(text) ?? -1
+    if (at >= 0) {
+      const range = document.createRange()
+      range.setStart(node, at)
+      range.setEnd(node, at + text.length)
+      const selection = window.getSelection()!
+      selection.removeAllRanges()
+      selection.addRange(range)
+      node.parentElement!.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+      return
+    }
+  }
+  throw new Error(`no "${text}" in the document`)
+}
+
+const meta = {
+  title: 'Comments/SelectionMenu',
+  component: Document,
+  args: { onComment: fn(), onSuggest: fn(), onSectionComment: fn() },
+  parameters: { layout: 'padded' },
+} satisfies Meta<typeof Document>
+
+export default meta
+type Story = StoryObj<typeof meta>
+
+// Select text: comment on it, suggest an edit, or comment on its section
+export const Menu: Story = {
+  play: async ({ canvasElement }) => {
+    select(canvasElement, 'oldest first')
+    const page = within(document.body)
+    await expect(await page.findByRole('toolbar', { name: 'Selected text' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Comment on “Proposal”' })).toBeVisible()
+  },
+}
+
+// A comment on the selected text, anchored on its offsets in the Markdown
+export const Comment: Story = {
+  play: async ({ args, canvasElement, userEvent }) => {
+    select(canvasElement, 'oldest first')
+    const page = within(document.body)
+    await userEvent.click(await page.findByRole('button', { name: 'Comment' }))
+    await userEvent.type(page.getByRole('textbox', { name: 'Comment' }), 'Oldest by device clock?')
+    await userEvent.click(page.getByRole('button', { name: 'Comment' }))
+    const start = sample.indexOf('oldest first')
+    await waitFor(() =>
+      expect(args.onComment).toHaveBeenCalledWith(
+        {
+          quote: 'oldest first',
+          start,
+          end: start + 12,
+          section: { title: 'Proposal', heading: sample.indexOf('## Proposal') },
+        },
+        'Oldest by device clock?',
+      ),
+    )
+  },
+}
+
+// A suggested edit starts from the text as written, Markdown and all
+export const Suggest: Story = {
+  play: async ({ args, canvasElement, userEvent }) => {
+    select(canvasElement, 'stops working')
+    const page = within(document.body)
+    await userEvent.click(await page.findByRole('button', { name: 'Suggest an edit' }))
+    const replacement = page.getByRole('textbox', { name: 'Replace it with' })
+    await expect(replacement).toHaveValue('stops working')
+    await userEvent.clear(replacement)
+    await userEvent.type(replacement, 'can’t save')
+    await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
+    await expect(args.onSuggest).toHaveBeenCalledWith(
+      expect.objectContaining({ quote: 'stops working' }),
+      'can’t save',
+      '',
+    )
+  },
+}
+
+// On an older version, nothing can be added
+export const Disabled: Story = {
+  args: { enabled: false },
+  play: async ({ canvasElement }) => {
+    select(canvasElement, 'oldest first')
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    await expect(document.body.querySelector('.selection-menu')).toBeNull()
+  },
+}

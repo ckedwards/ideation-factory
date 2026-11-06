@@ -178,3 +178,20 @@ export const ideas = {
     ],
   },
 } satisfies Record<string, IdeaInfo>
+
+// An uploaded image, inline so the stories need no network: the sync flow, and
+// a later version of it with a retry step
+const flow = (steps: string[]) =>
+  'data:image/svg+xml,' +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${steps.length * 130} 70"><style>text{font:14px sans-serif}</style>${steps
+      .map(
+        (step, i) =>
+          `<rect x="${i * 130 + 5}" y="15" width="110" height="40" rx="8" fill="#dcebe4" stroke="#2b6b5a"/><text x="${i * 130 + 60}" y="40" text-anchor="middle">${step}</text>`,
+      )
+      .join('')}</svg>`,
+  )
+export const syncFlow = {
+  v1: flow(['Queue', 'Sync', 'Server']),
+  v2: flow(['Queue', 'Sync', 'Retry', 'Server']),
+}

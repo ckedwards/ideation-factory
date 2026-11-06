@@ -1,0 +1,48 @@
+:root {
+  --selection-menu-width: 22rem;
+}
+.selection-menu {
+  position: fixed;
+  z-index: 50;
+  border: var(--hairline) solid var(--rule-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-family: var(--font-ui);
+}
+.selection-menu-actions {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+}
+.selection-menu-form {
+  display: grid;
+  gap: var(--space-2);
+  width: var(--selection-menu-width);
+  max-width: calc(100vw - var(--space-6));
+  padding: var(--space-3);
+}
+.selection-menu-context {
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+}
+.selection-menu-context q {
+  font-family: var(--font-prose);
+  font-style: italic;
+}
+.selection-menu-replacement {
+  border-color: transparent;
+  background: var(--ins-bg);
+  color: var(--ins-ink);
+  font-family: var(--font-prose);
+}
+.selection-menu-buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.selection-menu-hint {
+  flex: 1;
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+}
