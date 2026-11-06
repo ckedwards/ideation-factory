@@ -1,4 +1,5 @@
-import { useId, useState, type KeyboardEvent } from 'react'
+import { Combobox as Base } from '@base-ui/react/combobox'
+import { useState } from 'react'
 import { Avatar } from '../people/Avatar.tsx'
 import type { Person } from '../people/person.ts'
 import { Highlight } from '../labels/Highlight.tsx'
@@ -33,6 +34,8 @@ export interface ComboboxProps {
 }
 
 // Pick one thing out of thousands: type to search, choose from a short list.
+// Base UI's combobox does the keyboard, focus and screen-reader work; the list
+// opens in a portal, placed under the input or above it when there's no room.
 export function Combobox({
   label,
   value,
@@ -46,29 +49,12 @@ export function Combobox({
   loading = false,
 }: ComboboxProps) {
   const [open, setOpen] = useState(false)
-  const [active, setActive] = useState(0)
-  const listId = useId()
   const typed = query.trim() !== ''
   const results = typed ? options : pinned
   const choose = (option: ComboboxOption | null) => {
     onChange(option)
     onQueryChange('')
     setOpen(false)
-  }
-  const keys = (event: KeyboardEvent) => {
-    if (event.key === 'ArrowDown') {
-      event.preventDefault()
-      setOpen(true)
-      setActive((i) => Math.min(i + 1, results.length - 1))
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault()
-      setActive((i) => Math.max(i - 1, 0))
-    } else if (event.key === 'Enter' && open && results[active]) {
-      event.preventDefault()
-      choose(results[active])
-    } else if (event.key === 'Escape') {
-      setOpen(false)
-    }
   }
 
   if (value) {
@@ -86,62 +72,50 @@ export function Combobox({
     )
   }
 
-  const showList = open && results.length > 0
-  const showEmpty = open && typed && !loading && results.length === 0
-  const activeOption = showList ? results[active] : undefined
+  // open only with something to show: results, or why there are none
+  const showing = open && (results.length > 0 || typed)
   return (
-    <div className="combo">
-      <input
-        className="combo-input"
-        role="combobox"
-        aria-label={label}
-        aria-expanded={showList}
-        aria-controls={listId}
-        aria-autocomplete="list"
-        aria-activedescendant={activeOption ? `${listId}-${activeOption.id}` : undefined}
-        value={query}
-        placeholder={placeholder}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
-        onChange={(event) => {
-          onQueryChange(event.target.value)
-          setOpen(true)
-          setActive(0)
-        }}
-        onKeyDown={keys}
-      />
-      <ul className="combo-list" id={listId} role="listbox" aria-label={label} hidden={!showList}>
-        {results.map((option, index) => (
-          <li
-            key={option.id}
-            id={`${listId}-${option.id}`}
-            role="option"
-            aria-selected={index === active}
-            className={index === active ? 'is-active' : undefined}
-            onMouseEnter={() => setActive(index)}
-            // mousedown, not click: the input keeps focus, so its blur doesn't close the list first
-            onMouseDown={(event) => {
-              event.preventDefault()
-              choose(option)
-            }}
-          >
-            {option.person && <Avatar person={option.person} size="sm" decorative />}
-            <span className="combo-option">
-              <Highlight text={option.label} query={query} />
-              {option.sub && (
-                <span className="combo-sub">
-                  <Highlight text={option.sub} query={query} />
-                </span>
+    <Base.Root<ComboboxOption>
+      items={results}
+      // the page searched already (on the server); show what it found
+      filter={null}
+      value={null}
+      onValueChange={(option) => option && choose(option)}
+      inputValue={query}
+      onInputValueChange={(next) => onQueryChange(next)}
+      open={showing}
+      onOpenChange={setOpen}
+      itemToStringLabel={(option) => option.label}
+      isItemEqualToValue={(a, b) => a.id === b.id}
+      autoHighlight
+    >
+      <Base.Input className="combo-input" aria-label={label} placeholder={placeholder} />
+      <Base.Portal>
+        <Base.Positioner className="combo-positioner" side="bottom" align="start" sideOffset={4} collisionPadding={8}>
+          <Base.Popup className="combo-popup">
+            <Base.List className="combo-list" aria-label={label}>
+              {(option: ComboboxOption) => (
+                <Base.Item key={option.id} value={option} className="combo-item">
+                  {option.person && <Avatar person={option.person} size="sm" decorative />}
+                  <span className="combo-option">
+                    <Highlight text={option.label} query={query} />
+                    {option.sub && (
+                      <span className="combo-sub">
+                        <Highlight text={option.sub} query={query} />
+                      </span>
+                    )}
+                  </span>
+                </Base.Item>
               )}
-            </span>
-          </li>
-        ))}
-      </ul>
-      {(showEmpty || (open && typed && loading)) && (
-        <div className="combo-list combo-note" role="status">
-          {loading ? 'Searching…' : `No matches for “${query.trim()}”.${emptyHint ? ` ${emptyHint}` : ''}`}
-        </div>
-      )}
-    </div>
+            </Base.List>
+            {typed && (loading || results.length === 0) && (
+              <div className="combo-note" role="status">
+                {loading ? 'Searching…' : `No matches for “${query.trim()}”.${emptyHint ? ` ${emptyHint}` : ''}`}
+              </div>
+            )}
+          </Base.Popup>
+        </Base.Positioner>
+      </Base.Portal>
+    </Base.Root>
   )
 }

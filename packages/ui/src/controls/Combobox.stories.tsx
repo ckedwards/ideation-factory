@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect } from 'storybook/test'
+import { expect, screen } from 'storybook/test'
 import { Combobox, type ComboboxOption } from './Combobox.tsx'
 import { findMatch } from '../labels/Highlight.tsx'
 import { crowd, everyone, longName, riley } from '../stories/fixtures.ts'
@@ -69,21 +69,21 @@ export const PinnedBeforeTyping: Story = {
   args: { pinned: [{ id: riley.id, label: 'You', sub: '@riley', person: riley }] },
   play: async ({ canvas, userEvent }) => {
     await userEvent.click(canvas.getByRole('combobox'))
-    await expect(canvas.getByRole('option', { name: /You/ })).toBeVisible()
+    await expect(await screen.findByRole('option', { name: /You/ })).toBeVisible()
   },
 }
 
 export const Typing: Story = {
   play: async ({ canvas, userEvent }) => {
     await userEvent.type(canvas.getByRole('combobox'), 'ma')
-    await expect(canvas.getAllByRole('option').length).toBeGreaterThan(0)
+    await expect((await screen.findAllByRole('option')).length).toBeGreaterThan(0)
   },
 }
 
 export const NoMatches: Story = {
   play: async ({ canvas, userEvent }) => {
     await userEvent.type(canvas.getByRole('combobox'), 'zzz')
-    await expect(canvas.getByRole('status')).toHaveTextContent('No matches for “zzz”.')
+    await expect(await screen.findByRole('status')).toHaveTextContent('No matches for “zzz”.')
   },
 }
 
@@ -91,7 +91,7 @@ export const Searching: Story = {
   args: { loading: true },
   play: async ({ canvas, userEvent }) => {
     await userEvent.type(canvas.getByRole('combobox'), 'ma')
-    await expect(canvas.getByRole('status')).toHaveTextContent('Searching…')
+    await expect(await screen.findByRole('status')).toHaveTextContent('Searching…')
   },
 }
 
