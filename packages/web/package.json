@@ -3,11 +3,38 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "bun check"
+    "dev": "bun ../../scripts/worktree.ts exec -- vite",
+    "build": "vite build",
+    "typecheck": "bun check",
+    "storybook": "storybook dev --port 6007 --no-open",
+    "build-storybook": "storybook build --output-dir dist/storybook",
+    "test:stories": "vitest run"
   },
   "dependencies": {
     "@ideaf/api": "workspace:*",
     "@ideaf/core": "workspace:*",
-    "@ideaf/ui": "workspace:*"
+    "@ideaf/ui": "workspace:*",
+    "@tanstack/react-query": "5.107.1",
+    "@tanstack/react-router": "1.170.46",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@storybook/addon-a11y": "10.6.3",
+    "@storybook/addon-docs": "10.6.3",
+    "@storybook/addon-vitest": "10.6.3",
+    "@storybook/react-vite": "10.6.3",
+    "@tanstack/react-query-devtools": "5.107.1",
+    "@tanstack/react-router-devtools": "1.167.2",
+    "@tanstack/router-plugin": "1.168.48",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "@vitest/browser": "^5.0.5",
+    "@vitest/browser-playwright": "^5.0.5",
+    "playwright": "^1.64.1",
+    "storybook": "10.6.3",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
   }
 }

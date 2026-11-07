@@ -17,7 +17,7 @@
 | Routing | TanStack Router | Type-safe routes; page state (file, version, compare, filters, page) lives in the URL, so every view is a shareable link. Routes are files, through Router's Vite plugin, and each route's code loads when it's first needed. Not TanStack Start: the API already defines each operation once for the app, the cli and MCP, so server functions would be a second way in, and an app behind sign-in gains little from rendering on the server |
 | Server state | TanStack Query | Caching, cursor-based "next page", and invalidation when a live update arrives |
 | Forms | TanStack Form | Settings pages, requirement editor, new team and group setup |
-| Build | Vite | The built app is static files, served by the same app nodes as the API |
+| Build | Vite | The built app is static files, served by the same app nodes as the API, which is under `/api`; every other path is a page. In development Vite runs behind the server, which passes it the pages' requests, so the browser only ever talks to the server: one origin for the pages, the API, and sign-in's cookies and passkeys |
 | Markdown | unified / remark → rehype, sanitized | The syntax tree keeps **source positions**, which is how comments anchored on the Markdown source map onto the rendered page |
 | Diffs | jsdiff | Version diffs and the rendered redline (inline word changes, moved blocks) |
 | Diagrams | [Pele](https://github.com/obsidianmd/pele) | Draws Mermaid as SVG: synchronous, MIT-licensed, no runtime dependencies. Its CSS variables map onto our theme tokens, so diagrams follow every theme. Drawing is asynchronous, but **preloaded**: most architecture documents have diagrams, so the app fetches Pele (in its own chunk) and the common diagram types at startup, and rarer types on demand. Drawn diagrams are cached by their source. The idea page prototype does all of this already |
@@ -60,8 +60,8 @@ flowchart TB
 Pages are put together from components, not styled one by one. Each component lives where it's used: a page's own components beside that page, and only what's shared and knows nothing of the product in `ui`. What one page needs stays easy to find and change, and `ui` stays a set of building blocks rather than pieces of the app.
 
 - **Where a component goes:**
-  - used by one route: in a `components/` folder beside that route in `web`, with its CSS and stories;
-  - used by several routes but about this product (an idea's row in a list, a comment card): in `web`'s shared components;
+  - used by one route: in a `-components/` folder beside that route in `web`, with its CSS and stories (the `-` keeps the router from reading it as routes);
+  - used by several routes but about this product (an idea's row in a list, a comment card): in `web`'s `src/components/`;
   - generic, knowing nothing of the product (buttons, selects, tooltips, tabs, the Markdown view, page layouts): in `ui`, with the design tokens and themes.
 
   A component moves up when a second place needs it, not before. Two places that need similar UI share one component with variants, not two copies.
