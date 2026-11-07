@@ -106,11 +106,18 @@ export const GitHint = z.strictObject({
   branch: z.string().min(1).max(250),
 })
 
+/** What someone can do with an idea. */
+export const Permission = z.object({ view: z.boolean(), edit: z.boolean(), share: z.boolean(), owner: z.boolean() })
+
 export const IdeaSummary = z.object({
   id: z.string(),
   title: z.string(),
   description: z.string(),
   owner: z.string(),
+  /** The team it's in (get_team), or null for someone's own idea. */
+  team: z.string().nullable(),
+  /** What you can do with it. */
+  you: Permission,
   status: z.string(),
   createdAt: z.number(),
   latest: z.number().int(),
@@ -214,7 +221,6 @@ export const GrantSubject = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('everyone') }),
 ])
 export const Grant = z.object({ subject: GrantSubject, edit: z.boolean(), share: z.boolean() })
-export const Permission = z.object({ view: z.boolean(), edit: z.boolean(), share: z.boolean(), owner: z.boolean() })
 
 /** What a token may do: see current_token. */
 export const TokenInfo = z.object({

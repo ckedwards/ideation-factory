@@ -229,13 +229,18 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
       return created
     },
 
-    getIdea: (input, { caller, token }) =>
-      withAccess(input.idea, { caller, token }, 'view', () =>
-        read(async () => {
-          const summary = await ideaOf(input.idea).summary()
-          return summary ?? notFound("this idea doesn't exist")
-        }),
-      ),
+    getIdea: async (input, { caller, token }) => {
+      const checked = await access(input.idea, { caller, token }, 'view')
+      if (!checked.ok) {
+        return { ok: false, error: checked.error }
+      }
+      return read(async () => {
+        const [summary, row] = await Promise.all([ideaOf(input.idea).summary(), directory().idea(input.idea)])
+        return summary
+          ? { ...summary, team: row?.team ?? null, you: checked.permission }
+          : notFound("this idea doesn't exist")
+      })
+    },
 
     showBlocks: (input, { caller, token }) =>
       withAccess(input.idea, { caller, token }, 'view', () =>

@@ -96,6 +96,11 @@ describe('ideas in a team', () => {
       { subject: { kind: 'team', id: team.id }, edit: false, share: false },
     ])
     await expect(sam.getIdea({ idea })).rejects.toMatchObject({ code: 'not_found' })
+    // the idea says which team it's in, and what you can do with it
+    expect(await riley.getIdea({ idea })).toMatchObject({
+      team: team.id,
+      you: { view: true, edit: true, share: true, owner: true },
+    })
 
     // joining is by request; once approved, sam can view the team's ideas
     expect(await sam.requestToJoinTeam({ team: team.handle })).toEqual({ requested: true })
