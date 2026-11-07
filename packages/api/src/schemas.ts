@@ -116,6 +116,9 @@ export const IdeaSummary = z.object({
   owner: z.string(),
   /** The team it's in (get_team), or null for someone's own idea. */
   team: z.string().nullable(),
+  /** Where it's found: its team's handle (or @ and its owner's), and its number there. */
+  place: z.string(),
+  number: z.number().int(),
   /** What you can do with it. */
   you: Permission,
   status: z.string(),
@@ -236,6 +239,16 @@ export const IdeaRow = z.object({
   latest: z.number().int(),
   createdAt: z.number(),
   updatedAt: z.number(),
+  /** Its number in its team, or among its owner's own ideas. */
+  number: z.number().int(),
+})
+
+/** Where an idea is found: `mobile/idea/9`, or `@riley/idea/3` for someone's own. */
+export const IdeaPlace = z.object({
+  id: z.string(),
+  /** Its team's handle, or @ and its owner's handle. */
+  place: z.string(),
+  number: z.number().int(),
 })
 
 export const GrantSubject = z.discriminatedUnion('kind', [

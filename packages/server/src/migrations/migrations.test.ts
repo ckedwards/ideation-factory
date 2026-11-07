@@ -142,7 +142,8 @@ describe('data survives migration', () => {
     await sql.execute(
       "INSERT INTO memberships VALUES ('team', 't1', 'u-riley', 'admin', 1), ('team', 't1', 'u-maya', 'member', 1)",
     )
-    await sql.execute("INSERT INTO ideas VALUES ('i1', 'Offline sync', 't1', 'u-riley', 'draft', 1, 1, 1)")
+    await sql.execute("INSERT INTO ideas VALUES ('i1', 'Offline sync', 't1', 'u-riley', 'draft', 1, 1, 1, 't1', 1)")
+    await sql.execute("INSERT INTO numbering VALUES ('t1', 2)")
     await sql.execute("INSERT INTO grants VALUES ('i1', 'team', 't1', 0, 0, 1)")
     await sql.execute("INSERT INTO idea_search (id, title) VALUES ('i1', 'Offline sync')")
 
@@ -152,5 +153,6 @@ describe('data survives migration', () => {
     expect((await d.listIdeas('u-maya')).items.map((i) => i.id)).toEqual(['i1'])
     expect((await d.searchIdeas('u-maya', 'offline')).items.map((i) => i.id)).toEqual(['i1'])
     expect((await d.team('core'))!.members).toBe(2)
+    expect(await d.findIdea('core', 1)).toEqual({ id: 'i1', place: 'core', number: 1 })
   })
 })

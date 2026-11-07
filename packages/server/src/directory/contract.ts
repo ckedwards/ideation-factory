@@ -13,7 +13,7 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
     return d
   }
   let clock = 1_000_000
-  const idea = (id: string, extra: Partial<IdeaRow> = {}): IdeaRow => ({
+  const idea = (id: string, extra: Partial<IdeaRow> = {}): Omit<IdeaRow, 'number'> => ({
     id,
     title: `Idea ${id}`,
     team: null,
@@ -407,6 +407,58 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
         expect(await d.canCreateIdea('u-riley', null, readOnly.id)).toMatchObject({
           ok: false,
           error: { code: 'forbidden' },
+        })
+      })
+    })
+
+    describe("an idea's number and address", () => {
+      test("each team numbers its ideas from 1, and so does each person's own; the address finds the idea", async () => {
+        const d = await people()
+        const core = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
+          .value.id
+        await d.registerIdea(idea('i1', { team: core }))
+        await d.registerIdea(idea('i2'))
+        await d.registerIdea(idea('i3', { team: core }))
+        await d.registerIdea(idea('i4', { owner: 'u-maya' }))
+        expect((await d.idea('i3'))!.number).toBe(2)
+        expect(await d.placeOf('i1')).toEqual({ id: 'i1', place: 'core', number: 1 })
+        expect(await d.placeOf('i2')).toEqual({ id: 'i2', place: '@riley', number: 1 })
+        expect(await d.placeOf('i4')).toEqual({ id: 'i4', place: '@maya', number: 1 })
+        expect(await d.findIdea('core', 2)).toEqual({ id: 'i3', place: 'core', number: 2 })
+        expect(await d.findIdea('@riley', 1)).toEqual({ id: 'i2', place: '@riley', number: 1 })
+        expect(await d.findIdea('core', 9)).toBeNull()
+        expect(await d.findIdea('nowhere', 1)).toBeNull()
+        // registering again (a retry) doesn't use up a number
+        await d.registerIdea(idea('i1', { team: core }))
+        await d.registerIdea(idea('i5', { team: core }))
+        expect((await d.idea('i5'))!.number).toBe(3)
+      })
+
+      test('a moved idea gets the next number in its new place, and its old address still finds it', async () => {
+        const d = await people()
+        const core = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
+          .value.id
+        const web = ((await d.createTeam('u-riley', { handle: 'web', name: 'Web' })) as { value: { id: string } }).value
+          .id
+        await d.registerIdea(idea('w1', { team: web }))
+        await d.registerIdea(idea('i1', { team: core }))
+        expect((await d.moveIdea('u-riley', 'i1', web)).ok).toBe(true)
+        expect(await d.placeOf('i1')).toEqual({ id: 'i1', place: 'web', number: 2 })
+        expect(await d.findIdea('core', 1)).toEqual({ id: 'i1', place: 'web', number: 2 })
+        // out of any team: among its owner's own
+        expect((await d.moveIdea('u-riley', 'i1', null)).ok).toBe(true)
+        expect(await d.findIdea('web', 2)).toEqual({ id: 'i1', place: '@riley', number: 1 })
+        expect(await d.findIdea('core', 1)).toEqual({ id: 'i1', place: '@riley', number: 1 })
+        // a number, once given, is never given again
+        await d.registerIdea(idea('i2', { team: core }))
+        expect((await d.idea('i2'))!.number).toBe(2)
+      })
+
+      test("a team can't take a handle the site's own pages use", async () => {
+        const d = await people()
+        expect(await d.createTeam('u-riley', { handle: 'api', name: 'API' })).toMatchObject({
+          ok: false,
+          error: { code: 'invalid' },
         })
       })
     })

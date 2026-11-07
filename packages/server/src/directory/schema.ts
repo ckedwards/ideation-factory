@@ -48,7 +48,15 @@ export interface DB {
     latest: number
     created_at: number
     updated_at: number
+    /** Where it's numbered: its team's ID, or u:<owner> for someone's own idea. */
+    place: string
+    /** Its number in its place (mobile/idea/9), like a pull request's in its repository. */
+    number: number
   }
+  /** Each place's next idea number. */
+  numbering: { place: string; next: number }
+  /** An idea's earlier place and number, from before it moved, so its old address still leads to it. */
+  idea_aliases: { place: string; number: number; idea: string }
   /** Access to an idea. A row gives view; can_edit and can_share add to it. `subject` is a user, group or team ID, or '*' for everyone. */
   grants: { idea: string; kind: GrantKind; subject: string; can_edit: number; can_share: number; created_at: number }
   /**
@@ -86,7 +94,9 @@ export const COLUMNS = {
   groups: ['id', 'handle', 'name', 'description', 'created_by', 'created_at', 'deleted_at'],
   memberships: ['kind', 'container', 'user', 'role', 'created_at'],
   join_requests: ['kind', 'container', 'user', 'created_at'],
-  ideas: ['id', 'title', 'team', 'owner', 'status', 'latest', 'created_at', 'updated_at'],
+  ideas: ['id', 'title', 'team', 'owner', 'status', 'latest', 'created_at', 'updated_at', 'place', 'number'],
+  numbering: ['place', 'next'],
+  idea_aliases: ['place', 'number', 'idea'],
   grants: ['idea', 'kind', 'subject', 'can_edit', 'can_share', 'created_at'],
   token_grants: ['id', 'user', 'purpose', 'bot', 'read_only', 'limited', 'created_at', 'revoked_at'],
   token_grant_targets: ['token_grant', 'kind', 'target'],
@@ -156,6 +166,21 @@ const MIGRATIONS: Migration[] = [
       .addColumn('latest', 'integer', (c) => c.notNull())
       .addColumn('created_at', 'bigint', (c) => c.notNull())
       .addColumn('updated_at', 'bigint', (c) => c.notNull())
+      .addColumn('place', 'text', (c) => c.notNull())
+      .addColumn('number', 'integer', (c) => c.notNull())
+      .execute()
+    await db.schema.createIndex('ideas_place').on('ideas').columns(['place', 'number']).unique().execute()
+    await db.schema
+      .createTable('numbering')
+      .addColumn('place', 'text', (c) => c.primaryKey())
+      .addColumn('next', 'integer', (c) => c.notNull())
+      .execute()
+    await db.schema
+      .createTable('idea_aliases')
+      .addColumn('place', 'text', (c) => c.notNull())
+      .addColumn('number', 'integer', (c) => c.notNull())
+      .addColumn('idea', 'text', (c) => c.notNull())
+      .addPrimaryKeyConstraint('idea_aliases_pk', ['place', 'number'])
       .execute()
     await db.schema.createIndex('ideas_updated').on('ideas').columns(['updated_at', 'id']).execute()
     await db.schema.createIndex('ideas_team').on('ideas').columns(['team', 'updated_at', 'id']).execute()

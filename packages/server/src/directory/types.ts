@@ -70,6 +70,16 @@ export interface IdeaRow {
   latest: number
   createdAt: number
   updatedAt: number
+  /** Its number in its team, or among its owner's own ideas: mobile/idea/9. */
+  number: number
+}
+
+/** Where an idea is found: its team's handle, or @ and its owner's handle, and its number there. */
+export interface IdeaPlace {
+  id: string
+  /** `mobile`, or `@riley` for Riley's own idea */
+  place: string
+  number: number
 }
 
 /** What a person can do with an idea. Edit and share each include view. */
@@ -206,11 +216,19 @@ export interface Directory {
   // ideas: the index, access and lists. `token` is the caller's token grant,
   // if their token has one: it narrows what they can do.
   canCreateIdea(actor: string, team: string | null, token?: string | null): Promise<Result<null>>
-  /** Indexes a new idea and gives it its team's default access. Safe to repeat. */
-  registerIdea(row: IdeaRow): Promise<void>
+  /** Indexes a new idea, numbers it in its place, and gives it its team's default access. Safe to repeat. */
+  registerIdea(row: Omit<IdeaRow, 'number'>): Promise<void>
   /** Updates an idea's index row (its team and owner don't change here). */
   updateIdea(row: Pick<IdeaRow, 'id' | 'title' | 'status' | 'latest' | 'updatedAt'>): Promise<void>
   idea(id: string): Promise<IdeaRow | null>
+  /** Where an idea is now. */
+  placeOf(id: string): Promise<IdeaPlace | null>
+  /**
+   * The idea at a place (`mobile`, `@riley`) and number, where it is now: one
+   * that has moved since is found at its old address too. Says nothing of
+   * who can see it.
+   */
+  findIdea(place: string, number: number): Promise<IdeaPlace | null>
   permission(idea: string, user: string, token?: string | null): Promise<Permission>
   grants(idea: string): Promise<Grant[]>
   setGrant(
@@ -226,7 +244,11 @@ export interface Directory {
     to: string | null,
     adjustments?: MoveAdjustments,
   ): Promise<Result<MovePreview>>
-  /** Moves an idea into, out of, or to another team: the old team's member grant goes, the new team's defaults are added. */
+  /**
+   * Moves an idea into, out of, or to another team: the old team's member grant
+   * goes, the new team's defaults are added, and it gets the next number in its
+   * new place (its old address still finds it).
+   */
   moveIdea(actor: string, idea: string, to: string | null, adjustments?: MoveAdjustments): Promise<Result<MovePreview>>
   listIdeas(actor: string, filter?: IdeaFilter, token?: string | null): Promise<Page<IdeaRow>>
   /**

@@ -15,6 +15,7 @@ import {
   FileOutline,
   GitHint,
   IdeaId,
+  IdeaPlace,
   IdeaSummary,
   Ref,
   StepResult,
@@ -42,6 +43,21 @@ export const operations = {
       gitHint: GitHint.optional(),
     }),
     output: z.object({ idea: z.string(), version: z.number().int() }),
+  }),
+
+  findIdea: defineOperation({
+    name: 'find_idea',
+    summary: 'Find an idea by its number',
+    description:
+      "The idea at a team's handle and number (mobile and 9 for mobile/idea/9), or someone's own at @ and their handle. An idea that moved since is found at its old number too, and the answer says where it is now. Ideas you can't see aren't found.",
+    method: 'GET',
+    path: '/find-idea',
+    kind: 'read',
+    input: z.strictObject({
+      place: z.string().trim().min(1).max(40),
+      number: z.coerce.number().int().positive(),
+    }),
+    output: IdeaPlace,
   }),
 
   getIdea: defineOperation({
