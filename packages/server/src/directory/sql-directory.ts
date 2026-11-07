@@ -17,6 +17,7 @@ import {
   type Group,
   type AccessChange,
   type IdeaFilter,
+  type IdeaPlace,
   type IdeaRow,
   type Member,
   type MoveAdjustments,
@@ -33,6 +34,34 @@ import {
 } from './types.ts'
 
 const HANDLE = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/
+/**
+ * Handles a team or group can't have: a team's ideas are at /<team>/idea/9,
+ * so these stay the app's own paths, now or soon.
+ */
+const RESERVED = new Set([
+  'admin',
+  'api',
+  'assets',
+  'cli',
+  'consent',
+  'groups',
+  'health',
+  'home',
+  'idea',
+  'ideas',
+  'inbox',
+  'login',
+  'logout',
+  'me',
+  'new',
+  'node_modules',
+  'notifications',
+  'people',
+  'search',
+  'settings',
+  'src',
+  'teams',
+])
 const MAX_PAGE = 100
 const RANK: Record<Role, number> = { member: 0, maintainer: 1, admin: 2 }
 
@@ -88,7 +117,25 @@ const toIdea = (r: DB['ideas']): IdeaRow => ({
   latest: r.latest,
   createdAt: Number(r.created_at),
   updatedAt: Number(r.updated_at),
+  number: Number(r.number),
 })
+
+/** Where an idea is numbered: its team, or its owner's own ideas. */
+const placeKey = (team: string | null, owner: string) => team ?? `u:${owner}`
+
+/**
+ * The next number in a place, counted atomically: an upsert, so two ideas
+ * created at once can't get the same number, in SQLite or Postgres.
+ */
+async function nextNumber(db: Kysely<DB>, place: string): Promise<number> {
+  const row = await db
+    .insertInto('numbering')
+    .values({ place, next: 2 })
+    .onConflict((oc) => oc.column('place').doUpdateSet((eb) => ({ next: eb('numbering.next', '+', 1) })))
+    .returning('next')
+    .executeTakeFirstOrThrow()
+  return Number(row.next) - 1
+}
 
 export interface SqlDirectoryOptions {
   sql: Sql
@@ -203,6 +250,9 @@ export class SqlDirectory implements Directory {
         'invalid',
         'a handle is 1 to 39 lowercase letters, digits and dashes, not starting or ending with a dash',
       )
+    }
+    if (RESERVED.has(handle)) {
+      return fail('invalid', `${handle} is one of the site's own addresses: pick another handle`)
     }
     const name = input.name.trim()
     if (!name || name.length > 100) {
@@ -627,9 +677,13 @@ export class SqlDirectory implements Directory {
     )
   }
 
-  async registerIdea(row: IdeaRow): Promise<void> {
+  async registerIdea(row: Omit<IdeaRow, 'number'>): Promise<void> {
     const team = row.team ? await this.team(row.team) : null
     await this.#transaction(async (db) => {
+      if (await db.selectFrom('ideas').select('id').where('id', '=', row.id).executeTakeFirst()) {
+        return // already registered: a retry
+      }
+      const place = placeKey(team?.id ?? null, row.owner)
       const inserted = await db
         .insertInto('ideas')
         .values({
@@ -641,12 +695,15 @@ export class SqlDirectory implements Directory {
           latest: row.latest,
           created_at: row.createdAt,
           updated_at: row.updatedAt,
+          place,
+          number: await nextNumber(db, place),
         })
+        // two registrations at once: the second leaves the first alone
         .onConflict((oc) => oc.column('id').doNothing())
         .returning('id')
         .execute()
       if (inserted.length === 0) {
-        return // already registered: a retry
+        return
       }
       await this.#search.index(db, row.id, row.title)
       if (team) {
@@ -676,6 +733,40 @@ export class SqlDirectory implements Directory {
   async idea(id: string): Promise<IdeaRow | null> {
     const row = await this.#db.selectFrom('ideas').selectAll().where('id', '=', id).executeTakeFirst()
     return row ? toIdea(row) : null
+  }
+
+  async placeOf(id: string): Promise<IdeaPlace | null> {
+    const row = await this.idea(id)
+    if (!row) {
+      return null
+    }
+    const place = row.team ? (await this.team(row.team))?.handle : `@${(await this.user(row.owner))?.handle}`
+    return place ? { id: row.id, place, number: row.number } : null
+  }
+
+  async findIdea(place: string, number: number): Promise<IdeaPlace | null> {
+    const key = place.startsWith('@')
+      ? await this.user(place.slice(1)).then((u) => (u ? placeKey(null, u.id) : null))
+      : await this.team(place).then((t) => (t ? placeKey(t.id, '') : null))
+    if (!key) {
+      return null
+    }
+    const here = await this.#db
+      .selectFrom('ideas')
+      .select('id')
+      .where('place', '=', key)
+      .where('number', '=', number)
+      .executeTakeFirst()
+    const moved = here
+      ? null
+      : await this.#db
+          .selectFrom('idea_aliases')
+          .select('idea')
+          .where('place', '=', key)
+          .where('number', '=', number)
+          .executeTakeFirst()
+    const id = here?.id ?? moved?.idea
+    return id ? this.placeOf(id) : null
   }
 
   // --- tokens -------------------------------------------------------------------
@@ -975,7 +1066,21 @@ export class SqlDirectory implements Directory {
     }
     const { after } = preview.value.grants
     await this.#transaction(async (db) => {
-      await db.updateTable('ideas').set({ team: preview.value.to }).where('id', '=', ideaId).execute()
+      const was = await db
+        .selectFrom('ideas')
+        .select(['place', 'number', 'owner'])
+        .where('id', '=', ideaId)
+        .executeTakeFirstOrThrow()
+      const place = placeKey(preview.value.to, was.owner)
+      if (place !== was.place) {
+        // its old address keeps finding it, and its new place gives it the next number there
+        await db.insertInto('idea_aliases').values({ place: was.place, number: was.number, idea: ideaId }).execute()
+        await db
+          .updateTable('ideas')
+          .set({ team: preview.value.to, place, number: await nextNumber(db, place) })
+          .where('id', '=', ideaId)
+          .execute()
+      }
       await db.deleteFrom('grants').where('idea', '=', ideaId).execute()
       const now = this.#now()
       for (const g of after) {

@@ -202,8 +202,16 @@ describe('the move wizard', () => {
 
     // maya can't move it: she can view but not share
     await expect(maya.moveIdea({ idea, team: to.handle })).rejects.toMatchObject({ code: 'forbidden' })
+    expect(await sam.getIdea({ idea }).catch((e) => e.code)).toBe('not_found')
+    await expect(sam.findIdea({ place: from.handle, number: 1 })).rejects.toMatchObject({ code: 'not_found' })
     await riley.moveIdea({ idea, team: to.handle })
     await expect(maya.getIdea({ idea })).rejects.toMatchObject({ code: 'not_found' })
     expect((await sam.getIdea({ idea })).title).toBe('Moving')
+    // its new address, and its old one, which now says where it went
+    expect(await sam.getIdea({ idea })).toMatchObject({ place: to.handle, number: 1 })
+    expect(await sam.findIdea({ place: from.handle, number: 1 })).toEqual({ id: idea, place: to.handle, number: 1 })
+    // someone who can't see it learns nothing, whichever address they try
+    await expect(maya.findIdea({ place: to.handle, number: 1 })).rejects.toMatchObject({ code: 'not_found' })
+    await expect(maya.findIdea({ place: from.handle, number: 1 })).rejects.toMatchObject({ code: 'not_found' })
   })
 })

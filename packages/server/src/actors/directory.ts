@@ -107,9 +107,11 @@ export const directory = actor({
       directoryOf(c).canCreateIdea(by, team, token),
     tokenGrant: (c, id: string) => directoryOf(c).tokenGrant(id),
     revokeTokenGrant: (c, by: string, id: string) => directoryOf(c).revokeTokenGrant(by, id),
-    registerIdea: (c, row: IdeaRow) => directoryOf(c).registerIdea(row),
+    registerIdea: (c, row: Omit<IdeaRow, 'number'>) => directoryOf(c).registerIdea(row),
     updateIdea: (c, row: IndexUpdate) => directoryOf(c).updateIdea(row),
     idea: (c, id: string) => directoryOf(c).idea(id),
+    placeOf: (c, id: string) => directoryOf(c).placeOf(id),
+    findIdea: (c, place: string, number: number) => directoryOf(c).findIdea(place, number),
     permission: (c, idea: string, user: string, token?: string | null) => directoryOf(c).permission(idea, user, token),
     grants: (c, idea: string) => directoryOf(c).grants(idea),
     setGrant: (c, by: string, idea: string, subject: GrantSubject, access: { edit: boolean; share: boolean } | null) =>

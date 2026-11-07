@@ -235,12 +235,27 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         return { ok: false, error: checked.error }
       }
       return read(async () => {
-        const [summary, row] = await Promise.all([ideaOf(input.idea).summary(), directory().idea(input.idea)])
-        return summary
-          ? { ...summary, team: row?.team ?? null, you: checked.permission }
+        const [summary, row, place] = await Promise.all([
+          ideaOf(input.idea).summary(),
+          directory().idea(input.idea),
+          directory().placeOf(input.idea),
+        ])
+        return summary && row && place
+          ? { ...summary, team: row.team, place: place.place, number: place.number, you: checked.permission }
           : notFound("this idea doesn't exist")
       })
     },
+
+    findIdea: (input, { caller, token }) =>
+      read(async () => {
+        const found = await directory().findIdea(input.place, input.number)
+        const hidden = () => notFound(`there's no ${input.place}/idea/${input.number}, or you can't see it`)
+        if (!found) {
+          return hidden()
+        }
+        const permission = await directory().permission(found.id, caller.user, token?.id ?? null)
+        return permission.view ? found : hidden()
+      }),
 
     showBlocks: (input, { caller, token }) =>
       withAccess(input.idea, { caller, token }, 'view', () =>

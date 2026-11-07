@@ -83,8 +83,10 @@ test('the agent loop: create, show blocks, comment, dry run, edit, pull, sync', 
   })
   expect(synced.version).toBe(3)
   expect((await api.getIdea({ idea })).versions.map((v) => v.how)).toEqual(['created', 'commands', 'upload'])
-  // someone's own idea: in no team
-  expect(await api.getIdea({ idea })).toMatchObject({ team: null, you: { owner: true } })
+  // someone's own idea: in no team, found at @ and their handle
+  expect(await api.getIdea({ idea })).toMatchObject({ team: null, place: `@${someone}`, you: { owner: true } })
+  const { number } = await api.getIdea({ idea })
+  expect(await api.findIdea({ place: `@${someone}`, number })).toEqual({ id: idea, place: `@${someone}`, number })
 
   // replies and resolving
   await api.reply({ idea, comment, body: 'Red it is.' })
