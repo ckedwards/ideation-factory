@@ -27,11 +27,10 @@ if [ -n "$workflows" ]; then
 fi
 
 files=$(git diff --cached --name-only --diff-filter=ACMR -- 'packages/**/*.ts' 'packages/**/*.tsx' 'scripts/**/*.ts' 'packages/**/*.json' 'scripts/**/*.json' 'packages/**/*.css')
-# generated files (the router's route tree) are left as they're made, as in .oxlintrc.json and .oxfmtrc.json
-files=$(printf '%s\n' $files | grep -v -E '(^|/)routeTree\.gen\.ts$')
 [ -z "$files" ] && exit 0
 ts=$(printf '%s\n' $files | grep -E '\.tsx?$')
+# each tool skips what its config ignores (generated files); left with nothing, that's not an error
 # shellcheck disable=SC2086
-[ -z "$ts" ] || bunx oxlint $ts || { echo "Fix the lint errors above (bun run format fixes most), then commit again." >&2; exit 1; }
+[ -z "$ts" ] || bunx oxlint --no-error-on-unmatched-pattern $ts || { echo "Fix the lint errors above (bun run format fixes most), then commit again." >&2; exit 1; }
 # shellcheck disable=SC2086
-bunx oxfmt --check $files || { echo "Run bun run format, stage the result, then commit again." >&2; exit 1; }
+bunx oxfmt --check --no-error-on-unmatched-pattern $files || { echo "Run bun run format, stage the result, then commit again." >&2; exit 1; }
