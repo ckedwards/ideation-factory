@@ -50,6 +50,8 @@ export interface IdeaPageProps {
   status: IdeaStatus
   /** The version shown: its number, who made it and when. */
   version: { number: number; by: Actor; at: number }
+  /** The idea's pages (IdeaTabs), under its heading. */
+  tabs?: ReactNode
   /** The idea's files; listed when there's more than one. `changed`: since the version compared against. */
   files: { path: string; href: string; current: boolean; changed?: boolean }[]
   /** The file shown, as Markdown. */
@@ -131,6 +133,7 @@ export function IdeaPage(props: IdeaPageProps) {
             </>
           }
         />
+        {props.tabs}
         {props.files.length > 1 && (
           <nav aria-label="Files">
             <ul className="idea-files">

@@ -1,0 +1,22 @@
+.idea-tabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: var(--hairline) solid var(--rule);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+}
+.idea-tabs a {
+  margin-bottom: calc(var(--hairline) * -1);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: var(--rail) solid transparent;
+  color: var(--ink-2);
+  text-decoration: none;
+}
+.idea-tabs a:hover {
+  color: var(--ink);
+}
+.idea-tabs a[aria-current='page'] {
+  border-bottom-color: var(--accent);
+  color: var(--ink);
+  font-weight: 600;
+}

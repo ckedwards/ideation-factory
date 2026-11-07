@@ -65,7 +65,8 @@ export function VersionList({ versions, viewing, latest, base, viewHref, compare
   )
 }
 
-function describe(v: VersionInfo): string {
+/** "Created", "Uploaded from files", "Edited with 3 commands". */
+export function describe(v: Pick<VersionInfo, 'how' | 'steps'>): string {
   if (v.how === 'created') {
     return 'Created'
   }
