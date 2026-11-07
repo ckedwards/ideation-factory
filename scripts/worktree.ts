@@ -10,6 +10,9 @@
 // - engine port: 6420 in the main worktree; in a linked worktree a fixed port
 //   from its path (the engine also uses that port + 1 and + 10)
 // - dev server port: 8080 in the main worktree; engine port + 5 elsewhere
+// - the web app's Vite dev server: 8081 in the main worktree; engine port + 6
+//   elsewhere. The dev server passes the pages' requests on to it, so the
+//   browser only ever talks to the dev server, as it would in production
 // - and RivetKit's optional services sidecar off (it always binds 8642)
 //
 // Tests get an engine of their own (engine port + 2, data in .data/test),
@@ -35,6 +38,7 @@ export interface WorktreeSettings {
   enginePort: number
   testEnginePort: number
   serverPort: number
+  webPort: number
   env: Record<string, string>
   testEnv: Record<string, string>
 }
@@ -46,14 +50,16 @@ export function settings(): WorktreeSettings {
   const linked = Boolean(gitDir && commonDir && realpathSync(gitDir) !== realpathSync(resolve(root, commonDir)))
   let enginePort = 6420
   let serverPort = 8080
+  let webPort = 8081
   if (linked) {
-    // 1,500 slots of 20 ports from 20000: the engine uses +0, +1 and +10, the server +5
+    // 1,500 slots of 20 ports from 20000: the engine uses +0, +1 and +10, the server +5, the web app +6
     let hash = 2166136261
     for (const ch of root) {
       hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619)
     }
     enginePort = 20000 + ((hash >>> 0) % 1500) * 20
     serverPort = enginePort + 5
+    webPort = enginePort + 6
   }
   const data = join(root, '.data')
   // the engine uses its port, + 1 and + 10; + 2, + 3 and + 12 don't overlap
@@ -65,6 +71,7 @@ export function settings(): WorktreeSettings {
     enginePort,
     testEnginePort,
     serverPort,
+    webPort,
     testEnv: {
       RIVETKIT_STORAGE_PATH: testData,
       IDEAF_DATA: testData,
@@ -78,6 +85,8 @@ export function settings(): WorktreeSettings {
       RIVET_RUN_SERVICES: '0',
       PORT: String(serverPort),
       IDEAF_URL: `http://localhost:${serverPort}`,
+      IDEAF_WEB_DEV_PORT: String(webPort),
+      IDEAF_WEB_DEV_URL: `http://localhost:${webPort}`,
     },
   }
 }
@@ -149,7 +158,8 @@ if (import.meta.main) {
       console.log(`${s.linked ? 'Linked' : 'Main'} worktree: ${s.root}`)
       console.log(`  data       ${s.env.IDEAF_DATA}`)
       console.log(`  engine     http://127.0.0.1:${s.enginePort}`)
-      console.log(`  server     http://localhost:${s.serverPort} (bun run dev)`)
+      console.log(`  server     http://localhost:${s.serverPort} (bun run dev): the API and the web app`)
+      console.log(`  web        Vite on http://localhost:${s.webPort}, behind the server`)
       console.log(`  tests      engine on ${s.testEnginePort}, fresh data in ${s.testEnv.IDEAF_DATA} (bun run test)`)
       console.log('Run `eval "$(bun scripts/worktree.ts env)"` to use these from a shell (curl, ideaf).')
       break
