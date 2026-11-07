@@ -27,4 +27,4 @@ export {
   type TokenScope,
 } from './router.ts'
 export * as schemas from './schemas.ts'
-export { type Caller } from './schemas.ts'
+export { type Caller, LIVE_CLOSE, LiveClientMessage, LiveEvent } from './schemas.ts'

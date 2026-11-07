@@ -24,6 +24,7 @@ export const idea = actor({
   events: {
     version: event<Payload<'version'>>(),
     comment: event<Payload<'comment'>>(),
+    reply: event<Payload<'reply'>>(),
     resolved: event<Payload<'resolved'>>(),
   },
   queues: {

@@ -135,7 +135,7 @@ export const IdeaSummary = z.object({
   ),
 })
 
-const CommentBase = z.object({
+export const CommentBase = z.object({
   id: z.string(),
   author: Caller,
   createdAt: z.number(),
@@ -153,6 +153,30 @@ export const CommentThread = CommentBase.extend({
   addressedIn: z.array(z.number().int()),
   replies: z.array(CommentBase),
 })
+
+/**
+ * The live socket for an idea, at /api/ideas/{idea}/live: what's happening
+ * to it, as it happens. The first message is a token, as a request would send
+ * it; send a fresh one before it expires, or the socket closes. Once the
+ * server says `ready`, read what the page shows; every change after that
+ * arrives here.
+ */
+export const LiveClientMessage = z.object({ type: z.literal('token'), token: z.string().min(1) })
+export type LiveClientMessage = z.infer<typeof LiveClientMessage>
+
+export const LiveEvent = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('ready') }),
+  /** A new thread, as list_comments shows it. */
+  z.object({ type: z.literal('comment'), thread: CommentThread, by: Caller }),
+  z.object({ type: z.literal('reply'), parent: z.string(), reply: CommentBase, by: Caller }),
+  z.object({ type: z.literal('resolved'), comment: z.string(), resolved: z.boolean(), by: Caller }),
+  /** A new version: its files and where each comment is have changed. */
+  z.object({ type: z.literal('version'), version: z.number().int(), how: VersionHow, by: Caller }),
+])
+export type LiveEvent = z.infer<typeof LiveEvent>
+
+/** Close codes: no valid token (or it expired), and no such idea (or not one you can see). */
+export const LIVE_CLOSE = { unauthorized: 4401, notFound: 4404 } as const
 
 export const VersionResult = z.object({
   version: z.number().int(),

@@ -108,7 +108,7 @@ Built in step 2 (`packages/server/src/idea/`). The logic is a plain `IdeaService
 - **Reads** (summary, files, outline, comments as of any version, steps, a batch's dry run) are actions and run in parallel against the latest committed state. Comments made on the latest version only; each version keeps its own anchors, so older versions show comments where they were then, and an outdated comment knows the last version it applied to.
 - **core runs in a pool of worker threads**, and each idea always goes to the same worker, whose parse cache then holds that idea's latest version. Measured on the large idea (890 KB): an upload stalled the main thread for 901 ms in process, and at most 2 ms through the pool. The latest version's sources and open comments are also kept in the actor's memory.
 - **Size limits** are checked before parsing for uploads and new ideas, and on the result for batches (see Deployment settings in the [overview](../architecture.md)).
-- **Live updates:** after each write the actor broadcasts `version`, `comment` or `resolved` to everyone connected.
+- **Live updates:** after each write the actor broadcasts `version`, `comment`, `reply` or `resolved` to everyone connected; a comment or reply carries itself, as `list_comments` shows it. Browsers can't reach actors, so an app node relays: a WebSocket at `/api/ideas/{idea}/live` takes a token first, checks it and the person's access as a request would be checked, then connects to the actor and passes its events on. A token counts there for 15 minutes at most, so the client sends a fresh one before then; a revoked token or an inactive account stops within that window, as for reads.
 
 ## Inside the directory actor
 

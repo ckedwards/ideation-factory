@@ -4,12 +4,15 @@
 // IDEAF_DATA/files (the dev script sets both to .data/ at the repo root).
 import { join } from 'node:path'
 import { createClient } from 'rivetkit/client'
+import { DIRECTORY_KEY } from './actors/directory.ts'
 import { createApp } from './app.ts'
+import { authGateway } from './auth/gateway.ts'
 import { authSettingsFromEnv, mailerFromEnv } from './auth/settings.ts'
 import { WorkerPool } from './core-pool/pool.ts'
 import { configureNode } from './deps.ts'
 import { LocalFolderFileStore } from './files/local-folder.ts'
 import { limitsFromEnv } from './limits.ts'
+import { createLive, type LiveData } from './live.ts'
 import { registry, type Registry } from './registry.ts'
 import { devWebApp, staticWebApp } from './web.ts'
 
@@ -38,5 +41,17 @@ const web = process.env.IDEAF_WEB_DEV_URL
   ? devWebApp(process.env.IDEAF_WEB_DEV_URL)
   : staticWebApp(process.env.IDEAF_WEB_DIR ?? join(import.meta.dir, '../../web/dist'))
 const app = createApp({ actors, auth, web })
-const server = Bun.serve({ port, fetch: (request, server) => app(request, server.requestIP(request)?.address) })
+// each idea's live updates, over a WebSocket beside the API
+const live = createLive({
+  actors,
+  gateway: authGateway(actors.directory.getOrCreate(DIRECTORY_KEY), auth.baseURL, auth.trustedProxies),
+})
+const server = Bun.serve<LiveData>({
+  port,
+  fetch: (request, server) => {
+    const upgraded = live.upgrade(request, server)
+    return upgraded === null ? app(request, server.requestIP(request)?.address) : upgraded
+  },
+  websocket: live.websocket,
+})
 console.log(`ideaf server on http://localhost:${server.port} (${core.size} core workers)`)
