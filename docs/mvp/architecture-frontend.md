@@ -23,6 +23,7 @@
 | Diagrams | [Pele](https://github.com/obsidianmd/pele) | Draws Mermaid as SVG: synchronous, MIT-licensed, no runtime dependencies. Its CSS variables map onto our theme tokens, so diagrams follow every theme. Drawing is asynchronous, but **preloaded**: most architecture documents have diagrams, so the app fetches Pele (in its own chunk) and the common diagram types at startup, and rarer types on demand. Drawn diagrams are cached by their source. The idea page prototype does all of this already |
 | Styling | Plain CSS, design tokens as CSS variables, `rem` only | No pixel values, so themes and zoom work; light, dark and high contrast are built in |
 | Components | The `ui` package, shown in [Storybook](https://storybook.js.org) | Pages are built from shared components; see [Components first](#components-first) |
+| Interactive parts | [Base UI](https://base-ui.com) | Unstyled and MIT-licensed: the popovers, menus, combobox and dialogs inside `ui` components, for their keyboard, focus and screen-reader handling and their placement. `ui` styles them with its own CSS, through Base UI's data attributes and CSS variables; pages use only `ui` components, never Base UI directly. Base UI's tooltip is a visual hint that screen readers don't hear, so `Tooltip` is its popover, opening on hover |
 | API client | The shared `api` package: the backend's operation definitions and a typed client | The cli imports the same package and the hosted MCP tools come from the same definitions, so they can't drift apart |
 
 ## Structure
@@ -137,7 +138,7 @@ Changes collect in a **pending batch**. Before it's applied, a **preview** shows
 - **Themes:** light, dark (Auto follows the system) and high contrast.
 - **Type:** Source Serif 4 for headings, Literata for reading, Inter for the interface, JetBrains Mono for code. They're bundled with the app (from Fontsource, under the SIL Open Font License), so a deployment makes no requests to a font service.
 - **Accessibility:**
-  - every control is reachable by keyboard, and tooltips also open on focus;
+  - every control is reachable by keyboard, and tooltips also open with Enter or Space, and on a tap;
   - states are never shown by color alone: icons, text and patterns too;
   - all sizes are in `rem`, so zoom and larger text work.
 
