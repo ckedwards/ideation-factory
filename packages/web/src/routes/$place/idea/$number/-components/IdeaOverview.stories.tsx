@@ -80,6 +80,7 @@ const meta = {
     startedAt: hours(72),
     description: 'Field technicians lose signal in basements. Queue their changes, and send them **oldest first**.',
     tabs: <IdeaTabs current="overview" overview="#" files="#files" changes="#changes" />,
+    sharingHref: '#sharing',
     activity,
     canComment: true,
     onReply: fn(),

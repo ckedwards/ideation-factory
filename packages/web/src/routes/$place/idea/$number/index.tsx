@@ -97,6 +97,7 @@ function Overview() {
             changes={idea.latest > 1 ? links.changes(idea.latest - 1) : null}
           />
         }
+        sharingHref={links.sharing}
         activity={activity}
         canComment={idea.you.view}
         onReply={writes.reply}

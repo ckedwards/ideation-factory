@@ -1,0 +1,32 @@
+.move-route {
+  margin: 0;
+}
+.move-change h3 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-md);
+}
+.move-change p {
+  margin: 0;
+  color: var(--ink-2);
+}
+.move-change ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.move-adjust {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+}
+.move-adjust legend {
+  padding: 0 var(--space-2);
+  font-weight: 600;
+}
