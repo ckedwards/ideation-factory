@@ -18,8 +18,9 @@ function Document(props: Omit<SelectionMenuProps, 'documentRef'>) {
   )
 }
 
-// Select some text in the document, as a reader dragging over it would
-function select(root: HTMLElement, text: string) {
+// Select some text in the document, as a reader dragging over it would, or
+// extending a selection with Shift and the arrow keys
+function select(root: HTMLElement, text: string, by: 'pointer' | 'keyboard' = 'pointer') {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     const at = node.textContent?.indexOf(text) ?? -1
@@ -30,7 +31,11 @@ function select(root: HTMLElement, text: string) {
       const selection = window.getSelection()!
       selection.removeAllRanges()
       selection.addRange(range)
-      node.parentElement!.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+      node.parentElement!.dispatchEvent(
+        by === 'pointer'
+          ? new PointerEvent('pointerup', { bubbles: true })
+          : new KeyboardEvent('keyup', { bubbles: true, key: 'ArrowRight', shiftKey: true }),
+      )
       return
     }
   }
@@ -52,8 +57,46 @@ export const Menu: Story = {
   play: async ({ canvasElement }) => {
     select(canvasElement, 'oldest first')
     const page = within(document.body)
-    await expect(await page.findByRole('toolbar', { name: 'Selected text' })).toBeVisible()
+    const menu = await page.findByRole('toolbar', { name: 'Selected text' })
+    await expect(menu).toBeVisible()
     await expect(page.getByRole('button', { name: 'Comment on “Proposal”' })).toBeVisible()
+    // just below the selected text, starting where it starts
+    await waitFor(() => {
+      const text = window.getSelection()!.getRangeAt(0).getBoundingClientRect()
+      const box = menu.getBoundingClientRect()
+      expect(box.top).toBeGreaterThan(text.bottom)
+      expect(box.top - text.bottom).toBeLessThan(16)
+      expect(Math.abs(box.left - text.left)).toBeLessThan(1)
+    })
+  },
+}
+
+// A selection made with the keyboard moves focus to the menu
+export const Keyboard: Story = {
+  play: async ({ canvasElement }) => {
+    select(canvasElement, 'oldest first', 'keyboard')
+    const page = within(document.body)
+    await waitFor(() => expect(page.getByRole('button', { name: 'Comment' })).toHaveFocus())
+  },
+}
+
+// A click elsewhere closes it, but not once something's been typed; Esc does
+export const Closing: Story = {
+  play: async ({ canvasElement, userEvent }) => {
+    const page = within(document.body)
+    const elsewhere = within(canvasElement).getByRole('heading', { name: 'Proposal' })
+    select(canvasElement, 'oldest first')
+    await page.findByRole('toolbar', { name: 'Selected text' })
+    await userEvent.click(elsewhere)
+    await waitFor(() => expect(page.queryByRole('toolbar')).toBeNull())
+
+    select(canvasElement, 'oldest first')
+    await userEvent.click(await page.findByRole('button', { name: 'Comment' }))
+    await userEvent.type(page.getByRole('textbox', { name: 'Comment' }), 'Half a thought')
+    await userEvent.click(elsewhere)
+    await expect(page.getByRole('textbox', { name: 'Comment' })).toHaveValue('Half a thought')
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(page.queryByRole('dialog')).toBeNull())
   },
 }
 

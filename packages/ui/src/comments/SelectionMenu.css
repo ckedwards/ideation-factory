@@ -1,9 +1,10 @@
 :root {
   --selection-menu-width: 22rem;
 }
-.selection-menu {
-  position: fixed;
+.selection-menu-positioner {
   z-index: 50;
+}
+.selection-menu {
   border: var(--hairline) solid var(--rule-strong);
   border-radius: var(--radius-lg);
   background: var(--surface);

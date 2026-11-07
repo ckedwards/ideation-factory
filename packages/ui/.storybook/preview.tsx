@@ -66,7 +66,12 @@ const preview: Preview = {
     backgrounds: { disable: true },
     controls: { expanded: true },
     // axe runs on every story; a violation fails the story's check, not a warning
-    a11y: { test: 'error' },
+    a11y: {
+      test: 'error',
+      // Base UI's focus guards around an open popup: hidden, empty spans that
+      // pass focus straight on into or out of it, never keeping it
+      context: { exclude: ['[data-base-ui-focus-guard]'] },
+    },
   },
 }
 
