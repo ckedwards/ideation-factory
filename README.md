@@ -65,6 +65,7 @@ In production, set `IDEAF_AUTH_SECRET` (at least 32 random characters) and `IDEA
 ```
 bun packages/server/src/admin.ts deactivate <handle>
 bun packages/server/src/admin.ts reactivate <handle>
+bun packages/server/src/admin.ts release-handle <@person or team>   # frees a squatted handle; links through it stop working
 ```
 
 **Email.** Sign-in codes go out over SMTP, so any provider works (Amazon SES, Postmark, Mailgun, Resend, Google Workspace, your own server): set `IDEAF_SMTP_URL` (`smtps://user:password@host:465`, or `smtp://…:587` for STARTTLS) and `IDEAF_EMAIL_FROM` (`Ideation Factory <sign-in@example.com>`). Without them the server writes codes to its log, which production refuses unless `IDEAF_EMAIL=log` says so (say, behind single sign-on, where only site admins use codes).
