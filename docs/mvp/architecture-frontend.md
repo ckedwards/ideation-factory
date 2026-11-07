@@ -14,7 +14,7 @@
 | | Choice | Notes |
 |---|---|---|
 | UI | React | |
-| Routing | TanStack Router | Type-safe routes; page state (file, version, compare, filters, page) lives in the URL, so every view is a shareable link |
+| Routing | TanStack Router | Type-safe routes; page state (file, version, compare, filters, page) lives in the URL, so every view is a shareable link. Routes are files, through Router's Vite plugin, and each route's code loads when it's first needed. Not TanStack Start: the API already defines each operation once for the app, the cli and MCP, so server functions would be a second way in, and an app behind sign-in gains little from rendering on the server |
 | Server state | TanStack Query | Caching, cursor-based "next page", and invalidation when a live update arrives |
 | Forms | TanStack Form | Settings pages, requirement editor, new team and group setup |
 | Build | Vite | The built app is static files, served by the same app nodes as the API |
