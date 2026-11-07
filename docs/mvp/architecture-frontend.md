@@ -22,8 +22,8 @@
 | Diffs | jsdiff | Version diffs and the rendered redline (inline word changes, moved blocks) |
 | Diagrams | [Pele](https://github.com/obsidianmd/pele) | Draws Mermaid as SVG: synchronous, MIT-licensed, no runtime dependencies. Its CSS variables map onto our theme tokens, so diagrams follow every theme. Drawing is asynchronous, but **preloaded**: most architecture documents have diagrams, so the app fetches Pele (in its own chunk) and the common diagram types at startup, and rarer types on demand. Drawn diagrams are cached by their source. The idea page prototype does all of this already |
 | Styling | Plain CSS, design tokens as CSS variables, `rem` only | No pixel values, so themes and zoom work; light, dark and high contrast are built in |
-| Components | The `ui` package, shown in [Storybook](https://storybook.js.org) | Pages are built from shared components; see [Components first](#components-first) |
-| Interactive parts | [Base UI](https://base-ui.com) | Unstyled and MIT-licensed: the popovers, menus, combobox and dialogs inside `ui` components, for their keyboard, focus and screen-reader handling and their placement. `ui` styles them with its own CSS, through Base UI's data attributes and CSS variables; pages use only `ui` components, never Base UI directly. Base UI's tooltip is a visual hint that screen readers don't hear, so `Tooltip` is its popover, opening on hover |
+| Components | Building blocks in the `ui` package, and each page's own components beside it in `web`; each package has its own [Storybook](https://storybook.js.org) | Pages are built from components, kept where they're used; see [Components first](#components-first) |
+| Interactive parts | [Base UI](https://base-ui.com) | Unstyled and MIT-licensed: the popovers, menus, combobox and dialogs inside `ui` components, for their keyboard, focus and screen-reader handling and their placement. `ui` styles them with its own CSS, through Base UI's data attributes and CSS variables; `web`'s components are built from `ui`'s, never on Base UI directly. Base UI's tooltip is a visual hint that screen readers don't hear, so `Tooltip` is its popover, opening on hover |
 | API client | The shared `api` package: the backend's operation definitions and a typed client | The cli imports the same package and the hosted MCP tools come from the same definitions, so they can't drift apart |
 
 ## Structure
@@ -57,23 +57,28 @@ flowchart TB
 
 ## Components first
 
-Pages are put together from shared components, not styled one by one. That keeps the app consistent, and a change to a component reaches every page that uses it.
+Pages are put together from components, not styled one by one. Each component lives where it's used: a page's own components beside that page, and only what's shared and knows nothing of the product in `ui`. What one page needs stays easy to find and change, and `ui` stays a set of building blocks rather than pieces of the app.
 
-- **Components live in their own package, `ui`,** together with the design tokens and themes. `web` holds the routes, pages and data loading, and composes `ui` components.
-- **Pages contain no CSS:** no stylesheets in `web`, no `style` props, no one-off class names. Layout is components too: the page header, the idea page's three panes, stacks and columns. A CI check fails on any CSS in `web`.
-- **Something new is a component first.** When a page needs something no component covers, add it to `ui` (or give an existing one a new prop or variant), with its stories, and then use it. Two pages that need similar UI share one component with variants, not two copies.
-- **Components take data; they don't fetch it.** Props in, events out: no TanStack Query or API calls inside `ui`. Pages do the loading. This is what lets the viewer show every state with fixture data.
+- **Where a component goes:**
+  - used by one route: in a `components/` folder beside that route in `web`, with its CSS and stories;
+  - used by several routes but about this product (an idea's row in a list, a comment card): in `web`'s shared components;
+  - generic, knowing nothing of the product (buttons, selects, tooltips, tabs, the Markdown view, page layouts): in `ui`, with the design tokens and themes.
+
+  A component moves up when a second place needs it, not before. Two places that need similar UI share one component with variants, not two copies.
+- **`ui` makes no product decisions.** Options, copy and rules come in as props. A team's watch level, for one, is `ui`'s `Select` in a component beside the team settings page, which knows the levels, what each means, and which ones to highlight.
+- **CSS uses the tokens, in either package.** Every color, size and font comes from a token, sizes are in `rem`, and there are no `style` props, so themes, re-theming and zoom work on every page. A component's CSS sits beside it.
+- **Components take data; they don't fetch it.** Props in, events out, in both packages: the route does the loading with TanStack Query and passes the results down. This is what lets every component's stories show each state with fixture data.
 - **Every component has stories** for each state that matters: empty, loading, error, long text, many items, agent work ("🤖 planbot on behalf of Riley"), and keyboard focus.
 - **Links and time come from the app.** A component knows where a link goes, not how the app navigates: it renders `Link`, and the app passes TanStack Router's link in through `LinkProvider`. Relative times ("5h ago") read "now" from `NowProvider`, which the stories fix to one moment so every run reads the same.
 - **The document renders core's syntax tree.** `MarkdownView` takes the tree from `core`'s `markdownTree`, the same parse `core` anchors comments on, and renders it to React elements, never an HTML string, so raw HTML in a file is shown as text. Every block carries its source offsets, and comments and changes are given as source ranges.
 
 ### The component viewer
 
-Storybook, run from the `ui` package, is the site that shows every component and story:
+Storybook shows every component and story. `ui` and `web` each have their own: `ui`'s shows the building blocks, and `web`'s the app's components. Kept apart, each package's stories build and run as their own CI job, side by side. A combined viewer (Storybook's composition) can come later, if developers want one.
 
-- **Themes and text size:** a toolbar switches between light, dark and high contrast, and to larger text, so every component is checked in each.
-- **Accessibility:** axe checks run on every story, in the viewer and in CI. In CI, Storybook's Vitest add-on renders each story in headless Chromium, runs its play function and checks it with axe, once per theme (`bun run test:stories` in `ui`); a violation fails the run.
-- **Published:** it builds to static files, so contributors, and organizations checking a re-theme, can browse every component without running the app.
+- **Themes and text size:** a toolbar switches between light, dark and high contrast, and to larger text, so every component is checked in each. `web`'s Storybook has the same toolbar.
+- **Accessibility:** axe checks run on every story, in the viewer and in CI. In CI, Storybook's Vitest add-on renders each story in headless Chromium, runs its play function and checks it with axe, once per theme (`bun run test:stories` in each package); a violation fails the run.
+- **Published:** `ui`'s builds to static files, so contributors, and organizations checking a re-theme, can browse every building block without running the app.
 - **Why Storybook:** it's the standard viewer for React, MIT-licensed, and builds with Vite like the app, with theme and accessibility add-ons. Stories use the open Component Story Format, which other viewers (Ladle, for one) also read, so we can switch later.
 
 ## Pages

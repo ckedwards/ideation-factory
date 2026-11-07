@@ -110,8 +110,8 @@ packages/
   api/      each operation defined once → HTTP routes, MCP tools, a typed client
   server/   the Bun app: HTTP and MCP, auth, the idea and directory actors,
             and small interfaces for files (bucket) and email (SMTP or an email API)
-  ui/       React components, design tokens and themes; shown in Storybook
-  web/      the React app: routes, pages and data loading, built from ui
+  ui/       the building blocks: React components, design tokens and themes
+  web/      the React app: routes, pages, their components and data loading
   cli/      ideaf on Bun: files, git, state, merging, credentials, prompts
 ```
 
