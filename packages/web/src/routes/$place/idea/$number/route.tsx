@@ -14,7 +14,7 @@ export const Route = createFileRoute('/$place/idea/$number')({
     }
     let found
     try {
-      found = await queryClient.ensureQueryData(ideaRefQuery(params.place, number))
+      found = await queryClient.query({ ...ideaRefQuery(params.place, number), staleTime: 'static' })
     } catch (error) {
       // missing, or not yours to see: the API doesn't say which, and neither does the page
       if (error instanceof ApiError && error.code === 'not_found') {

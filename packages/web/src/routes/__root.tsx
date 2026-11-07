@@ -25,7 +25,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
       throw error
     }
   },
-  loader: ({ context }) => context.queryClient.ensureQueryData(meQuery),
+  loader: ({ context }) => context.queryClient.query({ ...meQuery, staleTime: 'static' }),
   component: Root,
   notFoundComponent: NotFound,
 })

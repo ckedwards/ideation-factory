@@ -12,10 +12,10 @@ import { ideasQuery } from '../lists.ts'
 export const Route = createFileRoute('/')({
   staticData: { nav: 'home' },
   loader: async ({ context: { queryClient } }) => {
-    const me = await queryClient.ensureQueryData(meQuery)
+    const me = await queryClient.query({ ...meQuery, staleTime: 'static' })
     await Promise.all([
-      queryClient.ensureInfiniteQueryData(ideasQuery({ owner: me.id })),
-      queryClient.ensureInfiniteQueryData(ideasQuery()),
+      queryClient.infiniteQuery({ ...ideasQuery({ owner: me.id }), staleTime: 'static' }),
+      queryClient.infiniteQuery({ ...ideasQuery(), staleTime: 'static' }),
     ])
   },
   component: Home,
