@@ -36,3 +36,7 @@ export const commentsQuery = (idea: string, version: number) =>
     queryKey: ['idea', idea, 'comments', version],
     queryFn: () => api.listComments({ idea, version }),
   })
+
+/** Who has access to an idea, and what you can do with it. */
+export const accessQuery = (idea: string) =>
+  queryOptions({ queryKey: ['idea', idea, 'access'], queryFn: () => api.getAccess({ idea }) })

@@ -38,10 +38,15 @@ export function accessToken(): Promise<string> {
   return pending
 }
 
-/** To the sign-in page, which comes back to this page once signed in. */
+/** The sign-in page, which comes back to this page once signed in. */
+export function signInHref(): string {
+  return `/login?next=${encodeURIComponent(location.pathname + location.search)}`
+}
+
+/** To the sign-in page, from outside the router (a query finding the session has ended). */
 export function signIn(): never {
   current = null
-  window.location.assign(`/login?next=${encodeURIComponent(location.pathname + location.search)}`)
+  window.location.assign(signInHref())
   // nothing more happens on this page
   throw new SignedOut()
 }

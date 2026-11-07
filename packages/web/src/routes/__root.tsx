@@ -3,11 +3,11 @@
 import { useState } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { useSuspenseQuery } from '@tanstack/react-query'
-import { createRootRouteWithContext, Outlet, useMatches } from '@tanstack/react-router'
+import { createRootRouteWithContext, Outlet, redirect, useMatches } from '@tanstack/react-router'
 import { AppShell, Empty, Link, Page, PageHeader, type Theme } from '@ideaf/ui'
 import { membershipsQuery, meQuery } from '../api.ts'
 import { AppNav, type NavPage } from '../components/AppNav.tsx'
-import { accessToken, signIn, SignedOut, signOut } from '../session.ts'
+import { accessToken, SignedOut, signInHref, signOut } from '../session.ts'
 import { savedTheme, setTheme } from '../theme.ts'
 
 export interface RouterContext {
@@ -20,7 +20,8 @@ export const Route = createRootRouteWithContext<RouterContext>()({
       await accessToken()
     } catch (error) {
       if (error instanceof SignedOut) {
-        signIn()
+        // the sign-in page is the server's, not a route: a whole page load
+        throw redirect({ href: signInHref(), reloadDocument: true })
       }
       throw error
     }

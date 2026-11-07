@@ -50,6 +50,8 @@ export interface IdeaOverviewProps {
   description: string
   /** The idea's pages (IdeaTabs). */
   tabs: ReactNode
+  /** Who has access, and moving it. */
+  sharingHref: string
   /** Oldest first. */
   activity: ActivityItem[]
   canComment: boolean
@@ -63,6 +65,7 @@ export function IdeaOverview(props: IdeaOverviewProps) {
     <Page>
       <PageHeader
         title={props.title}
+        actions={<Link href={props.sharingHref}>Sharing</Link>}
         sub={
           <span className="idea-overview-sub">
             <TeamChip team={props.team} href={props.team.href} />

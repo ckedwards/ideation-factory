@@ -11,6 +11,9 @@ export interface IdeaLinks {
   files(at?: { v?: number | undefined; file?: string | undefined }): string
   /** From one version to another, or (without `to`) to the latest, whatever it becomes. */
   changes(from: number, to?: number | undefined, file?: string | undefined): string
+  /** Who has access, and moving it to another team. */
+  sharing: string
+  move: string
 }
 
 export function ideaLinks(place: string, number: number): IdeaLinks {
@@ -29,6 +32,8 @@ export function ideaLinks(place: string, number: number): IdeaLinks {
     overview,
     files: ({ v, file } = {}) => `${overview}/files${query({ file, v })}`,
     changes: (from, to, file) => `${overview}/changes/${from}..${to ?? ''}${query({ file })}`,
+    sharing: `${overview}/sharing`,
+    move: `${overview}/move`,
   }
 }
 
