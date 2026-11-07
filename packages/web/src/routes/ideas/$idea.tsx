@@ -1,16 +1,36 @@
 // An idea's page: its latest version, one file at a time (?file=), with its
-// comments. Versions and compare come in step 8's third part.
+// comments live. Versions and compare come in step 8's third part.
 import { useState } from 'react'
 import { ApiError } from '@ideaf/api'
-import { markdownTree } from '@ideaf/core'
+import { markdownTree, parseMarkdown } from '@ideaf/core'
 import { type CommentInfo, MarkdownView, type Person, type TeamRef, Toast } from '@ideaf/ui'
-import { useMutation, useQueries, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
+import { useLiveSuspenseQuery } from '@tanstack/react-db'
+import { type QueryClient, useQueries, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, notFound } from '@tanstack/react-router'
 import { api, meQuery, personQuery, teamQuery } from '../../api.ts'
+import { accessToken } from '../../session.ts'
 import { sectionAt, toPlain } from './-components/anchors.ts'
+import { type CommentsCollection, commentsCollection, pendingId } from './-components/comments.ts'
 import { IdeaPage } from './-components/IdeaPage.tsx'
-import { commentsQuery, filesQuery, ideaQuery, outlineQuery } from './-components/queries.ts'
+import { filesQuery, ideaQuery, outlineQuery } from './-components/queries.ts'
 import { actorOf, type FileView, place, statusOf, type Thread } from './-components/view.ts'
+
+/** Each idea's live comments, kept while the page is open and for a minute after (the collection's gcTime). */
+const collections = new Map<string, CommentsCollection>()
+function commentsOf(idea: string, queryClient: QueryClient): CommentsCollection {
+  let found = collections.get(idea)
+  if (!found) {
+    found = commentsCollection(idea, {
+      api,
+      open: (path) => new WebSocket(`${location.origin.replace(/^http/, 'ws')}${path}`),
+      token: accessToken,
+      // a new version: read the idea again, and the page moves on to it
+      onVersion: () => void queryClient.invalidateQueries({ queryKey: ideaQuery(idea).queryKey, exact: true }),
+    })
+    collections.set(idea, found)
+  }
+  return found
+}
 
 export const Route = createFileRoute('/ideas/$idea')({
   validateSearch: (search: Record<string, unknown>): { file?: string } =>
@@ -21,7 +41,7 @@ export const Route = createFileRoute('/ideas/$idea')({
       await Promise.all([
         queryClient.ensureQueryData(filesQuery(params.idea, idea.latest)),
         queryClient.ensureQueryData(outlineQuery(params.idea, idea.latest)),
-        queryClient.ensureQueryData(commentsQuery(params.idea, idea.latest)),
+        commentsOf(params.idea, queryClient).preload(),
       ])
     } catch (error) {
       // missing, or not yours to see: the API doesn't say which, and neither does the page
@@ -42,7 +62,10 @@ function IdeaRoute() {
   const version = idea.latest
   const { data: pulled } = useSuspenseQuery(filesQuery(id, version))
   const { data: outlines } = useSuspenseQuery(outlineQuery(id, version))
-  const { data: threads } = useSuspenseQuery(commentsQuery(id, version))
+  const comments = commentsOf(id, queryClient)
+  const { data: threads } = useLiveSuspenseQuery((q) =>
+    q.from({ thread: comments }).orderBy(({ thread }) => thread.createdAt, 'asc'),
+  )
   const { data: me } = useSuspenseQuery(meQuery)
   const team = useQuery({ ...teamQuery(idea.team ?? ''), enabled: idea.team !== null })
   const [problem, setProblem] = useState<string | null>(null)
@@ -59,29 +82,30 @@ function IdeaRoute() {
     ...(made ? [made.by.user] : []),
   ])
 
-  // after a write, the comments as they now are
-  const refresh = () => queryClient.invalidateQueries({ queryKey: commentsQuery(id, version).queryKey })
-  const onError = (error: Error) => {
-    setProblem(
-      error instanceof ApiError && error.code === 'stale_version'
-        ? 'The idea has a new version. Reload to comment on it.'
-        : `That didn’t work: ${error.message}`,
-    )
-  }
-  const comment = useMutation({
-    mutationFn: (input: Parameters<typeof api.addComment>[0]) => api.addComment(input),
-    onSettled: refresh,
-    onError,
-  })
-  const reply = useMutation({
-    mutationFn: (input: Parameters<typeof api.reply>[0]) => api.reply(input),
-    onSettled: refresh,
-    onError,
-  })
-  const resolve = useMutation({
-    mutationFn: (input: Parameters<typeof api.resolveComment>[0]) => api.resolveComment(input),
-    onSettled: refresh,
-    onError,
+  // a write shows at once; if the server refuses it, it goes away and the page says why
+  const settle = (tx: { when(state: 'settled'): Promise<unknown> }) =>
+    tx
+      .when('settled')
+      .catch((error: unknown) =>
+        setProblem(
+          error instanceof ApiError && error.code === 'stale_version'
+            ? 'The idea has a new version. Read it, then comment again.'
+            : `That didn’t work: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      )
+  const caller = { user: me.id, bot: null, purpose: 'me' as const }
+  const newThread = (anchor: Thread['anchor'], body: string): Thread => ({
+    id: pendingId(),
+    author: caller,
+    createdAt: Date.now(),
+    body,
+    version,
+    resolved: false,
+    state: 'exact',
+    anchor,
+    lastVersion: version,
+    addressedIn: [],
+    replies: [],
   })
 
   return (
@@ -103,23 +127,38 @@ function IdeaRoute() {
         source={file.source}
         comments={threads.flatMap((thread) => {
           const where = place(thread, file)
-          return where ? [{ info: commentInfo(thread, people, titles), place: where }] : []
+          return where
+            ? [{ info: commentInfo(thread, people, titles), place: where, pending: thread.id.startsWith('pending-') }]
+            : []
         })}
         canComment={idea.you.view}
         onComment={(selection, body) => {
           const range = toPlain(file.source, selection)
           if (range) {
-            comment.mutate({ idea: id, version, anchor: { kind: 'text', file: file.id, ...range }, body })
+            const quote = parseMarkdown(file.source).plain.text.slice(range.start, range.end)
+            void settle(comments.insert(newThread({ kind: 'text', file: file.id, ...range, quote }, body)))
           }
         }}
         onSectionComment={(heading, body) => {
           const section = sectionAt(file.source, file.unitIds, heading)
           if (section) {
-            comment.mutate({ idea: id, version, anchor: { kind: 'section', section }, body })
+            void settle(comments.insert(newThread({ kind: 'section', file: file.id, section }, body)))
           }
         }}
-        onReply={(thread, body) => reply.mutate({ idea: id, comment: thread, body })}
-        onResolve={(thread, resolved) => resolve.mutate({ idea: id, comment: thread, resolved })}
+        onReply={(thread, body) =>
+          void settle(
+            comments.update(thread, (draft) => {
+              draft.replies.push({ id: pendingId(), author: caller, createdAt: Date.now(), body, version })
+            }),
+          )
+        }
+        onResolve={(thread, resolved) =>
+          void settle(
+            comments.update(thread, (draft) => {
+              draft.resolved = resolved
+            }),
+          )
+        }
       />
       <Toast message={problem} onDismiss={() => setProblem(null)} />
     </>
