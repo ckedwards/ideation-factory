@@ -46,7 +46,8 @@ export interface WorktreeSettings {
 export function settings(): WorktreeSettings {
   const root = realpathSync(git(['rev-parse', '--show-toplevel']) ?? process.cwd())
   const gitDir = git(['rev-parse', '--absolute-git-dir'])
-  const commonDir = git(['rev-parse', '--git-common-dir'])
+  // absolute: git gives it relative to the current folder, which for a package's script isn't the root
+  const commonDir = git(['rev-parse', '--path-format=absolute', '--git-common-dir'])
   const linked = Boolean(gitDir && commonDir && realpathSync(gitDir) !== realpathSync(resolve(root, commonDir)))
   let enginePort = 6420
   let serverPort = 8080
