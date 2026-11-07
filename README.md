@@ -32,17 +32,19 @@ packages/
   e2e/      end-to-end tests: the cli against the real server
 ```
 
-You need [Bun](https://bun.sh), and Node for Storybook. Docker is only for the [Rivet spike](docs/mvp/spike-rivet.md).
+You need [Bun](https://bun.sh), and Node for Vite and Storybook. Docker is only for the [Rivet spike](docs/mvp/spike-rivet.md).
 
 ```
 bun install
-bun run dev          # the server on http://localhost:8080
+bun run dev          # the app and its API on http://localhost:8080
 bun run typecheck
 bun run test
 bun run engine:stop  # stop the local Rivet Engine
 ```
 
-**Signing in.** The sign-in page is http://localhost:8080/login: enter any email, and use the code the dev server prints in its log (it emails codes only when SMTP is set up, below). The first time, pick a handle. Sign in with other emails to try several people.
+**The web app** is http://localhost:8080. `bun run dev` runs Vite for it behind the server, which passes it the pages' requests, so the app, its API and sign-in share one address, as in production; changes show at once. Built (`bun run --filter @ideaf/web build`), the server serves it from `packages/web/dist`, or the folder in `IDEAF_WEB_DIR`.
+
+**Signing in.** The web app sends you to the sign-in page, http://localhost:8080/login: enter any email, and use the code the dev server prints in its log (it emails codes only when SMTP is set up, below). The first time, pick a handle. Sign in with other emails to try several people.
 
 The cli signs in with **`ideaf auth login`**: it opens your browser to sign in, and to choose what this sign-in may do (who acts with it, read only or not, and which teams or ideas it reaches; flags like `--bot planbot --team core --read-only` fill those in). With no browser of its own (over SSH, say) or with `--no-browser`, it shows a link to open on any device and asks for the code that page shows. Its tokens are kept in the OS keychain and refreshed as needed; `ideaf auth status` shows the sign-in and `ideaf auth logout` ends it.
 

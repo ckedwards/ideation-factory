@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "prepare": "git config core.hooksPath .githooks || true",
-    "dev": "bun run --filter '@ideaf/server' dev",
+    "dev": "bun run --filter '@ideaf/server' --filter '@ideaf/web' dev",
     "test": "bun scripts/worktree.ts test -- bun test",
     "typecheck": "bun run --filter '*' typecheck && bun check -p scripts",
     "engine:stop": "bun scripts/worktree.ts stop",

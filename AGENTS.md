@@ -34,6 +34,7 @@ Actions used in `.github/workflows/` are pinned in `.github/workflows/actions.lo
 
 ## Running things
 
+- The app: `bun run dev` runs the server and, behind it, the web app's Vite, on this worktree's ports; the browser only talks to the server.
 - Tests: `bun run test`. It gives this worktree a fresh Rivet Engine of its own; the actor tests refuse to start under plain `bun test`.
 - Each worktree has its own engine and ports (`bun run worktree` shows them). RivetKit reads its settings from the environment before any code runs, so start processes through `bun scripts/worktree.ts exec -- …` rather than setting `process.env`.
 - RivetKit's `onMigrate` already runs in a savepoint: migrations run their statements without a transaction of their own.
