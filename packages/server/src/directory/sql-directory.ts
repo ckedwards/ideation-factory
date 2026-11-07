@@ -129,6 +129,30 @@ const toIdea = (r: DB['ideas']): IdeaRow => ({
 const placeKey = (team: string | null, owner: string) => team ?? `u:${owner}`
 
 /**
+ * A person or team changed handle: the old one leads to them now (until
+ * someone else takes it), and the new one stops leading to anyone else.
+ */
+async function renamed(
+  db: Kysely<DB>,
+  kind: 'user' | 'team',
+  owner: string,
+  from: string,
+  to: string,
+  now: number,
+  keepOld = true,
+) {
+  await db.deleteFrom('handle_aliases').where('kind', '=', kind).where('handle', '=', to).execute()
+  if (!keepOld) {
+    return
+  }
+  await db
+    .insertInto('handle_aliases')
+    .values({ kind, handle: from, owner, created_at: now })
+    .onConflict((oc) => oc.columns(['kind', 'handle']).doUpdateSet({ owner, created_at: now }))
+    .execute()
+}
+
+/**
  * The next number in a place, counted atomically: an upsert, so two ideas
  * created at once can't get the same number, in SQLite or Postgres.
  */
@@ -184,12 +208,20 @@ export class SqlDirectory implements Directory {
       })
       .onConflict((oc) => oc.column('id').doNothing())
       .execute()
+    // taking a handle someone had before: it leads to its new owner now
+    await this.#db
+      .deleteFrom('handle_aliases')
+      .where('kind', '=', 'user')
+      .where('handle', '=', user.handle.toLowerCase())
+      .where('owner', '!=', user.id)
+      .execute()
     return (await this.user(user.id))!
   }
 
   async updateUser(
     id: string,
     changes: { name?: string; inactive?: boolean; handle?: string; email?: string },
+    { keepOldHandle = true }: { keepOldHandle?: boolean } = {},
   ): Promise<User | null> {
     const set = {
       ...(changes.name !== undefined ? { name: changes.name } : {}),
@@ -198,19 +230,42 @@ export class SqlDirectory implements Directory {
       ...(changes.email !== undefined ? { email: changes.email.toLowerCase() } : {}),
     }
     if (Object.keys(set).length > 0) {
-      await this.#db.updateTable('users').set(set).where('id', '=', id).execute()
+      await this.#transaction(async (db) => {
+        const was = await db.selectFrom('users').select('handle').where('id', '=', id).executeTakeFirst()
+        await db.updateTable('users').set(set).where('id', '=', id).execute()
+        if (was && set.handle !== undefined && set.handle !== was.handle) {
+          await renamed(db, 'user', id, was.handle, set.handle, this.#now(), keepOldHandle)
+        }
+      })
     }
     return this.user(id)
   }
 
   async user(idOrHandle: string): Promise<User | null> {
     const handle = idOrHandle.toLowerCase().replace(/^@/, '')
-    const row = await this.#db
-      .selectFrom('users')
-      .select(['id', 'handle', 'name', 'inactive'])
-      .where((eb) => eb.or([eb('id', '=', idOrHandle), eb('handle', '=', handle)]))
-      .executeTakeFirst()
+    const find = (where: { id: string } | { handle: string }) =>
+      this.#db
+        .selectFrom('users')
+        .select(['id', 'handle', 'name', 'inactive'])
+        .where((eb) =>
+          'id' in where ? eb('id', '=', where.id) : eb.or([eb('id', '=', idOrHandle), eb('handle', '=', where.handle)]),
+        )
+        .executeTakeFirst()
+    // by ID or handle, or by a handle they had before
+    const row =
+      (await find({ handle })) ?? (await this.#aliased('user', handle).then((id) => (id ? find({ id }) : undefined)))
     return row ? toUser(row) : null
+  }
+
+  /** Whose old handle this is, if it's still theirs to lead to. */
+  async #aliased(kind: 'user' | 'team', handle: string): Promise<string | null> {
+    const row = await this.#db
+      .selectFrom('handle_aliases')
+      .select('owner')
+      .where('kind', '=', kind)
+      .where('handle', '=', handle)
+      .executeTakeFirst()
+    return row?.owner ?? null
   }
 
   async findUsers(query: string, limit = 8): Promise<User[]> {
@@ -290,6 +345,10 @@ export class SqlDirectory implements Directory {
           .insertInto('memberships')
           .values({ kind, container: id, user: actor, role: 'admin', created_at: now })
           .execute()
+        if (kind === 'team') {
+          // a handle another team had before: it leads to this one now
+          await db.deleteFrom('handle_aliases').where('kind', '=', 'team').where('handle', '=', handle).execute()
+        }
       })
     } catch (error) {
       if (isUniqueViolation(error)) {
@@ -319,11 +378,18 @@ export class SqlDirectory implements Directory {
         .then((r) => Number(r.n))
     const handle = idOrHandle.toLowerCase().replace(/^@/, '')
     if (kind === 'team') {
-      const row = await this.#db
-        .selectFrom('teams')
-        .selectAll()
-        .where((eb) => eb.or([eb('id', '=', idOrHandle), eb('handle', '=', handle)]))
-        .executeTakeFirst()
+      const find = (id: string, byHandle: string | null) =>
+        this.#db
+          .selectFrom('teams')
+          .selectAll()
+          .where((eb) =>
+            byHandle === null ? eb('id', '=', id) : eb.or([eb('id', '=', id), eb('handle', '=', byHandle)]),
+          )
+          .executeTakeFirst()
+      // by ID or handle, or by a handle it had before
+      const row =
+        (await find(idOrHandle, handle)) ??
+        (await this.#aliased('team', handle).then((id) => (id ? find(id, null) : undefined)))
       return row ? this.#toTeam(row, await members(row.id)) : null
     }
     const row = await this.#db
@@ -402,7 +468,13 @@ export class SqlDirectory implements Directory {
   async updateTeam(
     actor: string,
     teamId: string,
-    changes: { createPolicy?: CreatePolicy; defaults?: TeamDefaults },
+    changes: {
+      createPolicy?: CreatePolicy
+      defaults?: TeamDefaults
+      handle?: string
+      name?: string
+      description?: string
+    },
   ): Promise<Result<Team>> {
     const team = await this.team(teamId)
     if (!team) {
@@ -430,15 +502,70 @@ export class SqlDirectory implements Directory {
       }
       changes = { ...changes, defaults: { ...d, groups } }
     }
-    await this.#db
-      .updateTable('teams')
-      .set({
-        ...(changes.createPolicy ? { create_policy: changes.createPolicy } : {}),
-        ...(changes.defaults ? { defaults: JSON.stringify(changes.defaults) } : {}),
+    const handle = changes.handle?.toLowerCase()
+    if (handle !== undefined && handle !== team.handle) {
+      if (!HANDLE.test(handle)) {
+        return fail(
+          'invalid',
+          'a handle is 1 to 39 lowercase letters, digits and dashes, not starting or ending with a dash',
+        )
+      }
+      if (RESERVED.has(handle)) {
+        return fail('invalid', `${handle} is one of the site's own addresses: pick another handle`)
+      }
+    }
+    const name = changes.name?.trim()
+    if (name !== undefined && (!name || name.length > 100)) {
+      return fail('invalid', 'a name is 1 to 100 characters')
+    }
+    if (changes.description !== undefined && changes.description.length > 2000) {
+      return fail('invalid', 'a description is at most 2,000 characters')
+    }
+    try {
+      await this.#transaction(async (db) => {
+        await db
+          .updateTable('teams')
+          .set({
+            ...(changes.createPolicy ? { create_policy: changes.createPolicy } : {}),
+            ...(changes.defaults ? { defaults: JSON.stringify(changes.defaults) } : {}),
+            ...(handle !== undefined ? { handle } : {}),
+            ...(name !== undefined ? { name } : {}),
+            ...(changes.description !== undefined ? { description: changes.description } : {}),
+          })
+          .where('id', '=', team.id)
+          .execute()
+        if (handle !== undefined && handle !== team.handle) {
+          await renamed(db, 'team', team.id, team.handle, handle, this.#now())
+        }
       })
-      .where('id', '=', team.id)
-      .execute()
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        return fail('exists', `the team handle "${handle}" is taken`)
+      }
+      throw error
+    }
     return ok((await this.team(team.id))!)
+  }
+
+  async releaseHandle(kind: 'user' | 'team', handle: string, replacement: string): Promise<{ owner: string | null }> {
+    const name = handle.toLowerCase().replace(/^@/, '')
+    return this.#transaction(async (db) => {
+      const holder =
+        kind === 'team'
+          ? await db.selectFrom('teams').select('id').where('handle', '=', name).executeTakeFirst()
+          : await db.selectFrom('users').select('id').where('handle', '=', name).executeTakeFirst()
+      if (holder && kind === 'team') {
+        // renamed without an alias: the old handle is free, and leads nowhere
+        await db.updateTable('teams').set({ handle: replacement }).where('id', '=', holder.id).execute()
+      }
+      const alias = await db
+        .deleteFrom('handle_aliases')
+        .where('kind', '=', kind)
+        .where('handle', '=', name)
+        .returning('owner')
+        .executeTakeFirst()
+      return { owner: holder?.id ?? alias?.owner ?? null }
+    })
   }
 
   async members(

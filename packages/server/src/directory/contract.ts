@@ -56,7 +56,11 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
           handle: 'maya-moss',
         })
         expect((await d.user('maya-moss'))!.id).toBe('u-maya')
-        expect(await d.user('maya')).toBeNull()
+        // the old handle still leads to them
+        expect((await d.user('maya'))!.id).toBe('u-maya')
+        // unless it was only ever a suggestion they replaced
+        await d.updateUser('u-maya', { handle: 'maya-m' }, { keepOldHandle: false })
+        expect(await d.user('maya-moss')).toBeNull()
       })
     })
 
@@ -503,6 +507,65 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
           ok: false,
           error: { code: 'invalid' },
         })
+      })
+    })
+
+    describe('handles that change', () => {
+      test("a renamed team keeps its old handle leading to it, ideas' addresses too, until another team takes it", async () => {
+        const d = await people()
+        const core = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
+          .value.id
+        await d.registerIdea(idea('i1', { team: core }))
+        expect(await d.updateTeam('u-maya', core, { handle: 'platform' })).toMatchObject({ ok: false })
+        expect(await d.updateTeam('u-riley', core, { handle: 'api' })).toMatchObject({
+          ok: false,
+          error: { code: 'invalid' },
+        })
+        expect(
+          await d.updateTeam('u-riley', core, {
+            handle: 'platform',
+            name: 'Platform',
+            description: 'Shared services.',
+          }),
+        ).toMatchObject({ ok: true, value: { handle: 'platform', name: 'Platform', description: 'Shared services.' } })
+        expect((await d.team('core'))!.id).toBe(core)
+        // an idea's old address finds it, and says where it is now
+        expect(await d.findIdea('core', 1)).toEqual({ id: 'i1', place: 'platform', number: 1 })
+        // another team takes the old handle: it's theirs now
+        const other = (
+          (await d.createTeam('u-devon', { handle: 'core', name: 'New core' })) as { value: { id: string } }
+        ).value.id
+        expect((await d.team('core'))!.id).toBe(other)
+        expect(await d.findIdea('core', 1)).toBeNull()
+        // and a taken handle can't be renamed to
+        expect(await d.updateTeam('u-riley', core, { handle: 'core' })).toMatchObject({
+          ok: false,
+          error: { code: 'exists' },
+        })
+      })
+
+      test("a person's old handle leads to them, until someone else takes it", async () => {
+        const d = await people()
+        await d.updateUser('u-maya', { handle: 'maya-moss' })
+        expect((await d.user('maya'))!.id).toBe('u-maya')
+        await d.ensureUser({ id: 'u-new', handle: 'maya', name: 'Another Maya' })
+        expect((await d.user('maya'))!.id).toBe('u-new')
+        expect((await d.user('maya-moss'))!.id).toBe('u-maya')
+      })
+
+      test('releasing a team handle renames its holder and leaves it leading nowhere', async () => {
+        const d = await people()
+        const core = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
+          .value.id
+        await d.updateTeam('u-riley', core, { handle: 'squat' })
+        expect(await d.releaseHandle('team', 'squat', 'released-1')).toEqual({ owner: core })
+        expect((await d.team(core))!.handle).toBe('released-1')
+        expect(await d.team('squat')).toBeNull()
+        // its older alias still leads to it, until released too
+        expect((await d.team('core'))!.id).toBe(core)
+        expect(await d.releaseHandle('team', 'core', 'unused')).toEqual({ owner: core })
+        expect(await d.team('core')).toBeNull()
+        expect(await d.releaseHandle('team', 'nothing', 'unused')).toEqual({ owner: null })
       })
     })
 

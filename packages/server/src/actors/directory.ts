@@ -12,6 +12,7 @@ import {
   rotateSigningKeys,
   handleAuthRequest,
   migrateAuth,
+  releaseHandle,
   setInactive,
   verifyPersonalToken,
   type WireRequest,
@@ -92,8 +93,20 @@ export const directory = actor({
     group: (c, id: string) => directoryOf(c).group(id),
     teams: (c, options?: { query?: string; cursor?: string; limit?: number }) => directoryOf(c).teams(options),
     groups: (c, options?: { query?: string; cursor?: string; limit?: number }) => directoryOf(c).groups(options),
-    updateTeam: (c, by: string, team: string, changes: { createPolicy?: CreatePolicy; defaults?: TeamDefaults }) =>
-      directoryOf(c).updateTeam(by, team, changes),
+    updateTeam: (
+      c,
+      by: string,
+      team: string,
+      changes: {
+        createPolicy?: CreatePolicy
+        defaults?: TeamDefaults
+        handle?: string
+        name?: string
+        description?: string
+      },
+    ) => directoryOf(c).updateTeam(by, team, changes),
+    /** A site admin frees a handle (admin.ts): `@riley` a person's, `mobile` a team's. */
+    releaseHandle: (c, handle: string) => releaseHandle(authOf(c), directoryOf(c), handle),
     members: (c, kind: ContainerKind, id: string, options?: { cursor?: string; limit?: number }) =>
       directoryOf(c).members(kind, id, options),
     addMember: (c, by: string, kind: ContainerKind, id: string, user: string, role?: Role) =>

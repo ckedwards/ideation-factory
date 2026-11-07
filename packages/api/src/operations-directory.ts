@@ -296,11 +296,19 @@ export const directoryOperations = {
     name: 'update_team_settings',
     summary: "Change a team's settings",
     description:
-      "Who can create ideas in the team, and what new ideas in it start with (the team members' access, public or not, and groups). Admins only. Existing ideas keep their access.",
+      "Who can create ideas in the team, what new ideas in it start with (the team members' access, public or not, and groups), and its handle, name and description. Admins only. Existing ideas keep their access. A new handle keeps the old one leading to the team (its page and its ideas' addresses), until another team takes it.",
     method: 'POST',
     path: '/teams/{team}/settings',
     kind: 'write',
-    input: z.strictObject({ team: Ref, createPolicy: CreatePolicy.optional(), defaults: TeamDefaults.optional() }),
+    input: z.strictObject({
+      team: Ref,
+      createPolicy: CreatePolicy.optional(),
+      defaults: TeamDefaults.optional(),
+      /** A new handle: its old one keeps leading to it, until another team takes it. */
+      handle: z.string().trim().min(1).max(39).optional(),
+      name: z.string().trim().min(1).max(100).optional(),
+      description: z.string().max(2000).optional(),
+    }),
     output: Team,
   }),
   listTeamMembers: team.members,

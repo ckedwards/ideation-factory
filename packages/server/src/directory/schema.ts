@@ -61,6 +61,11 @@ export interface DB {
   numbering: { place: string; next: number }
   /** An idea's earlier place and number, from before it moved, so its old address still leads to it. */
   idea_aliases: { place: string; number: number; idea: string }
+  /**
+   * A person's or a team's earlier handle, so its old addresses still lead to
+   * it, until someone else takes the handle (or a site admin releases it).
+   */
+  handle_aliases: { kind: 'user' | 'team'; handle: string; owner: string; created_at: number }
   /** Access to an idea. A row gives view; can_edit and can_share add to it. `subject` is a user, group or team ID, or '*' for everyone. */
   grants: { idea: string; kind: GrantKind; subject: string; can_edit: number; can_share: number; created_at: number }
   /**
@@ -114,6 +119,7 @@ export const COLUMNS = {
   ],
   numbering: ['place', 'next'],
   idea_aliases: ['place', 'number', 'idea'],
+  handle_aliases: ['kind', 'handle', 'owner', 'created_at'],
   grants: ['idea', 'kind', 'subject', 'can_edit', 'can_share', 'created_at'],
   token_grants: ['id', 'user', 'purpose', 'bot', 'read_only', 'limited', 'created_at', 'revoked_at'],
   token_grant_targets: ['token_grant', 'kind', 'target'],
@@ -200,6 +206,14 @@ const MIGRATIONS: Migration[] = [
       .addColumn('number', 'integer', (c) => c.notNull())
       .addColumn('idea', 'text', (c) => c.notNull())
       .addPrimaryKeyConstraint('idea_aliases_pk', ['place', 'number'])
+      .execute()
+    await db.schema
+      .createTable('handle_aliases')
+      .addColumn('kind', 'text', (c) => c.notNull())
+      .addColumn('handle', 'text', (c) => c.notNull())
+      .addColumn('owner', 'text', (c) => c.notNull())
+      .addColumn('created_at', 'bigint', (c) => c.notNull())
+      .addPrimaryKeyConstraint('handle_aliases_pk', ['kind', 'handle'])
       .execute()
     await db.schema.createIndex('ideas_updated').on('ideas').columns(['updated_at', 'id']).execute()
     await db.schema.createIndex('ideas_team').on('ideas').columns(['team', 'updated_at', 'id']).execute()

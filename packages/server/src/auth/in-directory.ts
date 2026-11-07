@@ -45,13 +45,17 @@ export function authInDirectory(sql: Sql, settings: AuthSettings, directory: Dir
           email: user.email,
         })
       },
-      updated: async (user) => {
-        await directory.updateUser(user.id, {
-          ...(user.name ? { name: user.name } : {}),
-          ...(user.inactive !== undefined && user.inactive !== null ? { inactive: Boolean(user.inactive) } : {}),
-          ...(user.username ? { handle: user.username } : {}),
-          ...(user.email ? { email: user.email } : {}),
-        })
+      updated: async (user, how) => {
+        await directory.updateUser(
+          user.id,
+          {
+            ...(user.name ? { name: user.name } : {}),
+            ...(user.inactive !== undefined && user.inactive !== null ? { inactive: Boolean(user.inactive) } : {}),
+            ...(user.username ? { handle: user.username } : {}),
+            ...(user.email ? { email: user.email } : {}),
+          },
+          { keepOldHandle: !how?.confirmed },
+        )
       },
     },
   })
@@ -206,6 +210,40 @@ export async function setInactive(auth: Auth, id: string, inactive: boolean): Pr
   }
   const u = updated as { id: string; username?: string; name: string; inactive?: boolean }
   return { id: u.id, handle: u.username ?? '', name: u.name, inactive: Boolean(u.inactive) }
+}
+
+/**
+ * Frees a handle, a site admin's decision (admin.ts): `@riley` a person's,
+ * `mobile` a team's. Whoever holds it gets a generated one (a person's
+ * through sign-in, so both their records change), and no old handle leads
+ * anywhere any more, so links through it stop working. Says who held it.
+ */
+export async function releaseHandle(
+  auth: Auth,
+  directory: Directory,
+  handle: string,
+): Promise<{ kind: 'user' | 'team'; handle: string; owner: string | null; renamedTo: string | null }> {
+  const person = handle.startsWith('@')
+  const name = handle.replace(/^@/, '').toLowerCase()
+  const replacement = `released-${crypto.randomUUID().slice(0, 8)}`
+  let renamedTo: string | null = null
+  if (person) {
+    const context = await auth.$context
+    const holder = await context.adapter.findOne<{ id: string }>({
+      model: 'user',
+      where: [{ field: 'username', value: name }],
+    })
+    if (holder) {
+      // through sign-in, whose hook renames them in the directory too
+      await context.internalAdapter.updateUser(holder.id, { username: replacement, displayUsername: replacement })
+      renamedTo = replacement
+    }
+  }
+  const { owner } = await directory.releaseHandle(person ? 'user' : 'team', name, replacement)
+  if (!person && owner && (await directory.team(owner))?.handle === replacement) {
+    renamedTo = replacement
+  }
+  return { kind: person ? 'user' : 'team', handle: name, owner, renamedTo }
 }
 
 type SigningKey = { id: string; createdAt: Date | string; expiresAt?: Date | string | null }

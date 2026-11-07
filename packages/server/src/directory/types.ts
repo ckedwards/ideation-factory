@@ -205,6 +205,8 @@ export interface Directory {
   updateUser(
     id: string,
     changes: { name?: string; inactive?: boolean; handle?: string; email?: string },
+    /** Whether a changed handle's old one keeps leading to them (not for a suggestion they replaced). */
+    options?: { keepOldHandle?: boolean },
   ): Promise<User | null>
   /** A person by ID or handle. */
   user(idOrHandle: string): Promise<User | null>
@@ -217,11 +219,25 @@ export interface Directory {
   group(idOrHandle: string): Promise<Group | null>
   teams(options?: { query?: string; cursor?: string; limit?: number }): Promise<Page<Team>>
   groups(options?: { query?: string; cursor?: string; limit?: number }): Promise<Page<Group>>
+  /** A team's settings, for its admins; a new handle keeps the old one leading to it. */
   updateTeam(
     actor: string,
     team: string,
-    changes: { createPolicy?: CreatePolicy; defaults?: TeamDefaults },
+    changes: {
+      createPolicy?: CreatePolicy
+      defaults?: TeamDefaults
+      handle?: string
+      name?: string
+      description?: string
+    },
   ): Promise<Result<Team>>
+  /**
+   * Frees a handle, a site admin's decision: a team holding it is renamed to
+   * `replacement`, and no old handle leads anywhere any more. (A person
+   * holding one is renamed through sign-in first, which keeps its accounts in
+   * step; this then drops the alias that left.) Says who held it.
+   */
+  releaseHandle(kind: 'user' | 'team', handle: string, replacement: string): Promise<{ owner: string | null }>
   members(kind: ContainerKind, id: string, options?: { cursor?: string; limit?: number }): Promise<Page<Member>>
   memberships(user: string): Promise<Memberships>
   addMember(actor: string, kind: ContainerKind, id: string, user: string, role?: Role): Promise<Result<Member>>

@@ -126,7 +126,11 @@ export type PersonalTokenPolicy = (typeof PERSONAL_TOKEN_POLICIES)[number]
 /** What the directory does when Better Auth adds or changes a person. */
 export interface UserHooks {
   created(user: AuthUser): Promise<void>
-  updated(user: AuthUser): Promise<void>
+  /**
+   * `confirmed`: a suggested handle (single sign-on's) was kept or replaced on
+   * the first visit, so it was never really anyone's to keep leading to them.
+   */
+  updated(user: AuthUser, how?: { confirmed: boolean }): Promise<void>
 }
 
 /** The directory, as Better Auth reaches it from inside the actor. */
@@ -469,8 +473,9 @@ const rules = (settings: AuthSettings, deps?: AuthDeps): BetterAuthPlugin => ({
             },
           ),
           // An account single sign-on or SCIM made has a handle suggested from
-          // the email: on their first visit its person keeps or changes it,
-          // once. After that it's fixed like any other.
+          // the email: on their first visit its person keeps or changes it.
+          // The suggestion was never really theirs, so no alias keeps it
+          // leading to them; later changes do keep the old one.
           confirmHandle: createAuthEndpoint(
             '/ideaf/confirm-handle',
             { method: 'POST', use: [sessionMiddleware], body: z.object({ handle: z.string() }) },
@@ -687,7 +692,14 @@ export function authOptions(database: BetterAuthOptions['database'], settings: A
           },
           ...(hooks ? { after: async (user) => hooks.created(user as AuthUser) } : {}),
         },
-        ...(hooks ? { update: { after: async (user) => hooks.updated(user as AuthUser) } } : {}),
+        ...(hooks
+          ? {
+              update: {
+                after: async (user, ctx) =>
+                  hooks.updated(user as AuthUser, { confirmed: ctx?.path === '/ideaf/confirm-handle' }),
+              },
+            }
+          : {}),
       },
       session: {
         create: {
@@ -720,7 +732,8 @@ export function authOptions(database: BetterAuthOptions['database'], settings: A
         maxUsernameLength: 39,
         usernameValidator: validHandle,
         usernameNormalization: false,
-        immutableUsername: true,
+        // a handle can change: the old one keeps leading to its person (the directory's handle aliases)
+        immutableUsername: false,
       }),
       jwt({
         // kept in the directory, the private key encrypted with the auth secret
