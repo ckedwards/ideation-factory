@@ -33,6 +33,8 @@ import './IdeaPage.css'
 export interface PageComment {
   info: CommentInfo
   place: Placement
+  /** Not saved yet: shown, but not replied to or resolved until it is. */
+  pending?: boolean
 }
 
 export interface IdeaPageProps {
@@ -72,8 +74,14 @@ export function IdeaPage(props: IdeaPageProps) {
       active={comment.info.id === active}
       showTarget={showTarget}
       onSelect={() => setActive(comment.info.id)}
-      onReply={canComment && props.onReply ? (body) => props.onReply?.(comment.info.id, body) : undefined}
-      onResolve={canComment && props.onResolve ? (resolved) => props.onResolve?.(comment.info.id, resolved) : undefined}
+      onReply={
+        canComment && !comment.pending && props.onReply ? (body) => props.onReply?.(comment.info.id, body) : undefined
+      }
+      onResolve={
+        canComment && !comment.pending && props.onResolve
+          ? (resolved) => props.onResolve?.(comment.info.id, resolved)
+          : undefined
+      }
     />
   )
 
