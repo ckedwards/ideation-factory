@@ -16,10 +16,10 @@ import { actorOf, statusOf } from './-components/view.ts'
 
 export const Route = createFileRoute('/$place/idea/$number/')({
   loader: async ({ context: { queryClient, idea } }) => {
-    const summary = await queryClient.ensureQueryData(ideaQuery(idea))
+    const summary = await queryClient.query({ ...ideaQuery(idea), staleTime: 'static' })
     await Promise.all([
-      queryClient.ensureQueryData(filesQuery(idea, summary.latest)),
-      queryClient.ensureQueryData(outlineQuery(idea, summary.latest)),
+      queryClient.query({ ...filesQuery(idea, summary.latest), staleTime: 'static' }),
+      queryClient.query({ ...outlineQuery(idea, summary.latest), staleTime: 'static' }),
       commentsOf(idea, queryClient).preload(),
     ])
   },

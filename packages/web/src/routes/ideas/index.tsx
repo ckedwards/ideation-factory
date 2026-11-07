@@ -13,7 +13,7 @@ export const Route = createFileRoute('/ideas/')({
   validateSearch: (search: Record<string, unknown>): { q?: string } =>
     typeof search['q'] === 'string' && search['q'] ? { q: search['q'] } : {},
   staticData: { nav: 'ideas' },
-  loader: ({ context: { queryClient } }) => queryClient.ensureInfiniteQueryData(ideasQuery()),
+  loader: ({ context: { queryClient } }) => queryClient.infiniteQuery({ ...ideasQuery(), staleTime: 'static' }),
   component: Ideas,
 })
 

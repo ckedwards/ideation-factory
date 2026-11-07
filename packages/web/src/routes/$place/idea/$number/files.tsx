@@ -21,13 +21,13 @@ export const Route = createFileRoute('/$place/idea/$number/files')({
   },
   loaderDeps: ({ search }) => ({ v: search.v }),
   loader: async ({ context: { queryClient, idea }, deps }) => {
-    const summary = await queryClient.ensureQueryData(ideaQuery(idea))
+    const summary = await queryClient.query({ ...ideaQuery(idea), staleTime: 'static' })
     const { version } = versionsOf(deps, summary.latest)
     await Promise.all([
-      queryClient.ensureQueryData(filesQuery(idea, version)),
-      queryClient.ensureQueryData(outlineQuery(idea, version)),
+      queryClient.query({ ...filesQuery(idea, version), staleTime: 'static' }),
+      queryClient.query({ ...outlineQuery(idea, version), staleTime: 'static' }),
       commentsOf(idea, queryClient).preload(),
-      version < summary.latest ? queryClient.ensureQueryData(commentsQuery(idea, version)) : null,
+      version < summary.latest ? queryClient.query({ ...commentsQuery(idea, version), staleTime: 'static' }) : null,
     ])
   },
   component: Files,

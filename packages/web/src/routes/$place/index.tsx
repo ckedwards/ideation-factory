@@ -22,11 +22,11 @@ const personHandle = (place: string) => (place.startsWith('@') ? place.slice(1) 
 async function load(queryClient: QueryClient, place: string) {
   const handle = personHandle(place)
   if (handle) {
-    const person = await queryClient.ensureQueryData(personQuery(handle))
-    await queryClient.ensureInfiniteQueryData(ideasQuery({ owner: person.id }))
+    const person = await queryClient.query({ ...personQuery(handle), staleTime: 'static' })
+    await queryClient.infiniteQuery({ ...ideasQuery({ owner: person.id }), staleTime: 'static' })
   } else {
-    const team = await queryClient.ensureQueryData(teamQuery(place))
-    await queryClient.ensureInfiniteQueryData(ideasQuery({ team: team.id }))
+    const team = await queryClient.query({ ...teamQuery(place), staleTime: 'static' })
+    await queryClient.infiniteQuery({ ...ideasQuery({ team: team.id }), staleTime: 'static' })
   }
 }
 

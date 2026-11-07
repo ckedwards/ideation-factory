@@ -15,7 +15,7 @@ export const Route = createFileRoute('/groups/$group')({
   staticData: { nav: 'groups' },
   loader: async ({ context: { queryClient }, params }) => {
     try {
-      await queryClient.ensureQueryData(groupQuery(params.group))
+      await queryClient.query({ ...groupQuery(params.group), staleTime: 'static' })
     } catch (error) {
       if (error instanceof ApiError && error.code === 'not_found') {
         throw notFound()

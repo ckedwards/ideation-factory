@@ -13,7 +13,7 @@ export const Route = createFileRoute('/$place/idea/$number/changes/$range')({
   loader: async ({ context: { queryClient, idea, place, number }, params }) => {
     const links = ideaLinks(place, number)
     const range = parseRange(params.range)
-    const summary = await queryClient.ensureQueryData(ideaQuery(idea))
+    const summary = await queryClient.query({ ...ideaQuery(idea), staleTime: 'static' })
     if (!range || range.from >= summary.latest) {
       throw redirect({ href: links.overview, replace: true })
     }
@@ -22,11 +22,11 @@ export const Route = createFileRoute('/$place/idea/$number/changes/$range')({
     }
     const version = range.to ?? summary.latest
     await Promise.all([
-      queryClient.ensureQueryData(filesQuery(idea, version)),
-      queryClient.ensureQueryData(outlineQuery(idea, version)),
-      queryClient.ensureQueryData(filesQuery(idea, range.from)),
+      queryClient.query({ ...filesQuery(idea, version), staleTime: 'static' }),
+      queryClient.query({ ...outlineQuery(idea, version), staleTime: 'static' }),
+      queryClient.query({ ...filesQuery(idea, range.from), staleTime: 'static' }),
       commentsOf(idea, queryClient).preload(),
-      version < summary.latest ? queryClient.ensureQueryData(commentsQuery(idea, version)) : null,
+      version < summary.latest ? queryClient.query({ ...commentsQuery(idea, version), staleTime: 'static' }) : null,
     ])
   },
   component: Changes,
