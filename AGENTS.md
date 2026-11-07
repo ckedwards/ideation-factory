@@ -20,6 +20,10 @@ Every commit message follows `CONTRIBUTING.md`; a hook and CI check it, and `bun
 - Body: why the change was made, at least 20 characters (all types but `docs`).
 - Breaking changes: `!` in the title (`feat(api)!: …`) and a `BREAKING CHANGE:` footer with what breaks and how to migrate.
 
+## Pull requests
+
+Pull requests are squashed or rebased, never merged with a merge commit. A squash merge makes the pull request's title the first line of the commit on `master`, so the title follows the same rules as a commit's first line, with `!` when any of its commits has a `BREAKING CHANGE:` footer. CI's `title` job checks it; `bun scripts/commit-lint.ts --title "…" master..HEAD` checks one before opening the pull request.
+
 ## Code
 
 Every body of `if`, `else`, `for`, `while` and `do` is a block in braces, on its own lines. oxlint and oxfmt check it in a pre-commit hook and in CI; `bun run format` fixes it.
