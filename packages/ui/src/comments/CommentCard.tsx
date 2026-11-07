@@ -49,12 +49,12 @@ export interface CommentCardProps {
   showTarget?: boolean
   // the author can accept or reject suggested edits
   canDecide?: boolean
-  onSelect?: () => void | undefined
-  onReply?: (body: string) => void | undefined
-  onResolve?: (resolved: boolean) => void | undefined
-  onAccept?: () => void | undefined
-  onReject?: () => void | undefined
-  onViewInVersion?: (version: number) => void | undefined
+  onSelect?: (() => void) | undefined
+  onReply?: ((body: string) => void) | undefined
+  onResolve?: ((resolved: boolean) => void) | undefined
+  onAccept?: (() => void) | undefined
+  onReject?: (() => void) | undefined
+  onViewInVersion?: ((version: number) => void) | undefined
   // more actions in the footer, from the page
   extra?: ReactNode
 }
