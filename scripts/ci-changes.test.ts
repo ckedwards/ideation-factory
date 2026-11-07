@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { needsStories, uiDependencies } from './ci-changes.ts'
+import { dependencies, needsStories, STORIES } from './ci-changes.ts'
 
 /** A small bun.lock: ui uses react and core; core uses zod; the server uses jose, and its own (newer) zod. */
 function lock(versions: { react?: string; zod?: string; serverZod?: string; jose?: string; extra?: boolean } = {}) {
@@ -28,7 +28,7 @@ function lock(versions: { react?: string; zod?: string; serverZod?: string; jose
 
 describe('the packages the stories build from', () => {
   test('ui, core, and what they need in turn; not what only the server needs', () => {
-    expect([...uiDependencies(lock())].sort()).toEqual([
+    expect([...dependencies(lock(), STORIES.ui)].sort()).toEqual([
       '@ideaf/core@workspace:packages/core',
       '@ideaf/ui@workspace:packages/ui',
       'react@19.3.1',
@@ -47,19 +47,20 @@ describe('whether a change needs the story tests', () => {
       'tsconfig.base.json',
       '.github/workflows/ci.yml',
     ]) {
-      expect(needsStories([file])).toBe(true)
+      expect(needsStories('ui', [file])).toBe(true)
+      expect(needsStories('web', [file])).toBe(true)
     }
   })
 
   test('a change elsewhere does not', () => {
-    expect(needsStories(['packages/server/src/app.ts', 'packages/cli/package.json', 'docs/cli.md', 'README.md'])).toBe(
-      false,
-    )
+    const elsewhere = ['packages/server/src/app.ts', 'packages/cli/package.json', 'docs/cli.md', 'README.md']
+    expect(needsStories('ui', elsewhere)).toBe(false)
+    expect(needsStories('web', elsewhere)).toBe(false)
   })
 
   test('a lockfile change does only if it changes what ui or core resolve to', () => {
     const lockChange = (after: string) =>
-      needsStories(['bun.lock', 'packages/server/package.json'], { before: lock(), after })
+      needsStories('ui', ['bun.lock', 'packages/server/package.json'], { before: lock(), after })
     // the server gains a package, or moves its own copy of one ui also uses
     expect(lockChange(lock({ extra: true }))).toBe(false)
     expect(lockChange(lock({ jose: '6.3.0' }))).toBe(false)
@@ -67,5 +68,16 @@ describe('whether a change needs the story tests', () => {
     // ui's react, or core's zod, moves
     expect(lockChange(lock({ react: '19.3.2' }))).toBe(true)
     expect(lockChange(lock({ zod: '4.6.8' }))).toBe(true)
+  })
+})
+
+describe("web's stories", () => {
+  test('need the web app, and what it builds from: ui, core and the API client', () => {
+    for (const file of ['packages/web/src/routes/index.tsx', 'packages/api/src/operations.ts']) {
+      expect(needsStories('web', [file])).toBe(true)
+      expect(needsStories('ui', [file])).toBe(false)
+    }
+    // a change to ui is seen by both
+    expect(needsStories('web', ['packages/ui/src/Button.tsx'])).toBe(true)
   })
 })

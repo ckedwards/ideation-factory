@@ -1,19 +1,25 @@
 #!/usr/bin/env bun
-// Whether a change needs CI's story tests (the storybook job). They depend on
-// the ui package, on core (whose Markdown the stories render), on the
-// dependencies both resolve to, on the shared TypeScript settings and on the
-// CI workflow. A change to anything else, a server dependency in bun.lock
-// included, skips them.
+// Whether a change needs CI's story tests: ui's (the storybook job) and
+// web's (the web job, which also builds the app). Each depends on its own
+// package and the packages it builds from, on the dependencies those resolve
+// to, on the shared TypeScript settings and on the CI workflow. A change to
+// anything else, a server dependency in bun.lock included, skips them.
 //
-//   bun scripts/ci-changes.ts <base> <head>   prints ui=true or ui=false
+//   bun scripts/ci-changes.ts <base> <head>   prints ui=true|false and web=true|false
 //
 // <base>...<head> is compared as git diff does with three dots: what the
 // branch changed since it left <base>, not what <base> gained since.
 
-/** Files that change what the stories are, or how they run, whatever they contain. */
-const UI_FILES = /^(packages\/(ui|core)\/|package\.json$|tsconfig\.base\.json$|\.github\/workflows\/ci\.yml$)/
-/** The workspaces the stories build from. */
-const UI_WORKSPACES = ['packages/ui', 'packages/core']
+/** Files that change any stories, or how they run, whatever they contain. */
+const SHARED_FILES = /^(package\.json$|tsconfig\.base\.json$|\.github\/workflows\/ci\.yml$)/
+
+/** Each package's stories, and the workspaces they build from (core: the Markdown they render). */
+export const STORIES = {
+  ui: ['packages/ui', 'packages/core'],
+  web: ['packages/web', 'packages/ui', 'packages/core', 'packages/api'],
+} as const satisfies Record<string, readonly string[]>
+
+export type Stories = keyof typeof STORIES
 
 type Deps = Record<string, string>
 type Workspace = {
@@ -49,12 +55,12 @@ function namesIn(key: string): string[] {
 }
 
 /**
- * Every package (name@version) the ui and core workspaces resolve to, from a
- * bun.lock's text: their dependencies of every kind, and theirs in turn, found
- * the way Bun resolves them (nested under the package that needs them first,
- * then further up, then at the top).
+ * Every package (name@version) some workspaces resolve to, from a bun.lock's
+ * text: their dependencies of every kind, and theirs in turn, found the way
+ * Bun resolves them (nested under the package that needs them first, then
+ * further up, then at the top).
  */
-export function uiDependencies(lockText: string): Set<string> {
+export function dependencies(lockText: string, workspaces: readonly string[]): Set<string> {
   const lock = Bun.JSONC.parse(lockText) as Lock
   const found = new Set<string>()
   const seen = new Set<string>()
@@ -86,7 +92,7 @@ export function uiDependencies(lockText: string): Set<string> {
     }
     visit(dep)
   }
-  for (const path of UI_WORKSPACES) {
+  for (const path of workspaces) {
     const workspace = lock.workspaces[path]
     if (!workspace) {
       continue
@@ -100,16 +106,21 @@ export function uiDependencies(lockText: string): Set<string> {
   return found
 }
 
-/** Whether these changes need the story tests; the lockfiles before and after, if bun.lock changed. */
-export function needsStories(changed: readonly string[], lock?: { before: string; after: string }): boolean {
-  if (changed.some((file) => UI_FILES.test(file))) {
+/** Whether these changes need a package's story tests; the lockfiles before and after, if bun.lock changed. */
+export function needsStories(
+  stories: Stories,
+  changed: readonly string[],
+  lock?: { before: string; after: string },
+): boolean {
+  const workspaces = STORIES[stories]
+  if (changed.some((file) => SHARED_FILES.test(file) || workspaces.some((w) => file.startsWith(`${w}/`)))) {
     return true
   }
   if (!changed.includes('bun.lock') || !lock) {
     return false
   }
-  const before = uiDependencies(lock.before)
-  const after = uiDependencies(lock.after)
+  const before = dependencies(lock.before, workspaces)
+  const after = dependencies(lock.after, workspaces)
   return before.size !== after.size || [...after].some((p) => !before.has(p))
 }
 
@@ -134,5 +145,7 @@ if (import.meta.main) {
   const lock = changed.includes('bun.lock')
     ? { before: git(['show', `${from}:bun.lock`]), after: git(['show', `${head}:bun.lock`]) }
     : undefined
-  console.log(`ui=${needsStories(changed, lock)}`)
+  for (const stories of Object.keys(STORIES) as Stories[]) {
+    console.log(`${stories}=${needsStories(stories, changed, lock)}`)
+  }
 }
