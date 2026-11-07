@@ -42,6 +42,7 @@ export { Select, type SelectOption, type SelectProps } from './controls/Select.t
 export { WatchSelect, WATCH_LEVELS, type WatchLevel, type WatchSelectProps } from './controls/WatchSelect.tsx'
 export { Combobox, type ComboboxOption, type ComboboxProps } from './controls/Combobox.tsx'
 export { TextArea, type TextAreaProps } from './controls/TextArea.tsx'
+export { TextField, type TextFieldProps } from './controls/TextField.tsx'
 
 export { Tooltip, type TooltipProps } from './overlays/Tooltip.tsx'
 export { Dialog, type DialogProps } from './overlays/Dialog.tsx'
