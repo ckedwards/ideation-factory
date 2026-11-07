@@ -16,6 +16,10 @@
 
 - The formatter decides the rest of the layout: 2-space indents, single quotes, no semicolons, trailing commas, lines up to 120 characters.
 
+## Workflows
+
+Every action a workflow in `.github/workflows/` uses is pinned to a commit in `.github/workflows/actions.lock`, written by [gh actions-lock](https://github.com/github/gh-actions-lock) (`gh extension install github/gh-actions-lock`). When you add or change a workflow, or the version of an action it uses, run `gh actions-lock` and commit the lockfile with it. The pre-commit hook checks that every action has an entry, and CI checks that each pin is still the commit its tag pointed to.
+
 ## Commit messages
 
 Commits follow rules adapted from [Angular's commit message guidelines](https://github.com/angular/angular/blob/main/contributing-docs/commit-message-guidelines.md). The `commit-msg` hook checks every commit (`bun install` turns it on), and CI checks every push and pull request, so a message that breaks them is caught either way. To check a message yourself: `bun scripts/commit-lint.ts --message "…"`.

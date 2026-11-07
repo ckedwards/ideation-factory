@@ -24,6 +24,10 @@ Every commit message follows `CONTRIBUTING.md`; a hook and CI check it, and `bun
 
 Every body of `if`, `else`, `for`, `while` and `do` is a block in braces, on its own lines. oxlint and oxfmt check it in a pre-commit hook and in CI; `bun run format` fixes it.
 
+## Workflows
+
+Actions used in `.github/workflows/` are pinned in `.github/workflows/actions.lock`. After changing a workflow, run `gh actions-lock` and commit the lockfile with it; the pre-commit hook and CI refuse a workflow whose actions aren't pinned.
+
 ## Running things
 
 - Tests: `bun run test`. It gives this worktree a fresh Rivet Engine of its own; the actor tests refuse to start under plain `bun test`.
