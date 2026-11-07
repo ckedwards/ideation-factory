@@ -20,6 +20,8 @@
 
 Commits follow rules adapted from [Angular's commit message guidelines](https://github.com/angular/angular/blob/main/contributing-docs/commit-message-guidelines.md). The `commit-msg` hook checks every commit (`bun install` turns it on), and CI checks every push and pull request, so a message that breaks them is caught either way. To check a message yourself: `bun scripts/commit-lint.ts --message "…"`.
 
+Pull requests are merged by squashing or rebasing, never with a merge commit. A squash merge makes the pull request's title the first line of its commit, so the title follows the same rules as a commit's first line, with a `!` when any of its commits has a breaking change. CI checks the title too, again whenever it's edited.
+
 ```
 <type>(<scope>): <summary>
                                       ← blank line

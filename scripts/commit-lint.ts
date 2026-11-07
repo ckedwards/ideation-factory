@@ -6,6 +6,9 @@
 //   bun scripts/commit-lint.ts --file <path>        a message file (the hook)
 //   bun scripts/commit-lint.ts --range <from>..<to> every commit in a range (CI)
 //   bun scripts/commit-lint.ts --message "<text>"   one message
+//   bun scripts/commit-lint.ts --title "<text>" <from>..<to>
+//                                                   a pull request's title (CI),
+//                                                   the first line of its squash merge
 
 export const TYPES = ['build', 'ci', 'docs', 'feat', 'fix', 'perf', 'refactor', 'test', 'revert'] as const
 export const SCOPES = ['core', 'api', 'server', 'cli', 'ui', 'web', 'e2e', 'dev-infra'] as const
@@ -37,48 +40,12 @@ export function lintCommitMessage(raw: string, options: LintOptions = {}): strin
     return options.allowFixups ? [] : [`"${header}" is a fixup commit: squash it before it lands`]
   }
 
-  const problems: string[] = []
-  const match = HEADER.exec(header)
-  if (!match?.groups) {
-    return [
-      `the first line must be "<type>(<scope>): <summary>" or "<type>: <summary>" (types: ${TYPES.join(', ')}), not "${header}"`,
-    ]
+  const title = parseTitle(header)
+  if (typeof title === 'string') {
+    return [title]
   }
-  const { type, scope, bang, summary } = match.groups as {
-    type: string
-    scope?: string
-    bang?: string
-    summary: string
-  }
-  if (!(TYPES as readonly string[]).includes(type)) {
-    problems.push(
-      `"${type}" isn't a commit type; use one of ${TYPES.join(', ')}${type === 'chore' ? ' (there is no "chore": tooling is build(dev-infra), CI is ci, tests are test)' : ''}`,
-    )
-  }
-  if (scope !== undefined) {
-    if (type === 'docs') {
-      problems.push('docs commits have no scope: "docs: …"')
-    } else if (!(SCOPES as readonly string[]).includes(scope)) {
-      problems.push(
-        `"${scope}" isn't a scope; use a package (${SCOPES.join(', ')}), or no scope for changes across packages`,
-      )
-    }
-  }
-  if (header.length > MAX_HEADER) {
-    problems.push(`the first line is ${header.length} characters; keep it to ${MAX_HEADER}`)
-  }
-  if (!summary.trim()) {
-    problems.push('the summary is empty')
-  }
-  if (/^[A-Z]/.test(summary) && !/^[A-Z]{2,}/.test(summary)) {
-    problems.push('start the summary with a lowercase letter')
-  }
-  if (summary.endsWith('.')) {
-    problems.push("don't end the summary with a full stop")
-  }
-  if (NOT_IMPERATIVE.test(summary)) {
-    problems.push(`write the summary in the imperative ("add", not "added" or "adds"): "${summary.split(' ')[0]}"`)
-  }
+  const { type, scope, bang, summary } = title
+  const problems = lintTitle(header)
 
   // body and footers
   if (rest.length > 0 && rest[0] !== '') {
@@ -116,6 +83,89 @@ export function lintCommitMessage(raw: string, options: LintOptions = {}): strin
   return problems
 }
 
+interface Title {
+  type: string
+  scope?: string
+  bang?: string
+  summary: string
+}
+
+/** A first line's parts, or what's wrong with its shape. */
+function parseTitle(header: string): Title | string {
+  const match = HEADER.exec(header)
+  if (!match?.groups) {
+    return `the first line must be "<type>(<scope>): <summary>" or "<type>: <summary>" (types: ${TYPES.join(', ')}), not "${header}"`
+  }
+  return match.groups as unknown as Title
+}
+
+/**
+ * The problems with a first line on its own: a commit's, or a pull request's
+ * title, which becomes the first line of its squash merge.
+ */
+export function lintTitle(header: string): string[] {
+  const title = parseTitle(header)
+  if (typeof title === 'string') {
+    return [title]
+  }
+  const { type, scope, summary } = title
+  const problems: string[] = []
+  if (!(TYPES as readonly string[]).includes(type)) {
+    problems.push(
+      `"${type}" isn't a commit type; use one of ${TYPES.join(', ')}${type === 'chore' ? ' (there is no "chore": tooling is build(dev-infra), CI is ci, tests are test)' : ''}`,
+    )
+  }
+  if (scope !== undefined) {
+    if (type === 'docs') {
+      problems.push('docs commits have no scope: "docs: …"')
+    } else if (!(SCOPES as readonly string[]).includes(scope)) {
+      problems.push(
+        `"${scope}" isn't a scope; use a package (${SCOPES.join(', ')}), or no scope for changes across packages`,
+      )
+    }
+  }
+  if (header.length > MAX_HEADER) {
+    problems.push(`the first line is ${header.length} characters; keep it to ${MAX_HEADER}`)
+  }
+  if (!summary.trim()) {
+    problems.push('the summary is empty')
+  }
+  if (/^[A-Z]/.test(summary) && !/^[A-Z]{2,}/.test(summary)) {
+    problems.push('start the summary with a lowercase letter')
+  }
+  if (summary.endsWith('.')) {
+    problems.push("don't end the summary with a full stop")
+  }
+  if (NOT_IMPERATIVE.test(summary)) {
+    problems.push(`write the summary in the imperative ("add", not "added" or "adds"): "${summary.split(' ')[0]}"`)
+  }
+  return problems
+}
+
+/**
+ * The problems with a pull request's title, given its commits' messages. A
+ * squash merge keeps the commits' messages as its body, so their breaking
+ * change footers carry over; the title needs a "!" exactly when one of them has
+ * one.
+ */
+export function lintPullRequestTitle(header: string, messages: string[]): string[] {
+  const problems = lintTitle(header)
+  const title = parseTitle(header)
+  if (typeof title === 'string') {
+    return problems
+  }
+  const breaking = messages.some((message) => /^BREAKING CHANGE: \S/m.test(clean(message)))
+  if (breaking && !title.bang) {
+    problems.push(
+      `a commit here has a breaking change, so the title needs "!": "${title.type}${title.scope !== undefined ? `(${title.scope})` : ''}!: ${title.summary}"`,
+    )
+  }
+  if (title.bang && !breaking) {
+    problems.push('the title has "!", but no commit here has a "BREAKING CHANGE: …" footer')
+  }
+  return problems
+}
+
 /** Drops git's comment lines (and everything after a --verbose scissors line) and trailing spaces. */
 function clean(raw: string): string {
   const scissors = raw.indexOf('# ------------------------ >8 ------------------------')
@@ -141,7 +191,7 @@ function git(args: string[]): string {
 }
 
 if (import.meta.main) {
-  const [flag, value] = process.argv.slice(2)
+  const [flag, value, range] = process.argv.slice(2)
   const report = (label: string, problems: string[]) => {
     console.error(`✗ ${label}`)
     for (const p of problems) {
@@ -162,6 +212,19 @@ if (import.meta.main) {
       report('this message breaks the rules in CONTRIBUTING.md:', problems)
       failed = 1
     }
+  } else if (flag === '--title' && value !== undefined && range) {
+    const shas = git(['rev-list', '--no-merges', range]).split('\n').filter(Boolean)
+    const problems = lintPullRequestTitle(
+      value,
+      shas.map((sha) => git(['log', '-1', '--format=%B', sha])),
+    )
+    if (problems.length) {
+      report(`the pull request's title, "${value}", breaks the rules in CONTRIBUTING.md:`, problems)
+      console.error("\nA squash merge makes it the commit's first line. Edit the title, and this check runs again.")
+      failed = 1
+    } else {
+      console.error('The title follows the rules.')
+    }
   } else if (flag === '--range' && value) {
     const shas = git(['rev-list', '--no-merges', '--reverse', value]).split('\n').filter(Boolean)
     for (const sha of shas) {
@@ -177,7 +240,9 @@ if (import.meta.main) {
         : `All ${shas.length} commits follow the rules.`,
     )
   } else {
-    console.error('usage: bun scripts/commit-lint.ts --file <path> | --range <from>..<to> | --message "<text>"')
+    console.error(
+      'usage: bun scripts/commit-lint.ts --file <path> | --range <from>..<to> | --message "<text>" | --title "<text>" <from>..<to>',
+    )
     process.exit(2)
   }
   process.exit(failed ? 1 : 0)
