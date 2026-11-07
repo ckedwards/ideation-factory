@@ -2,7 +2,7 @@
 // edit commands, an upload, or when it was created). Each can be viewed, and
 // an earlier one compared against: the document then shows what changed since.
 import { type Actor, ActorLabel, Link, RelativeTime, Tag } from '@ideaf/ui'
-import { plural } from './plural.ts'
+import { plural } from '../../../../../plural.ts'
 import './VersionList.css'
 
 export interface VersionInfo {
