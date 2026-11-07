@@ -5,7 +5,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { createRootRouteWithContext, Outlet, useMatches } from '@tanstack/react-router'
 import { AppShell, Empty, Link, Page, PageHeader, type Theme } from '@ideaf/ui'
-import { meQuery } from '../api.ts'
+import { membershipsQuery, meQuery } from '../api.ts'
 import { AppNav, type NavPage } from '../components/AppNav.tsx'
 import { accessToken, signIn, SignedOut, signOut } from '../session.ts'
 import { savedTheme, setTheme } from '../theme.ts'
@@ -25,13 +25,18 @@ export const Route = createRootRouteWithContext<RouterContext>()({
       throw error
     }
   },
-  loader: ({ context }) => context.queryClient.query({ ...meQuery, staleTime: 'static' }),
+  loader: ({ context }) =>
+    Promise.all([
+      context.queryClient.query({ ...meQuery, staleTime: 'static' }),
+      context.queryClient.query({ ...membershipsQuery, staleTime: 'static' }),
+    ]),
   component: Root,
   notFoundComponent: NotFound,
 })
 
 function Root() {
   const { data: me } = useSuspenseQuery(meQuery)
+  const { data: memberships } = useSuspenseQuery(membershipsQuery)
   const [theme, pickTheme] = useState<Theme>(savedTheme)
   // the deepest route that names itself in the nav
   const current = useMatches({
@@ -42,6 +47,7 @@ function Root() {
       nav={
         <AppNav
           me={me}
+          teams={memberships.teams}
           current={current}
           theme={theme}
           onThemeChange={(next) => {

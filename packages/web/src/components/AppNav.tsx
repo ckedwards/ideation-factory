@@ -1,20 +1,22 @@
 // The app's navigation, beside every page: the site's name, the main pages,
-// and at the bottom the signed-in person, the theme and signing out. Your
-// teams join it once the API can say which they are.
-import { Button, type Person, SideNav, ThemeToggle, type Theme, UserName } from '@ideaf/ui'
+// your teams, and at the bottom the signed-in person, the theme and signing
+// out.
+import { Button, Link, type Person, SideNav, ThemeToggle, type Theme, UserName } from '@ideaf/ui'
 
 /** The page being shown, so its link is marked. */
 export type NavPage = 'home' | 'ideas' | 'teams' | 'groups' | null
 
 export interface AppNavProps {
   me: Person
+  /** Your teams, by name, linking to their pages. */
+  teams: { handle: string; name: string }[]
   current: NavPage
   theme: Theme
   onThemeChange: (theme: Theme) => void
   onSignOut: () => void
 }
 
-export function AppNav({ me, current, theme, onThemeChange, onSignOut }: AppNavProps) {
+export function AppNav({ me, teams, current, theme, onThemeChange, onSignOut }: AppNavProps) {
   return (
     <SideNav
       brand={
@@ -32,6 +34,11 @@ export function AppNav({ me, current, theme, onThemeChange, onSignOut }: AppNavP
             { href: '/teams', label: 'Teams', current: current === 'teams' },
             { href: '/groups', label: 'Groups', current: current === 'groups' },
           ],
+        },
+        {
+          title: 'Your teams',
+          items: teams.map((team) => ({ href: `/${team.handle}`, label: team.name })),
+          empty: <Link href="/teams">Find a team to join</Link>,
         },
       ]}
       footer={

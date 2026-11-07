@@ -2,19 +2,17 @@
 // or a person's at /@riley (their ideas you can see).
 import { ApiError } from '@ideaf/api'
 import { Page, PageHeader, Section } from '@ideaf/ui'
-import { type QueryClient, queryOptions, useInfiniteQuery, useSuspenseQuery } from '@tanstack/react-query'
+import { type QueryClient, useInfiniteQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, notFound } from '@tanstack/react-router'
-import { api, meQuery } from '../../api.ts'
+import { meQuery } from '../../api.ts'
 import { IdeaList } from '../../components/IdeaList.tsx'
+import { Membership } from '../../components/Membership.tsx'
 import { MemberList } from '../../components/MemberList.tsx'
 import { ideaInfo } from '../../ideas.ts'
 import { ideasQuery } from '../../lists.ts'
-import { membersQuery } from '../../members.ts'
+import { membersQuery, useMembership } from '../../members.ts'
+import { personByHandleQuery, teamByHandleQuery } from '../../places.ts'
 import { plural } from '../../plural.ts'
-
-const teamQuery = (team: string) => queryOptions({ queryKey: ['team', team], queryFn: () => api.getTeam({ team }) })
-const personQuery = (user: string) =>
-  queryOptions({ queryKey: ['person', user], queryFn: () => api.getUser({ user }), staleTime: 10 * 60_000 })
 
 /** A person's handle, from /@riley; null for a team's page. */
 const personHandle = (place: string) => (place.startsWith('@') ? place.slice(1) : null)
@@ -22,10 +20,10 @@ const personHandle = (place: string) => (place.startsWith('@') ? place.slice(1) 
 async function load(queryClient: QueryClient, place: string) {
   const handle = personHandle(place)
   if (handle) {
-    const person = await queryClient.query({ ...personQuery(handle), staleTime: 'static' })
+    const person = await queryClient.query({ ...personByHandleQuery(handle), staleTime: 'static' })
     await queryClient.infiniteQuery({ ...ideasQuery({ owner: person.id }), staleTime: 'static' })
   } else {
-    const team = await queryClient.query({ ...teamQuery(place), staleTime: 'static' })
+    const team = await queryClient.query({ ...teamByHandleQuery(place), staleTime: 'static' })
     await queryClient.infiniteQuery({ ...ideasQuery({ team: team.id }), staleTime: 'static' })
   }
 }
@@ -51,15 +49,17 @@ function Place() {
 }
 
 function TeamPage({ handle }: { handle: string }) {
-  const { data: team } = useSuspenseQuery(teamQuery(handle))
+  const { data: team } = useSuspenseQuery(teamByHandleQuery(handle))
   const { data: me } = useSuspenseQuery(meQuery)
   const ideas = useInfiniteQuery(ideasQuery({ team: team.id }))
   const members = useInfiniteQuery(membersQuery('team', team.handle))
+  const membership = useMembership('team', team)
   return (
     <Page>
       <PageHeader
         title={team.name}
         sub={`${team.handle} · team · ${plural(team.members, 'member')}${team.archived ? ' · archived' : ''}`}
+        actions={<Membership {...membership} settingsHref={`/${team.handle}/settings`} />}
       />
       {team.description && <p>{team.description}</p>}
       <Section title="Ideas">
@@ -87,7 +87,7 @@ function TeamPage({ handle }: { handle: string }) {
 }
 
 function PersonPage({ handle }: { handle: string }) {
-  const { data: person } = useSuspenseQuery(personQuery(handle))
+  const { data: person } = useSuspenseQuery(personByHandleQuery(handle))
   const { data: me } = useSuspenseQuery(meQuery)
   const ideas = useInfiniteQuery(ideasQuery({ owner: person.id }))
   const yours = person.id === me.id
