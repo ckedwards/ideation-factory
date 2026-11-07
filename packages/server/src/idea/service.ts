@@ -104,9 +104,26 @@ export type WriteValue =
 
 export type WriteResult = { ok: true; value: WriteValue } | { ok: false; error: WriteError }
 
+/** A comment as list_comments shows it: its thread, or one reply. */
+export type CommentShape = { id: string; author: Caller; createdAt: number; body: string; version: number }
+export type ThreadShape = CommentShape & {
+  resolved: boolean
+  state: AnchorState
+  anchor: Anchor | null
+  lastVersion: number | null
+  addressedIn: number[]
+  replies: CommentShape[]
+}
+
+/**
+ * What happened, for everyone viewing the idea. A comment or reply carries
+ * itself, as list_comments would show it, so a viewer adds it without
+ * reading the comments again.
+ */
 export type IdeaEvent =
   | { name: 'version'; payload: { version: number; how: VersionHow; by: Caller } }
-  | { name: 'comment'; payload: { comment: string; parent: string | null; by: Caller } }
+  | { name: 'comment'; payload: { thread: ThreadShape; by: Caller } }
+  | { name: 'reply'; payload: { parent: string; reply: CommentShape; by: Caller } }
   | { name: 'resolved'; payload: { comment: string; resolved: boolean; by: Caller } }
 
 export type VersionHow = 'created' | 'commands' | 'upload'
@@ -282,6 +299,7 @@ export class IdeaService {
     }
     const anchor = (checked as { anchor: Anchor }).anchor
     const id = `c${meta.next_comment}`
+    const at = this.#now()
     const result: WriteResult = { ok: true, value: { kind: 'comment', comment: id } }
     await this.#transaction(async (tx) => {
       await tx
@@ -291,7 +309,7 @@ export class IdeaService {
           parent: null,
           version: meta.latest,
           author: JSON.stringify(request.caller),
-          created_at: this.#now(),
+          created_at: at,
           body: write.body,
           resolved: 0,
         })
@@ -309,7 +327,27 @@ export class IdeaService {
     latest.comments.push({ id, anchor })
     return {
       result,
-      events: [{ name: 'comment', payload: { comment: id, parent: null, by: request.caller } }] satisfies IdeaEvent[],
+      events: [
+        {
+          name: 'comment',
+          payload: {
+            thread: {
+              id,
+              author: request.caller,
+              createdAt: at,
+              body: write.body,
+              version: meta.latest,
+              resolved: false,
+              state: 'exact',
+              anchor,
+              lastVersion: meta.latest,
+              addressedIn: [],
+              replies: [],
+            },
+            by: request.caller,
+          },
+        },
+      ] satisfies IdeaEvent[],
     }
   }
 
@@ -317,6 +355,7 @@ export class IdeaService {
     const meta = await this.#requireMeta()
     const parent = await this.#rootComment(write.parent)
     const id = `c${meta.next_comment}`
+    const at = this.#now()
     const result: WriteResult = { ok: true, value: { kind: 'comment', comment: id } }
     await this.#transaction(async (tx) => {
       await tx
@@ -326,7 +365,7 @@ export class IdeaService {
           parent,
           version: meta.latest,
           author: JSON.stringify(request.caller),
-          created_at: this.#now(),
+          created_at: at,
           body: write.body,
           resolved: 0,
         })
@@ -339,7 +378,16 @@ export class IdeaService {
     })
     return {
       result,
-      events: [{ name: 'comment', payload: { comment: id, parent, by: request.caller } }] satisfies IdeaEvent[],
+      events: [
+        {
+          name: 'reply',
+          payload: {
+            parent,
+            reply: { id, author: request.caller, createdAt: at, body: write.body, version: meta.latest },
+            by: request.caller,
+          },
+        },
+      ] satisfies IdeaEvent[],
     }
   }
 

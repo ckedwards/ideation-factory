@@ -55,7 +55,15 @@ test('create, edit and read through the actor, with live updates to a connected 
   await new Promise((r) => setTimeout(r, 300))
   expect(events).toEqual([
     { version: 1, how: 'created', by: OWNER },
-    { comment: 'c1', parent: null, by: OWNER },
+    {
+      thread: expect.objectContaining({
+        id: 'c1',
+        body: 'Which brown?',
+        state: 'exact',
+        anchor: expect.objectContaining({ quote: 'brown' }),
+      }),
+      by: OWNER,
+    },
     { version: 2, how: 'commands', by: OWNER },
   ])
   await viewer.dispose()
