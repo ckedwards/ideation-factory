@@ -20,6 +20,7 @@ test('a search that matches more than the work cap uses the most recently update
   const row = (id: string, title: string, owner = 'u-a') => ({
     id,
     title,
+    description: '',
     team: null,
     owner,
     status: 'draft',

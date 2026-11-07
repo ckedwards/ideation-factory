@@ -230,17 +230,22 @@ export function Page<T extends z.ZodType>(item: T) {
   return z.object({ items: z.array(item), next: z.string().nullable() })
 }
 
+/** An idea as lists show it, with its team and owner by name and its address. */
 export const IdeaRow = z.object({
   id: z.string(),
   title: z.string(),
-  team: z.string().nullable(),
-  owner: z.string(),
+  description: z.string(),
   status: z.string(),
   latest: z.number().int(),
   createdAt: z.number(),
   updatedAt: z.number(),
-  /** Its number in its team, or among its owner's own ideas. */
+  /** Its address: its team's handle (or @ and its owner's) and its number there (ideaPath). */
+  place: z.string(),
   number: z.number().int(),
+  /** Comment threads not resolved yet. */
+  openComments: z.number().int(),
+  team: z.object({ id: z.string(), handle: z.string(), name: z.string(), archived: z.boolean() }).nullable(),
+  owner: User,
 })
 
 /** Where an idea is found: `mobile/idea/9`, or `@riley/idea/3` for someone's own. */

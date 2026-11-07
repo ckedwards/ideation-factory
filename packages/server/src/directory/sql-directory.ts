@@ -18,7 +18,9 @@ import {
   type AccessChange,
   type IdeaFilter,
   type IdeaPlace,
+  type IdeaListing,
   type IdeaRow,
+  type IndexUpdate,
   type Member,
   type MoveAdjustments,
   type MovePreview,
@@ -118,6 +120,8 @@ const toIdea = (r: DB['ideas']): IdeaRow => ({
   createdAt: Number(r.created_at),
   updatedAt: Number(r.updated_at),
   number: Number(r.number),
+  description: r.description,
+  openComments: Number(r.open_comments),
 })
 
 /** Where an idea is numbered: its team, or its owner's own ideas. */
@@ -677,7 +681,7 @@ export class SqlDirectory implements Directory {
     )
   }
 
-  async registerIdea(row: Omit<IdeaRow, 'number'>): Promise<void> {
+  async registerIdea(row: Omit<IdeaRow, 'number' | 'openComments'>): Promise<void> {
     const team = row.team ? await this.team(row.team) : null
     await this.#transaction(async (db) => {
       if (await db.selectFrom('ideas').select('id').where('id', '=', row.id).executeTakeFirst()) {
@@ -697,6 +701,8 @@ export class SqlDirectory implements Directory {
           updated_at: row.updatedAt,
           place,
           number: await nextNumber(db, place),
+          description: row.description,
+          open_comments: 0,
         })
         // two registrations at once: the second leaves the first alone
         .onConflict((oc) => oc.column('id').doNothing())
@@ -714,12 +720,19 @@ export class SqlDirectory implements Directory {
     })
   }
 
-  async updateIdea(row: Pick<IdeaRow, 'id' | 'title' | 'status' | 'latest' | 'updatedAt'>): Promise<void> {
+  async updateIdea(row: IndexUpdate): Promise<void> {
     await this.#transaction(async (db) => {
       // never move updated_at backwards: coalesced updates can arrive out of order
       const updated = await db
         .updateTable('ideas')
-        .set({ title: row.title, status: row.status, latest: row.latest, updated_at: row.updatedAt })
+        .set({
+          title: row.title,
+          status: row.status,
+          latest: row.latest,
+          updated_at: row.updatedAt,
+          description: row.description,
+          open_comments: row.openComments,
+        })
         .where('id', '=', row.id)
         .where('updated_at', '<=', row.updatedAt)
         .returning('id')
@@ -1163,7 +1176,7 @@ export class SqlDirectory implements Directory {
     return { count: ids.length, people, everyone: false }
   }
 
-  async listIdeas(actor: string, filter: IdeaFilter = {}, token?: string | null): Promise<Page<IdeaRow>> {
+  async listIdeas(actor: string, filter: IdeaFilter = {}, token?: string | null): Promise<Page<IdeaListing>> {
     const limit = pageSize(filter.limit)
     const after = decodeCursor(filter.cursor)
     let query = this.#db
@@ -1191,7 +1204,39 @@ export class SqlDirectory implements Directory {
     }
     const rows = await query.execute()
     const page = rows.slice(0, limit).map(toIdea)
-    return { items: page, next: rows.length > limit ? encodeCursor([page.at(-1)!.updatedAt, page.at(-1)!.id]) : null }
+    return {
+      items: await this.#listings(page),
+      next: rows.length > limit ? encodeCursor([page.at(-1)!.updatedAt, page.at(-1)!.id]) : null,
+    }
+  }
+
+  /** Rows as lists show them: with their address, and their teams and owners by name, read once per page. */
+  async #listings(rows: IdeaRow[]): Promise<IdeaListing[]> {
+    const teamIds = [...new Set(rows.flatMap((r) => (r.team ? [r.team] : [])))]
+    const ownerIds = [...new Set(rows.map((r) => r.owner))]
+    const [teams, owners] = await Promise.all([
+      teamIds.length
+        ? this.#db.selectFrom('teams').select(['id', 'handle', 'name', 'archived']).where('id', 'in', teamIds).execute()
+        : [],
+      ownerIds.length
+        ? this.#db
+            .selectFrom('users')
+            .select(['id', 'handle', 'name', 'inactive'])
+            .where('id', 'in', ownerIds)
+            .execute()
+        : [],
+    ])
+    const team = new Map(
+      teams.map((t) => [t.id, { id: t.id, handle: t.handle, name: t.name, archived: t.archived === 1 }]),
+    )
+    const owner = new Map(
+      owners.map((u) => [u.id, { id: u.id, handle: u.handle, name: u.name, inactive: u.inactive === 1 }]),
+    )
+    return rows.map((row) => {
+      const teamInfo = row.team ? (team.get(row.team) ?? null) : null
+      const ownerInfo = owner.get(row.owner) ?? { id: row.owner, handle: row.owner, name: row.owner, inactive: false }
+      return { ...row, place: teamInfo ? teamInfo.handle : `@${ownerInfo.handle}`, teamInfo, ownerInfo }
+    })
   }
 
   async searchIdeas(actor: string, query: string, limit = 25, token?: string | null): Promise<SearchResult> {
@@ -1219,7 +1264,7 @@ export class SqlDirectory implements Directory {
       .orderBy('ideas.id', 'desc')
       .limit(Math.min(limit, MAX_PAGE))
       .execute()
-    const items = rows.map(toIdea)
+    const items = await this.#listings(rows.map(toIdea))
     return { items, incomplete: await this.#search.exceeds(this.#db, terms, this.#searchCap) }
   }
 }

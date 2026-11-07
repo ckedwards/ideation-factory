@@ -157,9 +157,56 @@ describe('lists and search', () => {
       () => riley.listIdeas({ owner: handle('riley') }).then((page) => page.items.find((i) => i.id === idea)),
       (r) => r?.latest === 2,
     )
-    // owners are named by account ID; handles are for people to type
-    expect(row).toMatchObject({ latest: 2, owner: (await signIn(app, handle('riley'))).id })
+    // a row says whose it is and where it's found, by name, not just by ID
+    const me = await signIn(app, handle('riley'))
+    expect(row).toMatchObject({
+      latest: 2,
+      place: `@${handle('riley')}`,
+      number: expect.any(Number),
+      team: null,
+      owner: { id: me.id, handle: handle('riley') },
+      openComments: 0,
+    })
     expect((await riley.listIdeas({ owner: handle('riley') })).items[0]!.id).toBe(idea)
+
+    // its open comments are counted as they come and go
+    const { comment } = await riley.addComment({ idea, version: 2, anchor: { kind: 'file', file: 'f1' }, body: 'Why?' })
+    expect(
+      (
+        await eventually(
+          () => riley.listIdeas({ owner: handle('riley') }).then((page) => page.items.find((i) => i.id === idea)),
+          (r) => r?.openComments === 1,
+        )
+      )?.openComments,
+    ).toBe(1)
+    await riley.resolveComment({ idea, comment, resolved: true })
+    expect(
+      (
+        await eventually(
+          () => riley.searchIdeas({ q: word }).then((found) => found.items.find((i) => i.id === idea)),
+          (r) => r?.openComments === 0,
+        )
+      )?.openComments,
+    ).toBe(0)
+  })
+
+  test("a team's idea is listed with its team and description", async () => {
+    const riley = as('riley')
+    const team = await riley.createTeam({ handle: handle('listed'), name: 'Listed' })
+    const { idea } = await riley.createIdea({
+      title: 'Listed plan',
+      description: 'What it is, in a line.',
+      team: team.handle,
+      files: [{ path: 'a.md', content: PLAN }],
+    })
+    const [row] = (await riley.listIdeas({ team: team.handle })).items
+    expect(row).toMatchObject({
+      id: idea,
+      description: 'What it is, in a line.',
+      place: team.handle,
+      number: 1,
+      team: { id: team.id, handle: team.handle, name: 'Listed', archived: false },
+    })
   })
 
   test('people and teams by type-ahead', async () => {

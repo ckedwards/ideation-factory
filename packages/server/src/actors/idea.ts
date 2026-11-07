@@ -77,8 +77,10 @@ export const idea = actor({
       await directory.send('index', {
         id: summary.id,
         title: summary.title,
+        description: summary.description,
         status: summary.status,
         latest: summary.latest,
+        openComments: await serviceOf(c).openComments(),
         updatedAt: c.state.lastActivity || Date.now(),
       })
     },
