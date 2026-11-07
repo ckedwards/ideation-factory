@@ -14,6 +14,7 @@ import { Route as PlaceIndexRouteImport } from './routes/$place/index'
 import { Route as PlaceSettingsRouteImport } from './routes/$place/settings'
 import { Route as GroupsIndexRouteImport } from './routes/groups/index'
 import { Route as IdeasIndexRouteImport } from './routes/ideas/index'
+import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as TeamsIndexRouteImport } from './routes/teams/index'
 import { Route as PlaceIdeaNumberRouteRouteImport } from './routes/$place/idea/$number/route'
 import { Route as GroupsGroupIndexRouteImport } from './routes/groups/$group/index'
@@ -48,6 +49,11 @@ const GroupsIndexRoute = GroupsIndexRouteImport.update({
 const IdeasIndexRoute = IdeasIndexRouteImport.update({
   id: '/ideas/',
   path: '/ideas/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsIndexRoute = SettingsIndexRouteImport.update({
+  id: '/settings/',
+  path: '/settings/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TeamsIndexRoute = TeamsIndexRouteImport.update({
@@ -109,6 +115,7 @@ export interface FileRoutesByFullPath {
   '/$place/': typeof PlaceIndexRoute
   '/groups/': typeof GroupsIndexRoute
   '/ideas/': typeof IdeasIndexRoute
+  '/settings/': typeof SettingsIndexRoute
   '/teams/': typeof TeamsIndexRoute
   '/$place/idea/$number': typeof PlaceIdeaNumberRouteRouteWithChildren
   '/groups/$group/settings': typeof GroupsGroupSettingsRoute
@@ -126,6 +133,7 @@ export interface FileRoutesByTo {
   '/$place': typeof PlaceIndexRoute
   '/groups': typeof GroupsIndexRoute
   '/ideas': typeof IdeasIndexRoute
+  '/settings': typeof SettingsIndexRoute
   '/teams': typeof TeamsIndexRoute
   '/groups/$group/settings': typeof GroupsGroupSettingsRoute
   '/groups/$group': typeof GroupsGroupIndexRoute
@@ -143,6 +151,7 @@ export interface FileRoutesById {
   '/$place/': typeof PlaceIndexRoute
   '/groups/': typeof GroupsIndexRoute
   '/ideas/': typeof IdeasIndexRoute
+  '/settings/': typeof SettingsIndexRoute
   '/teams/': typeof TeamsIndexRoute
   '/$place/idea/$number': typeof PlaceIdeaNumberRouteRouteWithChildren
   '/groups/$group/settings': typeof GroupsGroupSettingsRoute
@@ -162,6 +171,7 @@ export interface FileRouteTypes {
     | '/$place/'
     | '/groups/'
     | '/ideas/'
+    | '/settings/'
     | '/teams/'
     | '/$place/idea/$number'
     | '/groups/$group/settings'
@@ -179,6 +189,7 @@ export interface FileRouteTypes {
     | '/$place'
     | '/groups'
     | '/ideas'
+    | '/settings'
     | '/teams'
     | '/groups/$group/settings'
     | '/groups/$group'
@@ -195,6 +206,7 @@ export interface FileRouteTypes {
     | '/$place/'
     | '/groups/'
     | '/ideas/'
+    | '/settings/'
     | '/teams/'
     | '/$place/idea/$number'
     | '/groups/$group/settings'
@@ -213,6 +225,7 @@ export interface RootRouteChildren {
   PlaceIndexRoute: typeof PlaceIndexRoute
   GroupsIndexRoute: typeof GroupsIndexRoute
   IdeasIndexRoute: typeof IdeasIndexRoute
+  SettingsIndexRoute: typeof SettingsIndexRoute
   TeamsIndexRoute: typeof TeamsIndexRoute
   PlaceIdeaNumberRouteRoute: typeof PlaceIdeaNumberRouteRouteWithChildren
   GroupsGroupSettingsRoute: typeof GroupsGroupSettingsRoute
@@ -254,6 +267,13 @@ declare module '@tanstack/react-router' {
       path: '/ideas'
       fullPath: '/ideas/'
       preLoaderRoute: typeof IdeasIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/': {
+      id: '/settings/'
+      path: '/settings'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/teams/': {
@@ -356,6 +376,7 @@ const rootRouteChildren: RootRouteChildren = {
   PlaceIndexRoute: PlaceIndexRoute,
   GroupsIndexRoute: GroupsIndexRoute,
   IdeasIndexRoute: IdeasIndexRoute,
+  SettingsIndexRoute: SettingsIndexRoute,
   TeamsIndexRoute: TeamsIndexRoute,
   PlaceIdeaNumberRouteRoute: PlaceIdeaNumberRouteRouteWithChildren,
   GroupsGroupSettingsRoute: GroupsGroupSettingsRoute,

@@ -3,7 +3,7 @@
 import { ApiError } from '@ideaf/api'
 import { Page, PageHeader, Section } from '@ideaf/ui'
 import { type QueryClient, useInfiniteQuery, useSuspenseQuery } from '@tanstack/react-query'
-import { createFileRoute, notFound } from '@tanstack/react-router'
+import { createFileRoute, notFound, redirect } from '@tanstack/react-router'
 import { meQuery } from '../../api.ts'
 import { IdeaList } from '../../components/IdeaList.tsx'
 import { Membership } from '../../components/Membership.tsx'
@@ -21,9 +21,16 @@ async function load(queryClient: QueryClient, place: string) {
   const handle = personHandle(place)
   if (handle) {
     const person = await queryClient.query({ ...personByHandleQuery(handle), staleTime: 'static' })
+    // an old handle: on to the current one
+    if (person.handle !== handle) {
+      throw redirect({ to: '/$place', params: { place: `@${person.handle}` }, replace: true })
+    }
     await queryClient.infiniteQuery({ ...ideasQuery({ owner: person.id }), staleTime: 'static' })
   } else {
     const team = await queryClient.query({ ...teamByHandleQuery(place), staleTime: 'static' })
+    if (team.handle !== place) {
+      throw redirect({ to: '/$place', params: { place: team.handle }, replace: true })
+    }
     await queryClient.infiniteQuery({ ...ideasQuery({ team: team.id }), staleTime: 'static' })
   }
 }
