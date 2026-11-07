@@ -226,7 +226,11 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         createdAt: now,
         updatedAt: now,
       })
-      return created
+      const place = await directory().placeOf(id)
+      if (!place) {
+        throw new Error(`idea ${id} was registered but isn't in the directory`)
+      }
+      return { ok: true, value: { ...created.value, place: place.place, number: place.number } }
     },
 
     getIdea: async (input, { caller, token }) => {

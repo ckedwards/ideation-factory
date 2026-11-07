@@ -23,7 +23,7 @@ ideaf pull - bring the idea's latest version into your files: accepted suggestio
 
 ideaf list - list ideas for this repo (filter by your ideas by defaut) display active one first with an indication that it is the active one
 
-ideaf start - start an idea. Walk through required fields if not present in cli args. The team is optional: with no team (and no default team in config), the idea has no team and is private to you until it's moved into a team (`ideaf move --team <team>`). It never creates branches or worktrees: those are yours to manage, and the idea is tied to whatever branch you're on.
+ideaf start - start an idea. Walk through required fields if not present in cli args. The team is optional: with no team (and no default team in config), the idea has no team and is private to you until it's moved into a team (`ideaf move --team <team>`). It never creates branches or worktrees: those are yours to manage, and the idea is tied to whatever branch you're on. It says where to read and discuss the idea on the web: its address, like `mobile/idea/9` (or `@riley/idea/3` for your own), and the link to it.
 
 ideaf change - change the idea you are working on: by ID, by `--title`, or picked from a list at a terminal (yours by default). It never runs git: if the idea is on another branch, it prints the commands that get there and stops, and `--here` ties the idea to this branch instead. If that branch is checked out in another worktree, it says where.
 
