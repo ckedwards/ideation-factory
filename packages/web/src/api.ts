@@ -30,3 +30,9 @@ export const teamQuery = (id: string) =>
     queryFn: () => api.getTeam({ team: id }),
     staleTime: 5 * 60_000,
   })
+
+/** The teams and groups you're in, with your role, and those you've asked to join. */
+export const membershipsQuery = queryOptions({
+  queryKey: ['me', 'memberships'],
+  queryFn: () => api.myMemberships({}),
+})

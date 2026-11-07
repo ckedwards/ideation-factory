@@ -1,0 +1,9 @@
+.membership {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+}
+.membership a {
+  color: var(--accent);
+}

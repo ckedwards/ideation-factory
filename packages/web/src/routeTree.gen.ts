@@ -11,11 +11,13 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PlaceIndexRouteImport } from './routes/$place/index'
+import { Route as PlaceSettingsRouteImport } from './routes/$place/settings'
 import { Route as GroupsIndexRouteImport } from './routes/groups/index'
-import { Route as GroupsGroupRouteImport } from './routes/groups/$group'
 import { Route as IdeasIndexRouteImport } from './routes/ideas/index'
 import { Route as TeamsIndexRouteImport } from './routes/teams/index'
 import { Route as PlaceIdeaNumberRouteRouteImport } from './routes/$place/idea/$number/route'
+import { Route as GroupsGroupIndexRouteImport } from './routes/groups/$group/index'
+import { Route as GroupsGroupSettingsRouteImport } from './routes/groups/$group/settings'
 import { Route as PlaceIdeaNumberIndexRouteImport } from './routes/$place/idea/$number/index'
 import { Route as PlaceIdeaNumberFilesRouteImport } from './routes/$place/idea/$number/files'
 import { Route as PlaceIdeaNumberChangesIndexRouteImport } from './routes/$place/idea/$number/changes/index'
@@ -31,14 +33,14 @@ const PlaceIndexRoute = PlaceIndexRouteImport.update({
   path: '/$place/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PlaceSettingsRoute = PlaceSettingsRouteImport.update({
+  id: '/$place/settings',
+  path: '/$place/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GroupsIndexRoute = GroupsIndexRouteImport.update({
   id: '/groups/',
   path: '/groups/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const GroupsGroupRoute = GroupsGroupRouteImport.update({
-  id: '/groups/$group',
-  path: '/groups/$group',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IdeasIndexRoute = IdeasIndexRouteImport.update({
@@ -54,6 +56,16 @@ const TeamsIndexRoute = TeamsIndexRouteImport.update({
 const PlaceIdeaNumberRouteRoute = PlaceIdeaNumberRouteRouteImport.update({
   id: '/$place/idea/$number',
   path: '/$place/idea/$number',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GroupsGroupIndexRoute = GroupsGroupIndexRouteImport.update({
+  id: '/groups/$group/',
+  path: '/groups/$group/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GroupsGroupSettingsRoute = GroupsGroupSettingsRouteImport.update({
+  id: '/groups/$group/settings',
+  path: '/groups/$group/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PlaceIdeaNumberIndexRoute = PlaceIdeaNumberIndexRouteImport.update({
@@ -81,12 +93,14 @@ const PlaceIdeaNumberChangesRangeRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/groups/$group': typeof GroupsGroupRoute
+  '/$place/settings': typeof PlaceSettingsRoute
   '/$place/': typeof PlaceIndexRoute
   '/groups/': typeof GroupsIndexRoute
   '/ideas/': typeof IdeasIndexRoute
   '/teams/': typeof TeamsIndexRoute
   '/$place/idea/$number': typeof PlaceIdeaNumberRouteRouteWithChildren
+  '/groups/$group/settings': typeof GroupsGroupSettingsRoute
+  '/groups/$group/': typeof GroupsGroupIndexRoute
   '/$place/idea/$number/files': typeof PlaceIdeaNumberFilesRoute
   '/$place/idea/$number/': typeof PlaceIdeaNumberIndexRoute
   '/$place/idea/$number/changes/$range': typeof PlaceIdeaNumberChangesRangeRoute
@@ -94,11 +108,13 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/groups/$group': typeof GroupsGroupRoute
+  '/$place/settings': typeof PlaceSettingsRoute
   '/$place': typeof PlaceIndexRoute
   '/groups': typeof GroupsIndexRoute
   '/ideas': typeof IdeasIndexRoute
   '/teams': typeof TeamsIndexRoute
+  '/groups/$group/settings': typeof GroupsGroupSettingsRoute
+  '/groups/$group': typeof GroupsGroupIndexRoute
   '/$place/idea/$number/files': typeof PlaceIdeaNumberFilesRoute
   '/$place/idea/$number': typeof PlaceIdeaNumberIndexRoute
   '/$place/idea/$number/changes/$range': typeof PlaceIdeaNumberChangesRangeRoute
@@ -107,12 +123,14 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/groups/$group': typeof GroupsGroupRoute
+  '/$place/settings': typeof PlaceSettingsRoute
   '/$place/': typeof PlaceIndexRoute
   '/groups/': typeof GroupsIndexRoute
   '/ideas/': typeof IdeasIndexRoute
   '/teams/': typeof TeamsIndexRoute
   '/$place/idea/$number': typeof PlaceIdeaNumberRouteRouteWithChildren
+  '/groups/$group/settings': typeof GroupsGroupSettingsRoute
+  '/groups/$group/': typeof GroupsGroupIndexRoute
   '/$place/idea/$number/files': typeof PlaceIdeaNumberFilesRoute
   '/$place/idea/$number/': typeof PlaceIdeaNumberIndexRoute
   '/$place/idea/$number/changes/$range': typeof PlaceIdeaNumberChangesRangeRoute
@@ -122,12 +140,14 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/groups/$group'
+    | '/$place/settings'
     | '/$place/'
     | '/groups/'
     | '/ideas/'
     | '/teams/'
     | '/$place/idea/$number'
+    | '/groups/$group/settings'
+    | '/groups/$group/'
     | '/$place/idea/$number/files'
     | '/$place/idea/$number/'
     | '/$place/idea/$number/changes/$range'
@@ -135,11 +155,13 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/groups/$group'
+    | '/$place/settings'
     | '/$place'
     | '/groups'
     | '/ideas'
     | '/teams'
+    | '/groups/$group/settings'
+    | '/groups/$group'
     | '/$place/idea/$number/files'
     | '/$place/idea/$number'
     | '/$place/idea/$number/changes/$range'
@@ -147,12 +169,14 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
-    | '/groups/$group'
+    | '/$place/settings'
     | '/$place/'
     | '/groups/'
     | '/ideas/'
     | '/teams/'
     | '/$place/idea/$number'
+    | '/groups/$group/settings'
+    | '/groups/$group/'
     | '/$place/idea/$number/files'
     | '/$place/idea/$number/'
     | '/$place/idea/$number/changes/$range'
@@ -161,12 +185,14 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  GroupsGroupRoute: typeof GroupsGroupRoute
+  PlaceSettingsRoute: typeof PlaceSettingsRoute
   PlaceIndexRoute: typeof PlaceIndexRoute
   GroupsIndexRoute: typeof GroupsIndexRoute
   IdeasIndexRoute: typeof IdeasIndexRoute
   TeamsIndexRoute: typeof TeamsIndexRoute
   PlaceIdeaNumberRouteRoute: typeof PlaceIdeaNumberRouteRouteWithChildren
+  GroupsGroupSettingsRoute: typeof GroupsGroupSettingsRoute
+  GroupsGroupIndexRoute: typeof GroupsGroupIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -185,18 +211,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PlaceIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/$place/settings': {
+      id: '/$place/settings'
+      path: '/$place/settings'
+      fullPath: '/$place/settings'
+      preLoaderRoute: typeof PlaceSettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/groups/': {
       id: '/groups/'
       path: '/groups'
       fullPath: '/groups/'
       preLoaderRoute: typeof GroupsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/groups/$group': {
-      id: '/groups/$group'
-      path: '/groups/$group'
-      fullPath: '/groups/$group'
-      preLoaderRoute: typeof GroupsGroupRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ideas/': {
@@ -218,6 +244,20 @@ declare module '@tanstack/react-router' {
       path: '/$place/idea/$number'
       fullPath: '/$place/idea/$number'
       preLoaderRoute: typeof PlaceIdeaNumberRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/groups/$group/': {
+      id: '/groups/$group/'
+      path: '/groups/$group'
+      fullPath: '/groups/$group/'
+      preLoaderRoute: typeof GroupsGroupIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/groups/$group/settings': {
+      id: '/groups/$group/settings'
+      path: '/groups/$group/settings'
+      fullPath: '/groups/$group/settings'
+      preLoaderRoute: typeof GroupsGroupSettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$place/idea/$number/': {
@@ -270,12 +310,14 @@ const PlaceIdeaNumberRouteRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  GroupsGroupRoute: GroupsGroupRoute,
+  PlaceSettingsRoute: PlaceSettingsRoute,
   PlaceIndexRoute: PlaceIndexRoute,
   GroupsIndexRoute: GroupsIndexRoute,
   IdeasIndexRoute: IdeasIndexRoute,
   TeamsIndexRoute: TeamsIndexRoute,
   PlaceIdeaNumberRouteRoute: PlaceIdeaNumberRouteRouteWithChildren,
+  GroupsGroupSettingsRoute: GroupsGroupSettingsRoute,
+  GroupsGroupIndexRoute: GroupsGroupIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

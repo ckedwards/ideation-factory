@@ -13,7 +13,15 @@ function Nav(props: Omit<AppNavProps, 'theme' | 'onThemeChange'>) {
 const meta = {
   title: 'App/AppNav',
   component: Nav,
-  args: { me: riley, current: 'home', onSignOut: fn() },
+  args: {
+    me: riley,
+    teams: [
+      { handle: 'mobile', name: 'Mobile' },
+      { handle: 'payments', name: 'Payments' },
+    ],
+    current: 'home',
+    onSignOut: fn(),
+  },
   parameters: { layout: 'fullscreen' },
 } satisfies Meta<typeof Nav>
 
@@ -40,5 +48,16 @@ export const SignOut: Story = {
   play: async ({ args, canvasElement, userEvent }) => {
     await userEvent.click(within(canvasElement).getByRole('button', { name: 'Sign out' }))
     await expect(args.onSignOut).toHaveBeenCalled()
+  },
+}
+
+// In no team yet: the way to find one
+export const NoTeams: Story = {
+  args: { teams: [] },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByRole('link', { name: 'Find a team to join' })).toHaveAttribute(
+      'href',
+      '/teams',
+    )
   },
 }
