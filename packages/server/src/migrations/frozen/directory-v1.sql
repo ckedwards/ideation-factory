@@ -5,7 +5,7 @@ CREATE TABLE "groups" ("id" text primary key, "handle" text not null unique, "na
 CREATE TABLE "memberships" ("kind" text not null, "container" text not null, "user" text not null, "role" text not null, "created_at" bigint not null, constraint "memberships_pk" primary key ("kind", "container", "user"));
 CREATE INDEX "memberships_user" on "memberships" ("user", "kind", "container");
 CREATE TABLE "join_requests" ("kind" text not null, "container" text not null, "user" text not null, "created_at" bigint not null, constraint "join_requests_pk" primary key ("kind", "container", "user"));
-CREATE TABLE "ideas" ("id" text primary key, "title" text not null, "team" text, "owner" text not null, "status" text not null, "latest" integer not null, "created_at" bigint not null, "updated_at" bigint not null, "place" text not null, "number" integer not null);
+CREATE TABLE "ideas" ("id" text primary key, "title" text not null, "team" text, "owner" text not null, "status" text not null, "latest" integer not null, "created_at" bigint not null, "updated_at" bigint not null, "place" text not null, "number" integer not null, "description" text default '' not null, "open_comments" integer default 0 not null);
 CREATE UNIQUE INDEX "ideas_place" on "ideas" ("place", "number");
 CREATE TABLE "numbering" ("place" text primary key, "next" integer not null);
 CREATE TABLE "idea_aliases" ("place" text not null, "number" integer not null, "idea" text not null, constraint "idea_aliases_pk" primary key ("place", "number"));

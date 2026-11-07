@@ -27,6 +27,7 @@ import type {
   GrantSubject,
   IdeaFilter,
   IdeaRow,
+  IndexUpdate,
   MoveAdjustments,
   Result,
   Role,
@@ -35,7 +36,7 @@ import type {
 
 const search = fts5Search()
 
-export type IndexUpdate = Pick<IdeaRow, 'id' | 'title' | 'status' | 'latest' | 'updatedAt'>
+export type { IndexUpdate }
 
 export const directory = actor({
   db: db({
@@ -107,7 +108,7 @@ export const directory = actor({
       directoryOf(c).canCreateIdea(by, team, token),
     tokenGrant: (c, id: string) => directoryOf(c).tokenGrant(id),
     revokeTokenGrant: (c, by: string, id: string) => directoryOf(c).revokeTokenGrant(by, id),
-    registerIdea: (c, row: Omit<IdeaRow, 'number'>) => directoryOf(c).registerIdea(row),
+    registerIdea: (c, row: Omit<IdeaRow, 'number' | 'openComments'>) => directoryOf(c).registerIdea(row),
     updateIdea: (c, row: IndexUpdate) => directoryOf(c).updateIdea(row),
     idea: (c, id: string) => directoryOf(c).idea(id),
     placeOf: (c, id: string) => directoryOf(c).placeOf(id),

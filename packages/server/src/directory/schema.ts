@@ -52,6 +52,10 @@ export interface DB {
     place: string
     /** Its number in its place (mobile/idea/9), like a pull request's in its repository. */
     number: number
+    /** What lists show under its title. */
+    description: string
+    /** Comment threads not resolved yet. */
+    open_comments: number
   }
   /** Each place's next idea number. */
   numbering: { place: string; next: number }
@@ -94,7 +98,20 @@ export const COLUMNS = {
   groups: ['id', 'handle', 'name', 'description', 'created_by', 'created_at', 'deleted_at'],
   memberships: ['kind', 'container', 'user', 'role', 'created_at'],
   join_requests: ['kind', 'container', 'user', 'created_at'],
-  ideas: ['id', 'title', 'team', 'owner', 'status', 'latest', 'created_at', 'updated_at', 'place', 'number'],
+  ideas: [
+    'id',
+    'title',
+    'team',
+    'owner',
+    'status',
+    'latest',
+    'created_at',
+    'updated_at',
+    'place',
+    'number',
+    'description',
+    'open_comments',
+  ],
   numbering: ['place', 'next'],
   idea_aliases: ['place', 'number', 'idea'],
   grants: ['idea', 'kind', 'subject', 'can_edit', 'can_share', 'created_at'],
@@ -168,6 +185,8 @@ const MIGRATIONS: Migration[] = [
       .addColumn('updated_at', 'bigint', (c) => c.notNull())
       .addColumn('place', 'text', (c) => c.notNull())
       .addColumn('number', 'integer', (c) => c.notNull())
+      .addColumn('description', 'text', (c) => c.notNull().defaultTo(''))
+      .addColumn('open_comments', 'integer', (c) => c.notNull().defaultTo(0))
       .execute()
     await db.schema.createIndex('ideas_place').on('ideas').columns(['place', 'number']).unique().execute()
     await db.schema

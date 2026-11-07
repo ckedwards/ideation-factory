@@ -13,9 +13,10 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
     return d
   }
   let clock = 1_000_000
-  const idea = (id: string, extra: Partial<IdeaRow> = {}): Omit<IdeaRow, 'number'> => ({
+  const idea = (id: string, extra: Partial<IdeaRow> = {}): Omit<IdeaRow, 'number' | 'openComments'> => ({
     id,
     title: `Idea ${id}`,
+    description: '',
     team: null,
     owner: 'u-riley',
     status: 'draft',
@@ -571,13 +572,31 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
       test('updates keep the row current, and an older update never overwrites a newer one', async () => {
         const d = await people()
         await d.registerIdea(idea('i1', { updatedAt: 100 }))
-        await d.updateIdea({ id: 'i1', title: 'Newer', status: 'requesting-review', latest: 3, updatedAt: 300 })
-        await d.updateIdea({ id: 'i1', title: 'Older', status: 'draft', latest: 2, updatedAt: 200 })
+        await d.updateIdea({
+          id: 'i1',
+          title: 'Newer',
+          status: 'requesting-review',
+          latest: 3,
+          updatedAt: 300,
+          description: 'Now with a plan.',
+          openComments: 2,
+        })
+        await d.updateIdea({
+          id: 'i1',
+          title: 'Older',
+          status: 'draft',
+          latest: 2,
+          updatedAt: 200,
+          description: '',
+          openComments: 5,
+        })
         expect(await d.idea('i1')).toMatchObject({
           title: 'Newer',
           status: 'requesting-review',
           latest: 3,
           updatedAt: 300,
+          description: 'Now with a plan.',
+          openComments: 2,
         })
       })
 
@@ -594,7 +613,15 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
         expect(await d.searchIdeas('u-riley', 'of')).toEqual({ items: [], incomplete: false })
         expect((await d.searchIdeas('u-riley', 'of sync')).items.map((i) => i.id)).toEqual(['b', 'a'])
         // renaming updates search
-        await d.updateIdea({ id: 'b', title: 'Replication', status: 'draft', latest: 2, updatedAt: clock++ })
+        await d.updateIdea({
+          id: 'b',
+          title: 'Replication',
+          description: '',
+          status: 'draft',
+          latest: 2,
+          openComments: 0,
+          updatedAt: clock++,
+        })
         expect((await d.searchIdeas('u-riley', 'sync')).items.map((i) => i.id)).toEqual(['a'])
       })
     })

@@ -16,7 +16,7 @@ import {
 } from '@ideaf/api'
 import type { Client } from 'rivetkit/client'
 import { DIRECTORY_KEY } from './actors/directory.ts'
-import type { ContainerKind, Permission, Result } from './directory/types.ts'
+import type { ContainerKind, IdeaListing, Permission, Result } from './directory/types.ts'
 import type { IdeaWrite, WriteResult, WriteValue } from './idea/service.ts'
 import type { Registry } from './registry.ts'
 
@@ -219,6 +219,7 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
       await directory().registerIdea({
         id,
         title: input.title,
+        description: input.description ?? '',
         team: teamId,
         owner: context.caller.user,
         status: 'draft',
@@ -398,7 +399,7 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         if (input.owner && !owner) {
           return notFound(`no one is called ${input.owner}`)
         }
-        return directory().listIdeas(
+        const page = await directory().listIdeas(
           caller.user,
           {
             ...(team ? { team: team.id } : {}),
@@ -409,10 +410,14 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
           },
           token?.id ?? null,
         )
+        return { items: page.items.map(listed), next: page.next }
       }),
 
     searchIdeas: (input, { caller, token }) =>
-      read(() => directory().searchIdeas(caller.user, input.q, input.limit, token?.id ?? null)),
+      read(async () => {
+        const found = await directory().searchIdeas(caller.user, input.q, input.limit, token?.id ?? null)
+        return { items: found.items.map(listed), incomplete: found.incomplete }
+      }),
 
     currentToken: (_input, { caller, token }) =>
       read(async () => {
@@ -504,6 +509,11 @@ const container = (input: { handle: string; name: string; description?: string |
 })
 
 class NotFound extends Error {}
+/** A listing as the API gives it: its team and owner by name in place of their IDs. */
+function listed({ teamInfo, ownerInfo, team: _team, owner: _owner, ...idea }: IdeaListing) {
+  return { ...idea, team: teamInfo, owner: ownerInfo }
+}
+
 const notFound = (message: string): never => {
   throw new NotFound(message)
 }

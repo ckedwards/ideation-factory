@@ -6,7 +6,7 @@ import type { Operations, Output } from '@ideaf/api'
 import { CliError, type Context, EXIT } from '../context.ts'
 import { activeIdea, listStates } from '../workspace.ts'
 import { truncate } from './output.ts'
-import { Names } from './subjects.ts'
+import { Names, userLabel } from './subjects.ts'
 
 type Row = Output<Operations['listIdeas']>['items'][number]
 
@@ -160,19 +160,16 @@ async function serverList(ctx: Context, flags: ListFlags): Promise<number> {
           : 'You have no ideas on the server yet: --anyone shows the ones shared with you.',
     )
   }
-  const names = new Names(ctx)
-  const table = await Promise.all(
-    items.map(async (i) => [
-      i.id === active ? '*' : local.has(i.id) ? '+' : ' ',
-      i.id,
-      truncate(i.title, 50),
-      i.status,
-      `v${i.latest}`,
-      await names.label({ kind: 'user', id: i.owner }),
-      i.team ? await names.label({ kind: 'team', id: i.team }) : '',
-      ago(i.updatedAt),
-    ]),
-  )
+  const table = items.map((i) => [
+    i.id === active ? '*' : local.has(i.id) ? '+' : ' ',
+    i.id,
+    truncate(i.title, 50),
+    i.status,
+    `v${i.latest}`,
+    userLabel(i.owner),
+    i.team ? `team:${i.team.handle}` : '',
+    ago(i.updatedAt),
+  ])
   for (const line of columns(table)) {
     ctx.say(line)
   }

@@ -24,6 +24,7 @@ test('teams, ideas, access, lists and search through the actor', async () => {
   await d.registerIdea({
     id: 'i1',
     title: 'Offline-first sync',
+    description: '',
     team: team.value.id,
     owner: 'u-riley',
     status: 'draft',
@@ -38,11 +39,19 @@ test('teams, ideas, access, lists and search through the actor', async () => {
 
   // index updates arrive through the queue, without waiting, and are applied in batches
   for (let n = 2; n <= 5; n++) {
-    await d.send('index', { id: 'i1', title: `Offline sync rev${n}`, status: 'draft', latest: n, updatedAt: n })
+    await d.send('index', {
+      id: 'i1',
+      title: `Offline sync rev${n}`,
+      description: '',
+      status: 'draft',
+      latest: n,
+      openComments: n,
+      updatedAt: n,
+    })
   }
   for (let i = 0; i < 50 && (await d.idea('i1'))?.latest !== 5; i++) {
     await new Promise((r) => setTimeout(r, 50))
   }
-  expect(await d.idea('i1')).toMatchObject({ title: 'Offline sync rev5', latest: 5 })
+  expect(await d.idea('i1')).toMatchObject({ title: 'Offline sync rev5', latest: 5, openComments: 5 })
   expect((await d.searchIdeas('u-maya', 'rev5')).items.map((i) => i.id)).toEqual(['i1'])
 })

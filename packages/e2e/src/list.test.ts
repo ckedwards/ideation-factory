@@ -80,7 +80,7 @@ describe('ideaf list --server', () => {
 
     const mine = await r.ideaf('list', '--server', '--json')
     expect(mine.json().items.map((i: { id: string }) => i.id)).toEqual([here])
-    expect(mine.json().items[0]).toMatchObject({ here: true, active: true, team: team.id })
+    expect(mine.json().items[0]).toMatchObject({ here: true, active: true, team: { id: team.id, handle: team.handle } })
     const shown = await r.ideaf('list', '--server')
     expect(shown.out).toMatch(
       new RegExp(`^\\* +${here} +Mine ${word} +draft +v1 +@${h('rowan')} +team:${h('core')} +just now$`, 'm'),

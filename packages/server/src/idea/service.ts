@@ -532,6 +532,17 @@ export class IdeaService {
 
   // --- reads --------------------------------------------------------------------
 
+  /** Comment threads not resolved yet, for lists. */
+  async openComments(): Promise<number> {
+    const row = await this.#db
+      .selectFrom('comments')
+      .select((eb) => eb.fn.countAll<number>().as('n'))
+      .where('parent', 'is', null)
+      .where('resolved', '=', 0)
+      .executeTakeFirst()
+    return Number(row?.n ?? 0)
+  }
+
   async summary() {
     const meta = await this.#meta()
     if (!meta) {

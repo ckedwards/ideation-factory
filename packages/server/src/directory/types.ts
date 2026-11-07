@@ -72,7 +72,23 @@ export interface IdeaRow {
   updatedAt: number
   /** Its number in its team, or among its owner's own ideas: mobile/idea/9. */
   number: number
+  description: string
+  /** Comment threads not resolved yet. */
+  openComments: number
 }
+
+/** An idea as lists show it: its row, its address, and its team and owner by name. */
+export interface IdeaListing extends IdeaRow {
+  place: string
+  teamInfo: { id: string; handle: string; name: string; archived: boolean } | null
+  ownerInfo: User
+}
+
+/** What an idea's actor sends the index after it changes. */
+export type IndexUpdate = Pick<
+  IdeaRow,
+  'id' | 'title' | 'status' | 'latest' | 'updatedAt' | 'description' | 'openComments'
+>
 
 /** Where an idea is found: its team's handle, or @ and its owner's handle, and its number there. */
 export interface IdeaPlace {
@@ -128,7 +144,7 @@ export interface MoveAdjustments {
 }
 
 export interface SearchResult {
-  items: IdeaRow[]
+  items: IdeaListing[]
   incomplete: boolean
 }
 
@@ -217,9 +233,9 @@ export interface Directory {
   // if their token has one: it narrows what they can do.
   canCreateIdea(actor: string, team: string | null, token?: string | null): Promise<Result<null>>
   /** Indexes a new idea, numbers it in its place, and gives it its team's default access. Safe to repeat. */
-  registerIdea(row: Omit<IdeaRow, 'number'>): Promise<void>
+  registerIdea(row: Omit<IdeaRow, 'number' | 'openComments'>): Promise<void>
   /** Updates an idea's index row (its team and owner don't change here). */
-  updateIdea(row: Pick<IdeaRow, 'id' | 'title' | 'status' | 'latest' | 'updatedAt'>): Promise<void>
+  updateIdea(row: IndexUpdate): Promise<void>
   idea(id: string): Promise<IdeaRow | null>
   /** Where an idea is now. */
   placeOf(id: string): Promise<IdeaPlace | null>
@@ -250,7 +266,7 @@ export interface Directory {
    * new place (its old address still finds it).
    */
   moveIdea(actor: string, idea: string, to: string | null, adjustments?: MoveAdjustments): Promise<Result<MovePreview>>
-  listIdeas(actor: string, filter?: IdeaFilter, token?: string | null): Promise<Page<IdeaRow>>
+  listIdeas(actor: string, filter?: IdeaFilter, token?: string | null): Promise<Page<IdeaListing>>
   /**
    * Ideas the actor can see whose titles contain the query's terms (each at
    * least 3 characters; shorter ones are ignored). `incomplete` means more
