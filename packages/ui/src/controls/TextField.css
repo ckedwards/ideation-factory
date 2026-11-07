@@ -1,0 +1,52 @@
+.text-field {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+.text-field label {
+  font-weight: 600;
+}
+.text-field-box {
+  display: flex;
+  align-items: center;
+  border: var(--hairline) solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.text-field-box:focus-within {
+  outline: var(--rail) solid var(--accent);
+  outline-offset: 1px;
+}
+.text-field-prefix {
+  padding-left: var(--space-3);
+  color: var(--ink-2);
+}
+.text-field input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--text-md);
+}
+.text-field input:focus {
+  outline: none;
+}
+.text-field input::placeholder {
+  color: var(--ink-3);
+}
+.text-field-note {
+  color: var(--ink-2);
+}
+.text-field.is-invalid .text-field-box {
+  border-color: var(--lost);
+}
+.text-field.is-invalid .text-field-note {
+  color: var(--lost);
+}
+@media (forced-colors: active) {
+  .text-field-box:focus-within {
+    outline-color: Highlight;
+  }
+}
