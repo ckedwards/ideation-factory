@@ -1,8 +1,11 @@
+// Storybook's settings for every package with stories (ui's and web's):
+// the theme and text size toolbar, a fixed "now", and axe on every story.
+// Each package's .storybook/preview.tsx uses these as they are.
 import { useEffect } from 'react'
 import type { Decorator, Preview } from '@storybook/react-vite'
-import '../src/theme/theme.css'
-import { NowProvider } from '../src/time/RelativeTime.tsx'
-import { NOW } from '../src/stories/fixtures.ts'
+import '../theme/theme.css'
+import { NOW } from '../stories/fixtures.ts'
+import { NowProvider } from '../time/RelativeTime.tsx'
 
 // The toolbar's theme and text size go on <html>, where the app sets them, so
 // every story is seen as a page would show it.
@@ -58,7 +61,7 @@ const preview: Preview = {
       },
     },
   },
-  // the story tests run once per theme (vitest.config.ts)
+  // the story tests run once per theme (each package's vitest.config.ts)
   initialGlobals: { theme: import.meta.env['STORYBOOK_THEME'] ?? 'auto', textSize: '100%' },
   parameters: {
     layout: 'padded',

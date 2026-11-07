@@ -4,7 +4,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./theme.css": "./src/theme/theme.css"
+    "./theme.css": "./src/theme/theme.css",
+    "./storybook": "./src/storybook/preview.tsx",
+    "./fixtures": "./src/stories/fixtures.ts"
   },
   "scripts": {
     "typecheck": "bun check",
