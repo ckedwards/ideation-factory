@@ -51,6 +51,8 @@ export { PageHeader, type PageHeaderProps } from './page/PageHeader.tsx'
 export { Empty, type EmptyProps } from './page/Empty.tsx'
 
 export {
+  headings,
+  type HeadingInfo,
   MarkdownView,
   defaultResolveLink,
   plainText,
