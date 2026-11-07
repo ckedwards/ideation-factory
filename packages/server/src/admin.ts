@@ -18,6 +18,10 @@
 //       comments stay. (With SCIM, the identity provider does this.)
 //   bun packages/server/src/admin.ts reactivate <handle or ID>
 //       Lets them back in.
+//   bun packages/server/src/admin.ts release-handle <@person or team>
+//       Frees a squatted handle: whoever holds it gets a generated one, and no
+//       old handle leads anywhere, so links through it stop working. That's
+//       why it's an admin's decision.
 //
 // In development, run it through the worktree's settings:
 //   bun scripts/worktree.ts exec -- bun packages/server/src/admin.ts rotate-signing-key
@@ -28,7 +32,8 @@ import type { Registry } from './registry.ts'
 const USAGE = `usage: bun packages/server/src/admin.ts <command>
   rotate-signing-key [--emergency]
   deactivate <handle or ID>
-  reactivate <handle or ID>`
+  reactivate <handle or ID>
+  release-handle <@person or team>`
 
 export async function admin(argv: string[], env: Record<string, string | undefined>): Promise<number> {
   const [command, ...rest] = argv
@@ -59,6 +64,21 @@ export async function admin(argv: string[], env: Record<string, string | undefin
       inactive
         ? `Deactivated ${who}: signed out everywhere, no new sign-ins or tokens, and their writes are refused. Their reads stop when their access tokens expire, within 15 minutes.`
         : `Reactivated ${who}: they can sign in again.`,
+    )
+    return 0
+  }
+
+  if (command === 'release-handle' && rest.length === 1) {
+    const released = await directory().releaseHandle(rest[0]!)
+    const what = released.kind === 'user' ? `@${released.handle}` : `the team handle ${released.handle}`
+    if (!released.owner) {
+      console.error(`no one holds ${what}, and it leads nowhere: nothing to release`)
+      return 1
+    }
+    console.log(
+      released.renamedTo
+        ? `Released ${what}: its holder is ${released.kind === 'user' ? '@' : ''}${released.renamedTo} now, and links through ${what} stop working.`
+        : `Released ${what}: it no longer leads to its old ${released.kind === 'user' ? 'person' : 'team'}.`,
     )
     return 0
   }

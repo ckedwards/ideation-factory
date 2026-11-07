@@ -473,6 +473,9 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         await directory().updateTeam(caller.user, input.team, {
           ...(input.createPolicy ? { createPolicy: input.createPolicy } : {}),
           ...(input.defaults ? { defaults: input.defaults } : {}),
+          ...(input.handle !== undefined ? { handle: input.handle } : {}),
+          ...(input.name !== undefined ? { name: input.name } : {}),
+          ...(input.description !== undefined ? { description: input.description } : {}),
         }),
       ),
     listTeamMembers: team.members,

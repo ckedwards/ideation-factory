@@ -278,3 +278,27 @@ describe('an inactive account', () => {
     expect(await api(sam.token).me({})).toMatchObject({ id: sam.id })
   })
 })
+
+describe('changing handles', () => {
+  test("a person's handle changes; the old one leads to them until someone else takes it; a site admin can release one", async () => {
+    const riley = await signIn(app, h('renamer'))
+    const looker = api((await signIn(app, h('rename-looker'))).jwt)
+    const renamed = h('renamed')
+    expect((await post('/api/auth/update-user', { username: renamed }, riley.cookie)).status).toBe(200)
+    // the directory follows, and the old handle still finds them
+    expect(await looker.getUser({ user: renamed })).toMatchObject({ id: riley.id, handle: renamed })
+    expect(await looker.getUser({ user: riley.handle })).toMatchObject({ id: riley.id, handle: renamed })
+    // someone else's handle can't be taken
+    expect((await post('/api/auth/update-user', { username: h('rename-looker') }, riley.cookie)).status).toBe(400)
+
+    // someone new takes the old handle: it's theirs now
+    const taker = await signIn(app, riley.handle)
+    expect(await looker.getUser({ user: riley.handle })).toMatchObject({ id: taker.id })
+
+    // a site admin frees the new one: its holder gets a generated handle, and it leads nowhere
+    expect(await admin(['release-handle', `@${renamed}`], process.env)).toBe(0)
+    await expect(looker.getUser({ user: renamed })).rejects.toMatchObject({ code: 'not_found' })
+    expect((await looker.getUser({ user: riley.id })).handle).toStartWith('released-')
+    expect(await admin(['release-handle', `@${renamed}`], process.env)).toBe(1)
+  })
+})

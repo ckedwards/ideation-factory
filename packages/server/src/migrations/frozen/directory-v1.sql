@@ -9,6 +9,7 @@ CREATE TABLE "ideas" ("id" text primary key, "title" text not null, "team" text,
 CREATE UNIQUE INDEX "ideas_place" on "ideas" ("place", "number");
 CREATE TABLE "numbering" ("place" text primary key, "next" integer not null);
 CREATE TABLE "idea_aliases" ("place" text not null, "number" integer not null, "idea" text not null, constraint "idea_aliases_pk" primary key ("place", "number"));
+CREATE TABLE "handle_aliases" ("kind" text not null, "handle" text not null, "owner" text not null, "created_at" bigint not null, constraint "handle_aliases_pk" primary key ("kind", "handle"));
 CREATE INDEX "ideas_updated" on "ideas" ("updated_at", "id");
 CREATE INDEX "ideas_team" on "ideas" ("team", "updated_at", "id");
 CREATE INDEX "ideas_owner" on "ideas" ("owner", "updated_at", "id");
