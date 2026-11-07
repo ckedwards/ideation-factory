@@ -11,6 +11,11 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as IdeasIdeaRouteImport } from './routes/ideas/$idea'
+import { Route as PlaceIdeaNumberRouteRouteImport } from './routes/$place/idea/$number/route'
+import { Route as PlaceIdeaNumberIndexRouteImport } from './routes/$place/idea/$number/index'
+import { Route as PlaceIdeaNumberFilesRouteImport } from './routes/$place/idea/$number/files'
+import { Route as PlaceIdeaNumberChangesIndexRouteImport } from './routes/$place/idea/$number/changes/index'
+import { Route as PlaceIdeaNumberChangesRangeRouteImport } from './routes/$place/idea/$number/changes/$range'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,31 +27,94 @@ const IdeasIdeaRoute = IdeasIdeaRouteImport.update({
   path: '/ideas/$idea',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PlaceIdeaNumberRouteRoute = PlaceIdeaNumberRouteRouteImport.update({
+  id: '/$place/idea/$number',
+  path: '/$place/idea/$number',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlaceIdeaNumberIndexRoute = PlaceIdeaNumberIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PlaceIdeaNumberRouteRoute,
+} as any)
+const PlaceIdeaNumberFilesRoute = PlaceIdeaNumberFilesRouteImport.update({
+  id: '/files',
+  path: '/files',
+  getParentRoute: () => PlaceIdeaNumberRouteRoute,
+} as any)
+const PlaceIdeaNumberChangesIndexRoute =
+  PlaceIdeaNumberChangesIndexRouteImport.update({
+    id: '/changes/',
+    path: '/changes/',
+    getParentRoute: () => PlaceIdeaNumberRouteRoute,
+  } as any)
+const PlaceIdeaNumberChangesRangeRoute =
+  PlaceIdeaNumberChangesRangeRouteImport.update({
+    id: '/changes/$range',
+    path: '/changes/$range',
+    getParentRoute: () => PlaceIdeaNumberRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/ideas/$idea': typeof IdeasIdeaRoute
+  '/$place/idea/$number': typeof PlaceIdeaNumberRouteRouteWithChildren
+  '/$place/idea/$number/files': typeof PlaceIdeaNumberFilesRoute
+  '/$place/idea/$number/': typeof PlaceIdeaNumberIndexRoute
+  '/$place/idea/$number/changes/$range': typeof PlaceIdeaNumberChangesRangeRoute
+  '/$place/idea/$number/changes/': typeof PlaceIdeaNumberChangesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ideas/$idea': typeof IdeasIdeaRoute
+  '/$place/idea/$number/files': typeof PlaceIdeaNumberFilesRoute
+  '/$place/idea/$number': typeof PlaceIdeaNumberIndexRoute
+  '/$place/idea/$number/changes/$range': typeof PlaceIdeaNumberChangesRangeRoute
+  '/$place/idea/$number/changes': typeof PlaceIdeaNumberChangesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/ideas/$idea': typeof IdeasIdeaRoute
+  '/$place/idea/$number': typeof PlaceIdeaNumberRouteRouteWithChildren
+  '/$place/idea/$number/files': typeof PlaceIdeaNumberFilesRoute
+  '/$place/idea/$number/': typeof PlaceIdeaNumberIndexRoute
+  '/$place/idea/$number/changes/$range': typeof PlaceIdeaNumberChangesRangeRoute
+  '/$place/idea/$number/changes/': typeof PlaceIdeaNumberChangesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/ideas/$idea'
+  fullPaths:
+    | '/'
+    | '/ideas/$idea'
+    | '/$place/idea/$number'
+    | '/$place/idea/$number/files'
+    | '/$place/idea/$number/'
+    | '/$place/idea/$number/changes/$range'
+    | '/$place/idea/$number/changes/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/ideas/$idea'
-  id: '__root__' | '/' | '/ideas/$idea'
+  to:
+    | '/'
+    | '/ideas/$idea'
+    | '/$place/idea/$number/files'
+    | '/$place/idea/$number'
+    | '/$place/idea/$number/changes/$range'
+    | '/$place/idea/$number/changes'
+  id:
+    | '__root__'
+    | '/'
+    | '/ideas/$idea'
+    | '/$place/idea/$number'
+    | '/$place/idea/$number/files'
+    | '/$place/idea/$number/'
+    | '/$place/idea/$number/changes/$range'
+    | '/$place/idea/$number/changes/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   IdeasIdeaRoute: typeof IdeasIdeaRoute
+  PlaceIdeaNumberRouteRoute: typeof PlaceIdeaNumberRouteRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +133,65 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IdeasIdeaRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/$place/idea/$number': {
+      id: '/$place/idea/$number'
+      path: '/$place/idea/$number'
+      fullPath: '/$place/idea/$number'
+      preLoaderRoute: typeof PlaceIdeaNumberRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/$place/idea/$number/': {
+      id: '/$place/idea/$number/'
+      path: '/'
+      fullPath: '/$place/idea/$number/'
+      preLoaderRoute: typeof PlaceIdeaNumberIndexRouteImport
+      parentRoute: typeof PlaceIdeaNumberRouteRoute
+    }
+    '/$place/idea/$number/files': {
+      id: '/$place/idea/$number/files'
+      path: '/files'
+      fullPath: '/$place/idea/$number/files'
+      preLoaderRoute: typeof PlaceIdeaNumberFilesRouteImport
+      parentRoute: typeof PlaceIdeaNumberRouteRoute
+    }
+    '/$place/idea/$number/changes/': {
+      id: '/$place/idea/$number/changes/'
+      path: '/changes'
+      fullPath: '/$place/idea/$number/changes/'
+      preLoaderRoute: typeof PlaceIdeaNumberChangesIndexRouteImport
+      parentRoute: typeof PlaceIdeaNumberRouteRoute
+    }
+    '/$place/idea/$number/changes/$range': {
+      id: '/$place/idea/$number/changes/$range'
+      path: '/changes/$range'
+      fullPath: '/$place/idea/$number/changes/$range'
+      preLoaderRoute: typeof PlaceIdeaNumberChangesRangeRouteImport
+      parentRoute: typeof PlaceIdeaNumberRouteRoute
+    }
   }
 }
+
+interface PlaceIdeaNumberRouteRouteChildren {
+  PlaceIdeaNumberFilesRoute: typeof PlaceIdeaNumberFilesRoute
+  PlaceIdeaNumberIndexRoute: typeof PlaceIdeaNumberIndexRoute
+  PlaceIdeaNumberChangesRangeRoute: typeof PlaceIdeaNumberChangesRangeRoute
+  PlaceIdeaNumberChangesIndexRoute: typeof PlaceIdeaNumberChangesIndexRoute
+}
+
+const PlaceIdeaNumberRouteRouteChildren: PlaceIdeaNumberRouteRouteChildren = {
+  PlaceIdeaNumberFilesRoute: PlaceIdeaNumberFilesRoute,
+  PlaceIdeaNumberIndexRoute: PlaceIdeaNumberIndexRoute,
+  PlaceIdeaNumberChangesRangeRoute: PlaceIdeaNumberChangesRangeRoute,
+  PlaceIdeaNumberChangesIndexRoute: PlaceIdeaNumberChangesIndexRoute,
+}
+
+const PlaceIdeaNumberRouteRouteWithChildren =
+  PlaceIdeaNumberRouteRoute._addFileChildren(PlaceIdeaNumberRouteRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   IdeasIdeaRoute: IdeasIdeaRoute,
+  PlaceIdeaNumberRouteRoute: PlaceIdeaNumberRouteRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

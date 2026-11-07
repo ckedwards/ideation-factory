@@ -3,7 +3,15 @@
 // changes, so its files and outline are kept for good. The latest version's
 // comments are live, in comments.ts; an older one's are read here.
 import { queryOptions } from '@tanstack/react-query'
-import { api } from '../../../api.ts'
+import { api } from '../../../../../api.ts'
+
+/** The idea at an address (mobile and 9), and where it is now, if it moved. */
+export const ideaRefQuery = (place: string, number: number) =>
+  queryOptions({
+    queryKey: ['idea-at', place, number],
+    queryFn: () => api.findIdea({ place, number }),
+    staleTime: 5 * 60_000,
+  })
 
 export const ideaQuery = (idea: string) =>
   queryOptions({ queryKey: ['idea', idea], queryFn: () => api.getIdea({ idea }) })
