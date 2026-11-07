@@ -2,7 +2,8 @@
 // agent labeled as one), the idea's status as ui's components know it, and
 // where each comment sits in the file shown.
 import type { Caller, Operations, Output } from '@ideaf/api'
-import type { Actor, IdeaStatus, Person } from '@ideaf/ui'
+import type { Actor, Person } from '@ideaf/ui'
+export { statusOf } from '../../../../../ideas.ts'
 import { headingOffset, toSource } from './anchors.ts'
 
 export type Thread = Output<Operations['listComments']>[number]
@@ -55,11 +56,4 @@ export function actorOf(caller: Caller, people: ReadonlyMap<string, Person>): Ac
     return { kind: 'bot-for-person', bot: caller.bot ?? 'bot', person }
   }
   return { kind: 'person', person }
-}
-
-const STATUSES: readonly IdeaStatus[] = ['draft', 'requesting review', 'changes in progress', 'approved', 'closed']
-
-/** The idea's status as ui shows it; one it doesn't know reads as a draft. */
-export function statusOf(status: string): IdeaStatus {
-  return STATUSES.includes(status as IdeaStatus) ? (status as IdeaStatus) : 'draft'
 }
