@@ -4,7 +4,7 @@ import type { Person } from '../people/person.ts'
 import type { Actor } from '../people/ActorLabel.tsx'
 import type { IdeaInfo, RequirementCheck } from '../ideas/idea.ts'
 
-// "Now" in every story (see .storybook/preview.tsx), so times read the same
+// "Now" in every story (see src/storybook/preview.tsx), so times read the same
 export const NOW = Date.parse('2026-10-24T15:00:00Z')
 const hoursAgo = (hours: number) => NOW - hours * 3_600_000
 
