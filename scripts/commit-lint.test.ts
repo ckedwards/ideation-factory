@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { lintCommitMessage } from './commit-lint.ts'
+import { lintCommitMessage, lintPullRequestTitle } from './commit-lint.ts'
 
 const BODY = '\n\nExplains why the change was made, in a sentence or two.'
 const ok = (message: string) => expect(lintCommitMessage(message)).toEqual([])
@@ -79,5 +79,25 @@ describe('other kinds of commit', () => {
     ok("Merge branch 'step-5/directory'")
     bad('fixup! feat(cli): add unlock', 'squash it before it lands')
     expect(lintCommitMessage('fixup! feat(cli): add unlock', { allowFixups: true })).toEqual([])
+  })
+})
+
+describe("a pull request's title, the first line of its squash merge", () => {
+  const commits = [`feat(ui): add the redline${BODY}`, `test(ui): cover moved blocks${BODY}`]
+  const breaking = [...commits, `feat(ui)!: take images as media${BODY}\n\nBREAKING CHANGE: imageSrc is now image.`]
+  const title = (header: string, messages = commits) => lintPullRequestTitle(header, messages).join('\n')
+
+  test("the same rules as a commit's first line, with no body needed", () => {
+    expect(title('feat(ui): add the idea page components')).toBe('')
+    expect(title('docs: keep components where they are used')).toBe('')
+    expect(title('Add the idea page components')).toContain('the first line must be')
+    expect(title('feat(ui): Added the idea page components.')).toContain('full stop')
+    expect(title('chore: tidy up')).toContain('there is no "chore"')
+  })
+
+  test('"!" exactly when a commit has a breaking change', () => {
+    expect(title('feat(ui)!: add the idea page components', breaking)).toBe('')
+    expect(title('feat(ui): add the idea page components', breaking)).toContain('the title needs "!"')
+    expect(title('feat(ui)!: add the idea page components')).toContain('no commit here has')
   })
 })
