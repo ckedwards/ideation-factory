@@ -16,6 +16,7 @@
 | UI | React | |
 | Routing | TanStack Router | Type-safe routes; page state (file, version, compare, filters, page) lives in the URL, so every view is a shareable link. Routes are files, through Router's Vite plugin, and each route's code loads when it's first needed. Not TanStack Start: the API already defines each operation once for the app, the cli and MCP, so server functions would be a second way in, and an app behind sign-in gains little from rendering on the server |
 | Server state | TanStack Query | Caching, cursor-based "next page", and invalidation when a live update arrives |
+| Live data | [TanStack DB](https://tanstack.com/db) | What changes while a page is open and shows in several places at once: an idea's comments now, reviews and approvals in step 9. A collection's sync owns the idea's live socket, reads once and then applies each event; a write shows at once, waits for its echo on the socket, and goes away if the server refuses it |
 | Forms | TanStack Form | Settings pages, requirement editor, new team and group setup |
 | Build | Vite | The built app is static files, served by the same app nodes as the API, which is under `/api`; every other path is a page. In development Vite runs behind the server, which passes it the pages' requests, so the browser only ever talks to the server: one origin for the pages, the API, and sign-in's cookies and passkeys |
 | Markdown | unified / remark → rehype, sanitized | The syntax tree keeps **source positions**, which is how comments anchored on the Markdown source map onto the rendered page |
@@ -134,7 +135,7 @@ Changes collect in a **pending batch**. Before it's applied, a **preview** shows
 ## Data loading and live updates
 
 - **Every list is paged on the server**, 25 at a time, with cursors. People, teams and groups are picked by type-ahead (results capped at about 8), never with a full dropdown.
-- **An open idea keeps a live connection** (a WebSocket) to its actor. New comments, versions and review changes arrive live and update the cache, so two reviewers see each other's comments without reloading.
+- **An open idea keeps a live connection** (a WebSocket, relayed by an app node) to its actor. New comments, replies, resolves, versions and review changes arrive live: comments straight into their TanStack DB collection, a new version by reading the idea again. Two reviewers see each other's comments without reloading, and nobody reads the whole list again for each change.
 - **Visibility is enforced on the server**, never in the browser. The app only ever receives ideas you're allowed to see.
 
 ## Theming and accessibility
