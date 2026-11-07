@@ -1,0 +1,20 @@
+.idea-nav {
+  padding: var(--space-4);
+}
+.idea-files {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+.idea-files a {
+  color: var(--ink-2);
+  text-decoration: none;
+  word-break: break-all;
+}
+.idea-files a[aria-current='page'] {
+  color: var(--ink);
+  font-weight: 600;
+}

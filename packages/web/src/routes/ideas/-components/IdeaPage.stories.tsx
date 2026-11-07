@@ -1,0 +1,145 @@
+import type { Meta, StoryObj } from '@storybook/react-vite'
+import { markdownTree } from '@ideaf/core'
+import { type CommentInfo, MarkdownView } from '@ideaf/ui'
+import { actors, maya, NOW } from '@ideaf/ui/fixtures'
+import { expect, fn, waitFor, within } from 'storybook/test'
+import { IdeaPage, type PageComment } from './IdeaPage.tsx'
+
+const source = `# Offline sync
+
+Field technicians lose signal in basements and plant rooms.
+
+## Proposal
+
+Queue changes on the device and send them, **oldest first**, when the
+connection comes back.
+
+## Rollout
+
+Ship behind a flag, one team at a time.
+`
+const at = (quote: string) => ({ start: source.indexOf(quote), end: source.indexOf(quote) + quote.length })
+const body = (text: string) => <MarkdownView tree={markdownTree(text)} variant="compact" />
+const comment = (id: string, text: string, target: CommentInfo['target'], extra: Partial<CommentInfo> = {}) => ({
+  id,
+  author: { kind: 'person' as const, person: maya },
+  at: NOW - 3_600_000,
+  body: body(text),
+  target,
+  resolved: false,
+  replies: [],
+  ...extra,
+})
+
+const comments: PageComment[] = [
+  {
+    info: comment('c1', 'What about a change made offline twice?', { kind: 'text', quote: 'oldest first' }),
+    place: { kind: 'text', ...at('oldest first') },
+  },
+  {
+    info: comment(
+      'c2',
+      'Which team goes first?',
+      { kind: 'section', title: 'Rollout' },
+      { author: actors.botForPerson },
+    ),
+    place: { kind: 'section', heading: source.indexOf('## Rollout') },
+  },
+  {
+    info: comment('c3', 'Is there a diagram of the flow?', { kind: 'file' }),
+    place: { kind: 'file' },
+  },
+  {
+    info: comment(
+      'c4',
+      'This contradicts the overview.',
+      { kind: 'text', quote: 'every night' },
+      { outdated: true, lastSeenIn: 2 },
+    ),
+    place: { kind: 'outdated' },
+  },
+  {
+    info: comment('c5', 'Done.', { kind: 'text', quote: 'plant rooms' }, { resolved: true }),
+    place: { kind: 'text', ...at('plant rooms') },
+  },
+]
+
+const meta = {
+  title: 'Ideas/IdeaPage',
+  component: IdeaPage,
+  parameters: { layout: 'fullscreen' },
+  args: {
+    title: 'Offline-first sync for the field app',
+    team: { name: 'Mobile' },
+    status: 'draft',
+    version: { number: 3, by: actors.person, at: NOW - 2 * 3_600_000 },
+    files: [{ path: 'plan.md', href: '#plan', current: true }],
+    source,
+    comments,
+    canComment: true,
+    onComment: fn(),
+    onSectionComment: fn(),
+    onReply: fn(),
+    onResolve: fn(),
+  },
+} satisfies Meta<typeof IdeaPage>
+
+export default meta
+type Story = StoryObj<typeof meta>
+
+// Text and section comments level with what they're on; the rest above them;
+// a resolved one not shown
+export const Comments: Story = {
+  play: async ({ canvasElement }) => {
+    const page = within(canvasElement)
+    await expect(page.getByText('What about a change made offline twice?')).toBeVisible()
+    await expect(page.getByText('On the whole file')).toBeVisible()
+    await expect(page.getByText('Not in this version')).toBeVisible()
+    await expect(page.queryByText('Done.')).toBeNull()
+    // the marked text, and the section, carry their comments
+    await expect(canvasElement.querySelector('mark[data-comment-id="c1"]')).toHaveTextContent('oldest first')
+    await expect(canvasElement.querySelector('h2[data-comment-id="c2"]')).toHaveTextContent('Rollout')
+  },
+}
+
+// Replying from a comment
+export const Reply: Story = {
+  play: async ({ args, canvasElement, userEvent }) => {
+    const page = within(canvasElement)
+    await userEvent.click(page.getAllByRole('button', { name: 'Reply' })[0]!)
+    await userEvent.type(page.getByRole('textbox', { name: /reply/i }), 'Last write wins.')
+    await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
+    await waitFor(() => expect(args.onReply).toHaveBeenCalledWith(expect.any(String), 'Last write wins.'))
+  },
+}
+
+// Someone who can only read: no replying, resolving or commenting on a selection
+export const ReadOnly: Story = {
+  args: { canComment: false },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).queryByRole('button', { name: 'Reply' })).toBeNull()
+  },
+}
+
+// A new idea: nothing yet, and how to start
+export const NoComments: Story = {
+  args: { comments: [] },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByText(/Select some text to comment on it/)).toBeVisible()
+  },
+}
+
+// An idea with several files lists them, the one shown marked
+export const SeveralFiles: Story = {
+  args: {
+    files: [
+      { path: 'plan.md', href: '#plan', current: true },
+      { path: 'design/sync-protocol.md', href: '#protocol', current: false },
+      { path: 'notes/risks.md', href: '#risks', current: false },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    const files = within(within(canvasElement).getByRole('navigation', { name: 'Files' }))
+    await expect(files.getByRole('link', { name: 'plan.md' })).toHaveAttribute('aria-current', 'page')
+  },
+}
