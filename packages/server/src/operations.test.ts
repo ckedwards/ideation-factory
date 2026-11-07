@@ -143,6 +143,20 @@ test('a retried create finds the same idea instead of making another', async () 
   expect(first.idea).toBe(await ideaIdFor({ user: id, bot: null, purpose: 'me' }, key))
 })
 
+test("the API is under /api; every other path is the web app's", async () => {
+  const withWeb = createApp({
+    actors: await startTestActors(),
+    auth: testAuth,
+    web: async () => new Response('the app'),
+  })
+  expect(await (await withWeb(new Request(`${TEST_URL}/teams/mobile`))).text()).toBe('the app')
+  const missing = await withWeb(new Request(`${TEST_URL}/api/nothing-here`))
+  expect(missing.status).toBe(404)
+  expect(await missing.json()).toMatchObject({ error: { code: 'not_found' } })
+  // without the web app, a page's path is just not found
+  expect((await app(new Request(`${TEST_URL}/teams/mobile`))).status).toBe(404)
+})
+
 test('/api/openapi.json and /health need no token', async () => {
   const openapi = await (await app(new Request(`${TEST_URL}/api/openapi.json`))).json()
   expect(openapi).toMatchObject({

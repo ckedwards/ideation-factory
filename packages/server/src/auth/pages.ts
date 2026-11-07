@@ -1,7 +1,7 @@
 // Bare pages until the web app (step 8) has real ones, talking to Better
 // Auth's endpoints from the browser: sign in (an email code and a handle the
-// first time, or the organization's single sign-on, then optionally a personal
-// token), the OAuth consent page (what a token may do), and the page that
+// first time, or the organization's single sign-on, then back to the web app's
+// page in ?next=, or optionally a personal token), the OAuth consent page (what a token may do), and the page that
 // shows the cli the code to paste.
 const html = (body: string) => new Response(body, { headers: { 'content-type': 'text/html; charset=utf-8' } })
 
@@ -134,7 +134,10 @@ ${HANDLE_FORM}
 ${SCRIPT_BASE}
   const SSO = ${scriptJson(sso)}
   const params = new URLSearchParams(location.search)
+  // where to go once signed in: a page of the web app (?next=/teams/mobile), never another site
+  const next = /^\\/(?![\\/\\\\])/.test(params.get('next') || '') ? params.get('next') : null
   const showSignedIn = (user) => {
+    if (next) { location.replace(next); return }
     for (const id of ['sso', 'email-form', 'code-form']) $(id).hidden = true
     $('who').textContent = '@' + (user.username || user.name)
     $('signed-in').hidden = false
@@ -154,7 +157,9 @@ ${SCRIPT_BASE}
     $('sso-button').onclick = run(async () => {
       // Better Auth doesn't carry an OAuth sign-in (the cli's) through single
       // sign-on: come back to its authorize request, which then goes on to consent
-      const back = signedQuery() ? '/api/auth/oauth2/authorize?' + authorizeQuery() : '/login'
+      const back = signedQuery()
+        ? '/api/auth/oauth2/authorize?' + authorizeQuery()
+        : next ? '/login?next=' + encodeURIComponent(next) : '/login'
       follow(await post('/sign-in/sso', { providerId: SSO.providerId, callbackURL: back, errorCallbackURL: '/login' }))
     })
   }
@@ -205,6 +210,7 @@ ${SCRIPT_BASE}
     })
     // signing in for an OAuth client (the cli): on to the consent page
     if (follow(data)) return
+    if (next) { location.replace(next); return }
     $('who').textContent = '@' + (data.user.username || data.user.name)
     $('code-form').hidden = true
     $('signed-in').hidden = false
