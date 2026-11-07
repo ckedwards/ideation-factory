@@ -143,8 +143,8 @@ test('a retried create finds the same idea instead of making another', async () 
   expect(first.idea).toBe(await ideaIdFor({ user: id, bot: null, purpose: 'me' }, key))
 })
 
-test('/openapi.json and /health need no token', async () => {
-  const openapi = await (await app(new Request(`${TEST_URL}/openapi.json`))).json()
+test('/api/openapi.json and /health need no token', async () => {
+  const openapi = await (await app(new Request(`${TEST_URL}/api/openapi.json`))).json()
   expect(openapi).toMatchObject({
     openapi: '3.1.0',
     paths: { '/ideas/{idea}/edits': { post: { operationId: 'edit' } } },

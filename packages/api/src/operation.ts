@@ -4,6 +4,13 @@ import type { z } from 'zod'
 
 export type Method = 'GET' | 'POST'
 
+/**
+ * Where the operations are served: under /api, beside sign-in's /api/auth, so
+ * the web app's pages can have paths of their own (/teams/mobile is a page,
+ * /api/teams/mobile the team). Operations' paths are relative to it.
+ */
+export const API_PATH = '/api'
+
 export interface Operation<I extends z.ZodObject = z.ZodObject, O extends z.ZodType = z.ZodType> {
   /** snake_case: the MCP tool name and the OpenAPI operationId. */
   name: string
@@ -11,7 +18,7 @@ export interface Operation<I extends z.ZodObject = z.ZodObject, O extends z.ZodT
   /** For people and agents: what it does, when to use it, what can go wrong. Shown in MCP tool lists and the API docs. */
   description: string
   method: Method
-  /** `{field}` segments are taken from the input. Other input goes in the query (GET) or the JSON body (POST). */
+  /** Under API_PATH. `{field}` segments are taken from the input. Other input goes in the query (GET) or the JSON body (POST). */
   path: string
   /** Writes take an idempotency key, so a retry is applied once. */
   kind: 'read' | 'write'

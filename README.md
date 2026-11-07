@@ -51,7 +51,7 @@ The cli signs in with **`ideaf auth login`**: it opens your browser to sign in, 
 ```
 IDEAF_SITE_ADMINS=you@example.com bun run dev
 export IDEAF_TOKEN=ideaf_…
-curl -H "authorization: Bearer $IDEAF_TOKEN" -X POST localhost:8080/ideas \
+curl -H "authorization: Bearer $IDEAF_TOKEN" -X POST localhost:8080/api/ideas \
   -d '{"title":"Demo","files":[{"path":"plan.md","content":"# Plan\n\nHello.\n"}]}'
 # → {"idea":"i…","version":1}
 ```
@@ -91,7 +91,7 @@ ideaf pull                                # the result into your files (3-way me
 ideaf sync                                # your local edits back up, with their bases
 ```
 
-Every route is described at `/openapi.json`. From code, use the typed client: `createApiClient({ baseUrl, token })` from `@ideaf/api`.
+The API is under `/api`, and every route is described at `/api/openapi.json`. From code, use the typed client: `createApiClient({ baseUrl, token })` from `@ideaf/api`.
 
 The Markdown size limits default to 256 KB per file and 2 MB per idea; `IDEAF_MAX_FILE_BYTES` and `IDEAF_MAX_IDEA_BYTES` change them (until the site admin page exists).
 

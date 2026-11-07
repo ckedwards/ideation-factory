@@ -3,7 +3,7 @@
 // with the server's own messages), an idempotency key on every write, and
 // retries that reuse it, so a retried write is applied once.
 import { ApiError, ApiErrorBody } from './errors.ts'
-import { type Input, type Operation, type Output, pathParams } from './operation.ts'
+import { API_PATH, type Input, type Operation, type Output, pathParams } from './operation.ts'
 import { type Operations, operations as allOperations } from './operations.ts'
 import { describeIssues } from './router.ts'
 
@@ -51,7 +51,7 @@ export function createApiClient<Ops extends Record<string, Operation> = Operatio
       path = path.replace(`{${name}}`, encodeURIComponent(String(values[name])))
       delete values[name]
     }
-    const url = new URL(base + path)
+    const url = new URL(base + API_PATH + path)
     let body: string | undefined
     if (operation.method === 'GET') {
       for (const [name, value] of Object.entries(values)) {

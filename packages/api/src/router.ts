@@ -4,7 +4,7 @@
 // Response only, so it runs in Bun and in tests without a server.
 import { z } from 'zod'
 import { type ApiErrorBody, ERROR_STATUS } from './errors.ts'
-import { type Operation, type Output, type ParsedInput, pathParams } from './operation.ts'
+import { API_PATH, type Operation, type Output, type ParsedInput, pathParams } from './operation.ts'
 import type { Caller } from './schemas.ts'
 
 /**
@@ -55,7 +55,7 @@ export function createRouter<Ops extends Record<string, Operation>>(
   const routes: Route[] = Object.entries(operations).map(([key, operation]) => ({
     key,
     operation,
-    pattern: new RegExp(`^${operation.path.replace(/\{[a-zA-Z]+\}/g, '([^/]+)')}$`),
+    pattern: new RegExp(`^${API_PATH}${operation.path.replace(/\{[a-zA-Z]+\}/g, '([^/]+)')}$`),
     params: pathParams(operation.path),
   }))
 
