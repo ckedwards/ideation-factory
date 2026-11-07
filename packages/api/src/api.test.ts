@@ -67,7 +67,7 @@ describe('the router', () => {
   test('builds the input from the path and query, and passes the caller', async () => {
     const { router, seen } = setup()
     const response = await router(
-      new Request('http://x/things/t1?version=3', { headers: { authorization: 'Bearer good' } }),
+      new Request('http://x/api/things/t1?version=3', { headers: { authorization: 'Bearer good' } }),
     )
     expect(response!.status).toBe(200)
     expect(await response!.json()).toEqual({ thing: 't1', version: 3 })
@@ -77,7 +77,7 @@ describe('the router', () => {
   test('takes the body for a write, and its idempotency key', async () => {
     const { router, seen } = setup()
     const response = await router(
-      new Request('http://x/things/t1/name', {
+      new Request('http://x/api/things/t1/name', {
         method: 'POST',
         headers: { authorization: 'Bearer good', 'idempotency-key': 'k1' },
         body: JSON.stringify({ name: '  New  ' }),
@@ -91,19 +91,23 @@ describe('the router', () => {
     const { router } = setup()
     const auth = { authorization: 'Bearer good' }
     const status = async (request: Request) => (await router(request))!.status
-    expect(await status(new Request('http://x/things/t1?extra=1', { headers: auth }))).toBe(400)
-    expect(await status(new Request('http://x/things/nope', { headers: auth }))).toBe(400)
-    expect(await status(new Request('http://x/things/t1/name', { method: 'POST', headers: auth, body: '{' }))).toBe(400)
-    expect(await status(new Request('http://x/things/t1'))).toBe(401)
-    expect(await status(new Request('http://x/things/t1', { method: 'POST', headers: auth }))).toBe(405)
-    expect(await status(new Request('http://x/things/t404', { headers: auth }))).toBe(404)
+    expect(await status(new Request('http://x/api/things/t1?extra=1', { headers: auth }))).toBe(400)
+    expect(await status(new Request('http://x/api/things/nope', { headers: auth }))).toBe(400)
+    expect(await status(new Request('http://x/api/things/t1/name', { method: 'POST', headers: auth, body: '{' }))).toBe(
+      400,
+    )
+    expect(await status(new Request('http://x/api/things/t1'))).toBe(401)
+    expect(await status(new Request('http://x/api/things/t1', { method: 'POST', headers: auth }))).toBe(405)
+    expect(await status(new Request('http://x/api/things/t404', { headers: auth }))).toBe(404)
     expect(await router(new Request('http://x/other'))).toBeNull()
+    // operations are under /api; the paths beside it are the web app's pages
+    expect(await router(new Request('http://x/things/t1', { headers: auth }))).toBeNull()
   })
 
   test('a validation error says where the problem is', async () => {
     const { router } = setup()
     const response = await router(
-      new Request('http://x/things/t1/name', {
+      new Request('http://x/api/things/t1/name', {
         method: 'POST',
         headers: { authorization: 'Bearer good' },
         body: JSON.stringify({ name: '' }),
@@ -116,7 +120,7 @@ describe('the router', () => {
 
   test("a handler's output that doesn't match its schema is a server error, not a broken response", async () => {
     const { router } = setup({ getThing: async () => ({ ok: true, value: { thing: 1 } as never }) })
-    const response = await router(new Request('http://x/things/t1', { headers: { authorization: 'Bearer good' } }))
+    const response = await router(new Request('http://x/api/things/t1', { headers: { authorization: 'Bearer good' } }))
     expect(response!.status).toBe(500)
   })
 })

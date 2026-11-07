@@ -1,8 +1,8 @@
 // The OpenAPI description, from the same definitions, for anyone writing
-// another client. Served at /openapi.json.
+// another client. Served at /api/openapi.json.
 import { z } from 'zod'
 import { ApiErrorBody } from './errors.ts'
-import { type Operation, pathParams } from './operation.ts'
+import { API_PATH, type Operation, pathParams } from './operation.ts'
 
 export function openApiDocument(
   operations: Record<string, Operation>,
@@ -64,6 +64,7 @@ export function openApiDocument(
   return {
     openapi: '3.1.0',
     info,
+    servers: [{ url: API_PATH }],
     components: { securitySchemes: { bearer: { type: 'http', scheme: 'bearer' } } },
     security: [{ bearer: [] }],
     paths,

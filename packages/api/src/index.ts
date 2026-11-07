@@ -7,7 +7,15 @@ export { type ApiClient, type CallOptions, type ClientOptions, createApiClient }
 export { ApiError, ApiErrorBody, type ApiErrorCode, ERROR_STATUS, isApiErrorCode } from './errors.ts'
 export { type McpTool, mcpTools } from './mcp.ts'
 export { openApiDocument } from './openapi.ts'
-export { defineOperation, type Input, type Method, type Operation, type Output, type ParsedInput } from './operation.ts'
+export {
+  API_PATH,
+  defineOperation,
+  type Input,
+  type Method,
+  type Operation,
+  type Output,
+  type ParsedInput,
+} from './operation.ts'
 export { ErrorDetails, type OperationKey, type Operations, operations } from './operations.ts'
 export {
   type Context,

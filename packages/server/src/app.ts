@@ -1,7 +1,7 @@
 // The HTTP API: every operation from @ideaf/api, routed and validated by its
 // definition, plus sign-in (forwarded to Better Auth in the directory actor),
-// a bare sign-in page, /health and /openapi.json.
-import { createRouter, openApiDocument, operations } from '@ideaf/api'
+// a bare sign-in page, /health and /api/openapi.json.
+import { API_PATH, createRouter, openApiDocument, operations } from '@ideaf/api'
 import type { Client } from 'rivetkit/client'
 import { DIRECTORY_KEY } from './actors/directory.ts'
 import type { AuthSettings } from './auth/config.ts'
@@ -55,7 +55,7 @@ export function createApp({
     if (pathname === CLI_CODE_PATH) {
       return cliCodePage()
     }
-    if (pathname === '/openapi.json') {
+    if (pathname === `${API_PATH}/openapi.json`) {
       return Response.json(openapi)
     }
     return (
