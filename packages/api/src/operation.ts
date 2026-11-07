@@ -26,6 +26,15 @@ export interface Operation<I extends z.ZodObject = z.ZodObject, O extends z.ZodT
   output: O
 }
 
+/**
+ * An idea's address on the web, like a pull request's: /mobile/idea/9, or
+ * /@riley/idea/3 for someone's own. `place` and `number` are what get_idea and
+ * create_idea return.
+ */
+export function ideaPath(place: string, number: number): string {
+  return `/${encodeURIComponent(place).replace(/^%40/, '@')}/idea/${number}`
+}
+
 export function defineOperation<I extends z.ZodObject, O extends z.ZodType>(
   operation: Operation<I, O>,
 ): Operation<I, O> {

@@ -4,6 +4,8 @@
 // /changes/1..3, or /changes/1.. for everything since v1, following new
 // versions as they come. ?file= picks the file in either.
 
+import { ideaPath } from '@ideaf/api'
+
 export interface IdeaLinks {
   overview: string
   files(at?: { v?: number | undefined; file?: string | undefined }): string
@@ -12,7 +14,7 @@ export interface IdeaLinks {
 }
 
 export function ideaLinks(place: string, number: number): IdeaLinks {
-  const overview = `/${encodeURIComponent(place).replace(/^%40/, '@')}/idea/${number}`
+  const overview = ideaPath(place, number)
   const query = (params: Record<string, string | number | undefined>) => {
     const search = new URLSearchParams()
     for (const [name, value] of Object.entries(params)) {

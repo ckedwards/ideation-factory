@@ -13,6 +13,9 @@ test('a missing title or name is asked for; cancelling the question stops', asyn
   const started = await r.ideaf('start')
   expect(started.out).toContain('? Title')
   expect(started.out).toContain('Started "Asked for"')
+  // where to read it: the idea's address on the server, someone's own as @handle/idea/1
+  expect(started.out).toMatch(new RegExp(`as @${h('riley')}/idea/1, v1`))
+  expect(started.out).toMatch(new RegExp(`Read it, and comment, at http\\S+/@${h('riley')}/idea/1$`, 'm'))
   expect((await r.ideaf('team', 'create', h('asked'))).out).toContain('? Name')
   expect((await r.ideaf('team', 'show', h('asked'))).out).toContain('The asked team')
 

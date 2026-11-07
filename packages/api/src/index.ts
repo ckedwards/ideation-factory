@@ -9,6 +9,7 @@ export { type McpTool, mcpTools } from './mcp.ts'
 export { openApiDocument } from './openapi.ts'
 export {
   API_PATH,
+  ideaPath,
   defineOperation,
   type Input,
   type Method,

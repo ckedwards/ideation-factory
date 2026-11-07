@@ -42,7 +42,13 @@ export const operations = {
       /** The git branch (and repository) the files come from, so another machine can find it. */
       gitHint: GitHint.optional(),
     }),
-    output: z.object({ idea: z.string(), version: z.number().int() }),
+    output: z.object({
+      idea: z.string(),
+      version: z.number().int(),
+      /** Where it's found: its team's handle (or @ and yours), and its number there (ideaPath). */
+      place: z.string(),
+      number: z.number().int(),
+    }),
   }),
 
   findIdea: defineOperation({
