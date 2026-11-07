@@ -11,6 +11,7 @@ import { configureNode } from './deps.ts'
 import { LocalFolderFileStore } from './files/local-folder.ts'
 import { limitsFromEnv } from './limits.ts'
 import { registry, type Registry } from './registry.ts'
+import { devWebApp, staticWebApp } from './web.ts'
 
 const port = Number(process.env.PORT ?? 8080)
 const data = process.env.IDEAF_DATA ?? '.data'
@@ -31,6 +32,11 @@ if (!endpoint) {
 }
 const actors = createClient<Registry>(endpoint)
 
-const app = createApp({ actors, auth })
+// the web app: Vite's dev server while working on it (bun run dev sets
+// IDEAF_WEB_DEV_URL), or the built app, from IDEAF_WEB_DIR or the web package
+const web = process.env.IDEAF_WEB_DEV_URL
+  ? devWebApp(process.env.IDEAF_WEB_DEV_URL)
+  : staticWebApp(process.env.IDEAF_WEB_DIR ?? join(import.meta.dir, '../../web/dist'))
+const app = createApp({ actors, auth, web })
 const server = Bun.serve({ port, fetch: (request, server) => app(request, server.requestIP(request)?.address) })
 console.log(`ideaf server on http://localhost:${server.port} (${core.size} core workers)`)

@@ -1,6 +1,7 @@
-// The HTTP API: every operation from @ideaf/api, routed and validated by its
-// definition, plus sign-in (forwarded to Better Auth in the directory actor),
-// a bare sign-in page, /health and /api/openapi.json.
+// The HTTP API: every operation from @ideaf/api under /api, routed and
+// validated by its definition, plus sign-in (forwarded to Better Auth in the
+// directory actor), a bare sign-in page, /health and /api/openapi.json. Every
+// other path is the web app's.
 import { API_PATH, createRouter, openApiDocument, operations } from '@ideaf/api'
 import type { Client } from 'rivetkit/client'
 import { DIRECTORY_KEY } from './actors/directory.ts'
@@ -10,6 +11,7 @@ import { cliCodePage, consentPage, loginPage } from './auth/pages.ts'
 import { CLI_CODE_PATH, SSO_PROVIDER_ID } from './auth/config.ts'
 import { createHandlers } from './operations.ts'
 import type { Registry } from './registry.ts'
+import type { WebApp } from './web.ts'
 
 export type AppDeps = {
   actors: Client<Registry>
@@ -21,6 +23,8 @@ export type AppDeps = {
   auth: Pick<AuthSettings, 'baseURL' | 'sso' | 'trustedProxies'>
   /** Check every response against its schema (tests turn this on). */
   validateOutput?: boolean
+  /** The web app's pages (web.ts); without it, a page's path is not found. */
+  web?: WebApp
 }
 
 /** The app: a request, and the address it came from (Bun's server.requestIP), which sign-in's rate limits count by. */
@@ -28,6 +32,7 @@ export function createApp({
   actors,
   auth,
   validateOutput = false,
+  web,
 }: AppDeps): (request: Request, peer?: string) => Promise<Response> {
   const openapi = openApiDocument(operations, { title: 'Ideation Factory', version: '0.0.0' })
   const directory = actors.directory.getOrCreate(DIRECTORY_KEY)
@@ -58,9 +63,12 @@ export function createApp({
     if (pathname === `${API_PATH}/openapi.json`) {
       return Response.json(openapi)
     }
-    return (
-      (await route(request)) ??
-      Response.json({ error: { code: 'not_found', message: 'no such route' } }, { status: 404 })
-    )
+    if (pathname === API_PATH || pathname.startsWith(`${API_PATH}/`)) {
+      return (
+        (await route(request)) ??
+        Response.json({ error: { code: 'not_found', message: 'no such route' } }, { status: 404 })
+      )
+    }
+    return web ? web(request) : new Response('Not found.', { status: 404 })
   }
 }
