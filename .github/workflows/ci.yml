@@ -105,3 +105,22 @@ jobs:
             BEFORE=$(git merge-base origin/master "$AFTER")
           fi
           bun scripts/commit-lint.ts --range "$BEFORE..$AFTER"
+
+  # Every action the workflows use is pinned in .github/workflows/actions.lock,
+  # and each pin is still the commit its tag pointed to. The commit hook checks
+  # the first part offline; this checks both, against GitHub.
+  actions-lock:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install gh actions-lock
+        run: gh extension install github/gh-actions-lock --pin v0.4.1
+      - name: Check the lockfile
+        run: gh actions-lock --verify
