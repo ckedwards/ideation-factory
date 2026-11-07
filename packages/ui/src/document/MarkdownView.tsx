@@ -236,17 +236,51 @@ export function plainText(node: Nodes): string {
   return ''
 }
 
-// GitHub's style: lowercase, punctuation dropped, spaces to hyphens, repeats numbered
+export interface HeadingInfo {
+  // the id MarkdownView gives it, to link or jump to
+  id: string
+  title: string
+  level: number
+  // where it starts in the source
+  offset: number
+}
+
+/** Every heading in a tree, in order, with the id MarkdownView gives it: for a table of contents. */
+export function headings(tree: Root, idPrefix?: string): HeadingInfo[] {
+  const slugs = new Map<string, number>()
+  const out: HeadingInfo[] = []
+  const visit = (node: Nodes) => {
+    if (node.type === 'heading') {
+      const title = plainText(node)
+      out.push({
+        id: slugFor(title, slugs, idPrefix),
+        title,
+        level: node.depth,
+        offset: node.position?.start.offset ?? 0,
+      })
+    } else if ('children' in node) {
+      node.children.forEach(visit)
+    }
+  }
+  visit(tree)
+  return out
+}
+
 function slug(text: string, ctx: Context): string {
+  return slugFor(text, ctx.counters.slugs, ctx.props.idPrefix)
+}
+
+// GitHub's style: lowercase, punctuation dropped, spaces to hyphens, repeats numbered
+function slugFor(text: string, slugs: Map<string, number>, idPrefix = ''): string {
   const base =
     text
       .toLowerCase()
       .trim()
       .replace(/[^\p{L}\p{N}\s-]/gu, '')
       .replace(/\s/g, '-') || 'section'
-  const seen = ctx.counters.slugs.get(base) ?? 0
-  ctx.counters.slugs.set(base, seen + 1)
-  return `${ctx.props.idPrefix ?? ''}${seen === 0 ? base : `${base}-${seen}`}`
+  const seen = slugs.get(base) ?? 0
+  slugs.set(base, seen + 1)
+  return `${idPrefix}${seen === 0 ? base : `${base}-${seen}`}`
 }
 
 function block(node: RootContent, ctx: Context, key: number, top = false): ReactNode {
