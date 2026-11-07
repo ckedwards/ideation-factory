@@ -55,6 +55,13 @@ export interface Member {
   role: Role
 }
 
+/** The teams and groups someone is in, with their role, and those they've asked to join. */
+export interface Memberships {
+  teams: Array<{ id: string; handle: string; name: string; archived: boolean; role: Role }>
+  groups: Array<{ id: string; handle: string; name: string; role: Role }>
+  requested: Array<{ kind: ContainerKind; id: string }>
+}
+
 export interface Page<T> {
   items: T[]
   /** Pass back to get the next page; null on the last one. */
@@ -216,6 +223,7 @@ export interface Directory {
     changes: { createPolicy?: CreatePolicy; defaults?: TeamDefaults },
   ): Promise<Result<Team>>
   members(kind: ContainerKind, id: string, options?: { cursor?: string; limit?: number }): Promise<Page<Member>>
+  memberships(user: string): Promise<Memberships>
   addMember(actor: string, kind: ContainerKind, id: string, user: string, role?: Role): Promise<Result<Member>>
   removeMember(actor: string, kind: ContainerKind, id: string, user: string): Promise<Result<null>>
   requestToJoin(actor: string, kind: ContainerKind, id: string): Promise<Result<{ requested: boolean }>>

@@ -225,6 +225,12 @@ export const Team = z.object({
 })
 export const Group = z.object({ kind: z.literal('group'), ...ContainerFields, deleted: z.boolean() })
 export const Member = z.object({ user: User, role: Role })
+/** The teams and groups you're in, with your role in each, and those you've asked to join. */
+export const Memberships = z.object({
+  teams: z.array(z.object({ id: z.string(), handle: z.string(), name: z.string(), archived: z.boolean(), role: Role })),
+  groups: z.array(z.object({ id: z.string(), handle: z.string(), name: z.string(), role: Role })),
+  requested: z.array(z.object({ kind: z.enum(['team', 'group']), id: z.string() })),
+})
 
 export function Page<T extends z.ZodType>(item: T) {
   return z.object({ items: z.array(item), next: z.string().nullable() })
