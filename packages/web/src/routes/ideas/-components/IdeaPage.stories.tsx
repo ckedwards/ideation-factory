@@ -1,9 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { markdownTree } from '@ideaf/core'
 import { type CommentInfo, MarkdownView } from '@ideaf/ui'
-import { actors, maya, NOW } from '@ideaf/ui/fixtures'
+import { actors, maya, NOW, riley } from '@ideaf/ui/fixtures'
 import { expect, fn, waitFor, within } from 'storybook/test'
 import { IdeaPage, type PageComment } from './IdeaPage.tsx'
+import { VersionBanner } from './VersionBanner.tsx'
+import type { VersionListProps } from './VersionList.tsx'
 
 const source = `# Offline sync
 
@@ -64,6 +66,25 @@ const comments: PageComment[] = [
   },
 ]
 
+// the same file two versions back: no rollout yet, and "in one batch"
+const earlier = source
+  .replace('lose signal in basements and plant rooms', 'lose signal in basements')
+  .replace(', **oldest first**,', ' in one batch')
+  .replace(/\n## Rollout[\s\S]*$/, '\n')
+
+const versions: VersionListProps = {
+  versions: [
+    { number: 3, by: actors.person, at: NOW - 2 * 3_600_000, how: 'commands', steps: 3 },
+    { number: 2, by: actors.botForPerson, at: NOW - 26 * 3_600_000, how: 'commands', steps: 1 },
+    { number: 1, by: { kind: 'person', person: riley }, at: NOW - 72 * 3_600_000, how: 'created', steps: 0 },
+  ],
+  viewing: 3,
+  latest: 3,
+  base: null,
+  viewHref: (n) => `#v${n}`,
+  compareHref: (n) => `#compare${n}`,
+}
+
 const meta = {
   title: 'Ideas/IdeaPage',
   component: IdeaPage,
@@ -76,6 +97,7 @@ const meta = {
     files: [{ path: 'plan.md', href: '#plan', current: true }],
     source,
     comments,
+    versions,
     canComment: true,
     onComment: fn(),
     onSectionComment: fn(),
@@ -141,5 +163,52 @@ export const SeveralFiles: Story = {
   play: async ({ canvasElement }) => {
     const files = within(within(canvasElement).getByRole('navigation', { name: 'Files' }))
     await expect(files.getByRole('link', { name: 'plan.md' })).toHaveAttribute('aria-current', 'page')
+  },
+}
+
+// An older version: read only, with the way back to the latest
+export const OlderVersion: Story = {
+  args: {
+    version: { number: 1, by: actors.person, at: NOW - 72 * 3_600_000 },
+    source: earlier,
+    canComment: false,
+    comments: [],
+    versions: { ...versions, viewing: 1 },
+    banner: (
+      <VersionBanner
+        kind="older"
+        version={1}
+        latest={3}
+        by={actors.person}
+        at={NOW - 72 * 3_600_000}
+        latestHref="#latest"
+        changesHref="#changes"
+      />
+    ),
+  },
+  play: async ({ canvasElement }) => {
+    const page = within(canvasElement)
+    await expect(page.getByText('Older version: v1')).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Back to the latest' })).toHaveAttribute('href', '#latest')
+  },
+}
+
+// Comparing: the file as a redline against v1, the sections that changed
+// marked in the contents, the comments as a list, and the versions shown
+export const Compare: Story = {
+  args: {
+    compare: { base: 1, source: earlier },
+    versions: { ...versions, base: 1 },
+    canComment: false,
+    banner: <VersionBanner kind="compare" version={3} base={1} stopHref="#stop" />,
+  },
+  play: async ({ canvasElement }) => {
+    const page = within(canvasElement)
+    await expect(page.getByText('Changes since v1')).toBeVisible()
+    await expect(canvasElement.querySelector('ins')).not.toBeNull()
+    await expect(canvasElement.querySelector('del')).not.toBeNull()
+    // the versions panel is open, the range from v1 to v3 marked
+    await expect(page.getByRole('list', { name: 'Versions' })).toBeVisible()
+    await expect(page.getByText('compared against')).toBeVisible()
   },
 }

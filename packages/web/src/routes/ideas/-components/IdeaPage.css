@@ -18,3 +18,12 @@
   color: var(--ink);
   font-weight: 600;
 }
+.idea-file-changed {
+  color: var(--changed);
+  font-size: var(--text-xs);
+}
+.idea-panel-note {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}

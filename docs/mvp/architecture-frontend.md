@@ -110,7 +110,7 @@ flowchart LR
 ```
 
 - **Anchored comments:** text comments sit level with their text and move with it; section comments sit inside an outline around their section, nested for subsections.
-- **Versions and compare:** view any version, or compare against an earlier one or `main`, as a rendered redline.
+- **Versions and compare:** view any version (`?v=3`, read only), or compare against an earlier one (`?compare=2`) as a rendered redline. Comparing against `main` comes once the server knows an idea's branch. A new version arriving while the latest is shown moves the page on to it, with a note, since comments go on the latest version only.
 - **Diagrams:** Mermaid blocks are drawn (see Pele, above), with their source one click away. The text appears at once, and a diagram not drawn yet holds its place with "Drawing diagram…" until it lands. A diagram that can't be drawn shows its source and the exact error, so nothing is ever hidden.
 - **Outdated comments** (their text isn't in this version) show the quote they were on and **View in v2**: the last version where that text existed.
 - **The comments feed** is one timeline for the whole idea, like a pull request's conversation tab.
