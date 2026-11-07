@@ -98,6 +98,7 @@ export const directory = actor({
       directoryOf(c).members(kind, id, options),
     addMember: (c, by: string, kind: ContainerKind, id: string, user: string, role?: Role) =>
       directoryOf(c).addMember(by, kind, id, user, role),
+    memberships: (c, user: string) => directoryOf(c).memberships(user),
     removeMember: (c, by: string, kind: ContainerKind, id: string, user: string) =>
       directoryOf(c).removeMember(by, kind, id, user),
     requestToJoin: (c, by: string, kind: ContainerKind, id: string) => directoryOf(c).requestToJoin(by, kind, id),

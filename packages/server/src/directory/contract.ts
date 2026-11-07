@@ -412,6 +412,48 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
       })
     })
 
+    describe('memberships and roles', () => {
+      test("someone's teams and groups, with their role, and those they've asked to join", async () => {
+        const d = await people()
+        const core = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
+          .value.id
+        const web = ((await d.createTeam('u-devon', { handle: 'web', name: 'Web' })) as { value: { id: string } }).value
+          .id
+        const sec = ((await d.createGroup('u-riley', { handle: 'sec', name: 'Security' })) as { value: { id: string } })
+          .value.id
+        await d.addMember('u-riley', 'team', core, 'u-maya', 'maintainer')
+        await d.addMember('u-riley', 'group', sec, 'u-maya')
+        await d.requestToJoin('u-maya', 'team', web)
+        expect(await d.memberships('u-maya')).toEqual({
+          teams: [{ id: core, handle: 'core', name: 'Core', archived: false, role: 'maintainer' }],
+          groups: [{ id: sec, handle: 'sec', name: 'Security', role: 'member' }],
+          requested: [{ kind: 'team', id: web }],
+        })
+        expect(await d.memberships('u-outsider')).toEqual({ teams: [], groups: [], requested: [] })
+      })
+
+      test('only an admin changes a role, and never so the team has no admin', async () => {
+        const d = await people()
+        const core = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
+          .value.id
+        await d.addMember('u-riley', 'team', core, 'u-maya', 'maintainer')
+        // a maintainer can't demote the admin, or promote anyone
+        expect(await d.addMember('u-maya', 'team', core, 'u-riley', 'member')).toMatchObject({
+          ok: false,
+          error: { code: 'forbidden' },
+        })
+        // the last admin can't be made something less
+        expect(await d.addMember('u-riley', 'team', core, 'u-riley', 'member')).toMatchObject({
+          ok: false,
+          error: { code: 'invalid' },
+        })
+        // with a second admin, they can
+        expect((await d.addMember('u-riley', 'team', core, 'u-maya', 'admin')).ok).toBe(true)
+        expect((await d.addMember('u-riley', 'team', core, 'u-riley', 'member')).ok).toBe(true)
+        expect((await d.memberships('u-riley')).teams[0]!.role).toBe('member')
+      })
+    })
+
     describe("an idea's number and address", () => {
       test("each team numbers its ideas from 1, and so does each person's own; the address finds the idea", async () => {
         const d = await people()

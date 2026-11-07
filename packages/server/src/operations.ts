@@ -379,6 +379,8 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
 
     // --- the directory ---------------------------------------------------------------
 
+    myMemberships: (_input, { caller }) => read(() => directory().memberships(caller.user)),
+
     me: (_input, { caller }) =>
       read(async () => {
         const user = await directory().user(caller.user)

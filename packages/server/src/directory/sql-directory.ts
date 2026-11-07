@@ -19,6 +19,7 @@ import {
   type IdeaFilter,
   type IdeaPlace,
   type IdeaListing,
+  type Memberships,
   type IdeaRow,
   type IndexUpdate,
   type Member,
@@ -466,6 +467,45 @@ export class SqlDirectory implements Directory {
     }
   }
 
+  async #admins(kind: ContainerKind, container: string): Promise<number> {
+    const row = await this.#db
+      .selectFrom('memberships')
+      .select((eb) => eb.fn.countAll<number>().as('n'))
+      .where('kind', '=', kind)
+      .where('container', '=', container)
+      .where('role', '=', 'admin')
+      .executeTakeFirstOrThrow()
+    return Number(row.n)
+  }
+
+  async memberships(user: string): Promise<Memberships> {
+    const [teams, groups, requested] = await Promise.all([
+      this.#db
+        .selectFrom('memberships as m')
+        .innerJoin('teams as t', 't.id', 'm.container')
+        .select(['t.id', 't.handle', 't.name', 't.archived', 'm.role'])
+        .where('m.kind', '=', 'team')
+        .where('m.user', '=', user)
+        .orderBy('t.handle')
+        .execute(),
+      this.#db
+        .selectFrom('memberships as m')
+        .innerJoin('groups as g', 'g.id', 'm.container')
+        .select(['g.id', 'g.handle', 'g.name', 'm.role'])
+        .where('m.kind', '=', 'group')
+        .where('m.user', '=', user)
+        .where('g.deleted_at', 'is', null)
+        .orderBy('g.handle')
+        .execute(),
+      this.#db.selectFrom('join_requests').select(['kind', 'container']).where('user', '=', user).execute(),
+    ])
+    return {
+      teams: teams.map((t) => ({ id: t.id, handle: t.handle, name: t.name, archived: t.archived === 1, role: t.role })),
+      groups: groups.map((g) => ({ id: g.id, handle: g.handle, name: g.name, role: g.role })),
+      requested: requested.map((r) => ({ kind: r.kind, id: r.container })),
+    }
+  }
+
   async #role(kind: ContainerKind, container: string, user: string): Promise<Role | null> {
     const row = await this.#db
       .selectFrom('memberships')
@@ -505,6 +545,17 @@ export class SqlDirectory implements Directory {
     }
     if (person.inactive) {
       return fail('invalid', `${person.handle} is inactive`)
+    }
+    // someone already in it: this changes their role, which only an admin can,
+    // and never leaves it without an admin
+    const theirs = await this.#role(kind, container.id, person.id)
+    if (theirs && theirs !== role) {
+      if (mine !== 'admin') {
+        return fail('forbidden', `only a ${kind}’s admins can change roles`)
+      }
+      if (theirs === 'admin' && (await this.#admins(kind, container.id)) <= 1) {
+        return fail('invalid', `a ${kind} needs at least one admin; make someone else an admin first`)
+      }
     }
     await this.#transaction(async (db) => {
       await db

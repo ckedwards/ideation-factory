@@ -13,6 +13,7 @@ import {
   IdeaRow,
   Limit,
   Member,
+  Memberships,
   MovePreview,
   Page,
   Permission,
@@ -118,6 +119,17 @@ export const directoryOperations = {
     kind: 'read',
     input: z.strictObject({}),
     output: User,
+  }),
+  myMemberships: defineOperation({
+    name: 'list_my_memberships',
+    summary: 'Your teams and groups',
+    description:
+      "The teams and groups you're in, with your role in each (admin, maintainer or member), and the ones you've asked to join.",
+    method: 'GET',
+    path: '/me/memberships',
+    kind: 'read',
+    input: z.strictObject({}),
+    output: Memberships,
   }),
   currentToken: defineOperation({
     name: 'current_token',
