@@ -26,7 +26,7 @@ Commits follow rules adapted from [Angular's commit message guidelines](https://
 
 Pull requests are merged by squashing or rebasing, never with a merge commit. A squash merge makes the pull request's title the first line of its commit, so the title follows the same rules as a commit's first line, with a `!` when any of its commits has a breaking change. CI's `title` job checks it, again whenever the title is edited; to check one before opening the pull request: `bun scripts/commit-lint.ts --title "…" master..HEAD`.
 
-GitHub's rulesets can check commit messages against a pattern, but not on this plan, and not the message a squash merge writes from the title, so `scripts/commit-lint.ts` stays the one place the rules are written: the commit hook, CI's `commits` job and its `title` job all use it.
+GitHub's rulesets can check commit messages against a pattern, but not on this repository's plan, and GitHub doesn't say they check the message a squash merge writes from the title, so `scripts/commit-lint.ts` stays the one place the rules are written: the commit hook, CI's `commits` job and its `title` job all use it.
 
 ```
 <type>(<scope>): <summary>
