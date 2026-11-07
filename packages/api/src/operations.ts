@@ -48,7 +48,7 @@ export const operations = {
     name: 'get_idea',
     summary: 'Read an idea',
     description:
-      "An idea's title, owner, status, latest version and version history (who made each version, and whether with commands or an upload).",
+      "An idea's title, owner, team, status, latest version and version history (who made each version, and whether with commands or an upload), and what you can do with it.",
     method: 'GET',
     path: '/ideas/{idea}',
     kind: 'read',
