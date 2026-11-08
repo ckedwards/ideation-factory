@@ -747,7 +747,7 @@ export class SqlDirectory implements Directory {
    * (by name, or every member of a group asked), and its subscribers; less
    * anyone who unsubscribed. The most direct reason wins.
    */
-  async #audience(idea: IdeaRow): Promise<Map<string, InboxReason>> {
+  async #audience(idea: IdeaRow, db: Kysely<DB> = this.#db): Promise<Map<string, InboxReason>> {
     const reasons = new Map<string, InboxReason>()
     const add = (user: string, reason: InboxReason) => {
       const now = reasons.get(user)
@@ -755,18 +755,17 @@ export class SqlDirectory implements Directory {
         reasons.set(user, reason)
       }
     }
-    const [subs, asked] = await Promise.all([
-      this.#db.selectFrom('subscriptions').select(['user', 'state']).where('idea', '=', idea.id).execute(),
-      this.#db
-        .selectFrom('grants')
-        .select(['kind', 'subject'])
-        .where('idea', '=', idea.id)
-        .where('reviewer', '=', 1)
-        .execute(),
-    ])
+    // one after the other: inside a transaction there's one connection
+    const subs = await db.selectFrom('subscriptions').select(['user', 'state']).where('idea', '=', idea.id).execute()
+    const asked = await db
+      .selectFrom('grants')
+      .select(['kind', 'subject'])
+      .where('idea', '=', idea.id)
+      .where('reviewer', '=', 1)
+      .execute()
     const groups = asked.filter((g) => g.kind === 'group').map((g) => g.subject)
     const members = groups.length
-      ? await this.#db
+      ? await db
           .selectFrom('memberships')
           .select('user')
           .where('kind', '=', 'group')
@@ -837,20 +836,23 @@ export class SqlDirectory implements Directory {
       .execute()
   }
 
-  async notify(batch: NotifyBatch): Promise<void> {
-    const idea = await this.idea(batch.idea)
-    if (!idea || batch.events.length === 0) {
+  /**
+   * Writes ideas' events to inboxes: several batches (a queue's worth) in one
+   * transaction, since each commit writes pages and SQLite's writes are the
+   * bottleneck. Should that transaction fail, each batch is tried on its own,
+   * so one bad batch doesn't lose the others.
+   */
+  async notify(input: NotifyBatch | NotifyBatch[]): Promise<void> {
+    const batches = (Array.isArray(input) ? input : [input]).filter((b) => b.events.length > 0)
+    if (batches.length === 0) {
       return
     }
-    // taking part subscribes you, unless you've unsubscribed
-    const taking = [
+    // what your bots do stays out of your inbox if you said so
+    const owners = [
       ...new Set(
-        batch.events
-          .filter((e) => ['comment', 'suggestion', 'reply', 'review'].includes(e.kind) && e.actor.purpose === 'me')
-          .map((e) => e.actor.user),
+        batches.flatMap((b) => b.events.filter((e) => e.actor.purpose === 'bot-for-me').map((e) => e.actor.user)),
       ),
-    ].filter((u) => u !== idea.owner)
-    const owners = [...new Set(batch.events.filter((e) => e.actor.purpose === 'bot-for-me').map((e) => e.actor.user))]
+    ]
     const quiet = new Set(
       owners.length
         ? (
@@ -863,30 +865,68 @@ export class SqlDirectory implements Directory {
           ).map((r) => r.user)
         : [],
     )
-    await this.#transaction(async (db) => {
-      if (taking.length) {
-        await db
-          .insertInto('subscriptions')
-          .values(taking.map((user) => ({ user, idea: idea.id, state: 'participating', at: this.#now() })))
-          .onConflict((oc) => oc.columns(['user', 'idea']).doNothing())
-          .execute()
+    const ideas = new Map<string, IdeaRow>()
+    for (const id of new Set(batches.map((b) => b.idea))) {
+      const idea = await this.idea(id)
+      if (idea) {
+        ideas.set(id, idea)
       }
-    })
-    const audience = await this.#audience(idea)
-    await this.#transaction(async (db) => {
-      for (const event of batch.events) {
-        // you don't hear about what you did; what your bots did, unless you said not to
-        const to = new Map(
-          [...audience].filter(
-            ([user]) =>
-              user !== event.actor.user ||
-              (event.actor.purpose === 'bot-for-me' && !quiet.has(user)) ||
-              event.actor.purpose === 'bot',
-          ),
-        )
-        await this.#deliver(db, idea.id, event, to)
+    }
+    const apply = (some: NotifyBatch[]) =>
+      this.#transaction(async (db) => {
+        for (const batch of some) {
+          const idea = ideas.get(batch.idea)
+          if (idea) {
+            await this.#notifyOne(db, idea, batch.events, quiet)
+          }
+        }
+      })
+    try {
+      await apply(batches)
+    } catch (error) {
+      if (batches.length === 1) {
+        throw error
       }
-    })
+      const failed: unknown[] = []
+      for (const batch of batches) {
+        await apply([batch]).catch((e: unknown) => failed.push(e))
+      }
+      if (failed.length > 0) {
+        throw failed[0]
+      }
+    }
+  }
+
+  /** One idea's events, inside the caller's transaction. */
+  async #notifyOne(db: Kysely<DB>, idea: IdeaRow, events: InboxEvent[], quiet: Set<string>): Promise<void> {
+    // taking part subscribes you, unless you've unsubscribed
+    const taking = [
+      ...new Set(
+        events
+          .filter((e) => ['comment', 'suggestion', 'reply', 'review'].includes(e.kind) && e.actor.purpose === 'me')
+          .map((e) => e.actor.user),
+      ),
+    ].filter((u) => u !== idea.owner)
+    if (taking.length) {
+      await db
+        .insertInto('subscriptions')
+        .values(taking.map((user) => ({ user, idea: idea.id, state: 'participating', at: this.#now() })))
+        .onConflict((oc) => oc.columns(['user', 'idea']).doNothing())
+        .execute()
+    }
+    const audience = await this.#audience(idea, db)
+    for (const event of events) {
+      // you don't hear about what you did; what your bots did, unless you said not to
+      const to = new Map(
+        [...audience].filter(
+          ([user]) =>
+            user !== event.actor.user ||
+            (event.actor.purpose === 'bot-for-me' && !quiet.has(user)) ||
+            event.actor.purpose === 'bot',
+        ),
+      )
+      await this.#deliver(db, idea.id, event, to)
+    }
   }
 
   /** A review request: the person asked, or every member of the group, hears of it even if they unsubscribed. */
@@ -1449,27 +1489,49 @@ export class SqlDirectory implements Directory {
     })
   }
 
-  async updateIdea(row: IndexUpdate): Promise<void> {
-    await this.#transaction(async (db) => {
-      // never move updated_at backwards: coalesced updates can arrive out of order
-      const updated = await db
-        .updateTable('ideas')
-        .set({
-          title: row.title,
-          status: row.status,
-          latest: row.latest,
-          updated_at: row.updatedAt,
-          description: row.description,
-          open_comments: row.openComments,
-        })
-        .where('id', '=', row.id)
-        .where('updated_at', '<=', row.updatedAt)
-        .returning('id')
-        .execute()
-      if (updated.length > 0) {
-        await this.#search.index(db, row.id, row.title)
+  /** Applies index updates: several (a queue's worth) in one transaction, each on its own should that fail. */
+  async updateIdea(input: IndexUpdate | IndexUpdate[]): Promise<void> {
+    const rows = Array.isArray(input) ? input : [input]
+    const apply = (some: IndexUpdate[]) =>
+      this.#transaction(async (db) => {
+        for (const row of some) {
+          // never move updated_at backwards: coalesced updates can arrive out of order
+          const updated = await db
+            .updateTable('ideas')
+            .set({
+              title: row.title,
+              status: row.status,
+              latest: row.latest,
+              updated_at: row.updatedAt,
+              description: row.description,
+              open_comments: row.openComments,
+            })
+            .where('id', '=', row.id)
+            .where('updated_at', '<=', row.updatedAt)
+            .returning('id')
+            .execute()
+          if (updated.length > 0) {
+            await this.#search.index(db, row.id, row.title)
+          }
+        }
+      })
+    if (rows.length === 0) {
+      return
+    }
+    try {
+      await apply(rows)
+    } catch (error) {
+      if (rows.length === 1) {
+        throw error
       }
-    })
+      const failed: unknown[] = []
+      for (const row of rows) {
+        await apply([row]).catch((e: unknown) => failed.push(e))
+      }
+      if (failed.length > 0) {
+        throw failed[0]
+      }
+    }
   }
 
   async idea(id: string): Promise<IdeaRow | null> {

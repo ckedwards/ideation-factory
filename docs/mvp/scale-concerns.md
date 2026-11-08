@@ -33,18 +33,21 @@ In rough order of how likely each is to bite. Severity: **High** means likely to
 
 ### 1. Writes to the directory when bots get busy
 
-**Why:** every change to an idea (a comment, a version, a review, a status change) updates its index row in the directory actor and writes inbox rows for direct participants. The directory actor is one SQLite database that applies writes one at a time from its queue. Reads run as parallel actions, but SQLite still serializes them against writes, so a burst of writes also slows lists and search. Rivet's hard limits apply too: at most 128 operations can wait behind an active transaction (more fail with `sqlite.transaction_queue_full`), and an actor's queue holds 1,000 messages by default.
+**Why:** every change to an idea (a comment, a version, a review, a status change) updates its index row in the directory actor and writes inbox rows for direct participants. The directory actor is one SQLite database that applies writes one at a time from its queue. Reads run as parallel actions, but SQLite still serializes them against writes, so a burst of writes also slows lists and search. Rivet's hard limits apply too: at most 128 operations can wait behind an active transaction (more fail with `sqlite.transaction_queue_full`), and an actor's queue holds 1,000 messages by default. And Rivet Engine 3.0 refuses an actor's writes for a moment when its storage lane is full (`sqlite storage is overloaded, retry after 500 ms`), which CI hit once the inbox made every idea write a directory write as well: under a second each time, but every request in that window failed.
+
+Each commit writes the pages it changed, and the same pages (an inbox's rows, the events' index) change on every notification, so commits, not rows, are what costs. 50 notifications written one transaction each wrote 263 pages; in one transaction, 9.
 
 **When it bites:** a burst of bot activity, for example an agent reviewing a dozen ideas and posting hundreds of comments. That becomes a burst of small directory writes, queued behind each other.
 
 **Mitigations:**
 - **Coalesce index updates per idea:** the idea actor writes its index row at most every few seconds, not on every event.
-- **Batch inbox writes:** one call and one statement per event, not one per recipient.
+- **Batch inbox writes:** one call and one statement per event, not one per recipient, and a queue batch's notifications (up to 50) in one transaction, as its index updates are.
+- **Retry when storage is busy:** wait as the engine asks and try again, a statement or a transaction whole (`sql/retry.ts`; Better Auth's transactions are replayed from their statements).
 - **Review batching** (a TODO in `architecture.md`): a bot submits one review instead of many separate comments.
 - **Keep transactions short** so little waits behind them, and treat a full queue as back-pressure (a retryable error), never a lost write.
 - **If it's still too much,** split the directory (concern 8).
 
-**Status:** coalescing built in step 5 (one index update per idea about 2 seconds after its last change, sent without waiting, applied in batches with only the newest kept). Inbox batching comes with the inbox. Measure in the Rivet spike.
+**Status:** coalescing built in step 5 (one index update per idea about 2 seconds after its last change, sent without waiting, applied in batches with only the newest kept). Inbox batching built with the inbox (step 9, part 4a): each queue batch's notifications in one transaction, then its index updates in another. Retrying refused writes built too, for up to 10 seconds. Measure in the load test how often storage refuses writes and how long the retries wait: if it's often, the writes need cutting further, or the directory splitting (concern 8).
 
 ### 2. Checking access on every read
 
@@ -185,7 +188,7 @@ Before launch, on both deployment shapes:
 | Scenario | What it exercises | Watch |
 |---|---|---|
 | **Steady state:** 10,000 people's worth of list, search, inbox and idea-page traffic | Concerns 2, 5, 6, 8 | Latency at the 50th and 99th percentile; the directory actor's queue and query time |
-| **Bot burst:** agents posting hundreds of comments and edit batches across many ideas | Concerns 1, 3, 4 | Directory write backlog, rate limits engaging, event-loop delay on app nodes |
+| **Bot burst:** agents posting hundreds of comments and edit batches across many ideas | Concerns 1, 3, 4 | Directory write backlog and pages written per commit, how often storage refuses writes and how long retries wait, rate limits engaging, event-loop delay on app nodes |
 | **Large idea:** dozens of files and hundreds of comments, uploaded and edited repeatedly | Concern 4 | Re-anchoring time, worker threads, other actors' responsiveness on the same node |
 | **Big group review:** a 50-person group on a busy idea | Concerns 1, 7 | Inbox writes per event |
 | **Three-node cluster:** steady state plus the bot burst, then stop the node hosting the directory actor | Concern 8 | Hop cost, how long until the directory answers again |

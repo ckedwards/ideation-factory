@@ -59,16 +59,14 @@ export const directory = actor({
     const d = directoryOf(c)
     for (;;) {
       const batch = await c.queue.nextBatch({ count: 50 })
-      // notifications, in the order they came: each writes its events to inboxes
-      for (const message of batch) {
-        if (message.name !== 'notify') {
-          continue
-        }
-        const n = message.body as NotifyBatch
+      // a batch's notifications in one transaction, then its index updates in another:
+      // each commit writes pages, and the writes are what SQLite can do least of
+      const notifications = batch.filter((m) => m.name === 'notify').map((m) => m.body as NotifyBatch)
+      if (notifications.length > 0) {
         try {
-          await d.notify(n)
+          await d.notify(notifications)
         } catch (error) {
-          c.log.error({ msg: 'notifying failed', idea: n.idea, error: String(error) })
+          c.log.error({ msg: 'notifying failed', ideas: notifications.map((n) => n.idea), error: String(error) })
         }
       }
       // only the newest update per idea matters
@@ -83,11 +81,11 @@ export const directory = actor({
           latest.set(u.id, u)
         }
       }
-      for (const update of latest.values()) {
+      if (latest.size > 0) {
         try {
-          await d.updateIdea(update)
+          await d.updateIdea([...latest.values()])
         } catch (error) {
-          c.log.error({ msg: 'index update failed', idea: update.id, error: String(error) })
+          c.log.error({ msg: 'index update failed', ideas: [...latest.keys()], error: String(error) })
         }
       }
     }

@@ -996,6 +996,33 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
         expect(await d.setSubscription('u-sam', 'i1', true)).toMatchObject({ ok: false, error: { code: 'not_found' } })
       })
 
+      test('a queue’s worth of notifications lands as each would alone; a bad one doesn’t lose the rest', async () => {
+        const d = await people()
+        await d.registerIdea(idea('i1'))
+        await d.registerIdea(idea('i2'))
+        await d.setGrant('u-riley', 'i1', { kind: 'user', id: 'u-maya' }, { edit: false, share: false })
+        await d.notify([
+          { idea: 'i1', events: [event('comment', me('u-maya'))] },
+          { idea: 'i1', events: [event('reply', me('u-riley'))] },
+          { idea: 'i2', events: [event('version', me('u-sam'))] },
+          { idea: 'nope', events: [event('version', me('u-sam'))] },
+        ])
+        // maya took part in the first, so she hears of the second
+        expect(await ids(d, 'u-maya')).toEqual([['i1', 'participating', 1]])
+        expect((await ids(d, 'u-riley')).toSorted()).toEqual([
+          ['i1', 'author', 1],
+          ['i2', 'author', 1],
+        ])
+        // one that can't be written (its detail isn't JSON) fails alone
+        await expect(
+          d.notify([
+            { idea: 'i2', events: [event('comment', me('u-sam'), { n: 1n })] },
+            { idea: 'i1', events: [event('version', me('u-sam'))] },
+          ]),
+        ).rejects.toThrow()
+        expect(await ids(d, 'u-maya')).toEqual([['i1', 'participating', 2]])
+      })
+
       test('what your bots do reaches you unless you turn it off; losing access hides the idea', async () => {
         const d = await people()
         await d.registerIdea(idea('i1'))
