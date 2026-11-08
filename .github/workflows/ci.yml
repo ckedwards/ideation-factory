@@ -59,6 +59,7 @@ jobs:
   # Then Storybook builds, as it would be published. Storybook and Vitest run
   # on Node, so this job sets up Node beside Bun.
   storybook:
+    name: ui/storybook
     needs: changes
     if: needs.changes.outputs.ui == 'true'
     runs-on: ubuntu-24.04
@@ -88,6 +89,7 @@ jobs:
   # app itself built. The routes' generated tree is committed (typecheck reads
   # it), so the build must not change it.
   web:
+    name: web/storybook
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
