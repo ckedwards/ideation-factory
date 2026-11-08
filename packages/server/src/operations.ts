@@ -234,33 +234,33 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
       return { ok: true, value: { ...created.value, place: place.place, number: place.number } }
     },
 
-    getIdea: async (input, { caller, token }) => {
-      const checked = await access(input.idea, { caller, token }, 'view')
-      if (!checked.ok) {
-        return { ok: false, error: checked.error }
-      }
-      return read(async () => {
-        const [summary, row, place] = await Promise.all([
+    // one directory call for what get_idea needs from it: the access check, the team and the address
+    getIdea: (input, { caller, token }) =>
+      read(async () => {
+        const [summary, found] = await Promise.all([
           ideaOf(input.idea).summary(),
-          directory().idea(input.idea),
-          directory().placeOf(input.idea),
+          directory().ideaFor(input.idea, caller.user, token?.id ?? null),
         ])
-        return summary && row && place
-          ? { ...summary, team: row.team, place: place.place, number: place.number, you: checked.permission }
+        if (!found?.permission.view) {
+          return notFound("this idea doesn't exist, or you can't see it")
+        }
+        return summary
+          ? {
+              ...summary,
+              team: found.team,
+              place: found.place.place,
+              number: found.place.number,
+              you: found.permission,
+            }
           : notFound("this idea doesn't exist")
-      })
-    },
+      }),
 
     findIdea: (input, { caller, token }) =>
-      read(async () => {
-        const found = await directory().findIdea(input.place, input.number)
-        const hidden = () => notFound(`there's no ${input.place}/idea/${input.number}, or you can't see it`)
-        if (!found) {
-          return hidden()
-        }
-        const permission = await directory().permission(found.id, caller.user, token?.id ?? null)
-        return permission.view ? found : hidden()
-      }),
+      read(
+        async () =>
+          (await directory().findIdeaFor(input.place, input.number, caller.user, token?.id ?? null)) ??
+          notFound(`there's no ${input.place}/idea/${input.number}, or you can't see it`),
+      ),
 
     showBlocks: (input, { caller, token }) =>
       withAccess(input.idea, { caller, token }, 'view', () =>
@@ -390,6 +390,8 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
     findUsers: (input) => read(async () => ({ items: await directory().findUsers(input.q, input.limit) })),
     getUser: (input) =>
       read(async () => (await directory().user(input.user)) ?? notFound(`no one is called ${input.user}`)),
+
+    getPeople: (input) => read(async () => ({ items: await directory().users(input.ids) })),
 
     listIdeas: (input, { caller, token }) =>
       read(async () => {

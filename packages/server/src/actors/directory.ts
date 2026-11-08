@@ -128,6 +128,10 @@ export const directory = actor({
     updateIdea: (c, row: IndexUpdate) => directoryOf(c).updateIdea(row),
     idea: (c, id: string) => directoryOf(c).idea(id),
     placeOf: (c, id: string) => directoryOf(c).placeOf(id),
+    ideaFor: (c, id: string, user: string, token?: string | null) => directoryOf(c).ideaFor(id, user, token),
+    findIdeaFor: (c, place: string, number: number, user: string, token?: string | null) =>
+      directoryOf(c).findIdeaFor(place, number, user, token),
+    users: (c, ids: string[]) => directoryOf(c).users(ids),
     findIdea: (c, place: string, number: number) => directoryOf(c).findIdea(place, number),
     permission: (c, idea: string, user: string, token?: string | null) => directoryOf(c).permission(idea, user, token),
     grants: (c, idea: string) => directoryOf(c).grants(idea),

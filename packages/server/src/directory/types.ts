@@ -104,6 +104,13 @@ export type IndexUpdate = Pick<
   'id' | 'title' | 'status' | 'latest' | 'updatedAt' | 'description' | 'openComments'
 >
 
+/** An idea as one reader may see it: what they can do, its team, and its address. */
+export interface IdeaAccess {
+  permission: Permission
+  team: string | null
+  place: IdeaPlace
+}
+
 /** Where an idea is found: its team's handle, or @ and its owner's handle, and its number there. */
 export interface IdeaPlace {
   id: string
@@ -217,6 +224,8 @@ export interface Directory {
   ): Promise<User | null>
   /** A person by ID or handle. */
   user(idOrHandle: string): Promise<User | null>
+  /** People by ID, in one read; anyone not found is left out. */
+  users(ids: string[]): Promise<User[]>
   findUsers(query: string, limit?: number): Promise<User[]>
 
   // teams and groups
@@ -276,6 +285,14 @@ export interface Directory {
   idea(id: string): Promise<IdeaRow | null>
   /** Where an idea is now. */
   placeOf(id: string): Promise<IdeaPlace | null>
+  /**
+   * What get_idea needs from the directory, in one call: what `user` can do
+   * with the idea (through `token`'s grant, if it has one), its team, and its
+   * address. Null if there's no such idea.
+   */
+  ideaFor(id: string, user: string, token?: string | null): Promise<IdeaAccess | null>
+  /** findIdea, only if `user` can see the idea: otherwise null, as if there were none. */
+  findIdeaFor(place: string, number: number, user: string, token?: string | null): Promise<IdeaPlace | null>
   /**
    * The idea at a place (`mobile`, `@riley`) and number, where it is now: one
    * that has moved since is found at its old address too. Says nothing of

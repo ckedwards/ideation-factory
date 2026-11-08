@@ -174,6 +174,19 @@ export const directoryOperations = {
     output: User,
   }),
 
+  getPeople: defineOperation({
+    name: 'get_people',
+    summary: 'Read several people',
+    description:
+      "People's handles and names, by ID, up to 100 at once: for naming the authors of an idea's comments and versions in one go. Anyone not found is left out.",
+    // a read, sent as POST so a long list of IDs fits
+    method: 'POST',
+    path: '/people/lookup',
+    kind: 'read',
+    input: z.strictObject({ ids: z.array(z.string().min(1).max(64)).min(1).max(100) }),
+    output: z.object({ items: z.array(User) }),
+  }),
+
   listIdeas: defineOperation({
     name: 'list_ideas',
     summary: 'List ideas',
