@@ -9,6 +9,7 @@ import { inboxEvents } from '../idea/notify.ts'
 import { migrate } from '../idea/schema.ts'
 import { type IdeaEvent, IdeaService, Refused, type WriteRequest, type WriteResult } from '../idea/service.ts'
 import type { Registry } from '../registry.ts'
+import { retryOverloaded } from '../sql/retry.ts'
 import { DIRECTORY_KEY } from './directory.ts'
 
 /**
@@ -111,7 +112,8 @@ function serviceOf(c: {
   vars: { service: IdeaService | null }
 }): IdeaService {
   if (!c.vars.service) {
-    c.vars.service = new IdeaService(c.key[0]!, { sql: c.db, ...nodeDeps() })
+    // the engine refuses writes for a moment when storage is busy: wait and retry
+    c.vars.service = new IdeaService(c.key[0]!, { sql: retryOverloaded(c.db), ...nodeDeps() })
   }
   return c.vars.service
 }
