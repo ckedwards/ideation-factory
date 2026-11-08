@@ -1023,6 +1023,15 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
         expect(await ids(d, 'u-maya')).toEqual([['i1', 'participating', 2]])
       })
 
+      test('a batch sent twice (a retried send that got through after all) is written once', async () => {
+        const d = await people()
+        await d.registerIdea(idea('i1'))
+        const batch = { idea: 'i1', events: [event('comment', me('u-maya')), event('reply', me('u-sam'))], id: 'b1' }
+        await d.notify(batch)
+        await d.notify([batch, { ...batch, id: 'b2' }])
+        expect(await ids(d, 'u-riley')).toEqual([['i1', 'author', 4]])
+      })
+
       test('what your bots do reaches you unless you turn it off; losing access hides the idea', async () => {
         const d = await people()
         await d.registerIdea(idea('i1'))

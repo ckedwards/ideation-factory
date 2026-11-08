@@ -42,7 +42,7 @@ Each commit writes the pages it changed, and the same pages (an inbox's rows, th
 **Mitigations:**
 - **Coalesce index updates per idea:** the idea actor writes its index row at most every few seconds, not on every event.
 - **Batch inbox writes:** one call and one statement per event, not one per recipient, and a queue batch's notifications (up to 50) in one transaction, as its index updates are.
-- **Retry when storage is busy:** wait as the engine asks and try again, a statement or a transaction whole (`sql/retry.ts`; Better Auth's transactions are replayed from their statements).
+- **Retry when storage is busy:** wait as the engine asks and try again, a statement or a transaction whole (`sql/retry.ts`; Better Auth's transactions are replayed from their statements). An idea actor's sends to the directory's queue are retried too, and once its write has committed, a send that still fails is logged rather than reported as a failed write. A notification carries an ID, so one sent twice is written once.
 - **Review batching** (a TODO in `architecture.md`): a bot submits one review instead of many separate comments.
 - **Keep transactions short** so little waits behind them, and treat a full queue as back-pressure (a retryable error), never a lost write.
 - **If it's still too much,** split the directory (concern 8).

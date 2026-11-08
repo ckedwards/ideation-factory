@@ -1,7 +1,7 @@
 // Retrying when the engine's storage is busy: only that error, as long as it
 // asks, within a limit; transactions whole, or not at all when told.
 import { describe, expect, test } from 'bun:test'
-import { overloadedRetryMs, retryOverloaded } from './retry.ts'
+import { callRetrying, overloadedRetryMs, retryableCall, retryOverloaded } from './retry.ts'
 import type { Sql } from './sql.ts'
 
 /** RivetKit's error for it: a generic message, the cause in its metadata. */
@@ -82,5 +82,44 @@ describe('retrying when storage is busy', () => {
       retryOverloaded(long.sql, { maxWaitMs: 1_200, sleep: async (ms) => void waits.push(ms) }).execute('select 1'),
     ).rejects.toThrow('An internal error occurred')
     expect(waits).toEqual([500, 500, 200])
+  })
+})
+
+describe('calls to another actor', () => {
+  // what a caller sees when the other actor's storage was busy: no detail
+  const internal = () =>
+    Object.assign(new Error('An internal error occurred'), { group: 'core', code: 'internal_error' })
+
+  test('retry an internal error or a busy storage, nothing else', () => {
+    expect(retryableCall(internal())).toBe(true)
+    expect(retryableCall(busy())).toBe(true)
+    expect(retryableCall(Object.assign(new Error('no'), { group: 'user', code: 'not_found' }))).toBe(false)
+    expect(retryableCall(new Error('boom'))).toBe(false)
+  })
+
+  test('try again every 500 ms, then give up', async () => {
+    let calls = 0
+    const waits: number[] = []
+    const sleep = async (ms: number) => void waits.push(ms)
+    expect(
+      await callRetrying(
+        async () => {
+          if (++calls < 3) {
+            throw internal()
+          }
+          return 'sent'
+        },
+        { sleep },
+      ),
+    ).toBe('sent')
+    expect(waits).toEqual([500, 500])
+    await expect(
+      callRetrying(
+        async () => {
+          throw internal()
+        },
+        { sleep, maxWaitMs: 1_000 },
+      ),
+    ).rejects.toThrow('An internal error occurred')
   })
 })
