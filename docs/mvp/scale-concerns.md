@@ -128,7 +128,7 @@ A faster parser is the other option, but the web app must parse with the same li
 
 **Mitigation:** decided: every member hears about it as if asked by name, so the experience doesn't depend on the group's size. The writes go through the directory's queue, off the request path, one statement per event for all its recipients, and inboxes bundle per idea. If that gets slow for very big groups, move them to the read-time merge team watchers use (concern 5): the work moves, what members see doesn't.
 
-**Status:** queued fan-out built (step 9, part 4a). Measure in the load test.
+**Status:** queued fan-out built (step 9, part 4a). Email (part 4c) adds a row per event for each recipient who wants email, in one more statement per event, cleared once the email goes; a member who asked for email about watched teams adds the same. Sending is on an actor alarm, at most 50 emails a run, each with a few reads to check access and settings. Measure both in the load test.
 
 ### 8. The directory actor is the one shared owner
 

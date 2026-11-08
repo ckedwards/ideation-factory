@@ -24,6 +24,13 @@ import {
   type InboxReason,
   type InboxRow,
   type NotifyBatch,
+  CADENCES,
+  DEFAULT_NOTIFICATION_SETTINGS,
+  type DueEmail,
+  EMAIL_CHOICES,
+  EMAIL_EVENTS,
+  type EmailTiming,
+  type NotificationSettings,
   WATCH_LEVELS,
   type WatchLevel,
   type IdeaFilter,
@@ -80,6 +87,7 @@ const RESERVED = new Set([
   'settings',
   'src',
   'teams',
+  'unsubscribe',
 ])
 const MAX_PAGE = 100
 const RANK: Record<Role, number> = { member: 0, maintainer: 1, admin: 2 }
@@ -190,12 +198,17 @@ async function nextNumber(db: Kysely<DB>, place: string): Promise<number> {
   return Number(row.next) - 1
 }
 
+/** A person's queued email updates about one idea. */
+type EmailQueued = { user: string; idea: string; first: number; last: number; daily: boolean; digestAt: number | null }
+
 export interface SqlDirectoryOptions {
   sql: Sql
   search: IdeaSearch
   now?: () => number
   /** The most matches one search checks (default SEARCH_WORK_CAP); smaller in tests. */
   searchCap?: number
+  /** Whether the deployment sends email, so updates are queued for it (off by default). */
+  email?: boolean
 }
 
 export class SqlDirectory implements Directory {
@@ -204,8 +217,10 @@ export class SqlDirectory implements Directory {
   readonly #search: IdeaSearch
   readonly #now: () => number
   readonly #searchCap: number
+  readonly #email: boolean
 
   constructor(options: SqlDirectoryOptions) {
+    this.#email = options.email ?? false
     this.#searchCap = options.searchCap ?? SEARCH_WORK_CAP
     this.#sql = options.sql
     this.#db = sqliteKysely<DB>(options.sql)
@@ -799,14 +814,14 @@ export class SqlDirectory implements Directory {
     return reasons
   }
 
-  /** Writes one event to these people's inboxes: one statement for all of them. */
+  /** Writes one event to these people's inboxes, one statement for all of them, and queues their emails; returns its ID. */
   async #deliver(
     db: Kysely<DB>,
     idea: string,
     event: InboxEvent,
     to: Map<string, InboxReason>,
     id = newId('ev'),
-  ): Promise<void> {
+  ): Promise<string> {
     await db
       .insertInto('inbox_events')
       .values({
@@ -820,7 +835,7 @@ export class SqlDirectory implements Directory {
       })
       .execute()
     if (to.size === 0) {
-      return
+      return id
     }
     await db
       .insertInto('inbox')
@@ -845,6 +860,111 @@ export class SqlDirectory implements Directory {
         })),
       )
       .execute()
+    if (this.#email) {
+      await this.#queueEmails(db, idea, id, event.kind, to)
+    }
+    return id
+  }
+
+  /** Queues an event for the email of those it reaches who want it: everything, or just review requests. */
+  async #queueEmails(
+    db: Kysely<DB>,
+    idea: string,
+    event: string,
+    kind: InboxEvent['kind'],
+    to: Map<string, InboxReason>,
+  ): Promise<void> {
+    const wanting = await db
+      .selectFrom('users as u')
+      .leftJoin('notification_settings as s', 's.user', 'u.id')
+      .select(['u.id', 's.email'])
+      .where('u.id', 'in', [...to.keys()])
+      .where('u.email', 'is not', null)
+      .where('u.inactive', '=', 0)
+      .execute()
+    const rows = wanting
+      .filter((w) => {
+        const choice = w.email ?? DEFAULT_NOTIFICATION_SETTINGS.email
+        return choice === 'involved' || (choice === 'review-requests' && kind === 'requested')
+      })
+      .map((w) => ({ user: w.id, idea, event, reason: to.get(w.id)!, queued_at: this.#now() }))
+    if (rows.length > 0) {
+      await db
+        .insertInto('email_pending')
+        .values(rows)
+        .onConflict((oc) => oc.columns(['user', 'event']).doNothing())
+        .execute()
+    }
+  }
+
+  /**
+   * Queues an idea's events for the email of those who watch its team and
+   * asked for email about it: those whose level covers each event, who aren't
+   * involved already (they hear of it directly), didn't do it, and didn't
+   * unsubscribe. Whether they can see the idea is checked when it's sent.
+   */
+  async #queueWatcherEmails(
+    db: Kysely<DB>,
+    idea: IdeaRow,
+    events: Array<{ id: string; event: InboxEvent }>,
+    audience: Map<string, InboxReason>,
+  ): Promise<void> {
+    if (!idea.team) {
+      return
+    }
+    const watchers = (
+      await db
+        .selectFrom('watches as w')
+        .innerJoin('notification_settings as s', 's.user', 'w.user')
+        .innerJoin('users as u', 'u.id', 'w.user')
+        .innerJoin('teams as t', 't.id', 'w.team')
+        .select(['w.user', 'w.level'])
+        .where('w.team', '=', idea.team)
+        .where('w.level', 'in', ['active', 'all'])
+        .where('t.archived', '=', 0)
+        .where('s.email_watching', '=', 1)
+        .where('s.email', '=', 'involved')
+        .where('u.email', 'is not', null)
+        .where('u.inactive', '=', 0)
+        .where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom('subscriptions as x')
+                .select('x.user')
+                .whereRef('x.user', '=', 'w.user')
+                .where('x.idea', '=', idea.id)
+                .where('x.state', '=', 'unsubscribed'),
+            ),
+          ),
+        )
+        .execute()
+    ).filter((w) => !audience.has(w.user))
+    if (watchers.length === 0) {
+      return
+    }
+    // where the idea stands after each event: active covers it out of draft, up to and including its close
+    let status = idea.status
+    const rows: Array<DB['email_pending']> = []
+    for (const { id, event } of events) {
+      const closing = event.kind === 'status' && String(event.detail.status).startsWith('closed-')
+      if (event.kind === 'status' && typeof event.detail.status === 'string') {
+        status = event.detail.status
+      }
+      const active = closing || (status !== 'draft' && !status.startsWith('closed-'))
+      for (const w of watchers) {
+        if ((w.level === 'all' || active) && !(event.actor.purpose === 'me' && event.actor.user === w.user)) {
+          rows.push({ user: w.user, idea: idea.id, event: id, reason: 'watching', queued_at: this.#now() })
+        }
+      }
+    }
+    if (rows.length > 0) {
+      await db
+        .insertInto('email_pending')
+        .values(rows)
+        .onConflict((oc) => oc.columns(['user', 'event']).doNothing())
+        .execute()
+    }
   }
 
   /**
@@ -935,6 +1055,7 @@ export class SqlDirectory implements Directory {
         .execute()
     }
     const audience = await this.#audience(idea, db)
+    const delivered: Array<{ id: string; event: InboxEvent }> = []
     for (const [i, event] of events.entries()) {
       // you don't hear about what you did; what your bots did, unless you said not to
       const to = new Map(
@@ -945,7 +1066,10 @@ export class SqlDirectory implements Directory {
             event.actor.purpose === 'bot',
         ),
       )
-      await this.#deliver(db, idea.id, event, to, ids[i])
+      delivered.push({ id: await this.#deliver(db, idea.id, event, to, ids[i]), event })
+    }
+    if (this.#email) {
+      await this.#queueWatcherEmails(db, idea, delivered, audience)
     }
   }
 
@@ -976,8 +1100,8 @@ export class SqlDirectory implements Directory {
       const now = audience.get(user)
       to.set(user, now && INBOX_REASONS.indexOf(now) < INBOX_REASONS.indexOf(reason) ? now : reason)
     }
-    await this.#transaction((db) =>
-      this.#deliver(
+    await this.#transaction(async (db) => {
+      await this.#deliver(
         db,
         idea.id,
         {
@@ -987,8 +1111,8 @@ export class SqlDirectory implements Directory {
           detail: { subject },
         },
         to,
-      ),
-    )
+      )
+    })
   }
 
   /** A person's own inbox rows (the ideas they're involved in), newest first: a page after `after`, or all of them. */
@@ -1274,6 +1398,14 @@ export class SqlDirectory implements Directory {
         )
         .execute()
     }
+    // what's been read or cleared isn't emailed
+    if (change.read || change.done === true) {
+      let pending = this.#db.deleteFrom('email_pending').where('user', '=', user)
+      if (ideas) {
+        pending = pending.where('idea', 'in', ideas)
+      }
+      await pending.execute()
+    }
     return chosen.length + watched.length
   }
 
@@ -1346,23 +1478,223 @@ export class SqlDirectory implements Directory {
     return ok(await this.subscription(user, ideaId))
   }
 
-  async notificationSettings(user: string): Promise<{ ownBots: boolean }> {
+  async notificationSettings(user: string): Promise<NotificationSettings> {
     const row = await this.#db
       .selectFrom('notification_settings')
-      .select('own_bots')
+      .selectAll()
       .where('user', '=', user)
       .executeTakeFirst()
-    return { ownBots: row ? row.own_bots === 1 : true }
+    if (!row) {
+      return { ...DEFAULT_NOTIFICATION_SETTINGS }
+    }
+    return {
+      ownBots: row.own_bots === 1,
+      email: row.email as NotificationSettings['email'],
+      emailWatching: row.email_watching === 1,
+      cadence: row.cadence as NotificationSettings['cadence'],
+    }
   }
 
-  async setNotificationSettings(user: string, settings: { ownBots: boolean }): Promise<{ ownBots: boolean }> {
-    const own_bots = settings.ownBots ? 1 : 0
+  async setNotificationSettings(
+    user: string,
+    changes: Partial<NotificationSettings>,
+  ): Promise<Result<NotificationSettings>> {
+    if (changes.email !== undefined && !EMAIL_CHOICES.includes(changes.email)) {
+      return fail('invalid', `email is ${EMAIL_CHOICES.join(', ')}`)
+    }
+    if (changes.cadence !== undefined && !CADENCES.includes(changes.cadence)) {
+      return fail('invalid', `cadence is ${CADENCES.join(', ')}`)
+    }
+    const next = { ...(await this.notificationSettings(user)), ...changes }
+    const values = {
+      own_bots: next.ownBots ? 1 : 0,
+      email: next.email,
+      email_watching: next.emailWatching ? 1 : 0,
+      cadence: next.cadence,
+    }
     await this.#db
       .insertInto('notification_settings')
-      .values({ user, own_bots })
-      .onConflict((oc) => oc.column('user').doUpdateSet({ own_bots }))
+      .values({ user, ...values, digest_at: null })
+      .onConflict((oc) => oc.column('user').doUpdateSet(values))
       .execute()
-    return this.notificationSettings(user)
+    return ok(next)
+  }
+
+  // --- email ---------------------------------------------------------------------
+
+  /** Each person's queued updates per idea: when the first and last were queued, and how they want email. */
+  async #emailQueue(): Promise<EmailQueued[]> {
+    const rows = await this.#db
+      .selectFrom('email_pending as p')
+      .leftJoin('notification_settings as s', 's.user', 'p.user')
+      .select((eb) => [
+        'p.user',
+        'p.idea',
+        eb.fn.min('p.queued_at').as('first'),
+        eb.fn.max('p.queued_at').as('last'),
+        's.cadence',
+        's.digest_at',
+      ])
+      .groupBy(['p.user', 'p.idea', 's.cadence', 's.digest_at'])
+      .execute()
+    return rows.map((r) => ({
+      user: r.user,
+      idea: r.idea,
+      first: Number(r.first),
+      last: Number(r.last),
+      daily: r.cadence === 'daily',
+      digestAt: r.digest_at === null ? null : Number(r.digest_at),
+    }))
+  }
+
+  /** When each person's email is due: per idea (bundled), or one time for all their ideas (a digest). */
+  #emailDue(queue: EmailQueued[], timing: EmailTiming) {
+    const bundled = (q: EmailQueued) => Math.min(q.last + timing.quietMs, q.first + timing.maxWaitMs)
+    const due: Array<{ user: string; ideas: string[]; at: number; digest: boolean }> = []
+    const digests = new Map<string, { ideas: string[]; first: number; digestAt: number | null }>()
+    for (const q of queue) {
+      if (!q.daily) {
+        due.push({ user: q.user, ideas: [q.idea], at: bundled(q), digest: false })
+        continue
+      }
+      const d = digests.get(q.user) ?? { ideas: [], first: q.first, digestAt: q.digestAt }
+      d.ideas.push(q.idea)
+      d.first = Math.min(d.first, q.first)
+      digests.set(q.user, d)
+    }
+    for (const [user, d] of digests) {
+      const at = Math.max(d.first + timing.quietMs, d.digestAt === null ? 0 : d.digestAt + timing.digestMs)
+      due.push({ user, ideas: d.ideas, at, digest: true })
+    }
+    return due
+  }
+
+  async nextEmailAt(timing: EmailTiming): Promise<number | null> {
+    const due = this.#emailDue(await this.#emailQueue(), timing)
+    return due.length === 0 ? null : Math.min(...due.map((d) => d.at))
+  }
+
+  async dueEmails(timing: EmailTiming, limit = 50): Promise<DueEmail[]> {
+    const now = this.#now()
+    const due = this.#emailDue(await this.#emailQueue(), timing)
+      .filter((d) => d.at <= now)
+      .sort((a, b) => a.at - b.at)
+      .slice(0, limit)
+    const emails: DueEmail[] = []
+    for (const d of due) {
+      const email = await this.#composeEmail(d.user, d.ideas, d.digest)
+      if (email) {
+        emails.push(email)
+      }
+    }
+    return emails
+  }
+
+  /**
+   * A person's email about these ideas, checked as it goes: nothing for
+   * someone without an address or with email off, and for each idea only
+   * what they can still see, didn't unsubscribe from (review requests
+   * aside) and still want. What's dropped is cleared; null when nothing's left.
+   */
+  async #composeEmail(user: string, ideaIds: string[], digest: boolean): Promise<DueEmail | null> {
+    const pending = await this.#db
+      .selectFrom('email_pending as p')
+      .innerJoin('inbox_events as e', 'e.id', 'p.event')
+      .select(['p.event', 'p.idea', 'p.reason', 'e.kind', 'e.actor', 'e.at', 'e.detail'])
+      .where('p.user', '=', user)
+      .where('p.idea', 'in', ideaIds)
+      .orderBy('e.at')
+      .execute()
+    const allEvents = (
+      await this.#db
+        .selectFrom('email_pending')
+        .select('event')
+        .where('user', '=', user)
+        .where('idea', 'in', ideaIds)
+        .execute()
+    ).map((r) => r.event)
+    const person = await this.#db
+      .selectFrom('users')
+      .select(['id', 'handle', 'name', 'email', 'inactive'])
+      .where('id', '=', user)
+      .executeTakeFirst()
+    const settings = await this.notificationSettings(user)
+    const drop = async () => {
+      await this.#db.deleteFrom('email_pending').where('user', '=', user).where('event', 'in', allEvents).execute()
+      return null
+    }
+    if (!person?.email || person.inactive === 1 || settings.email === 'off') {
+      return drop()
+    }
+    const unsubscribed = new Set(
+      (
+        await this.#db
+          .selectFrom('subscriptions')
+          .select('idea')
+          .where('user', '=', user)
+          .where('idea', 'in', ideaIds)
+          .where('state', '=', 'unsubscribed')
+          .execute()
+      ).map((r) => r.idea),
+    )
+    const rows = await this.#db.selectFrom('ideas').selectAll().where('id', 'in', ideaIds).execute()
+    const listings = new Map((await this.#listings(rows.map(toIdea))).map((l) => [l.id, l]))
+    const ideas: DueEmail['ideas'] = []
+    for (const id of ideaIds) {
+      const idea = listings.get(id)
+      if (!idea || !(await this.permission(id, user)).view) {
+        continue
+      }
+      const events = pending.filter(
+        (p) =>
+          p.idea === id &&
+          (p.kind === 'requested' ||
+            (!unsubscribed.has(id) &&
+              settings.email === 'involved' &&
+              (p.reason !== 'watching' || settings.emailWatching))),
+      )
+      if (events.length === 0) {
+        continue
+      }
+      const reasons = events.map((e) => e.reason as InboxReason)
+      ideas.push({
+        idea,
+        reason: reasons.reduce((a, b) => (INBOX_REASONS.indexOf(b) < INBOX_REASONS.indexOf(a) ? b : a)),
+        events: events.slice(-EMAIL_EVENTS).map((e) => ({
+          kind: e.kind as InboxEvent['kind'],
+          actor: JSON.parse(e.actor) as ActorRef,
+          at: Number(e.at),
+          detail: JSON.parse(e.detail) as Record<string, unknown>,
+        })),
+        more: Math.max(0, events.length - EMAIL_EVENTS),
+      })
+    }
+    if (ideas.length === 0) {
+      return drop()
+    }
+    // newest first in a digest
+    ideas.sort((a, b) => b.events.at(-1)!.at - a.events.at(-1)!.at)
+    const named = [...new Set(ideas.flatMap((i) => i.events.map((e) => e.actor.user)).filter(Boolean))]
+    const people = Object.fromEntries((await this.users(named)).map((u) => [u.id, { handle: u.handle, name: u.name }]))
+    return {
+      to: { id: person.id, handle: person.handle, name: person.name, email: person.email },
+      digest,
+      ideas,
+      people,
+      sent: { user, events: allEvents },
+    }
+  }
+
+  async emailSent(email: DueEmail): Promise<void> {
+    const { user, events } = email.sent
+    await this.#transaction(async (db) => {
+      if (events.length > 0) {
+        await db.deleteFrom('email_pending').where('user', '=', user).where('event', 'in', events).execute()
+      }
+      if (email.digest) {
+        await db.updateTable('notification_settings').set({ digest_at: this.#now() }).where('user', '=', user).execute()
+      }
+    })
   }
 
   async parkedUntil(kind: 'user' | 'team', handle: string, requester: string | null): Promise<number | null> {

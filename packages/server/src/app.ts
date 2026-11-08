@@ -1,7 +1,7 @@
 // The HTTP API: every operation from @ideaf/api under /api, routed and
 // validated by its definition, plus sign-in (forwarded to Better Auth in the
-// directory actor), a bare sign-in page, /health and /api/openapi.json. Every
-// other path is the web app's.
+// directory actor), a bare sign-in page, /health, /api/openapi.json and the
+// unsubscribe links in emails. Every other path is the web app's.
 import { API_PATH, createRouter, openApiDocument, operations } from '@ideaf/api'
 import type { Client } from 'rivetkit/client'
 import { DIRECTORY_KEY } from './actors/directory.ts'
@@ -9,6 +9,7 @@ import type { AuthSettings } from './auth/config.ts'
 import { authGateway } from './auth/gateway.ts'
 import { cliCodePage, consentPage, loginPage } from './auth/pages.ts'
 import { CLI_CODE_PATH, SSO_PROVIDER_ID } from './auth/config.ts'
+import { unsubscribePage } from './mail/unsubscribe.ts'
 import { createHandlers } from './operations.ts'
 import type { Registry } from './registry.ts'
 import type { WebApp } from './web.ts'
@@ -20,7 +21,7 @@ export type AppDeps = {
    * URL is the tokens' issuer, and the sign-in page offers single sign-on when
    * it's on (read on every request, like the actor does).
    */
-  auth: Pick<AuthSettings, 'baseURL' | 'sso' | 'trustedProxies'>
+  auth: Pick<AuthSettings, 'baseURL' | 'sso' | 'trustedProxies' | 'secret'>
   /** Check every response against its schema (tests turn this on). */
   validateOutput?: boolean
   /** The web app's pages (web.ts); without it, a page's path is not found. */
@@ -59,6 +60,9 @@ export function createApp({
     }
     if (pathname === CLI_CODE_PATH) {
       return cliCodePage()
+    }
+    if (pathname === '/unsubscribe') {
+      return unsubscribePage(request, auth, directory)
     }
     if (pathname === `${API_PATH}/openapi.json`) {
       return Response.json(openapi)

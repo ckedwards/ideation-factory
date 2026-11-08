@@ -140,8 +140,27 @@ export interface DB {
    * news is worked out from the team's events when the inbox is read.
    */
   watch_marks: { user: string; idea: string; read_at: number; done_at: number | null }
-  /** What a person wants to hear about; no row means the defaults. */
-  notification_settings: { user: string; own_bots: number }
+  /**
+   * What a person wants to hear about; no row means the defaults. Email:
+   * involved (everything the inbox has for ideas they're involved in),
+   * review-requests (only being asked to review) or off; email_watching adds
+   * watched teams' ideas; cadence is bundled (an email per idea once it goes
+   * quiet) or daily (one digest), and digest_at when the last digest went.
+   */
+  notification_settings: {
+    user: string
+    own_bots: number
+    email: string
+    email_watching: number
+    cadence: string
+    digest_at: number | null
+  }
+  /**
+   * Updates waiting to be emailed: one row per person per event, kept until
+   * the email goes, or until they read the idea first. queued_at is the
+   * directory's clock (the event's own time is the idea actor's).
+   */
+  email_pending: { user: string; idea: string; event: string; reason: string; queued_at: number }
   schema_version: { version: number }
 }
 
@@ -194,7 +213,8 @@ export const COLUMNS = {
   subscriptions: ['user', 'idea', 'state', 'at'],
   watches: ['user', 'team', 'level', 'at'],
   watch_marks: ['user', 'idea', 'read_at', 'done_at'],
-  notification_settings: ['user', 'own_bots'],
+  notification_settings: ['user', 'own_bots', 'email', 'email_watching', 'cadence', 'digest_at'],
+  email_pending: ['user', 'idea', 'event', 'reason', 'queued_at'],
   schema_version: ['version'],
 } as const satisfies { [T in keyof DB]: ReadonlyArray<keyof DB[T]> }
 
@@ -374,7 +394,21 @@ const MIGRATIONS: Migration[] = [
       .createTable('notification_settings')
       .addColumn('user', 'text', (c) => c.primaryKey())
       .addColumn('own_bots', 'integer', (c) => c.notNull())
+      .addColumn('email', 'text', (c) => c.notNull())
+      .addColumn('email_watching', 'integer', (c) => c.notNull())
+      .addColumn('cadence', 'text', (c) => c.notNull())
+      .addColumn('digest_at', 'bigint')
       .execute()
+    await db.schema
+      .createTable('email_pending')
+      .addColumn('user', 'text', (c) => c.notNull())
+      .addColumn('idea', 'text', (c) => c.notNull())
+      .addColumn('event', 'text', (c) => c.notNull())
+      .addColumn('reason', 'text', (c) => c.notNull())
+      .addColumn('queued_at', 'bigint', (c) => c.notNull())
+      .addPrimaryKeyConstraint('email_pending_pk', ['user', 'event'])
+      .execute()
+    await db.schema.createIndex('email_pending_user').on('email_pending').columns(['user', 'idea']).execute()
   },
 ]
 

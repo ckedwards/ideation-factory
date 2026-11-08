@@ -32,6 +32,7 @@ export {
   type Caller,
   type IdeaStatus,
   type Notification,
+  type NotificationSettings,
   LIVE_CLOSE,
   LiveClientMessage,
   LiveEvent,

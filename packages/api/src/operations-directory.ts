@@ -5,9 +5,20 @@ import { defineOperation } from './operation.ts'
 
 /** A yes or no in a query string ("true" or "false"), or as JSON. */
 const Flag = z.union([z.boolean(), z.stringbool()])
+
+const NOTIFICATION_SETTINGS_HELP =
+  '`ownBots`: whether what a bot does on your behalf lands in your inbox (it does unless you turn it off). ' +
+  '`email`: what reaches you by email as well: `involved` (the default: everything the inbox has for ideas you wrote, ' +
+  'were asked to review or took part in), `review-requests` (only being asked to review) or `off`. ' +
+  '`emailWatching`: whether the teams you watch email you too (off by default; they always fill the inbox). ' +
+  '`cadence`: `bundled` (the default: one email per idea once it has gone quiet for a few minutes) or `daily` ' +
+  '(one digest a day). Reading an idea first, or marking it read or done, stops its email. ' +
+  '`emailAvailable`: whether this deployment sends email at all.'
 import {
   CreatePolicy,
   Cursor,
+  EmailCadence,
+  EmailChoice,
   Grant,
   GrantSubject,
   Group,
@@ -18,6 +29,7 @@ import {
   InboxReason,
   Limit,
   Notification,
+  NotificationSettings,
   Member,
   Memberships,
   MovePreview,
@@ -327,23 +339,27 @@ export const directoryOperations = {
   getNotificationSettings: defineOperation({
     name: 'get_notification_settings',
     summary: 'What you want to hear about',
-    description:
-      '`ownBots`: whether what a bot does on your behalf lands in your inbox (it does unless you turn it off).',
+    description: NOTIFICATION_SETTINGS_HELP,
     method: 'GET',
     path: '/me/notifications',
     kind: 'read',
     input: z.strictObject({}),
-    output: z.object({ ownBots: z.boolean() }),
+    output: NotificationSettings,
   }),
   setNotificationSettings: defineOperation({
     name: 'set_notification_settings',
     summary: 'Change what you hear about',
-    description: '`ownBots`: whether what a bot does on your behalf lands in your inbox.',
+    description: `${NOTIFICATION_SETTINGS_HELP} Give only what changes.`,
     method: 'POST',
     path: '/me/notifications',
     kind: 'write',
-    input: z.strictObject({ ownBots: z.boolean() }),
-    output: z.object({ ownBots: z.boolean() }),
+    input: z.strictObject({
+      ownBots: z.boolean().optional(),
+      email: EmailChoice.optional(),
+      emailWatching: z.boolean().optional(),
+      cadence: EmailCadence.optional(),
+    }),
+    output: NotificationSettings,
   }),
   setReviewer: defineOperation({
     name: 'set_reviewer',

@@ -446,6 +446,20 @@ export const InboxReason = z.enum([
 ])
 export type InboxReason = z.infer<typeof InboxReason>
 
+/** What reaches you by email: everything the inbox has for ideas you're involved in, only review requests, or nothing. */
+export const EmailChoice = z.enum(['involved', 'review-requests', 'off'])
+/** An email per idea once it goes quiet for a few minutes, or one digest a day. */
+export const EmailCadence = z.enum(['bundled', 'daily'])
+export const NotificationSettings = z.object({
+  ownBots: z.boolean(),
+  email: EmailChoice,
+  emailWatching: z.boolean(),
+  cadence: EmailCadence,
+  /** Whether this deployment sends email at all; without it the email settings do nothing. */
+  emailAvailable: z.boolean(),
+})
+export type NotificationSettings = z.infer<typeof NotificationSettings>
+
 /**
  * An inbox row: one per idea, however much happened. The idea as lists show
  * it, why you hear about it, how many events are new since you read it, and

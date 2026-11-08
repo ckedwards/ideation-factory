@@ -129,6 +129,66 @@ export interface InboxFilter {
   limit?: number
 }
 
+/**
+ * What a person gets by email: everything the inbox has for the ideas they're
+ * involved in (the default), only being asked to review, or nothing.
+ */
+export const EMAIL_CHOICES = ['involved', 'review-requests', 'off'] as const
+export type EmailChoice = (typeof EMAIL_CHOICES)[number]
+/** An email per idea once it goes quiet (the default), or one digest a day. */
+export const CADENCES = ['bundled', 'daily'] as const
+export type Cadence = (typeof CADENCES)[number]
+
+export interface NotificationSettings {
+  /** Whether what a bot does on your behalf lands in your inbox. */
+  ownBots: boolean
+  email: EmailChoice
+  /** Whether the teams you watch email you too, not just fill the inbox. */
+  emailWatching: boolean
+  cadence: Cadence
+}
+
+export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  ownBots: true,
+  email: 'involved',
+  emailWatching: false,
+  cadence: 'bundled',
+}
+
+/**
+ * When emails go: an idea's once nothing new has happened to it for
+ * `quietMs`, but no later than `maxWaitMs` after its first update; a digest
+ * at most once per `digestMs`.
+ */
+export interface EmailTiming {
+  quietMs: number
+  maxWaitMs: number
+  digestMs: number
+}
+
+export const EMAIL_TIMING: EmailTiming = { quietMs: 5 * 60_000, maxWaitMs: 30 * 60_000, digestMs: 24 * 60 * 60_000 }
+
+/** An email that's due: to whom, and its ideas (one, or a digest's several), each with the updates not read yet. */
+export interface DueEmail {
+  to: { id: string; handle: string; name: string; email: string }
+  digest: boolean
+  ideas: Array<{
+    idea: IdeaListing
+    reason: InboxReason
+    /** The latest updates, oldest first (at most EMAIL_EVENTS). */
+    events: InboxEvent[]
+    /** Updates left out, beyond those. */
+    more: number
+  }>
+  /** The people the updates name (who did them), by ID. */
+  people: Record<string, { handle: string; name: string }>
+  /** What to clear once it's sent. */
+  sent: { user: string; events: string[] }
+}
+
+/** The most updates one idea shows in an email. */
+export const EMAIL_EVENTS = 10
+
 /** One requirement, checked against an idea. */
 export type RequirementCheck =
   | { kind: 'approvals'; need: number; have: number; met: boolean }
@@ -391,6 +451,16 @@ export interface Directory {
   // the inbox: what people hear about the ideas they're involved in
   /** Writes ideas' events to the inboxes of those who hear about them (from the idea actors, through the queue): a queue's worth at once. */
   notify(batch: NotifyBatch | NotifyBatch[]): Promise<void>
+  /**
+   * The emails due now (at most `limit`), from the updates queued for them.
+   * What nobody should get any more (read first, unsubscribed, no access,
+   * email turned off) is dropped here without an email.
+   */
+  dueEmails(timing: EmailTiming, limit?: number): Promise<DueEmail[]>
+  /** Clears an email's updates once it's sent (and, for a digest, starts the next day's). */
+  emailSent(email: DueEmail): Promise<void>
+  /** When the next email is due (null when none are waiting). */
+  nextEmailAt(timing: EmailTiming): Promise<number | null>
   /** A person's inbox (or Done list): one row per idea they can still see, newest first. */
   inbox(user: string, filter?: InboxFilter, token?: string | null): Promise<Page<InboxRow>>
   /** How many ideas in the inbox have something new. */
@@ -408,8 +478,8 @@ export interface Directory {
   /** How much of a team a person hears about (participating unless they chose more). */
   watch(user: string, team: string): Promise<WatchLevel>
   setWatch(user: string, team: string, level: WatchLevel): Promise<Result<WatchLevel>>
-  notificationSettings(user: string): Promise<{ ownBots: boolean }>
-  setNotificationSettings(user: string, settings: { ownBots: boolean }): Promise<{ ownBots: boolean }>
+  notificationSettings(user: string): Promise<NotificationSettings>
+  setNotificationSettings(user: string, settings: Partial<NotificationSettings>): Promise<Result<NotificationSettings>>
   /**
    * Frees a handle, a site admin's decision: a team holding it is renamed to
    * `replacement`, and no old handle leads anywhere any more. (A person

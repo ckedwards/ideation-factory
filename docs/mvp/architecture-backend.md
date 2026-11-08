@@ -294,7 +294,7 @@ Only two things are platform-specific, and both sit behind small interfaces:
 | Interface | Implementation |
 |---|---|
 | Files | The S3 API (Bun has a built-in S3 client), against whichever bucket the deployment provides |
-| Email (sign-in codes) | SMTP, or an email provider's API |
+| Email (sign-in codes, notifications) | SMTP, or an email provider's API |
 
 ### The directory actor is the one shared owner
 
