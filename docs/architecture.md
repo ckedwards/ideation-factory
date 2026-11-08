@@ -304,9 +304,18 @@ Only a group's admins (or a site admin) can delete it. Before deleting, the sett
 - An idea that had the group as a reviewer shows it as a deleted reviewer.
 - Access given to the group ends, and the delete report lists the ideas it was shared with, so their owners can give access another way.
 
-# Emails/messageing
+# Emails and messaging
 
-All notifications are in app for now. What a user is notified about follows the watch levels under Team support in `idea.md`: ideas they participate in or are assigned to by default, plus a team's active ideas (including when they close) or all of its ideas if they choose. Each notification should say why the user received it.
+Notifications are in the app (the inbox) and, where the deployment has email set up, by email too.
+
+**Email notifications** (step 9, part 4c) go out over the same SMTP settings as sign-in codes (any provider: Amazon SES, Postmark, Mailgun, Resend, a server of your own), so a deployment that can send sign-in codes can send them. A deployment without email shows no email options.
+
+- **The same events as the inbox,** from the same queue: who hears about an idea, and why, is decided once, and email follows it. Unsubscribing from an idea stops its emails too, and access is checked when an email is sent, so nobody is emailed about an idea they can no longer see.
+- **Each email says why** it was sent (author, review requested, participating…), links to the idea, and has a one-click unsubscribe (`List-Unsubscribe`) for that idea.
+- **Not one email per event:** a busy idea, or a bot posting a review, mustn't flood anyone. Emails are bundled per idea like the inbox.
+- Open questions: on or off by default, and for which reasons (review requests only, or everything the inbox shows)? Each event as it happens (bundled over a few minutes), or a daily digest, or a choice between them? Does reading an idea in the app (or marking it read or done) stop an email that hasn't gone yet? Do watched teams (part 4b) email, or only the inbox?
+
+ What a user is notified about follows the watch levels under Team support in `idea.md`: ideas they participate in or are assigned to by default, plus a team's active ideas (including when they close) or all of its ideas if they choose. Each notification should say why the user received it.
 
 The inbox works like GitHub's: one entry per idea (its latest update, how many are new, and why you're subscribed), not one per event. It can be grouped by date or by team, filtered by reason (review requested, participating, watching a team) and by team, and each idea can be marked read, marked **Done** (cleared from the inbox until something new happens) or **unsubscribed**. Every idea page has a Subscribe / Unsubscribe button that says why you're subscribed. Unsubscribing stops notifications for that idea, except when someone asks you to review it.
 

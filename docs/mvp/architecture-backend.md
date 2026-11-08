@@ -327,7 +327,5 @@ The open performance risks (directory writes under bot bursts, access checks on 
 
 - Single sign-on (SAML/OIDC) with automatic account creation, and SCIM deprovisioning.
 - Inactive users, permanent team deletion, and site admin tokens.
-- Review batching (one submission instead of many comments).
-- Email notifications.
 - Fuzzy re-anchoring, once it can be measured on real edit histories.
 - A Helm chart for Kubernetes, beyond the MVP's example manifests.
