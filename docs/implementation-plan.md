@@ -65,4 +65,5 @@ Each is hard to change once there's data. **All four are decided, in step 1:** s
 
 Smaller pieces of work that came up along the way and aren't part of a step yet.
 
+- **People's names in each idea, if the directory gets busy:** an idea page names its people with one batched `get_people` call. If the load test shows the directory hot, each idea can keep its people's names in its own SQLite, updated in the background when someone changes their name or handle (renames are rare, reads constant), so pages, comments and live events name people with no directory call.
 - **App components out of `ui`,** as step 8 builds the pages that use them: components that decide something about the product move to `web`, beside their page, built from `ui`'s building blocks. `WatchSelect` (the watch levels, what each means, which to highlight) is the clearest; `StatusControl`, `IdeaState`, `ApprovalProgress`, `ViewInVersion` and the idea page's comment and heading components are likely too.
