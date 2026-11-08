@@ -531,7 +531,19 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
         expect((await d.team('core'))!.id).toBe(core)
         // an idea's old address finds it, and says where it is now
         expect(await d.findIdea('core', 1)).toEqual({ id: 'i1', place: 'platform', number: 1 })
-        // another team takes the old handle: it's theirs now
+        // the old handle is kept for it a while: another team can't take it, it can take it back
+        expect(await d.parkedUntil('team', 'core', null)).toEqual(expect.any(Number))
+        expect(await d.createTeam('u-devon', { handle: 'core', name: 'New core' })).toMatchObject({
+          ok: false,
+          error: { code: 'exists', message: expect.stringContaining('kept for them') },
+        })
+        expect(await d.updateTeam('u-riley', core, { handle: 'core' })).toMatchObject({
+          ok: true,
+          value: { handle: 'core' },
+        })
+        await d.updateTeam('u-riley', core, { handle: 'platform' })
+        // released by a site admin, another team takes it: it's theirs now
+        await d.releaseHandle('team', 'core', 'unused')
         const other = (
           (await d.createTeam('u-devon', { handle: 'core', name: 'New core' })) as { value: { id: string } }
         ).value.id

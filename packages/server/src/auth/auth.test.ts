@@ -291,9 +291,27 @@ describe('changing handles', () => {
     // someone else's handle can't be taken
     expect((await post('/api/auth/update-user', { username: h('rename-looker') }, riley.cookie)).status).toBe(400)
 
-    // someone new takes the old handle: it's theirs now
-    const taker = await signIn(app, riley.handle)
-    expect(await looker.getUser({ user: riley.handle })).toMatchObject({ id: taker.id })
+    // the old handle is kept for them: nobody new can sign up with it, or be told it's free
+    const email = `${h('taker')}@example.test`
+    await post('/api/auth/email-otp/send-verification-otp', { email, type: 'sign-in' })
+    const refused = await json(
+      await post('/api/auth/sign-in/email-otp', { email, otp: testMailer.code(email), username: riley.handle }),
+    )
+    expect(refused).toMatchObject({ status: 400, body: { code: 'HANDLE_PARKED' } })
+    expect((await post('/api/auth/is-username-available', { username: riley.handle })).status).toBe(400)
+    // but they can take it back, and leave it again
+    expect((await post('/api/auth/update-user', { username: riley.handle }, riley.cookie)).status).toBe(200)
+    expect((await post('/api/auth/update-user', { username: renamed }, riley.cookie)).status).toBe(200)
+
+    // a site admin releases it: someone new takes it, and it's theirs now
+    expect(await admin(['release-handle', `@${riley.handle}`], process.env)).toBe(0)
+    // (signed up directly: the test helper knows people by handle, and this one was riley's)
+    await post('/api/auth/email-otp/send-verification-otp', { email, type: 'sign-in' })
+    const taken = await json(
+      await post('/api/auth/sign-in/email-otp', { email, otp: testMailer.code(email), username: riley.handle }),
+    )
+    expect(taken.status).toBe(200)
+    expect(await looker.getUser({ user: riley.handle })).toMatchObject({ id: taken.body.user.id })
 
     // a site admin frees the new one: its holder gets a generated handle, and it leads nowhere
     expect(await admin(['release-handle', `@${renamed}`], process.env)).toBe(0)

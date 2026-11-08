@@ -1,5 +1,5 @@
 // Your name and your handle. A new handle is checked before it's saved, and
-// your old one keeps leading to you until someone else takes it.
+// your old one keeps leading to you, and is kept for you for 90 days.
 import { useState } from 'react'
 import { Button, Stack, TextField } from '@ideaf/ui'
 import './ProfileForm.css'
@@ -50,7 +50,9 @@ export function ProfileForm({ name: savedName, handle: savedHandle, onName, onHa
         return setHandleNote({ error: `@${next} is taken: pick another handle.` })
       }
       await onHandle(next)
-      setHandleNote({ done: `You’re @${next} now. @${savedHandle} still leads to you, until someone else takes it.` })
+      setHandleNote({
+        done: `You’re @${next} now. @${savedHandle} still leads to you, and is kept for you for 90 days.`,
+      })
     } catch (error) {
       setHandleNote({ error: error instanceof Error ? error.message : String(error) })
     } finally {

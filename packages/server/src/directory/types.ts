@@ -50,6 +50,13 @@ export interface Group extends Container {
   deleted: boolean
 }
 
+/**
+ * How long a handle someone left stays theirs: nobody else can take it, so
+ * links to it and mentions of it can't start leading to someone new. Its
+ * owner can take it back, and a site admin can release it sooner.
+ */
+export const HANDLE_PARKED_MS = 90 * 24 * 60 * 60 * 1000
+
 export interface Member {
   user: User
   role: Role
@@ -238,6 +245,12 @@ export interface Directory {
    * step; this then drops the alias that left.) Says who held it.
    */
   releaseHandle(kind: 'user' | 'team', handle: string, replacement: string): Promise<{ owner: string | null }>
+  /**
+   * Until when a handle someone left is parked against `requester` (a person's
+   * or a team's ID, or null for someone new): null if it isn't, as when it's
+   * their own old handle, or it was left long enough ago.
+   */
+  parkedUntil(kind: 'user' | 'team', handle: string, requester: string | null): Promise<number | null>
   members(kind: ContainerKind, id: string, options?: { cursor?: string; limit?: number }): Promise<Page<Member>>
   memberships(user: string): Promise<Memberships>
   addMember(actor: string, kind: ContainerKind, id: string, user: string, role?: Role): Promise<Result<Member>>

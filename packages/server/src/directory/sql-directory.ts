@@ -22,6 +22,7 @@ import {
   type Memberships,
   type IdeaRow,
   type IndexUpdate,
+  HANDLE_PARKED_MS,
   type Member,
   type MoveAdjustments,
   type MovePreview,
@@ -127,6 +128,11 @@ const toIdea = (r: DB['ideas']): IdeaRow => ({
 
 /** Where an idea is numbered: its team, or its owner's own ideas. */
 const placeKey = (team: string | null, owner: string) => team ?? `u:${owner}`
+
+/** Why a parked handle can't be taken yet, and when it can. */
+export function parkedMessage(handle: string, until: number): string {
+  return `${handle} was someone else's until recently, so it's kept for them until ${new Date(until).toISOString().slice(0, 10)}: pick another`
+}
 
 /**
  * A person or team changed handle: the old one leads to them now (until
@@ -313,6 +319,12 @@ export class SqlDirectory implements Directory {
     }
     if (RESERVED.has(handle)) {
       return fail('invalid', `${handle} is one of the site's own addresses: pick another handle`)
+    }
+    if (kind === 'team') {
+      const parked = await this.parkedUntil('team', handle, null)
+      if (parked) {
+        return fail('exists', parkedMessage(handle, parked))
+      }
     }
     const name = input.name.trim()
     if (!name || name.length > 100) {
@@ -513,6 +525,10 @@ export class SqlDirectory implements Directory {
       if (RESERVED.has(handle)) {
         return fail('invalid', `${handle} is one of the site's own addresses: pick another handle`)
       }
+      const parked = await this.parkedUntil('team', handle, team.id)
+      if (parked) {
+        return fail('exists', parkedMessage(handle, parked))
+      }
     }
     const name = changes.name?.trim()
     if (name !== undefined && (!name || name.length > 100)) {
@@ -545,6 +561,20 @@ export class SqlDirectory implements Directory {
       throw error
     }
     return ok((await this.team(team.id))!)
+  }
+
+  async parkedUntil(kind: 'user' | 'team', handle: string, requester: string | null): Promise<number | null> {
+    const row = await this.#db
+      .selectFrom('handle_aliases')
+      .select(['owner', 'created_at'])
+      .where('kind', '=', kind)
+      .where('handle', '=', handle.toLowerCase().replace(/^@/, ''))
+      .executeTakeFirst()
+    if (!row || row.owner === requester) {
+      return null
+    }
+    const until = Number(row.created_at) + HANDLE_PARKED_MS
+    return until > this.#now() ? until : null
   }
 
   async releaseHandle(kind: 'user' | 'team', handle: string, replacement: string): Promise<{ owner: string | null }> {

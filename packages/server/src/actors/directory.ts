@@ -107,6 +107,8 @@ export const directory = actor({
     ) => directoryOf(c).updateTeam(by, team, changes),
     /** A site admin frees a handle (admin.ts): `@riley` a person's, `mobile` a team's. */
     releaseHandle: (c, handle: string) => releaseHandle(authOf(c), directoryOf(c), handle),
+    parkedUntil: (c, kind: 'user' | 'team', handle: string, requester: string | null) =>
+      directoryOf(c).parkedUntil(kind, handle, requester),
     members: (c, kind: ContainerKind, id: string, options?: { cursor?: string; limit?: number }) =>
       directoryOf(c).members(kind, id, options),
     addMember: (c, by: string, kind: ContainerKind, id: string, user: string, role?: Role) =>
