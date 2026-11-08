@@ -36,10 +36,9 @@ describe('signing keys', () => {
     const first = await sign()
     expect(kid(await sign())).toBe(kid(first))
     const [key] = await keys()
-    // it expires after the rotation interval
-    expect(new Date(key!.expiresAt!).getTime() - new Date(key!.createdAt).getTime()).toBe(
-      SIGNING_KEY_ROTATION_SECONDS * 1000,
-    )
+    // it expires after the rotation interval (Better Auth reads the clock twice, so allow a few ms)
+    const lifetime = new Date(key!.expiresAt!).getTime() - new Date(key!.createdAt).getTime()
+    expect(Math.abs(lifetime - SIGNING_KEY_ROTATION_SECONDS * 1000)).toBeLessThan(10)
     // as if 30 days went by
     await (
       await auth.$context
