@@ -118,6 +118,7 @@ export const Comment: Story = {
           section: { title: 'Proposal', heading: sample.indexOf('## Proposal') },
         },
         'Oldest by device clock?',
+        false,
       ),
     )
   },
@@ -138,6 +139,22 @@ export const Suggest: Story = {
       expect.objectContaining({ quote: 'stops working' }),
       'can’t save',
       '',
+      false,
+    )
+  },
+}
+
+// A comment can wait for your review instead of going out now
+export const AddToReview: Story = {
+  args: { addToReview: true },
+  play: async ({ args, canvasElement, userEvent }) => {
+    select(canvasElement, 'oldest first')
+    const page = within(document.body)
+    await userEvent.click(await page.findByRole('button', { name: 'Comment' }))
+    await userEvent.type(page.getByRole('textbox', { name: 'Comment' }), 'Later')
+    await userEvent.click(page.getByRole('button', { name: 'Add to review' }))
+    await waitFor(() =>
+      expect(args.onComment).toHaveBeenCalledWith(expect.objectContaining({ quote: 'oldest first' }), 'Later', true),
     )
   },
 }

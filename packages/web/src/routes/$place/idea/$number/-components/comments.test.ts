@@ -14,6 +14,7 @@ const thread = (id: string, extra: Partial<Thread> = {}): Thread => ({
   createdAt: 1,
   body: `Comment ${id}`,
   version: 1,
+  pending: false,
   resolved: false,
   state: 'exact',
   anchor: { kind: 'text', file: 'f1', start: 0, end: 4, quote: 'Ship' },
@@ -43,6 +44,7 @@ function setup(
       suggestEdit: async () => ({ comment: 'c9', old: 'Ship' }),
       reply: async () => ({ comment: 'c10' }),
       resolveComment: async (input) => ({ comment: input.comment, resolved: input.resolved }),
+      deletePendingComment: async (input) => ({ deleted: [input.comment] }),
       rejectSuggestion: async (input) => ({ comment: input.comment }),
       ...api,
     },
@@ -96,7 +98,7 @@ test('comments, replies and resolves arrive on the socket, without reading the l
   await socket.emit({
     type: 'reply',
     parent: 'c1',
-    reply: { id: 'c3', author: riley, createdAt: 2, body: 'Friday.', version: 1 },
+    reply: { id: 'c3', author: riley, createdAt: 2, body: 'Friday.', version: 1, pending: false },
     by: riley,
   })
   await socket.emit({ type: 'resolved', comment: 'c2', resolved: true, by: riley })
@@ -162,14 +164,14 @@ test('a reply and a resolve show at once and are sent as such', async () => {
   })
   await ready()
   const replied = comments.update('c1', (draft) => {
-    draft.replies.push({ id: pendingId(), author: riley, createdAt: 3, body: 'Agreed.', version: 1 })
+    draft.replies.push({ id: pendingId(), author: riley, createdAt: 3, body: 'Agreed.', version: 1, pending: false })
   })
   expect(comments.get('c1')!.replies.map((r) => r.body)).toEqual(['Agreed.'])
   await tick()
   await sockets[0]!.emit({
     type: 'reply',
     parent: 'c1',
-    reply: { id: 'c10', author: riley, createdAt: 3, body: 'Agreed.', version: 1 },
+    reply: { id: 'c10', author: riley, createdAt: 3, body: 'Agreed.', version: 1, pending: false },
     by: riley,
   })
   await replied.when('settled')

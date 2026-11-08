@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '@ideaf/api'
 import { type Anchor, type DraftChange, parseMarkdown, suggestionSource } from '@ideaf/core'
-import { Button, Dialog, Toast } from '@ideaf/ui'
+import { Button, Dialog, Link, Toast } from '@ideaf/ui'
 import { useLiveSuspenseQuery } from '@tanstack/react-db'
 import { useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
@@ -61,6 +61,8 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path }: IdeaVie
   )
   const asOf = useQuery({ ...commentsQuery(id, version), enabled: older })
   const threads: Thread[] = older ? (asOf.data ?? []) : live
+  // your review, not submitted yet: comments and replies only you see
+  const pendingCount = threads.flatMap((t) => [t, ...t.replies]).filter((c) => c.pending).length
   const { data: me } = useSuspenseQuery(meQuery)
   const team = useQuery({ ...teamQuery(idea.team ?? ''), enabled: idea.team !== null })
   const [note, setNote] = useState<string | null>(null)
@@ -193,36 +195,47 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path }: IdeaVie
         source={file.source}
         compare={base !== null && baseFiles.data ? { base, source: baseFile?.content ?? '' } : null}
         banner={
-          canEdit ? (
-            <div className="idea-edit-start">
-              {draftChanges.length > 0 && (
+          <>
+            {!older && pendingCount > 0 && (
+              <div className="idea-edit-start">
                 <span>
-                  The draft has {draftChanges.length === 1 ? '1 change' : `${draftChanges.length} changes`}, by{' '}
-                  {drafters.join(', ')}.
+                  Your review has {pendingCount === 1 ? '1 pending comment' : `${pendingCount} pending comments`}: only
+                  you see {pendingCount === 1 ? 'it' : 'them'} until you submit it.
                 </span>
-              )}
-              <Button size="sm" onClick={() => setEditing(true)} disabled={!draft.data}>
-                {draftChanges.length > 0 ? 'Open the draft' : 'Edit'}
-              </Button>
-            </div>
-          ) : base !== null ? (
-            <VersionBanner
-              kind="compare"
-              version={version}
-              base={base}
-              stopHref={links.files({ v: shownV, file: path })}
-            />
-          ) : older ? (
-            <VersionBanner
-              kind="older"
-              version={version}
-              latest={latest}
-              by={by}
-              at={at}
-              latestHref={links.files({ file: path })}
-              changesHref={links.changes(version, undefined, path)}
-            />
-          ) : null
+                <Link href={links.overview}>Submit your review</Link>
+              </div>
+            )}
+            {canEdit ? (
+              <div className="idea-edit-start">
+                {draftChanges.length > 0 && (
+                  <span>
+                    The draft has {draftChanges.length === 1 ? '1 change' : `${draftChanges.length} changes`}, by{' '}
+                    {drafters.join(', ')}.
+                  </span>
+                )}
+                <Button size="sm" onClick={() => setEditing(true)} disabled={!draft.data}>
+                  {draftChanges.length > 0 ? 'Open the draft' : 'Edit'}
+                </Button>
+              </div>
+            ) : base !== null ? (
+              <VersionBanner
+                kind="compare"
+                version={version}
+                base={base}
+                stopHref={links.files({ v: shownV, file: path })}
+              />
+            ) : older ? (
+              <VersionBanner
+                kind="older"
+                version={version}
+                latest={latest}
+                by={by}
+                at={at}
+                latestHref={links.files({ file: path })}
+                changesHref={links.changes(version, undefined, path)}
+              />
+            ) : null}
+          </>
         }
         versions={{
           versions: [...idea.versions].reverse().map((n) => ({
@@ -253,30 +266,32 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path }: IdeaVie
         // comments go on the latest version only, and so do decisions on suggestions
         canComment={idea.you.view && !older}
         canDecide={idea.you.edit && !older}
-        onComment={(selection, body) => {
+        addToReview
+        onComment={(selection, body, pending) => {
           const anchor = anchorOf(selection)
           if (anchor) {
-            writes.comment(anchor, body)
+            writes.comment(anchor, body, pending)
           }
         }}
         suggestionOf={suggestionOf}
-        onSuggest={(selection, replacement, body) => {
+        onSuggest={(selection, replacement, body, pending) => {
           const anchor = anchorOf(selection)
           const old = suggestionOf(selection)
           if (anchor && old !== null) {
-            writes.suggest(anchor, old, replacement, body)
+            writes.suggest(anchor, old, replacement, body, pending)
           }
         }}
         onAccept={(ids) => accept(ids)}
         onAddToDraft={(ids) => accept(ids, 'draft')}
         onReject={writes.reject}
-        onSectionComment={(heading, body) => {
+        onSectionComment={(heading, body, pending) => {
           const section = sectionAt(file.source, file.unitIds, heading)
           if (section) {
-            writes.comment({ kind: 'section', file: file.id, section }, body)
+            writes.comment({ kind: 'section', file: file.id, section }, body, pending)
           }
         }}
         onReply={writes.reply}
+        onDelete={writes.remove}
         onResolve={writes.resolve}
         onViewInVersion={(n) => void navigate({ href: links.files({ v: n, file: path }) })}
       />

@@ -188,7 +188,7 @@ Ideas move through the states defined in `idea.md`: draft, requesting review and
 
 Requirements name groups rather than people, so they keep working as people join and leave groups. Only a team's maintainers and admins can change its requirements.
 
-**Pending reviews.** A reviewer can start a review and leave comments, replies and suggested edits as pending: visible only to them, and editable or deletable until submitted. Submitting publishes them all at once, optionally with a verdict and a summary comment, so the author gets one review instead of a stream of notifications. This matters for agents too: a bot reviewing a whole idea should submit one review, not dozens of separate comments. Pending comments are kept by the idea's actor, so a review can be continued on another machine or finished from the cli, and they follow new versions like any other comment.
+**Pending reviews.** A reviewer can start a review and leave comments, replies and suggested edits as pending: visible only to them, and editable or deletable until submitted. Submitting publishes them all at once, optionally with a verdict and a summary comment, so the author gets one review instead of a stream of notifications. This matters for agents too: a bot reviewing a whole idea should submit one review, not dozens of separate comments. Pending comments are kept by the idea's actor, so a review can be continued on another machine or finished from the cli, and they follow new versions like any other comment. Submitting a verdict publishes them; so does submitting without one. Nobody else can reply to, resolve or accept a pending comment, and it doesn't count as an open thread for the "all discussions resolved" requirement until it's out.
 
 ## Future consisterations
 

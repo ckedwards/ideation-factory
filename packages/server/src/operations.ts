@@ -18,6 +18,7 @@ import {
 import type { Client } from 'rivetkit/client'
 import { DIRECTORY_KEY } from './actors/directory.ts'
 import type { ContainerKind, IdeaListing, Permission, RequirementCheck, Result } from './directory/types.ts'
+import { reviewerOf } from './idea/reviewer.ts'
 import type { IdeaWrite, WriteResult, WriteValue } from './idea/service.ts'
 import type { Registry } from './registry.ts'
 
@@ -110,8 +111,8 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
   }
 
   /** The idea's team's requirements, checked against its reviews now. */
-  const requirementsOf = async (idea: string) => {
-    const reviews = await ideaOf(idea).reviews()
+  const requirementsOf = async (idea: string, viewer: string | null = null) => {
+    const reviews = await ideaOf(idea).reviews(viewer)
     const approvers = reviews.reviews.filter((r) => r.counts).map((r) => r.by.user)
     return { reviews, check: await directory().checkRequirements(idea, approvers, reviews.openThreads) }
   }
@@ -119,7 +120,13 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
     if (value.kind !== 'review') {
       throw new Error(`expected a review, got ${value.kind}`)
     }
-    return value.review
+    return { review: value.review, published: value.published }
+  }
+  const pendingGone = (value: WriteValue) => {
+    if (value.kind !== 'pending') {
+      throw new Error(`expected pending comments, got ${value.kind}`)
+    }
+    return { deleted: value.comments }
   }
   const comment = (value: WriteValue) => {
     if (value.kind !== 'comment') {
@@ -290,7 +297,7 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
       withAccess(input.idea, { caller, token }, 'view', () =>
         read(async () => {
           const [{ reviews, check }, grants] = await Promise.all([
-            requirementsOf(input.idea),
+            requirementsOf(input.idea, reviewerOf(caller)),
             directory().grants(input.idea),
           ])
           const { openThreads: _open, ...rest } = reviews
@@ -365,7 +372,7 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
           {
             type: 'review',
             version: input.version,
-            verdict: input.verdict,
+            ...(input.verdict ? { verdict: input.verdict } : {}),
             ...(input.body ? { body: input.body } : {}),
           },
           review,
@@ -374,15 +381,36 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
 
     dismissReview: (input, context) =>
       withAccess(input.idea, context, 'edit', () =>
-        write(input.idea, context, { type: 'dismiss', reviewer: input.reviewer, reason: input.reason }, review),
+        write(input.idea, context, { type: 'dismiss', reviewer: input.reviewer, reason: input.reason }, (value) => {
+          const done = review(value)
+          if (!done.review) {
+            throw new Error('a dismissed verdict is missing')
+          }
+          return done.review
+        }),
       ),
+
+    editPendingComment: (input, context) =>
+      withAccess(input.idea, context, 'view', () =>
+        write(input.idea, context, { type: 'amend', comment: input.comment, body: input.body }, () => ({
+          comment: input.comment,
+        })),
+      ),
+
+    deletePendingComment: (input, context) =>
+      withAccess(input.idea, context, 'view', () =>
+        write(input.idea, context, { type: 'drop', comment: input.comment }, pendingGone),
+      ),
+
+    discardReview: (input, context) =>
+      withAccess(input.idea, context, 'view', () => write(input.idea, context, { type: 'unreview' }, pendingGone)),
 
     showBlocks: (input, { caller, token }) =>
       withAccess(input.idea, { caller, token }, 'view', () =>
         read(async () => {
           const idea = ideaOf(input.idea)
           const v = input.version ?? (await idea.summary())?.latest ?? notFound("this idea doesn't exist")
-          const [files, comments] = await Promise.all([idea.outline(v), idea.comments(v)])
+          const [files, comments] = await Promise.all([idea.outline(v), idea.comments(v, reviewerOf(caller))])
           return { version: v, files, comments: comments.filter((c) => !c.resolved && c.state !== 'outdated') }
         }),
       ),
@@ -427,21 +455,34 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
       ),
 
     listComments: (input, { caller, token }) =>
-      withAccess(input.idea, { caller, token }, 'view', () => read(() => ideaOf(input.idea).comments(input.version))),
+      withAccess(input.idea, { caller, token }, 'view', () =>
+        read(() => ideaOf(input.idea).comments(input.version, reviewerOf(caller))),
+      ),
 
     addComment: (input, context) =>
       withAccess(input.idea, context, 'view', () =>
         write(
           input.idea,
           context,
-          { type: 'comment', version: input.version, anchor: input.anchor, body: input.body },
+          {
+            type: 'comment',
+            version: input.version,
+            anchor: input.anchor,
+            body: input.body,
+            ...(input.pending ? { pending: true } : {}),
+          },
           comment,
         ),
       ),
 
     reply: (input, context) =>
       withAccess(input.idea, context, 'view', () =>
-        write(input.idea, context, { type: 'reply', parent: input.comment, body: input.body }, comment),
+        write(
+          input.idea,
+          context,
+          { type: 'reply', parent: input.comment, body: input.body, ...(input.pending ? { pending: true } : {}) },
+          comment,
+        ),
       ),
 
     resolveComment: (input, context) =>
@@ -459,7 +500,14 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         write(
           input.idea,
           context,
-          { type: 'suggest', version: input.version, anchor: input.anchor, new: input.new, body: input.body ?? '' },
+          {
+            type: 'suggest',
+            version: input.version,
+            anchor: input.anchor,
+            new: input.new,
+            body: input.body ?? '',
+            ...(input.pending ? { pending: true } : {}),
+          },
           (value) => {
             if (value.kind !== 'suggestion') {
               throw new Error(`expected a suggestion, got ${value.kind}`)

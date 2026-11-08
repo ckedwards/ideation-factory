@@ -29,6 +29,8 @@ export interface CommentReply {
   at: number
   // the text, rendered by the page (MarkdownView, compact)
   body: ReactNode
+  // part of your review, not submitted yet: only you see it
+  pending?: boolean
 }
 
 export interface CommentInfo extends CommentReply {
@@ -53,7 +55,10 @@ export interface CommentCardProps {
   // the author can accept or reject suggested edits
   canDecide?: boolean
   onSelect?: (() => void) | undefined
-  onReply?: ((body: string) => void) | undefined
+  // `pending`: added to your review rather than sent now
+  onReply?: ((body: string, pending: boolean) => void) | undefined
+  // offer "Add to review" on a reply (a reply in your own pending thread always is)
+  addToReview?: boolean
   onResolve?: ((resolved: boolean) => void) | undefined
   onAccept?: (() => void) | undefined
   // into the idea's draft, rather than a version now
@@ -73,6 +78,7 @@ export function CommentCard({
   canDecide = false,
   onSelect,
   onReply,
+  addToReview = false,
   onResolve,
   onAccept,
   onAddToDraft,
@@ -90,10 +96,11 @@ export function CommentCard({
     comment.resolved && 'is-resolved',
     comment.outdated && 'is-outdated',
     comment.author.kind !== 'person' && 'by-bot',
+    comment.pending && 'is-pending',
   ]
-  const send = () => {
+  const send = (pending = false) => {
     if (draft.trim()) {
-      onReply?.(draft)
+      onReply?.(draft, pending || comment.pending === true)
       setDraft('')
       setReplying(false)
     }
@@ -102,6 +109,11 @@ export function CommentCard({
     <article className={classes.filter(Boolean).join(' ')} aria-labelledby={headingId} onClick={onSelect}>
       <header className="comment-head" id={headingId}>
         <ActorLabel actor={comment.author} />
+        {comment.pending && (
+          <Tag tone="dashed" title="Part of your review: only you see it until you submit it">
+            Pending
+          </Tag>
+        )}
         <span className="comment-time">
           <RelativeTime at={comment.at} />
         </span>
@@ -169,6 +181,11 @@ export function CommentCard({
             <li key={reply.id}>
               <header className="comment-head">
                 <ActorLabel actor={reply.author} short />
+                {reply.pending && !comment.pending && (
+                  <Tag tone="dashed" title="Part of your review: only you see it until you submit it">
+                    Pending
+                  </Tag>
+                )}
                 <span className="comment-time">
                   <RelativeTime at={reply.at} />
                 </span>
@@ -188,7 +205,7 @@ export function CommentCard({
             placeholder="Reply…"
             aria-label="Reply"
             onChange={setDraft}
-            onSubmit={send}
+            onSubmit={() => send()}
             onCancel={() => setReplying(false)}
           />
           <div className="comment-reply-actions">
@@ -196,8 +213,13 @@ export function CommentCard({
             <Button variant="ghost" size="sm" onClick={() => setReplying(false)}>
               Cancel
             </Button>
-            <Button variant="primary" size="sm" disabled={!draft.trim()} onClick={send}>
-              Reply
+            {addToReview && !comment.pending && (
+              <Button size="sm" disabled={!draft.trim()} onClick={() => send(true)}>
+                Add to review
+              </Button>
+            )}
+            <Button variant="primary" size="sm" disabled={!draft.trim()} onClick={() => send()}>
+              {comment.pending ? 'Add reply' : 'Reply'}
             </Button>
           </div>
         </div>

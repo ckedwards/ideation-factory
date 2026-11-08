@@ -55,6 +55,8 @@ export interface IdeaDB {
     suggestion: string | null
     /** Whether a suggestion was accepted or rejected, as JSON ({ kind, by, at, version }); null while it's open. */
     decision: string | null
+    /** Part of a review not submitted yet: the reviewer's account (only they see it); null once published. */
+    pending: string | null
   }
   anchors: {
     comment: string
@@ -102,7 +104,18 @@ export const IDEA_COLUMNS = {
   versions: ['number', 'parent', 'created_at', 'created_by', 'how', 'next_id'],
   version_files: ['version', 'file', 'path', 'hash', 'bytes', 'unit_ids'],
   steps: ['version', 'step', 'command', 'addresses'],
-  comments: ['id', 'parent', 'version', 'author', 'created_at', 'body', 'resolved', 'suggestion', 'decision'],
+  comments: [
+    'id',
+    'parent',
+    'version',
+    'author',
+    'created_at',
+    'body',
+    'resolved',
+    'suggestion',
+    'decision',
+    'pending',
+  ],
   anchors: ['comment', 'version', 'state', 'anchor'],
   status_changes: ['seq', 'status', 'by', 'at', 'note'],
   reviews: ['seq', 'reviewer', 'by', 'verdict', 'version', 'body', 'at', 'dismissed'],
@@ -169,7 +182,8 @@ const MIGRATIONS: Migration[] = [
       body TEXT NOT NULL,
       resolved INTEGER NOT NULL DEFAULT 0,
       suggestion TEXT,
-      decision TEXT
+      decision TEXT,
+      pending TEXT
     )`,
     `CREATE INDEX comments_parent ON comments (parent)`,
     `CREATE TABLE anchors (

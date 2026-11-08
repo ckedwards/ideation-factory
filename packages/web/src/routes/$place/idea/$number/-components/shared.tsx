@@ -58,6 +58,7 @@ export function commentInfo(
           ? { kind: 'section', title: titles.get(anchor.section) ?? 'A section' }
           : { kind: 'file' },
     resolved: thread.resolved,
+    ...(thread.pending ? { pending: true } : {}),
     outdated: thread.state === 'outdated',
     ...(thread.suggestion
       ? {
@@ -79,6 +80,7 @@ export function commentInfo(
       author: actorOf(r.author, people),
       at: r.createdAt,
       body: <MarkdownView tree={markdownTree(r.body)} variant="compact" />,
+      ...(r.pending ? { pending: true } : {}),
     })),
   }
 }
@@ -104,12 +106,18 @@ export function commentWrites(
             : `That didn’t work: ${error instanceof Error ? error.message : String(error)}`,
         ),
       )
-  const thread = (anchor: Thread['anchor'], body: string, suggestion: Thread['suggestion']): Thread => ({
+  const thread = (
+    anchor: Thread['anchor'],
+    body: string,
+    suggestion: Thread['suggestion'],
+    pending: boolean,
+  ): Thread => ({
     id: pendingId(),
     author: caller,
     createdAt: Date.now(),
     body,
     version,
+    pending,
     resolved: false,
     state: 'exact',
     anchor,
@@ -119,10 +127,14 @@ export function commentWrites(
     replies: [],
   })
   return {
-    comment: (anchor: Thread['anchor'], body: string) => settle(comments.insert(thread(anchor, body, null))),
+    /** `pending`: part of your review, which only you see until you submit it. */
+    comment: (anchor: Thread['anchor'], body: string, pending = false) =>
+      settle(comments.insert(thread(anchor, body, null, pending))),
     /** A suggestion: `old` is what it replaces (suggestionSource), `replacement` its Markdown. */
-    suggest: (anchor: Thread['anchor'], old: string, replacement: string, body: string) =>
-      settle(comments.insert(thread(anchor, body, { old, new: replacement, decision: null, inDraft: false }))),
+    suggest: (anchor: Thread['anchor'], old: string, replacement: string, body: string, pending = false) =>
+      settle(comments.insert(thread(anchor, body, { old, new: replacement, decision: null, inDraft: false }, pending))),
+    /** Deletes one of your pending comments, with its replies. */
+    remove: (id: string) => settle(comments.delete(id)),
     reject: (id: string) =>
       settle(
         comments.update(id, (draft) => {
@@ -132,10 +144,10 @@ export function commentWrites(
           }
         }),
       ),
-    reply: (thread: string, body: string) =>
+    reply: (thread: string, body: string, pending = false) =>
       settle(
         comments.update(thread, (draft) => {
-          draft.replies.push({ id: pendingId(), author: caller, createdAt: Date.now(), body, version })
+          draft.replies.push({ id: pendingId(), author: caller, createdAt: Date.now(), body, version, pending })
         }),
       ),
     resolve: (thread: string, resolved: boolean) =>

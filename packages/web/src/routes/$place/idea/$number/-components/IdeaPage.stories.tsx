@@ -131,7 +131,7 @@ export const Reply: Story = {
     await userEvent.click(page.getAllByRole('button', { name: 'Reply' })[0]!)
     await userEvent.type(page.getByRole('textbox', { name: /reply/i }), 'Last write wins.')
     await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
-    await waitFor(() => expect(args.onReply).toHaveBeenCalledWith(expect.any(String), 'Last write wins.'))
+    await waitFor(() => expect(args.onReply).toHaveBeenCalledWith(expect.any(String), 'Last write wins.', false))
   },
 }
 

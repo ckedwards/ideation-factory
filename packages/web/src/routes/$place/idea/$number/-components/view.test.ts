@@ -17,6 +17,7 @@ const thread = (anchor: Thread['anchor'], state: Thread['state'] = 'exact'): Thr
   createdAt: 0,
   body: 'Why?',
   version: 1,
+  pending: false,
   resolved: false,
   state,
   anchor,

@@ -10,6 +10,7 @@ import { api, meQuery, teamQuery } from '../../../../api.ts'
 import { type ActivityItem, IdeaOverview } from './-components/IdeaOverview.tsx'
 import { IdeaTabs } from './-components/IdeaTabs.tsx'
 import { ideaLinks } from './-components/links.ts'
+import { rereadComments } from './-components/comments.ts'
 import { commentsOf } from './-components/live.ts'
 import { filesQuery, ideaQuery, outlineQuery, reviewsQuery } from './-components/queries.ts'
 import { ReviewPanel, type ReviewRow } from './-components/ReviewPanel.tsx'
@@ -164,8 +165,24 @@ function Overview() {
             }
             onClose={(reason, note) => send(() => api.closeIdea({ idea: id, reason, ...(note ? { note } : {}) }))}
             onReopen={() => noted(() => api.reopenIdea({ idea: id }))}
+            pending={reviews.pending}
             onReview={(verdict, body) =>
-              send(() => api.reviewIdea({ idea: id, version: reviews.latest, verdict, ...(body ? { body } : {}) }))
+              send(async () => {
+                await api.reviewIdea({
+                  idea: id,
+                  version: reviews.latest,
+                  ...(verdict ? { verdict } : {}),
+                  ...(body ? { body } : {}),
+                })
+                // your pending comments are out now
+                await rereadComments(id)
+              })
+            }
+            onDiscard={() =>
+              noted(async () => {
+                await api.discardReview({ idea: id })
+                await rereadComments(id)
+              })
             }
             onDismiss={(reviewer, reason) => send(() => api.dismissReview({ idea: id, reviewer, reason }))}
           />

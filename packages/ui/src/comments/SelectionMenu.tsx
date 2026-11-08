@@ -15,10 +15,12 @@ export interface SelectionMenuProps {
   suggestionOf?: (selection: TextSelection) => string | null
   // off on a version that isn't the latest, where nothing can be added
   enabled?: boolean
-  // each action is offered only when the page handles it
-  onComment?: (selection: TextSelection, body: string) => void
-  onSuggest?: (selection: TextSelection, replacement: string, body: string) => void
-  onSectionComment?: (section: NonNullable<TextSelection['section']>, body: string) => void
+  // offer "Add to review" too: kept pending, for only you to see until you submit your review
+  addToReview?: boolean
+  // each action is offered only when the page handles it; `pending`: added to your review
+  onComment?: (selection: TextSelection, body: string, pending: boolean) => void
+  onSuggest?: (selection: TextSelection, replacement: string, body: string, pending: boolean) => void
+  onSectionComment?: (section: NonNullable<TextSelection['section']>, body: string, pending: boolean) => void
 }
 
 type Mode = 'menu' | 'comment' | 'suggest' | 'section'
@@ -42,6 +44,7 @@ export function SelectionMenu({
   source,
   suggestionOf,
   enabled = true,
+  addToReview = false,
   onComment,
   onSuggest,
   onSectionComment,
@@ -127,16 +130,16 @@ export function SelectionMenu({
   const replaced = original(selection)
   // a suggestion must change something; a comment must say something
   const ready = mode === 'suggest' ? replaced !== null && replacement !== replaced : body.trim() !== ''
-  const submit = () => {
+  const submit = (pending = false) => {
     if (!ready) {
       return
     }
     if (mode === 'comment') {
-      onComment?.(selection, body.trim())
+      onComment?.(selection, body.trim(), pending)
     } else if (mode === 'suggest') {
-      onSuggest?.(selection, replacement, body.trim())
+      onSuggest?.(selection, replacement, body.trim(), pending)
     } else if (mode === 'section' && selection.section) {
-      onSectionComment?.(selection.section, body.trim())
+      onSectionComment?.(selection.section, body.trim(), pending)
     }
     close()
   }
@@ -217,7 +220,7 @@ export function SelectionMenu({
                     className="selection-menu-replacement"
                     value={replacement}
                     onChange={setReplacement}
-                    onSubmit={submit}
+                    onSubmit={() => submit()}
                     onCancel={close}
                     rows={3}
                     autoFocus
@@ -227,7 +230,7 @@ export function SelectionMenu({
                 <TextArea
                   value={body}
                   onChange={setBody}
-                  onSubmit={submit}
+                  onSubmit={() => submit()}
                   onCancel={close}
                   rows={mode === 'suggest' ? 2 : 3}
                   autoFocus={mode !== 'suggest'}
@@ -239,6 +242,11 @@ export function SelectionMenu({
                   <Button size="sm" variant="ghost" onClick={close}>
                     Cancel
                   </Button>
+                  {addToReview && (
+                    <Button size="sm" disabled={!ready} onClick={() => submit(true)}>
+                      Add to review
+                    </Button>
+                  )}
                   <Button size="sm" variant="primary" type="submit" disabled={!ready}>
                     {mode === 'suggest' ? 'Suggest' : 'Comment'}
                   </Button>

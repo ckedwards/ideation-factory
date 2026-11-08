@@ -56,6 +56,11 @@ async function print(ctx: Context, idea: string, reviews: Reviews): Promise<void
         : `Its team’s approval requirements aren’t met yet:\n${unmet.map((c) => `  ${checkWords(c)}`).join('\n')}`,
     )
   }
+  if (reviews.pending > 0) {
+    ctx.say(
+      `You have ${plural(reviews.pending)}: only you see ${reviews.pending === 1 ? 'it' : 'them'} until \`ideaf review submit\`, or a verdict, sends ${reviews.pending === 1 ? 'it' : 'them'}.`,
+    )
+  }
   if (reviews.reviews.length === 0) {
     ctx.say('No verdicts yet.')
     return
@@ -127,17 +132,38 @@ export async function verdict(
 ): Promise<number> {
   const idea = await ctx.ideaId(flags.idea)
   const { latest } = await ctx.api.getIdea({ idea })
-  const review = await ctx.api.reviewIdea({
+  const { review, published } = await ctx.api.reviewIdea({
     idea,
     version: latest,
     verdict,
     ...(flags.message ? { body: flags.message } : {}),
   })
-  ctx.result({ idea, review })
+  ctx.result({ idea, review, published })
   const said = verdict === 'approve' ? 'Approved' : verdict === 'reject' ? 'Rejected' : 'Requested changes to'
   ctx.say(
-    `${said} v${review.version} of ${idea}.${verdict === 'approve' && !review.counts ? ' A bot’s approval shows, but doesn’t count toward the team’s requirements.' : ''}`,
+    `${said} v${latest} of ${idea}${published.length ? `, publishing ${plural(published.length)}` : ''}.${verdict === 'approve' && review && !review.counts ? ' A bot’s approval shows, but doesn’t count toward the team’s requirements.' : ''}`,
   )
+  return EXIT.ok
+}
+
+const plural = (n: number) => (n === 1 ? '1 pending comment' : `${n} pending comments`)
+
+/** Publishes your pending comments, with no verdict. */
+export async function submit(ctx: Context, flags: { idea?: string }): Promise<number> {
+  const idea = await ctx.ideaId(flags.idea)
+  const { latest } = await ctx.api.getIdea({ idea })
+  const { published } = await ctx.api.reviewIdea({ idea, version: latest })
+  ctx.result({ idea, published })
+  ctx.say(`Published ${plural(published.length)} on ${idea}: ${published.join(', ')}.`)
+  return EXIT.ok
+}
+
+/** Deletes your pending comments. */
+export async function discard(ctx: Context, flags: { idea?: string }): Promise<number> {
+  const idea = await ctx.ideaId(flags.idea)
+  const { deleted } = await ctx.api.discardReview({ idea })
+  ctx.result({ idea, deleted })
+  ctx.say(deleted.length ? `Discarded ${plural(deleted.length)}.` : 'You had nothing pending.')
   return EXIT.ok
 }
 
