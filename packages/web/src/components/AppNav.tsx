@@ -2,6 +2,7 @@
 // your teams, and at the bottom the signed-in person, the theme and signing
 // out.
 import { Button, Link, type Person, SideNav, ThemeToggle, type Theme, UserName } from '@ideaf/ui'
+import './AppNav.css'
 
 /** The page being shown, so its link is marked. */
 export type NavPage = 'home' | 'ideas' | 'teams' | 'groups' | 'settings' | null
@@ -38,13 +39,17 @@ export function AppNav({ me, teams, current, theme, onThemeChange, onSignOut }: 
         {
           title: 'Your teams',
           items: teams.map((team) => ({ href: `/${team.handle}`, label: team.name })),
-          empty: <Link href="/teams">Find a team to join</Link>,
+          empty: (
+            <Link className="app-nav-link" href="/teams">
+              Find a team to join
+            </Link>
+          ),
         },
       ]}
       footer={
         <>
           <UserName person={me} withAvatar />
-          <Link href="/settings" aria-current={current === 'settings' ? 'page' : undefined}>
+          <Link className="app-nav-link" href="/settings" aria-current={current === 'settings' ? 'page' : undefined}>
             Your settings
           </Link>
           <ThemeToggle value={theme} onChange={onThemeChange} />

@@ -1,0 +1,8 @@
+.app-nav-link {
+  color: var(--accent);
+  font-size: var(--text-sm);
+}
+.app-nav-link[aria-current='page'] {
+  color: var(--ink);
+  font-weight: 600;
+}
