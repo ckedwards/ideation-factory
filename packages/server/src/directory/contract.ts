@@ -458,6 +458,31 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
       })
     })
 
+    describe('reads in one call', () => {
+      test('people by ID, in one read; anyone not found is left out', async () => {
+        const d = await people()
+        const found = await d.users(['u-maya', 'u-riley', 'u-nobody', 'u-maya'])
+        expect(found.map((u) => u.handle).sort()).toEqual(['maya', 'riley'])
+        expect(await d.users([])).toEqual([])
+      })
+
+      test('an idea as one reader may see it, and finding it only for those who can', async () => {
+        const d = await people()
+        const core = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
+          .value.id
+        await d.registerIdea(idea('i1', { team: core }))
+        expect(await d.ideaFor('i1', 'u-riley')).toEqual({
+          permission: { view: true, edit: true, share: true, owner: true },
+          team: core,
+          place: { id: 'i1', place: 'core', number: 1 },
+        })
+        expect((await d.ideaFor('i1', 'u-outsider'))!.permission.view).toBe(false)
+        expect(await d.ideaFor('nothing', 'u-riley')).toBeNull()
+        expect(await d.findIdeaFor('core', 1, 'u-riley')).toEqual({ id: 'i1', place: 'core', number: 1 })
+        expect(await d.findIdeaFor('core', 1, 'u-outsider')).toBeNull()
+      })
+    })
+
     describe("an idea's number and address", () => {
       test("each team numbers its ideas from 1, and so does each person's own; the address finds the idea", async () => {
         const d = await people()

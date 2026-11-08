@@ -161,6 +161,15 @@ test("the API is under /api; every other path is the web app's", async () => {
   expect((await app(new Request(`${TEST_URL}/teams/mobile`))).status).toBe(404)
 })
 
+test('get_people names several people in one call, leaving out anyone not found', async () => {
+  const api = client()
+  const me = await api.me({})
+  const other = await signIn(app, `${someone}-other`)
+  const { items } = await api.getPeople({ ids: [me.id, other.id, 'u-nobody'] })
+  expect(items.map((p) => p.id).sort()).toEqual([me.id, other.id].sort())
+  await expect(api.getPeople({ ids: [] })).rejects.toMatchObject({ code: 'invalid' })
+})
+
 test('/api/openapi.json and /health need no token', async () => {
   const openapi = await (await app(new Request(`${TEST_URL}/api/openapi.json`))).json()
   expect(openapi).toMatchObject({

@@ -18,6 +18,7 @@ import {
   type AccessChange,
   type IdeaFilter,
   type IdeaPlace,
+  type IdeaAccess,
   type IdeaListing,
   type Memberships,
   type IdeaRow,
@@ -261,6 +262,19 @@ export class SqlDirectory implements Directory {
     const row =
       (await find({ handle })) ?? (await this.#aliased('user', handle).then((id) => (id ? find({ id }) : undefined)))
     return row ? toUser(row) : null
+  }
+
+  async users(ids: string[]): Promise<User[]> {
+    const unique = [...new Set(ids)]
+    if (unique.length === 0) {
+      return []
+    }
+    const rows = await this.#db
+      .selectFrom('users')
+      .select(['id', 'handle', 'name', 'inactive'])
+      .where('id', 'in', unique)
+      .execute()
+    return rows.map(toUser)
   }
 
   /** Whose old handle this is, if it's still theirs to lead to. */
@@ -963,6 +977,20 @@ export class SqlDirectory implements Directory {
     }
     const place = row.team ? (await this.team(row.team))?.handle : `@${(await this.user(row.owner))?.handle}`
     return place ? { id: row.id, place, number: row.number } : null
+  }
+
+  async ideaFor(id: string, user: string, token?: string | null): Promise<IdeaAccess | null> {
+    const [row, place, permission] = await Promise.all([
+      this.idea(id),
+      this.placeOf(id),
+      this.permission(id, user, token),
+    ])
+    return row && place ? { permission, team: row.team, place } : null
+  }
+
+  async findIdeaFor(place: string, number: number, user: string, token?: string | null): Promise<IdeaPlace | null> {
+    const found = await this.findIdea(place, number)
+    return found && (await this.permission(found.id, user, token)).view ? found : null
   }
 
   async findIdea(place: string, number: number): Promise<IdeaPlace | null> {
