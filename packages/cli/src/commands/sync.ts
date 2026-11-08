@@ -5,11 +5,12 @@ import { contentHash } from '@ideaf/core'
 import type { Context } from '../context.ts'
 import { EXIT } from '../context.ts'
 import { gitHint, type IdeaState, readText, scanMarkdown, scopeFrom, writeState } from '../workspace.ts'
+import { confirmingDraft } from './draft.ts'
 import { describeOutcomes } from './output.ts'
 
 export function sync(
   ctx: Context,
-  flags: { idea?: string; force?: boolean },
+  flags: { idea?: string; force?: boolean; outdateDraft?: boolean },
   path: string | undefined,
 ): Promise<number> {
   return ctx.locked(flags.idea, ({ id, state }) => run(ctx, id, state, flags, path))
@@ -19,7 +20,7 @@ async function run(
   ctx: Context,
   id: string,
   state: IdeaState,
-  flags: { force?: boolean },
+  flags: { force?: boolean; outdateDraft?: boolean },
   path: string | undefined,
 ): Promise<number> {
   const scope = scopeFrom(ctx.ws, ctx.io.cwd, path)
@@ -59,14 +60,20 @@ async function run(
   }
 
   const hint = gitHint(ctx.ws)
-  const result = await ctx.api.sync({
-    idea: id,
-    files,
-    ...(deleted.length ? { deleted } : {}),
-    ...(flags.force ? { force: true } : {}),
-    // the server remembers where it was last synced from, for other machines
-    ...(hint ? { gitHint: hint } : {}),
-  })
+  const result = await confirmingDraft(ctx, flags.outdateDraft === true, (outdateDraft) =>
+    ctx.api.sync({
+      idea: id,
+      files,
+      ...(deleted.length ? { deleted } : {}),
+      ...(flags.force ? { force: true } : {}),
+      // the server remembers where it was last synced from, for other machines
+      ...(hint ? { gitHint: hint } : {}),
+      ...(outdateDraft ? { outdateDraft } : {}),
+    }),
+  )
+  if (!result) {
+    return EXIT.ok
+  }
   const pulled = await ctx.api.pull({ idea: id, version: result.version })
   const hashes = new Map([...local].map(([p, f]) => [p, f.hash]))
   const next = { ...state, version: result.version, branch: hint?.branch ?? state.branch, files: { ...state.files } }

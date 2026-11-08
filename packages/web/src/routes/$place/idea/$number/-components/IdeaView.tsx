@@ -5,8 +5,9 @@
 // and accept suggestions into it.
 // The routes say which version, which file and what to compare against.
 import { useEffect, useRef, useState } from 'react'
-import { type Anchor, parseMarkdown, suggestionSource } from '@ideaf/core'
-import { Button, Toast } from '@ideaf/ui'
+import { ApiError } from '@ideaf/api'
+import { type Anchor, type DraftChange, parseMarkdown, suggestionSource } from '@ideaf/core'
+import { Button, Dialog, Toast } from '@ideaf/ui'
 import { useLiveSuspenseQuery } from '@tanstack/react-db'
 import { useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
@@ -15,7 +16,7 @@ import { sectionAt, toPlain } from './anchors.ts'
 import { IdeaPage } from './IdeaPage.tsx'
 import { IdeaTabs } from './IdeaTabs.tsx'
 import type { IdeaLinks } from './links.ts'
-import { useEditing } from './editing.tsx'
+import { describe, useEditing } from './editing.tsx'
 import { commentsOf } from './live.ts'
 import { commentsQuery, draftQuery, filesQuery, ideaQuery, outlineQuery } from './queries.ts'
 import { commentInfo, commentWrites, teamRef, usePeople } from './shared.tsx'
@@ -111,10 +112,12 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path }: IdeaVie
     return found?.ok ? found.old : null
   }
   /** Accepts suggestions as a version now, or into the draft. */
-  const accept = (suggestions: string[], into: 'version' | 'draft' = 'version') => {
+  // accepting as a version that would make changes in the draft outdated: asked first
+  const [outdating, setOutdating] = useState<{ suggestions: string[]; changes: string[] } | null>(null)
+  const accept = (suggestions: string[], into: 'version' | 'draft' = 'version', outdateDraft = false) => {
     accepting.current++
     void api
-      .acceptSuggestions({ idea: id, suggestions, into })
+      .acceptSuggestions({ idea: id, suggestions, into, ...(outdateDraft ? { outdateDraft } : {}) })
       .then(
         (done) => {
           if (done.version !== null) {
@@ -124,7 +127,17 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path }: IdeaVie
           setNote([said, ...done.skipped.map((s) => `${s.id} stays open: ${s.message}.`)].join(' '))
           void queryClient.invalidateQueries({ queryKey: draftQuery(id).queryKey, exact: true })
         },
-        (error: unknown) => setNote(`That didn’t work: ${error instanceof Error ? error.message : String(error)}`),
+        (error: unknown) => {
+          if (error instanceof ApiError && error.code === 'draft_outdated') {
+            const { changes } = error.details as { changes: Array<{ change: DraftChange; by: { user: string } }> }
+            setOutdating({
+              suggestions,
+              changes: changes.map((c) => `${describe(c.change)} · ${people.get(c.by.user)?.name ?? 'someone'}`),
+            })
+            return
+          }
+          setNote(`That didn’t work: ${error instanceof Error ? error.message : String(error)}`)
+        },
       )
       .finally(() => accepting.current--)
   }
@@ -267,6 +280,38 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path }: IdeaVie
         onResolve={writes.resolve}
         onViewInVersion={(n) => void navigate({ href: links.files({ v: n, file: path }) })}
       />
+      <Dialog
+        open={outdating !== null}
+        title="This would make the draft’s changes outdated"
+        onClose={() => setOutdating(null)}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setOutdating(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                accept(outdating?.suggestions ?? [], 'version', true)
+                setOutdating(null)
+              }}
+            >
+              Accept anyway
+            </Button>
+          </>
+        }
+      >
+        <p>
+          {outdating?.changes.length === 1
+            ? 'Accepting it as a new version changes text this change in the idea’s draft was made on. It’d be outdated, and committing the draft would wait until it’s undone or redone. Adding the suggestion to the draft instead keeps it.'
+            : 'Accepting it as a new version changes text these changes in the idea’s draft were made on. They’d be outdated, and committing the draft would wait until they’re undone or redone. Adding the suggestion to the draft instead keeps them.'}
+        </p>
+        <ul>
+          {outdating?.changes.map((c) => (
+            <li key={c}>{c}</li>
+          ))}
+        </ul>
+      </Dialog>
       <Toast message={note} onDismiss={() => setNote(null)} />
     </>
   )

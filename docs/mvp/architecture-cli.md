@@ -70,6 +70,7 @@ flowchart TB
 | `ideaf show --blocks [--json]` | The structured view: each file's sections and blocks with IDs and text, and the open comments on them |
 | `ideaf edit <batch> [--dry-run]` | Edit the idea in place with commands (replace, move, rename a heading, …). One batch makes one version |
 | `ideaf comment …` | List, show, add, reply to, resolve and reopen threads, and suggest edits. A comment goes on a file, a section by ID, or a quote: `--quote` takes the text as it reads, and the cli finds it in the file's plain text, so no one counts characters. `suggest <replacement> --quote …` proposes Markdown for the quote's source; if that has formatting the quote doesn't show, `--replaces` must confirm it, so a replacement can't drop formatting by accident. `accept <suggestion>…` (one new version, the rest left open saying why; `--draft` adds them to the idea's draft instead) and `reject` need edit access |
+| `--outdate-draft` | On `sync`, `edit` and `comment accept`: go ahead even though the new version makes changes in the idea's draft outdated. Without it, the cli shows them and asks at a terminal; elsewhere it stops with exit code 11 |
 | `ideaf draft show / commit / discard` | The idea's one draft, shared by everyone with edit access: its changes, who made each and which are outdated; committing it as one version (then `ideaf pull`); discarding it for everyone |
 | `ideaf review …` | Request reviewers, approve, or request changes |
 | `ideaf skills install` | Install the Ideation Factory skills for your agent |

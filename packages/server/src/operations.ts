@@ -285,6 +285,7 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
             files: input.files,
             ...(input.deleted ? { deleted: input.deleted } : {}),
             ...(input.force !== undefined ? { force: input.force } : {}),
+            ...(input.outdateDraft ? { outdateDraft: true } : {}),
             ...(input.gitHint ? { gitHint: input.gitHint } : {}),
           },
           version,
@@ -302,7 +303,12 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
 
     edit: (input, context) =>
       withAccess(input.idea, context, 'edit', () =>
-        write(input.idea, context, { type: 'edit', batch: input.batch }, version),
+        write(
+          input.idea,
+          context,
+          { type: 'edit', batch: input.batch, ...(input.outdateDraft ? { outdateDraft: true } : {}) },
+          version,
+        ),
       ),
 
     listComments: (input, { caller, token }) =>
@@ -358,7 +364,12 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         write(
           input.idea,
           context,
-          { type: 'accept', suggestions: input.suggestions, ...(input.into ? { into: input.into } : {}) },
+          {
+            type: 'accept',
+            suggestions: input.suggestions,
+            ...(input.into ? { into: input.into } : {}),
+            ...(input.outdateDraft ? { outdateDraft: true } : {}),
+          },
           (value) =>
             value.kind === 'drafted'
               ? { version: null, accepted: value.accepted, skipped: value.skipped }

@@ -517,13 +517,18 @@ describe('the draft', () => {
     value(
       await write({ type: 'draft', change: { kind: 'edit', id: 'b5', source: 'It may pour.', was: 'It might rain.' } }),
     )
-    // an agent's batch changes the fox
-    value(
-      await write({
-        type: 'edit',
-        batch: { base: 1, steps: [{ command: 'replace', in: 'b3', old: 'quick', new: 'slow' }] },
-      }),
-    )
+    // an agent's batch changes the fox: it has to confirm it outdates the draft's edit
+    const batch = { base: 1, steps: [{ command: 'replace', in: 'b3', old: 'quick', new: 'slow' }] }
+    expect(await write({ type: 'edit', batch })).toMatchObject({
+      ok: false,
+      error: {
+        code: 'draft_outdated',
+        message: 'this version would make a change in the draft outdated; confirm to make it anyway',
+        details: { changes: [{ key: (stale as { key: string }).key, by: OWNER }] },
+      },
+    })
+    expect((await service.summary())!.latest).toBe(1)
+    value(await write({ type: 'edit', batch, outdateDraft: true }))
     const draft = await service.draft()
     expect(draft.version).toBe(2)
     expect(draft.changes.map((c) => c.problem)).toEqual([
@@ -537,6 +542,23 @@ describe('the draft', () => {
     value(await write({ type: 'undraft', key: (stale as { key: string }).key }))
     expect(value(await write({ type: 'commit' }))).toMatchObject({ version: 3 })
     expect((await service.file(3, 'f1'))!.content).toContain('The slow brown fox.\n\n## Risks\n\nIt may pour.')
+  })
+
+  test("a version that leaves the draft's changes applying needs no confirming", async () => {
+    const { write } = await created()
+    value(
+      await write({ type: 'draft', change: { kind: 'edit', id: 'b5', source: 'It may pour.', was: 'It might rain.' } }),
+    )
+    const batch = { base: 1, steps: [{ command: 'replace', in: 'b3', old: 'quick', new: 'slow' }] }
+    expect(value(await write({ type: 'edit', batch }))).toMatchObject({ version: 2 })
+  })
+
+  test('a suggestion in the draft, accepted as a version instead, leaves the draft', async () => {
+    const { service, write } = await created()
+    value(await write({ type: 'suggest', version: 1, anchor: RAIN, new: 'may pour', body: '' }, REVIEWER))
+    value(await write({ type: 'accept', suggestions: ['c1'], into: 'draft' }))
+    expect(value(await write({ type: 'accept', suggestions: ['c1'] }))).toMatchObject({ version: 2 })
+    expect((await service.draft()).changes).toEqual([])
   })
 
   test('takes accepted suggestions, which are accepted when it is committed, and open again if it is discarded', async () => {

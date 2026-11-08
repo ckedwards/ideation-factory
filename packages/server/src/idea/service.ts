@@ -85,6 +85,7 @@ export const IdeaWrite = z.discriminatedUnion('type', [
     type: z.literal('accept'),
     suggestions: z.array(z.string()).min(1).max(100),
     into: z.enum(['version', 'draft']).optional(),
+    outdateDraft: z.boolean().optional(),
   }),
   /** Adds a change to the draft, if it applies to the draft as it is. Suggestions go in by `accept`. */
   z.strictObject({ type: z.literal('draft'), change: DraftChange }),
@@ -96,7 +97,8 @@ export const IdeaWrite = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('reject'), suggestion: z.string() }),
   z.strictObject({ type: z.literal('reply'), parent: z.string(), body: z.string().trim().min(1).max(20_000) }),
   z.strictObject({ type: z.literal('resolve'), comment: z.string(), resolved: z.boolean() }),
-  z.strictObject({ type: z.literal('edit'), batch: Batch }),
+  /** `outdateDraft`: make the version even though it makes changes in the draft outdated. */
+  z.strictObject({ type: z.literal('edit'), batch: Batch, outdateDraft: z.boolean().optional() }),
   z.strictObject({
     type: z.literal('upload'),
     files: z
@@ -114,6 +116,7 @@ export const IdeaWrite = z.discriminatedUnion('type', [
     force: z.boolean().optional(),
     /** Where in git it was synced from: replaces the idea's git hint. */
     gitHint: schemas.GitHint.optional(),
+    outdateDraft: z.boolean().optional(),
   }),
 ])
 export type IdeaWrite = z.infer<typeof IdeaWrite>
@@ -129,6 +132,7 @@ export type WriteErrorCode =
   | 'pull_first'
   | 'too_large'
   | 'conflict'
+  | 'draft_outdated'
 export type WriteError = { code: WriteErrorCode; message: string; details?: unknown }
 
 export type WriteValue =
@@ -551,6 +555,7 @@ export class IdeaService {
       {
         decide: { ids: ok.accepted, decision },
         value: { accepted: ok.accepted, skipped: [...skipped, ...ok.skipped] },
+        outdateDraft: write.outdateDraft === true,
       },
     )
   }
@@ -834,7 +839,9 @@ export class IdeaService {
       ok.idea.files.map((f) => ({ file: f.id, path: f.path, bytes: byteLength(f.source) })),
     )
     const steps = write.batch.steps.map((command, step) => ({ step, command, addresses: command.addresses ?? [] }))
-    return this.#newVersion(request, meta, latest, 'commands', ok.idea, ok.comments, steps, ok.steps)
+    return this.#newVersion(request, meta, latest, 'commands', ok.idea, ok.comments, steps, ok.steps, {
+      outdateDraft: write.outdateDraft === true,
+    })
   }
 
   async #upload(request: WriteRequest, write: Extract<IdeaWrite, { type: 'upload' }>) {
@@ -884,17 +891,10 @@ export class IdeaService {
       refuse('invalid', applied.problems.join('; '), { problems: applied.problems })
     }
     const ok = applied as Extract<typeof applied, { ok: true }>
-    return this.#newVersion(
-      request,
-      meta,
-      latest,
-      'upload',
-      ok.idea,
-      ok.comments,
-      [],
-      [],
-      write.gitHint ? { gitHint: write.gitHint } : {},
-    )
+    return this.#newVersion(request, meta, latest, 'upload', ok.idea, ok.comments, [], [], {
+      ...(write.gitHint ? { gitHint: write.gitHint } : {}),
+      outdateDraft: write.outdateDraft === true,
+    })
   }
 
   async #newVersion(
@@ -913,10 +913,20 @@ export class IdeaService {
       value?: { accepted: string[]; skipped: Skipped[] }
       /** Committing the draft: it's emptied with the new version. */
       clearDraft?: boolean
+      /** Make the version even if changes in the draft would become outdated (confirmed by the caller). */
+      outdateDraft?: boolean
     } = {},
   ) {
     const number = meta.latest + 1
     const { gitHint, decide } = more
+    // suggestions accepted here leave the draft: they're in this version
+    const accepted = new Set(decide?.ids ?? [])
+    const drafted = more.clearDraft ? [] : await this.#draftEntries()
+    const leaving = drafted.filter((e) => e.change.kind === 'suggestion' && accepted.has(e.change.comment))
+    const staying = drafted.filter((e) => !leaving.includes(e))
+    if (staying.length > 0 && !more.outdateDraft) {
+      await this.#checkDraftKept(latest, idea, outcomes, staying)
+    }
     const result: WriteResult = {
       ok: true,
       value: { kind: 'version', version: number, comments: outcomes, steps: stepResults, ...more.value },
@@ -942,6 +952,15 @@ export class IdeaService {
       }
       if (more.clearDraft) {
         await tx.deleteFrom('draft').execute()
+      } else if (leaving.length > 0) {
+        await tx
+          .deleteFrom('draft')
+          .where(
+            'key',
+            'in',
+            leaving.map((e) => e.key),
+          )
+          .execute()
       }
       await this.#remember(tx, request.key, result)
     })
@@ -965,6 +984,37 @@ export class IdeaService {
         { name: 'draft', payload: { by: request.caller } },
       ] satisfies IdeaEvent[],
     }
+  }
+
+  /**
+   * Refuses a version that would make changes in the draft outdated (changes
+   * that apply now and wouldn't on it), naming them, unless the caller
+   * confirms with `outdateDraft`.
+   */
+  async #checkDraftKept(
+    latest: Latest,
+    idea: Idea,
+    outcomes: CommentOutcome[],
+    entries: Array<DraftEntry & { by: Caller }>,
+  ): Promise<void> {
+    const plain = entries.map(({ key, change }) => ({ key, change }))
+    const before = await this.#buildDraft(latest, plain)
+    const comments = outcomes.flatMap((o) =>
+      o.state !== 'outdated' && o.anchor ? [{ id: o.id, anchor: o.anchor }] : [],
+    )
+    const after = await this.#core.buildDraft(this.id, idea, comments, plain)
+    const overtaken = entries.filter((e) => after.problems[e.key] !== undefined && before.problems[e.key] === undefined)
+    if (overtaken.length === 0) {
+      return
+    }
+    const n = overtaken.length
+    refuse(
+      'draft_outdated',
+      `this version would make ${n === 1 ? 'a change' : `${n} changes`} in the draft outdated; confirm to make it anyway`,
+      {
+        changes: overtaken.map((e) => ({ key: e.key, change: e.change, by: e.by, problem: after.problems[e.key]! })),
+      },
+    )
   }
 
   // --- reads --------------------------------------------------------------------

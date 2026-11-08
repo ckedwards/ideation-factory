@@ -8,6 +8,7 @@ import { parseMarkdown } from '@ideaf/core'
 import { CliError, type Context, EXIT } from '../context.ts'
 import { scopeFrom } from '../workspace.ts'
 import { truncate } from './output.ts'
+import { confirmingDraft } from './draft.ts'
 import { Names } from './subjects.ts'
 
 type Thread = Output<Operations['listComments']>[number]
@@ -195,14 +196,24 @@ export async function suggest(
 /** Accepts suggestions as one new version; those that no longer apply stay open, and say why. */
 export async function accept(
   ctx: Context,
-  flags: { idea?: string; draft?: boolean },
+  flags: { idea?: string; draft?: boolean; outdateDraft?: boolean },
   suggestions: string[],
 ): Promise<number> {
   if (suggestions.length === 0) {
     throw new CliError('name the suggestions to accept, like c3', EXIT.usage, 'usage')
   }
   const idea = await ctx.ideaId(flags.idea)
-  const result = await ctx.api.acceptSuggestions({ idea, suggestions, into: flags.draft ? 'draft' : 'version' })
+  const result = await confirmingDraft(ctx, flags.outdateDraft === true, (outdateDraft) =>
+    ctx.api.acceptSuggestions({
+      idea,
+      suggestions,
+      into: flags.draft ? 'draft' : 'version',
+      ...(outdateDraft ? { outdateDraft } : {}),
+    }),
+  )
+  if (!result) {
+    return EXIT.ok
+  }
   ctx.say(
     result.version === null
       ? `Added ${result.accepted.join(', ')} to the draft.`
