@@ -21,6 +21,7 @@ import { nodeDeps } from '../deps.ts'
 import { migrateDirectory } from '../directory/schema.ts'
 import { fts5Search } from '../directory/search.ts'
 import { SqlDirectory } from '../directory/sql-directory.ts'
+import { retryOverloaded } from '../sql/retry.ts'
 import type {
   ContainerKind,
   CreatePolicy,
@@ -190,13 +191,15 @@ type DirectoryContext = {
 
 /** Better Auth for this wake-up, on the actor's database. */
 function authOf(c: DirectoryContext): Auth {
-  c.vars.auth ??= authInDirectory(c.db, nodeDeps().auth, directoryOf(c))
+  // Better Auth's transactions stay open across its calls, so only its statements outside one are retried
+  c.vars.auth ??= authInDirectory(retryOverloaded(c.db, { transactions: false }), nodeDeps().auth, directoryOf(c))
   return c.vars.auth
 }
 
 function directoryOf(c: DirectoryContext): Directory {
   if (!c.vars.directory) {
-    c.vars.directory = new SqlDirectory({ sql: c.db, search })
+    // the engine refuses writes for a moment when storage is busy: wait and retry
+    c.vars.directory = new SqlDirectory({ sql: retryOverloaded(c.db), search })
   }
   return c.vars.directory
 }
