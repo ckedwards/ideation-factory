@@ -345,10 +345,15 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
         // going out for review asks the groups whose rule says so, once
         expect(await d.requestRuleGroups('i1')).toEqual([security, legal])
         expect(await d.requestRuleGroups('i1')).toEqual([])
-        expect((await d.grants('i1')).filter((g) => g.reviewer).map((g) => g.subject)).toEqual([
-          { kind: 'group', id: legal },
-          { kind: 'group', id: security },
-        ])
+        // grants are listed by ID, which is random: compare them in any order
+        const asked = (await d.grants('i1')).filter((g) => g.reviewer).map((g) => g.subject)
+        expect(asked).toHaveLength(2)
+        expect(asked).toEqual(
+          expect.arrayContaining([
+            { kind: 'group', id: legal },
+            { kind: 'group', id: security },
+          ]),
+        )
         expect((await d.permission('i1', 'u-sam')).view).toBe(true)
       })
 
