@@ -46,7 +46,9 @@ describe('reviews from the cli', () => {
 
     const shown = await riley.ideaf('review', 'show')
     expect(shown.out).toContain('is requesting review, on v1')
-    expect(shown.out).toContain(`Asked to review: @${h('maya')}`)
+    // in no particular order
+    expect(shown.out).toMatch(new RegExp(`Asked to review: .*@${h('maya')}`))
+    expect(shown.out).toMatch(new RegExp(`Asked to review: .*@${h('sam')}`))
     expect(shown.out).toMatch(/approved\s+@maya-\w+ · v1 · counts/)
     expect(shown.out).toMatch(/requested changes\s+@sam-\w+ · v1 · stands/)
     expect(shown.out).toContain('An objection stands')
