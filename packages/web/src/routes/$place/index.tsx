@@ -23,7 +23,8 @@ async function load(queryClient: QueryClient, place: string) {
     const person = await queryClient.query({ ...personByHandleQuery(handle), staleTime: 'static' })
     // an old handle: on to the current one
     if (person.handle !== handle) {
-      throw redirect({ to: '/$place', params: { place: `@${person.handle}` }, replace: true })
+      // an address, not route params: the router would write the @ as %40
+      throw redirect({ href: `/@${person.handle}`, replace: true })
     }
     await queryClient.infiniteQuery({ ...ideasQuery({ owner: person.id }), staleTime: 'static' })
   } else {

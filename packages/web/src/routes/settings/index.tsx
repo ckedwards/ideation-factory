@@ -161,7 +161,7 @@ function Settings() {
               sub: <>Allowed {at(c.createdAt)}</>,
               action: { label: 'Revoke', onClick: () => change.mutate(() => account.revokeConsent(c.id)) },
             }))}
-            empty="No apps act for you. `ideaf auth login` signs the cli in."
+            empty="No apps act for you. ideaf auth login signs the cli in."
           />
           <AccountList
             label="Personal tokens"
