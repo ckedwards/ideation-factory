@@ -11,6 +11,8 @@ export const EXIT = {
   localChanges: 8,
   unreachable: 9,
   busy: 10,
+  /** A version would make changes in the idea's draft outdated, and wasn't confirmed. */
+  draftOutdated: 11,
 } as const
 
 export class CliError extends Error {

@@ -7,11 +7,12 @@ import { createTwoFilesPatch } from 'diff'
 import { describeIssues } from '@ideaf/api'
 import { CliError, type Context, EXIT } from '../context.ts'
 import { type IdeaState, readText } from '../workspace.ts'
+import { confirmingDraft } from './draft.ts'
 import { describeOutcomes } from './output.ts'
 
 export function edit(
   ctx: Context,
-  flags: { idea?: string; 'dry-run'?: boolean },
+  flags: { idea?: string; 'dry-run'?: boolean; outdateDraft?: boolean },
   file: string | undefined,
   readStdin: () => Promise<string>,
 ): Promise<number> {
@@ -26,7 +27,7 @@ async function run(
   ctx: Context,
   id: string,
   state: IdeaState,
-  flags: { 'dry-run'?: boolean },
+  flags: { 'dry-run'?: boolean; outdateDraft?: boolean },
   file: string,
   readStdin: () => Promise<string>,
 ): Promise<number> {
@@ -91,7 +92,12 @@ async function run(
     )
   }
 
-  const result = await ctx.api.edit({ idea: id, batch })
+  const result = await confirmingDraft(ctx, flags.outdateDraft === true, (outdateDraft) =>
+    ctx.api.edit({ idea: id, batch, ...(outdateDraft ? { outdateDraft } : {}) }),
+  )
+  if (!result) {
+    return EXIT.ok
+  }
   ctx.result({ idea: id, ...result })
   ctx.say(`Edited ${id}: v${result.version}, ${result.steps.length} step${result.steps.length === 1 ? '' : 's'}.`)
   for (const line of describeOutcomes(result.comments)) {

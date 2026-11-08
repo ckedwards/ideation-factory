@@ -11,6 +11,8 @@ export const ERROR_STATUS = {
   stale_version: 409,
   pull_first: 409,
   conflict: 409,
+  /** A version would make changes in the idea's draft outdated: send it again with `outdateDraft` to confirm. */
+  draft_outdated: 409,
   too_large: 413,
   internal: 500,
   timed_out: 504,

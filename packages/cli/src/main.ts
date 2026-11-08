@@ -285,9 +285,24 @@ const comment: Family = {
       usage: 'ideaf comment accept <suggestion>… [--draft]',
       summary:
         'Accept suggestions as one new version, or into the idea’s draft (needs edit access). One whose text has changed or gone, or overlaps another, stays open and says why',
-      flags: { idea: IDEA, draft: { type: 'boolean', description: 'into the draft, to commit with the rest of it' } },
+      flags: {
+        idea: IDEA,
+        draft: { type: 'boolean', description: 'into the draft, to commit with the rest of it' },
+        'outdate-draft': {
+          type: 'boolean',
+          description: 'as a version even if it makes changes in the draft outdated (asked otherwise)',
+        },
+      },
       run: (ctx, f, a) =>
-        comments.accept(ctx, { ...(str(f, 'idea') ? { idea: str(f, 'idea')! } : {}), draft: f.draft === true }, a),
+        comments.accept(
+          ctx,
+          {
+            ...(str(f, 'idea') ? { idea: str(f, 'idea')! } : {}),
+            draft: f.draft === true,
+            outdateDraft: f['outdate-draft'] === true,
+          },
+          a,
+        ),
     },
     {
       name: 'reject',
@@ -474,15 +489,27 @@ const commands: Array<Command | Family> = [
   },
   {
     name: 'sync',
-    usage: 'ideaf sync [path] [--force]',
+    usage: 'ideaf sync [path] [--force] [--outdate-draft]',
     summary:
       'Upload the Markdown that changed since your last sync or pull. Refuses with "pull first" if the idea moved on',
     flags: {
       idea: IDEA,
       force: { type: 'boolean', description: 'upload even if the idea moved on (its newer changes show as undone)' },
+      'outdate-draft': {
+        type: 'boolean',
+        description: 'upload even if it makes changes in the idea’s draft outdated (asked otherwise)',
+      },
     },
     run: (ctx, f, args) =>
-      sync(ctx, { ...(typeof f.idea === 'string' ? { idea: f.idea } : {}), force: f.force === true }, args[0]),
+      sync(
+        ctx,
+        {
+          ...(typeof f.idea === 'string' ? { idea: f.idea } : {}),
+          force: f.force === true,
+          outdateDraft: f['outdate-draft'] === true,
+        },
+        args[0],
+      ),
   },
   {
     name: 'pull',
@@ -511,14 +538,25 @@ const commands: Array<Command | Family> = [
   },
   {
     name: 'edit',
-    usage: 'ideaf edit <batch.json | -> [--dry-run]',
+    usage: 'ideaf edit <batch.json | -> [--dry-run] [--outdate-draft]',
     summary:
       'Edit the idea in place with a batch of commands (one new version). --dry-run shows the diff and what happens to each comment',
-    flags: { idea: IDEA, 'dry-run': { type: 'boolean', description: 'show what would happen, changing nothing' } },
+    flags: {
+      idea: IDEA,
+      'dry-run': { type: 'boolean', description: 'show what would happen, changing nothing' },
+      'outdate-draft': {
+        type: 'boolean',
+        description: 'apply it even if it makes changes in the idea’s draft outdated (asked otherwise)',
+      },
+    },
     run: (ctx, f, args) =>
       edit(
         ctx,
-        { ...(typeof f.idea === 'string' ? { idea: f.idea } : {}), 'dry-run': f['dry-run'] === true },
+        {
+          ...(typeof f.idea === 'string' ? { idea: f.idea } : {}),
+          'dry-run': f['dry-run'] === true,
+          outdateDraft: f['outdate-draft'] === true,
+        },
         args[0],
         () => Bun.stdin.text(),
       ),

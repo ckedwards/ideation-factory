@@ -151,6 +151,7 @@ Each idea has **one draft**, shared by everyone with edit access: changes on the
 
 - **Checked as it's added:** an edit or deletion carries the block as it read when the change was made. If it reads differently now (someone else changed it, in the draft or in a newer version), the change is refused as outdated. Nothing is merged by guessing.
 - **Always on the latest version:** a version made elsewhere (an agent's batch, an upload, a suggestion accepted as a version) is what the draft is then built on. Changes it overtook are marked outdated, and committing waits until they're undone or redone.
+- **Outdating the draft is confirmed:** a version that would make changes in the draft outdated is refused (`draft_outdated`, naming them) until whoever makes it confirms: `ideaf sync`, `ideaf edit` and `ideaf comment accept` ask at a terminal and otherwise need `--outdate-draft`, and the web app asks before accepting a suggestion as a version. A suggestion in the draft that's accepted as a version leaves the draft.
 - **Committing** makes one version, a step for each command, and accepts the suggestions in it. **Discarding** empties it for everyone, and opens its suggestions again.
 
 Agents editing with batches, and uploads, make versions directly. A full editor in the web app, later, writes to the same draft.

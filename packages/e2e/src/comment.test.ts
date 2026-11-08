@@ -248,4 +248,24 @@ describe('ideaf draft', () => {
     expect((await r.ideaf('comment', 'list', '--all')).out).toContain('suggestion · accepted in v2')
     expect((await r.ideaf('draft', 'commit')).exit).not.toBe(0)
   })
+  test('a push that would make changes in the draft outdated stops until it is confirmed', async () => {
+    const { r, idea } = await started()
+    const blocks = await api(h('riley')).showBlocks({ idea })
+    const para = blocks.files.flatMap((f) => f.entries).find((e) => e.source.startsWith('We should ship'))!
+    await api(h('riley')).changeDraft({
+      idea,
+      change: { kind: 'edit', id: para.id, source: 'We should ship it this quarter.', was: para.source },
+    })
+    await r.write('docs/plan.md', PLAN.replace('this quarter', 'next quarter'))
+    const stopped = await r.ideaf('sync')
+    expect(stopped.exit).toBe(11)
+    expect(stopped.err).toContain('this version would make a change in the draft outdated')
+    expect(stopped.err).toContain('edited')
+    expect(stopped.err).toContain('Pass --outdate-draft to go ahead')
+    expect((await api(h('riley')).getIdea({ idea })).latest).toBe(1)
+
+    expect((await r.ideaf('sync', '--outdate-draft')).exit).toBe(0)
+    const draft = await api(h('riley')).getDraft({ idea })
+    expect(draft.changes[0]!.problem).toContain('changed since')
+  })
 })
