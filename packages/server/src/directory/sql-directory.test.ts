@@ -4,6 +4,7 @@ import { directoryContract } from './contract.ts'
 import { migrateDirectory } from './schema.ts'
 import { fts5Search } from './search.ts'
 import { SqlDirectory } from './sql-directory.ts'
+import { HANDLE_PARKED_MS } from './types.ts'
 
 directoryContract('SqlDirectory on SQLite', async () => {
   const sql = bunSql()
@@ -41,4 +42,20 @@ test('a search that matches more than the work cap uses the most recently update
   // narrowing the search brings it under the cap again
   expect(await d.searchIdeas('u-a', 'common plan', 100)).toMatchObject({ incomplete: true })
   expect(await d.searchIdeas('u-a', 'rare plan', 100)).toMatchObject({ incomplete: false })
+})
+
+test('a handle someone left is kept for them for 90 days, then anyone can take it', async () => {
+  const sql = bunSql()
+  const search = fts5Search()
+  await migrateDirectory(sql, [search.migrate])
+  let clock = 1_000_000
+  const d = new SqlDirectory({ sql, search, now: () => clock })
+  await d.ensureUser({ id: 'u-riley', handle: 'riley', name: 'Riley' })
+  await d.updateUser('u-riley', { handle: 'rpark' })
+  expect(await d.parkedUntil('user', 'riley', null)).toBe(1_000_000 + HANDLE_PARKED_MS)
+  expect(await d.parkedUntil('user', 'riley', 'u-riley')).toBeNull()
+  clock += HANDLE_PARKED_MS
+  expect(await d.parkedUntil('user', 'riley', null)).toBeNull()
+  // still leading to them until someone takes it
+  expect((await d.user('riley'))!.id).toBe('u-riley')
 })

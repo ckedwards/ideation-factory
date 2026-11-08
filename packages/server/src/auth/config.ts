@@ -137,6 +137,8 @@ export interface UserHooks {
 export interface AuthDeps {
   users: UserHooks
   grants: Pick<Directory, 'createTokenGrant' | 'tokenGrant'>
+  /** Until when a handle someone left stays theirs (the directory's handle aliases); null if it's free to `requester`. */
+  parkedUntil?: (handle: string, requester: string | null) => Promise<number | null>
 }
 
 /** The cli's OAuth client: public (no secret), PKCE, a loopback redirect or the paste-a-code page. */
@@ -229,7 +231,11 @@ type UserRow = AuthUser & { id: string }
  * "Jane.Doe+x@acme.test" becomes "jane-doe-x", or "jane-doe-x-2" if that's
  * taken. Its person can keep or change it on their first visit.
  */
-export async function suggestHandle(email: string, adapter: Adapter): Promise<string> {
+export async function suggestHandle(
+  email: string,
+  adapter: Adapter,
+  parked: (handle: string) => Promise<boolean> = async () => false,
+): Promise<string> {
   let base = email
     .slice(0, email.lastIndexOf('@'))
     .toLowerCase()
@@ -242,7 +248,10 @@ export async function suggestHandle(email: string, adapter: Adapter): Promise<st
   }
   for (let n = 1; ; n++) {
     const handle = n === 1 ? base : `${base}-${n}`
-    if (!(await adapter.findOne({ model: 'user', where: [{ field: 'username', value: handle }] }))) {
+    if (
+      !(await adapter.findOne({ model: 'user', where: [{ field: 'username', value: handle }] })) &&
+      !(await parked(handle))
+    ) {
       return handle
     }
   }
@@ -532,6 +541,32 @@ const rules = (settings: AuthSettings, deps?: AuthDeps): BetterAuthPlugin => ({
     ],
     before: [
       {
+        // A handle someone left is kept for them for a while (HANDLE_PARKED_MS):
+        // nobody else can sign up with it, rename to it or be told it's free
+        matcher: (ctx) =>
+          Boolean(deps?.parkedUntil) &&
+          ['/sign-in/email-otp', '/update-user', '/is-username-available', '/ideaf/confirm-handle'].includes(
+            ctx.path ?? '',
+          ),
+        handler: createAuthMiddleware(async (ctx) => {
+          const body = (ctx.body ?? {}) as { username?: unknown; handle?: unknown }
+          const handle = String(body.username ?? body.handle ?? '')
+            .trim()
+            .toLowerCase()
+          if (!handle) {
+            return
+          }
+          const session = await getSessionFromCtx(ctx).catch(() => null)
+          const until = await deps!.parkedUntil!(handle, session?.user.id ?? null)
+          if (until) {
+            throw new APIError('BAD_REQUEST', {
+              code: 'HANDLE_PARKED',
+              message: `@${handle} was someone else's until recently, so it's kept for them until ${new Date(until).toISOString().slice(0, 10)}: pick another handle`,
+            })
+          }
+        }),
+      },
+      {
         // Under single sign-on, email codes and passkeys are off. Site admins
         // keep an email code, as the way in when the provider is down.
         matcher: (ctx) =>
@@ -679,6 +714,8 @@ export function authOptions(database: BetterAuthOptions['database'], settings: A
             let handle = (user as { username?: string }).username
             // single sign-on and SCIM bring none: suggest one, to confirm on the first visit
             if (!handle && (ctx?.path?.startsWith('/sso/') || ctx?.path?.startsWith('/scim/'))) {
+              // a suggestion that's someone's parked handle is replaced once the
+              // account is made (in-directory.ts): the directory can't be asked here
               handle = await suggestHandle(user.email, (await getCurrentAdapter(ctx.context.adapter)) as never)
               return { data: { ...user, username: handle, displayUsername: handle, handleConfirmed: false } }
             }

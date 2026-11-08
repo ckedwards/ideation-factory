@@ -16,6 +16,7 @@ import {
   grantClaims,
   makeAuth,
   type Purpose,
+  suggestHandle,
 } from './config.ts'
 import { ActorSqliteDialect } from './dialect.ts'
 
@@ -32,16 +33,28 @@ export async function migrateAuth(sql: Sql, settings: AuthSettings): Promise<voi
 
 /** Better Auth for this wake-up of the actor, keeping the directory's people in step with its accounts. */
 export function authInDirectory(sql: Sql, settings: AuthSettings, directory: Directory): Auth {
-  return makeAuth(database(sql, true), settings, {
+  const auth: Auth = makeAuth(database(sql, true), settings, {
     grants: directory,
+    parkedUntil: (handle, requester) => directory.parkedUntil('user', handle, requester),
     users: {
       // after the sign-up's transaction commits (Better Auth queues these), so
       // the directory's own statements don't wait on it
       created: async (user) => {
+        let handle = user.username!
+        // a handle suggested from the email (single sign-on, SCIM) that's
+        // someone's parked one: the next free suggestion instead, before the
+        // directory sees it, so the parked handle keeps leading to its owner
+        if (user.handleConfirmed === false && (await directory.parkedUntil('user', handle, null))) {
+          const context = await auth.$context
+          handle = await suggestHandle(user.email, context.adapter as never, async (h) =>
+            Boolean(await directory.parkedUntil('user', h, null)),
+          )
+          await context.internalAdapter.updateUser(user.id, { username: handle, displayUsername: handle })
+        }
         await directory.ensureUser({
           id: user.id,
-          handle: user.username!,
-          name: user.name || user.username!,
+          handle,
+          name: user.name || handle,
           email: user.email,
         })
       },
@@ -59,6 +72,7 @@ export function authInDirectory(sql: Sql, settings: AuthSettings, directory: Dir
       },
     },
   })
+  return auth
 }
 
 /**

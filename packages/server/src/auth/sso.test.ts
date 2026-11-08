@@ -178,6 +178,24 @@ describe('single sign-on with OIDC', () => {
     expect(user.username).toBe(h('carol-jones'))
   })
 
+  test("a suggestion that's someone's parked handle is passed over, so it keeps leading to them", async () => {
+    // made now, while email codes still work: then they rename, parking their old handle
+    const first = await signIn(app, h('erin'), `${h('erin')}@elsewhere.test`)
+    const renamed = await app(
+      new Request(`${TEST_URL}/api/auth/update-user`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: TEST_URL, cookie: first.cookie },
+        body: JSON.stringify({ username: h('erin-now') }),
+      }),
+    )
+    expect(renamed.status).toBe(200)
+    ssoOn()
+    const browser = new Browser()
+    await browser.ssoSignIn(person('erin'))
+    expect((await browser.user()).username).toBe(`${h('erin')}-2`)
+    expect(await api(looker.jwt).getUser({ user: h('erin') })).toMatchObject({ id: first.id, handle: h('erin-now') })
+  })
+
   test('the handle is confirmed once: a taken or invalid one is refused, and the directory follows', async () => {
     ssoOn()
     const dana = person('dana')

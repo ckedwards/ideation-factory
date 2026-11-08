@@ -45,7 +45,7 @@ export function TeamProfile(props: TeamProfileProps) {
           value={handle}
           onChange={setHandle}
           spellCheck={false}
-          hint={`Its page is /${handle.trim().toLowerCase() || '…'}. A new handle keeps the old one leading here until another team takes it.`}
+          hint={`Its page is /${handle.trim().toLowerCase() || '…'}. A new handle keeps the old one leading here, and no other team can take it for 90 days.`}
           error={error ?? undefined}
         />
         <label className="policy-description">

@@ -94,7 +94,7 @@ Storybook shows every component and story. `ui` and `web` each have their own: `
 | **Settings** for teams and groups | Pages, not popups, with only the tabs your role allows; new teams and groups are set up through the same pages. A team's settings include its defaults for new ideas and who can create ideas |
 | **Sharing** for an idea | Who has access and where it comes from (directly, through a group, as a team member, public), with view, edit or share for each; reached from the idea's Details panel |
 | **Move wizard** for an idea | Moving into, out of or between teams: the access now, what the move changes, who loses and who gains access by name, adjustments, then confirm. Nothing changes until confirmed |
-| **Your settings** | Profile (name and handle; an old handle keeps leading to you until someone else takes it), sign-in (passkeys), tokens for the cli and agents |
+| **Your settings** | Profile (name and handle; an old handle is kept for you for 90 days and keeps leading to you), sign-in (passkeys), tokens for the cli and agents |
 | **Idea page** | Below |
 
 ## The idea page
