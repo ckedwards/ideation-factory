@@ -108,6 +108,7 @@ ${HANDLE_FORM}
 <form id="email-form">
   <label>Email <input id="email" type="email" autocomplete="email" required></label>
   <button>Send me a code</button>
+  <p>Or <button id="passkey-button" type="button">sign in with a passkey</button></p>
 </form>
 <form id="code-form" hidden>
   <p>We sent a 6-digit code to <strong id="sent-to"></strong>.</p>
@@ -173,6 +174,25 @@ ${SCRIPT_BASE}
   currentUser().then(async (user) => {
     if (!user) return
     showSignedIn(await confirmHandle(user))
+  })
+  // a passkey added in your settings: the browser asks for it, and sign-in checks it
+  $('passkey-button').onclick = run(async () => {
+    if (!window.PublicKeyCredential || !PublicKeyCredential.parseRequestOptionsFromJSON) {
+      throw new Error('This browser can’t sign in with a passkey: use a code instead.')
+    }
+    const options = await (await fetch('/api/auth/passkey/generate-authenticate-options')).json()
+    let credential
+    try {
+      credential = await navigator.credentials.get({ publicKey: PublicKeyCredential.parseRequestOptionsFromJSON(options) })
+    } catch {
+      throw new Error('No passkey was used. Try again, or use a code instead.')
+    }
+    const { clientExtensionResults, ...response } = credential.toJSON()
+    const oauth = signedQuery()
+    const data = await post('/passkey/verify-authentication', { response, ...(oauth ? { oauth_query: oauth } : {}) })
+    // signing in for an OAuth client (the cli): on to the consent page
+    if (follow(data)) return
+    showSignedIn(await currentUser())
   })
   $('email-form').onsubmit = run(async () => {
     await post('/email-otp/send-verification-otp', { email: $('email').value, type: 'sign-in' })
