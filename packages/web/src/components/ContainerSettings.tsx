@@ -16,9 +16,11 @@ export interface ContainerSettingsProps {
   href: string
   /** More sections, for its admins (a team's rules for its ideas). */
   children?: (tools: { onProblem: (message: string) => void }) => ReactNode
+  /** More sections, for its maintainers and admins (a team's approval requirements). */
+  managed?: (tools: { onProblem: (message: string) => void }) => ReactNode
 }
 
-export function ContainerSettings({ kind, container, href, children }: ContainerSettingsProps) {
+export function ContainerSettings({ kind, container, href, children, managed }: ContainerSettingsProps) {
   const { data: me } = useSuspenseQuery(meQuery)
   const [problem, setProblem] = useState<string | null>(null)
   const { role } = useMembership(kind, container)
@@ -56,6 +58,7 @@ export function ContainerSettings({ kind, container, href, children }: Container
               onDecide={(person, approve) => writes.decide(person.id, approve)}
             />
           </Section>
+          {managed?.({ onProblem: setProblem })}
           {role === 'admin' && children?.({ onProblem: setProblem })}
         </>
       )}

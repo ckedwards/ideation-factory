@@ -165,7 +165,7 @@ export type WriteValue =
   /** Suggestions accepted into the draft, and those left out. */
   | { kind: 'drafted'; accepted: string[]; skipped: Skipped[] }
   | { kind: 'resolved'; comment: string; resolved: boolean }
-  | { kind: 'status'; status: IdeaStatus }
+  | { kind: 'status'; status: IdeaStatus; from: IdeaStatus }
   | { kind: 'review'; review: ReviewShape }
   | {
       kind: 'version'
@@ -469,7 +469,7 @@ export class IdeaService {
   }
 
   async #changeStatus(request: WriteRequest, from: IdeaStatus, to: IdeaStatus, note: string) {
-    const result: WriteResult = { ok: true, value: { kind: 'status', status: to } }
+    const result: WriteResult = { ok: true, value: { kind: 'status', status: to, from } }
     if (from === to) {
       await this.#remember(this.#db, request.key, result)
       return { result, events: [] }
@@ -1305,6 +1305,8 @@ export class IdeaService {
         note: h.note,
       })),
       reviews: await this.#latestReviews(meta),
+      /** Comment threads not resolved, for the "all discussions resolved" requirement. */
+      openThreads: await this.openComments(),
     }
   }
 

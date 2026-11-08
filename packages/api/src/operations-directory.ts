@@ -22,6 +22,7 @@ import {
   Role,
   Team,
   TeamDefaults,
+  TeamRequirements,
   TokenInfo,
   User,
 } from './schemas.ts'
@@ -342,6 +343,17 @@ export const directoryOperations = {
       name: z.string().trim().min(1).max(100).optional(),
       description: z.string().max(2000).optional(),
     }),
+    output: Team,
+  }),
+  setTeamRequirements: defineOperation({
+    name: 'set_team_requirements',
+    summary: "Change a team's approval requirements",
+    description:
+      "What an idea in the team needs before it can be closed as accepted: a number of approvals from people on the latest version (0 for none), group rules (one approval from any of the groups, or one from each; with `request`, the groups are asked to review when an idea goes out for review), and every thread resolved. Groups by ID or handle. It applies at once to every idea in the team, those in review too. The team's maintainers and admins only.",
+    method: 'POST',
+    path: '/teams/{team}/requirements',
+    kind: 'write',
+    input: z.strictObject({ team: Ref, requirements: TeamRequirements }),
     output: Team,
   }),
   listTeamMembers: team.members,

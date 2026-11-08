@@ -51,6 +51,7 @@ const meta = {
       { key: 'group:g1', subject: { kind: 'group', id: 'g1' }, label: 'Security (group)' },
     ],
     reviews: [changes, approved, botApproval],
+    requirements: [],
     canEdit: true,
     canReview: true,
     onStatus: fn(),
@@ -73,6 +74,28 @@ export const Verdicts: Story = {
     await expect(page.getByText('a bot’s: doesn’t count')).toBeVisible()
     await expect(page.getByText('Stands')).toBeVisible()
     await expect(page.getByText(/An objection stands/)).toBeVisible()
+  },
+}
+
+// The team's requirements, checked: closing as accepted waits for them
+export const Requirements: Story = {
+  args: {
+    reviews: [approved],
+    requirements: [
+      { text: '2 approvals from people', met: false, progress: '1 so far' },
+      { text: 'An approval from any of Security, Legal', met: true },
+      { text: 'Every discussion resolved', met: false, progress: '2 open' },
+    ],
+  },
+  play: async ({ canvasElement, userEvent }) => {
+    const page = within(canvasElement)
+    await expect(page.getByText('Its team’s requirements')).toBeVisible()
+    await expect(page.getByText('(1 so far)')).toBeVisible()
+    await userEvent.click(page.getByRole('button', { name: 'Close…' }))
+    const dialog = within(canvasElement.ownerDocument.body)
+    await userEvent.click(dialog.getByRole('radio', { name: 'Accepted: it goes ahead' }))
+    await expect(dialog.getByRole('button', { name: 'Close as accepted' })).toBeDisabled()
+    await expect(dialog.getByText(/requirements aren’t met yet/)).toBeVisible()
   },
 }
 

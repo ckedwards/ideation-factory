@@ -162,6 +162,32 @@ function family(kind: containers.Kind): Family {
               },
               ' [--create <who>] [--members <access>] [--public | --private] [--group <group>[=edit]]…',
             ),
+            sub(
+              'requirements',
+              ['team'],
+              'Show or change what an idea in a team needs before it can be closed as accepted (maintainers and admins; it applies at once)',
+              (ctx, [ref], f) =>
+                containers.requirements(ctx, ref!, {
+                  ...(str(f, 'approvals') !== undefined ? { approvals: str(f, 'approvals')! } : {}),
+                  rule: list(f, 'rule'),
+                  noRules: f['no-rules'] === true,
+                  resolved: f.resolved === true,
+                  anyThreads: f['any-threads'] === true,
+                }),
+              {
+                approvals: { type: 'string', description: 'approvals from people on the latest version (0 for none)' },
+                rule: {
+                  type: 'string',
+                  multiple: true,
+                  description:
+                    'a group rule, replacing the rules: any:<group>,… (one approval from any) or each:<group>,… (one from each); :request asks them to review when an idea goes out (repeatable)',
+                },
+                'no-rules': { type: 'boolean', description: 'no group rules' },
+                resolved: { type: 'boolean', description: 'every discussion has to be resolved' },
+                'any-threads': { type: 'boolean', description: 'open discussions don’t stop it' },
+              },
+              ' [--approvals <n>] [--rule any|each:<group>,…[:request]]… [--no-rules] [--resolved | --any-threads]',
+            ),
           ]
         : []),
     ],

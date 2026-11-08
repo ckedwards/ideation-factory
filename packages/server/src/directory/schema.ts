@@ -26,6 +26,8 @@ export interface DB {
     create_policy: string
     /** JSON: the defaults for new ideas (TeamDefaults). */
     defaults: string
+    /** JSON: what an idea in the team needs before it can be closed as accepted (TeamRequirements). */
+    requirements: string
   }
   groups: {
     id: string
@@ -112,7 +114,18 @@ export interface DB {
  */
 export const COLUMNS = {
   users: ['id', 'handle', 'name', 'email', 'inactive', 'created_at'],
-  teams: ['id', 'handle', 'name', 'description', 'created_by', 'created_at', 'archived', 'create_policy', 'defaults'],
+  teams: [
+    'id',
+    'handle',
+    'name',
+    'description',
+    'created_by',
+    'created_at',
+    'archived',
+    'create_policy',
+    'defaults',
+    'requirements',
+  ],
   groups: ['id', 'handle', 'name', 'description', 'created_by', 'created_at', 'deleted_at'],
   memberships: ['kind', 'container', 'user', 'role', 'created_at'],
   join_requests: ['kind', 'container', 'user', 'created_at'],
@@ -171,6 +184,7 @@ const MIGRATIONS: Migration[] = [
               .addColumn('archived', 'integer', (c) => c.notNull().defaultTo(0))
               .addColumn('create_policy', 'text', (c) => c.notNull())
               .addColumn('defaults', 'text', (c) => c.notNull())
+              .addColumn('requirements', 'text', (c) => c.notNull())
           : create.addColumn('deleted_at', 'bigint')
       await create.execute()
     }

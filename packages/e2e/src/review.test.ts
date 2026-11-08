@@ -87,3 +87,54 @@ describe('reviews from the cli', () => {
     ])
   })
 })
+
+describe("a team's approval requirements", () => {
+  test('set by its maintainers, asked of ideas going out for review, and needed to close as accepted', async () => {
+    await Promise.all([api(h('lee')).me({}), api(h('kim')).me({})])
+    const riley = await repoAs('riley', { 'plan.md': '# Plan\n\nThe quick brown fox.\n' })
+    const team = h('payments')
+    expect((await riley.ideaf('team', 'create', team, '--name', 'Payments')).exit).toBe(0)
+    expect((await riley.ideaf('group', 'create', h('security'), '--name', 'Security')).exit).toBe(0)
+    expect((await riley.ideaf('group', 'add', h('security'), h('lee'))).exit).toBe(0)
+    expect((await riley.ideaf('team', 'requirements', team)).out).toContain('No approval requirements.')
+    const set = await riley.ideaf(
+      'team',
+      'requirements',
+      team,
+      '--approvals',
+      '2',
+      '--rule',
+      `each:${h('security')}:request`,
+      '--resolved',
+    )
+    expect(set.exit).toBe(0)
+    expect(set.out).toContain('2 approvals from people')
+    expect(set.out).toContain(`an approval from each of group:${h('security')} (asked to review when an idea goes out)`)
+    expect((await riley.ideaf('team', 'requirements', team, '--rule', 'some:x')).exit).toBe(2)
+
+    // going out for review asks security, which gives lee view access
+    const { idea } = (await riley.ideaf('start', '--title', 'Payments plan', '--team', team, '--json')).json()
+    await expect(api(h('lee')).getIdea({ idea })).rejects.toMatchObject({ code: 'not_found' })
+    expect((await riley.ideaf('status', 'review')).exit).toBe(0)
+    expect((await api(h('lee')).getIdea({ idea })).you.view).toBe(true)
+
+    // kim comments; neither approval is there yet
+    await riley.ideaf('review', 'ask', h('kim'))
+    await api(h('kim')).addComment({ idea, version: 1, anchor: { kind: 'file', file: 'f1' }, body: 'Which fox?' })
+    let shown = (await riley.ideaf('review', 'show')).out
+    expect(shown).toContain('approval requirements aren’t met yet')
+    expect(shown).toContain('0 of 2 approvals')
+    const blocked = await riley.ideaf('close', '--accepted')
+    expect(blocked.exit).toBe(12)
+    expect(blocked.err).toContain('0 of 2 approvals')
+
+    // kim and lee (security) approve, and the thread is resolved
+    await api(h('kim')).reviewIdea({ idea, version: 1, verdict: 'approve' })
+    await api(h('lee')).reviewIdea({ idea, version: 1, verdict: 'approve' })
+    expect((await riley.ideaf('close', '--accepted')).err).toContain('1 open thread')
+    await api(h('riley')).resolveComment({ idea, comment: 'c1', resolved: true })
+    shown = (await riley.ideaf('review', 'show')).out
+    expect(shown).toContain('approval requirements are met')
+    expect((await riley.ideaf('close', '--accepted')).exit).toBe(0)
+  })
+})

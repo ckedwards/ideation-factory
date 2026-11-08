@@ -24,6 +24,8 @@ import {
   IdeaStatus,
   IdeaSummary,
   OpenStatus,
+  RequirementCheck,
+  RequirementsCheck,
   Review,
   StatusChange,
   Verdict,
@@ -385,6 +387,8 @@ export const operations = {
       /** The people and groups asked to review it (set_reviewer). */
       reviewers: z.array(GrantSubject),
       reviews: z.array(Review),
+      /** Its team's approval requirements, checked: closing as accepted needs them met. */
+      requirements: RequirementsCheck,
     }),
   }),
 
@@ -404,7 +408,7 @@ export const operations = {
     name: 'close_idea',
     summary: 'Close an idea',
     description:
-      "Closes an idea as accepted (it goes ahead) or rejected (it doesn't), with an optional note. Closing as accepted is refused with blocked while any reviewer's Request changes or Reject stands (details: the objections): they change their verdict, or someone with edit access dismisses it. Needs edit access.",
+      "Closes an idea as accepted (it goes ahead) or rejected (it doesn't), with an optional note. Closing as accepted is refused with blocked until its team's approval requirements are met (details: the unmet ones), and while any reviewer's Request changes or Reject stands (details: the objections): they change their verdict, or someone with edit access dismisses it. Needs edit access.",
     method: 'POST',
     path: '/ideas/{idea}/close',
     kind: 'write',
@@ -481,8 +485,8 @@ export const ErrorDetails = {
   draft_outdated: z.object({
     changes: z.array(z.object({ key: z.string(), change: DraftChange, by: Caller, problem: z.string() })),
   }),
-  /** Closing as accepted: the reviewers' objections that stand. */
-  blocked: z.object({ objections: z.array(Review) }),
+  /** Closing as accepted: the requirements not met, or the reviewers' objections that stand. */
+  blocked: z.object({ unmet: z.array(RequirementCheck).optional(), objections: z.array(Review).optional() }),
   pull_first: z.object({
     latest: z.number().int(),
     files: z.array(z.object({ file: z.string(), path: z.string(), base: z.string().nullable(), latest: z.string() })),

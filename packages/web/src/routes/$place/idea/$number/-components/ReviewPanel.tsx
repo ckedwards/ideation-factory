@@ -14,6 +14,8 @@ import {
   type OpenStatus,
   type Person,
   RelativeTime,
+  type RequirementCheck,
+  RequirementList,
   Section,
   SegmentedControl,
   StatusControl,
@@ -50,6 +52,8 @@ export interface ReviewPanelProps {
   /** People and groups asked to review, as they show. */
   reviewers: Array<{ key: string; subject: ReviewerSubject; label: ReactNode }>
   reviews: ReviewRow[]
+  /** Its team's approval requirements, checked; empty when it has none. */
+  requirements: RequirementCheck[]
   /** Edit access: moving it, closing and reopening, dismissing an objection. */
   canEdit: boolean
   /** Giving a verdict: anyone who can see it, but not its owner, while it's open. */
@@ -80,6 +84,7 @@ export function ReviewPanel(props: ReviewPanelProps) {
   const closed = props.status.status === 'closed'
   const standing = props.reviews.filter((r) => r.standing)
   const approvals = props.reviews.filter((r) => r.counts).length
+  const unmet = props.requirements.filter((c) => !c.met).length
   return (
     <Section title="Review">
       <div className="review-panel">
@@ -95,8 +100,18 @@ export function ReviewPanel(props: ReviewPanelProps) {
           <span className="review-panel-count">
             {approvals === 1 ? '1 approval' : `${approvals} approvals`} of v{props.latest}
           </span>
-          {props.canEdit && (closed ? <Reopen onReopen={props.onReopen} /> : <Close {...props} blocked={standing} />)}
+          {props.canEdit &&
+            (closed ? <Reopen onReopen={props.onReopen} /> : <Close {...props} blocked={standing} unmet={unmet} />)}
         </div>
+
+        {props.requirements.length > 0 && (
+          <div className="review-panel-requirements">
+            <span className="review-panel-label">
+              {unmet === 0 ? 'Its team’s requirements are met' : 'Its team’s requirements'}
+            </span>
+            <RequirementList checks={props.requirements} />
+          </div>
+        )}
 
         <div className="review-panel-reviewers">
           <span className="review-panel-label">Reviewers</span>
@@ -296,9 +311,19 @@ function ReviewForm({ latest, onReview }: { latest: number; onReview: ReviewPane
   )
 }
 
-function Close({ onClose, blocked }: { onClose: ReviewPanelProps['onClose']; blocked: ReviewRow[] }) {
+function Close({
+  onClose,
+  blocked,
+  unmet,
+}: {
+  onClose: ReviewPanelProps['onClose']
+  blocked: ReviewRow[]
+  /** Requirements not met yet. */
+  unmet: number
+}) {
   const [open, setOpen] = useState(false)
-  const [reason, setReason] = useState<ClosedReason>(blocked.length > 0 ? 'rejected' : 'accepted')
+  const stopped = blocked.length > 0 || unmet > 0
+  const [reason, setReason] = useState<ClosedReason>(stopped ? 'rejected' : 'accepted')
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const close = async () => {
@@ -327,7 +352,7 @@ function Close({ onClose, blocked }: { onClose: ReviewPanelProps['onClose']; blo
             </Button>
             <Button
               variant={reason === 'rejected' ? 'danger' : 'primary'}
-              disabled={reason === 'accepted' && blocked.length > 0}
+              disabled={reason === 'accepted' && stopped}
               onClick={() => void close()}
             >
               {reason === 'accepted' ? 'Close as accepted' : 'Close as rejected'}
@@ -345,6 +370,11 @@ function Close({ onClose, blocked }: { onClose: ReviewPanelProps['onClose']; blo
             value={reason}
             onChange={setReason}
           />
+          {reason === 'accepted' && unmet > 0 && (
+            <p className="review-panel-blocked">
+              Its team’s approval requirements aren’t met yet: it can be closed as accepted once they are.
+            </p>
+          )}
           {reason === 'accepted' && blocked.length > 0 && (
             <p className="review-panel-blocked">
               {blocked.length === 1 ? 'A reviewer objects' : `${blocked.length} reviewers object`}: it can be closed as

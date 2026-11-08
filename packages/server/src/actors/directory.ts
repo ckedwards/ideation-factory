@@ -33,6 +33,7 @@ import type {
   Result,
   Role,
   TeamDefaults,
+  TeamRequirements,
 } from '../directory/types.ts'
 
 const search = fts5Search()
@@ -93,6 +94,11 @@ export const directory = actor({
     group: (c, id: string) => directoryOf(c).group(id),
     teams: (c, options?: { query?: string; cursor?: string; limit?: number }) => directoryOf(c).teams(options),
     groups: (c, options?: { query?: string; cursor?: string; limit?: number }) => directoryOf(c).groups(options),
+    setRequirements: (c, by: string, team: string, requirements: TeamRequirements) =>
+      directoryOf(c).setRequirements(by, team, requirements),
+    checkRequirements: (c, idea: string, approvers: string[], open: number) =>
+      directoryOf(c).checkRequirements(idea, approvers, open),
+    requestRuleGroups: (c, idea: string) => directoryOf(c).requestRuleGroups(idea),
     updateTeam: (
       c,
       by: string,

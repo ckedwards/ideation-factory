@@ -269,6 +269,89 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
         expect((await d.permission('i1', 'u-outsider')).view).toBe(false)
       })
 
+      test("a team's approval requirements: set by maintainers, checked against an idea's approvers", async () => {
+        const { d, team } = await withTeam()
+        const group = async (handle: string, members: string[]) => {
+          const id = ((await d.createGroup('u-devon', { handle, name: handle })) as { value: { id: string } }).value.id
+          for (const m of members) {
+            await d.addMember('u-devon', 'group', id, m)
+          }
+          return id
+        }
+        const security = await group('security', ['u-sam'])
+        const legal = await group('legal', ['u-sam', 'u-maya'])
+        const design = await group('design', ['u-outsider'])
+        const wanted = {
+          approvals: 2,
+          groups: [
+            { mode: 'each' as const, groups: ['security', 'legal'], request: true },
+            { mode: 'any' as const, groups: ['design', 'legal'], request: false },
+          ],
+          resolved: true,
+        }
+        // a member can't; a maintainer can
+        expect(await d.setRequirements('u-maya', team, wanted)).toMatchObject({
+          ok: false,
+          error: { code: 'forbidden' },
+        })
+        await d.addMember('u-riley', 'team', team, 'u-sam', 'maintainer')
+        const set = await d.setRequirements('u-sam', team, wanted)
+        expect(set).toMatchObject({
+          ok: true,
+          value: {
+            requirements: {
+              approvals: 2,
+              groups: [
+                { mode: 'each', groups: [security, legal], request: true },
+                { mode: 'any', groups: [design, legal], request: false },
+              ],
+              resolved: true,
+            },
+          },
+        })
+        expect(
+          await d.setRequirements('u-sam', team, {
+            ...wanted,
+            groups: [{ mode: 'any', groups: ['nope'], request: false }],
+          }),
+        ).toMatchObject({ ok: false, error: { code: 'invalid' } })
+
+        await d.registerIdea(idea('i1', { team }))
+        // nobody yet
+        let check = await d.checkRequirements('i1', [], 1)
+        expect(check.met).toBe(false)
+        expect(check.checks.map((c) => [c.kind, c.met])).toEqual([
+          ['approvals', false],
+          ['groups', false],
+          ['groups', false],
+          ['resolved', false],
+        ])
+        // sam is in security and legal: one approval meets both groups of the "each of" rule
+        check = await d.checkRequirements('i1', ['u-sam'], 0)
+        expect(check.checks.map((c) => c.met)).toEqual([false, true, true, true])
+        expect(check.checks[1]).toMatchObject({
+          groups: [
+            { id: security, handle: 'security', approvedBy: ['u-sam'] },
+            { id: legal, handle: 'legal', approvedBy: ['u-sam'] },
+          ],
+        })
+        check = await d.checkRequirements('i1', ['u-sam', 'u-riley'], 0)
+        expect(check).toMatchObject({ met: true })
+
+        // an idea outside a team needs nothing
+        await d.registerIdea(idea('i2'))
+        expect(await d.checkRequirements('i2', [], 3)).toEqual({ met: true, checks: [] })
+
+        // going out for review asks the groups whose rule says so, once
+        expect(await d.requestRuleGroups('i1')).toEqual([security, legal])
+        expect(await d.requestRuleGroups('i1')).toEqual([])
+        expect((await d.grants('i1')).filter((g) => g.reviewer).map((g) => g.subject)).toEqual([
+          { kind: 'group', id: legal },
+          { kind: 'group', id: security },
+        ])
+        expect((await d.permission('i1', 'u-sam')).view).toBe(true)
+      })
+
       test('asking for a review gives view access; taking someone off leaves it, and removing access ends both', async () => {
         const { d, team } = await withTeam()
         const group = (

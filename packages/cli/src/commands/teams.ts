@@ -120,7 +120,88 @@ async function teamSettings(ctx: Context, team: Team): Promise<string[]> {
     `  its members: ${team.defaults.members === 'none' ? 'no access' : team.defaults.members}`,
     `  everyone: ${team.defaults.public ? 'view (public)' : 'no access'}`,
     ...(groups.length ? groups.map((g) => `  ${g}`) : []),
+    ...(await requirementLines(ctx, team.requirements)),
   ]
+}
+
+/** A team's approval requirements, in words, a line each. */
+export async function requirementLines(ctx: Context, r: Team['requirements']): Promise<string[]> {
+  const handle = (id: string) =>
+    ctx.api
+      .getGroup({ group: id })
+      .then((g) => `group:${g.handle}`)
+      .catch(() => id)
+  const rules = await Promise.all(
+    r.groups.map(
+      async (rule) =>
+        `  an approval from ${rule.mode === 'each' ? 'each of' : 'any of'} ${(await Promise.all(rule.groups.map(handle))).join(', ')}${rule.request ? ' (asked to review when an idea goes out)' : ''}`,
+    ),
+  )
+  const lines = [
+    ...(r.approvals > 0 ? [`  ${r.approvals} approval${r.approvals === 1 ? '' : 's'} from people`] : []),
+    ...rules,
+    ...(r.resolved ? ['  every discussion resolved'] : []),
+  ]
+  return lines.length ? ['Closing an idea as accepted needs:', ...lines] : ['No approval requirements.']
+}
+
+/** ideaf team requirements: show them, or change them (maintainers and admins). */
+export async function requirements(
+  ctx: Context,
+  ref: string,
+  flags: { approvals?: string; rule: string[]; noRules: boolean; resolved: boolean; anyThreads: boolean },
+) {
+  if (flags.resolved && flags.anyThreads) {
+    throw new CliError('--resolved and --any-threads contradict each other', EXIT.usage, 'usage')
+  }
+  const team = await ctx.api.getTeam({ team: ref })
+  const changing =
+    flags.approvals !== undefined || flags.rule.length > 0 || flags.noRules || flags.resolved || flags.anyThreads
+  if (!changing) {
+    ctx.result(team.requirements)
+    for (const line of await requirementLines(ctx, team.requirements)) {
+      ctx.say(line)
+    }
+    return EXIT.ok
+  }
+  const approvals = flags.approvals === undefined ? team.requirements.approvals : Number(flags.approvals)
+  if (!Number.isInteger(approvals) || approvals < 0) {
+    throw new CliError(`--approvals takes a whole number, not "${flags.approvals}"`, EXIT.usage, 'invalid')
+  }
+  const groups =
+    flags.rule.length > 0
+      ? flags.rule.map((spec) => {
+          const match = /^(any|each):([^:]+)(:request)?$/.exec(spec)
+          if (!match) {
+            throw new CliError(
+              `--rule takes any:<group>,<group>[:request] or each:<group>,<group>[:request], not "${spec}"`,
+              EXIT.usage,
+              'invalid',
+            )
+          }
+          return {
+            mode: match[1] as 'any' | 'each',
+            groups: match[2]!.split(',').map((g) => g.trim().replace(/^group:/, '')),
+            request: Boolean(match[3]),
+          }
+        })
+      : flags.noRules
+        ? []
+        : team.requirements.groups
+  const updated = await ctx.api.setTeamRequirements({
+    team: team.id,
+    requirements: {
+      approvals,
+      groups,
+      resolved: flags.resolved ? true : flags.anyThreads ? false : team.requirements.resolved,
+    },
+  })
+  ctx.say(`Updated team:${updated.handle}'s approval requirements; they apply to its ideas at once.`)
+  for (const line of await requirementLines(ctx, updated.requirements)) {
+    ctx.say(line)
+  }
+  ctx.result(updated.requirements)
+  return EXIT.ok
 }
 
 export async function create(ctx: Context, kind: Kind, handle: string, flags: { name?: string; description?: string }) {
