@@ -117,7 +117,15 @@ export const WithReplies: Story = { args: { comment: comments.withReplies } }
 
 export const AutomatedBot: Story = { args: { comment: comments.bot } }
 
-export const SuggestedEdit: Story = { args: { comment: comments.suggestion, canDecide: true } }
+export const SuggestedEdit: Story = { args: { comment: comments.suggestion, canDecide: true, onAddToDraft: fn() } }
+
+// accepted into the idea's draft, waiting to be committed
+export const SuggestionInDraft: Story = {
+  args: {
+    comment: { ...comments.suggestion, suggestion: { replacement: 'a p95 latency below 200 ms', state: 'in-draft' } },
+    canDecide: true,
+  },
+}
 
 export const SuggestedEditNotAuthor: Story = { args: { comment: comments.suggestion } }
 

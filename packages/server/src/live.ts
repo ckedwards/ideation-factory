@@ -84,6 +84,7 @@ export function createLive({ actors, gateway }: { actors: Client<Registry>; gate
       conn.on('reply', (e) => send(ws, { type: 'reply', ...e }))
       conn.on('resolved', (e) => send(ws, { type: 'resolved', ...e }))
       conn.on('decided', (e) => send(ws, { type: 'decided', ...e }))
+      conn.on('draft', (e) => send(ws, { type: 'draft', ...e }))
       conn.on('version', (e) => send(ws, { type: 'version', ...e }))
       // ready once events will arrive: the client reads what it shows after this
       const ready = () => send(ws, { type: 'ready' })

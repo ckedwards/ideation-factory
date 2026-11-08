@@ -94,7 +94,7 @@ erDiagram
 ```
 
 - **In the directory actor's SQLite:** users, teams, groups, memberships, tokens, sessions, the idea index, **access grants** (idea, who: a person, a group, a team's members or everyone, and the permission: view, edit or share), search, notifications.
-- **In each idea actor's SQLite:** versions, manifest entries, steps, comments, anchors, replies, suggestions, reviews.
+- **In each idea actor's SQLite:** versions, manifest entries, steps, comments, anchors, replies, suggestions, reviews, and the idea's one draft.
 - **In the bucket, directly:** blobs (file contents and images).
 
 A **version** is a manifest (path → content hash, plus a stable file ID) and its **steps**: either the edit commands that made it, or "uploaded". Each **comment** has an **anchor for every version** it's in, so older versions show comments where they were then.

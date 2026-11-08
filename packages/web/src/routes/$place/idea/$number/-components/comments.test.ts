@@ -194,7 +194,7 @@ test("a write whose echo doesn't come reads the threads again instead", async ()
 
 test('a suggestion is sent as one, and a rejection shows at once and resolves it', async () => {
   const sent: unknown[] = []
-  const suggestion = { old: 'Ship', new: 'Release', decision: null }
+  const suggestion = { old: 'Ship', new: 'Release', decision: null, inDraft: false }
   const { comments, sockets, ready } = setup([thread('c1', { suggestion })], {
     suggestEdit: async (input) => {
       sent.push(input)
@@ -207,14 +207,16 @@ test('a suggestion is sent as one, and a rejection shows at once and resolves it
   })
   await ready()
   const id = pendingId()
-  const tx = comments.insert(thread(id, { body: '', suggestion: { old: 'Ship', new: 'Send', decision: null } }))
+  const tx = comments.insert(
+    thread(id, { body: '', suggestion: { old: 'Ship', new: 'Send', decision: null, inDraft: false } }),
+  )
   await tick()
   expect(sent).toEqual([
     { idea: 'i1', version: 1, anchor: { kind: 'text', file: 'f1', start: 0, end: 4 }, new: 'Send' },
   ])
   await sockets[0]!.emit({
     type: 'comment',
-    thread: thread('c9', { body: '', suggestion: { old: 'Ship', new: 'Send', decision: null } }),
+    thread: thread('c9', { body: '', suggestion: { old: 'Ship', new: 'Send', decision: null, inDraft: false } }),
     by: riley,
   })
   await tx.when('settled')
@@ -234,7 +236,7 @@ test('a suggestion is sent as one, and a rejection shows at once and resolves it
 
 test('a suggestion accepted elsewhere arrives decided, resolving its thread', async () => {
   const { comments, sockets, ready } = setup([
-    thread('c1', { suggestion: { old: 'Ship', new: 'Send', decision: null } }),
+    thread('c1', { suggestion: { old: 'Ship', new: 'Send', decision: null, inDraft: false } }),
   ])
   await ready()
   const decision = { kind: 'accepted' as const, by: riley, at: 5, version: 2 }

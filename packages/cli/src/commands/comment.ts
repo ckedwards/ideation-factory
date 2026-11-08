@@ -193,13 +193,21 @@ export async function suggest(
 }
 
 /** Accepts suggestions as one new version; those that no longer apply stay open, and say why. */
-export async function accept(ctx: Context, flags: { idea?: string }, suggestions: string[]): Promise<number> {
+export async function accept(
+  ctx: Context,
+  flags: { idea?: string; draft?: boolean },
+  suggestions: string[],
+): Promise<number> {
   if (suggestions.length === 0) {
     throw new CliError('name the suggestions to accept, like c3', EXIT.usage, 'usage')
   }
   const idea = await ctx.ideaId(flags.idea)
-  const result = await ctx.api.acceptSuggestions({ idea, suggestions })
-  ctx.say(`Accepted ${result.accepted.join(', ')} as v${result.version}.`)
+  const result = await ctx.api.acceptSuggestions({ idea, suggestions, into: flags.draft ? 'draft' : 'version' })
+  ctx.say(
+    result.version === null
+      ? `Added ${result.accepted.join(', ')} to the draft.`
+      : `Accepted ${result.accepted.join(', ')} as v${result.version}.`,
+  )
   for (const s of result.skipped) {
     ctx.say(`  ${s.id} stays open: ${s.message}`)
   }
@@ -368,6 +376,7 @@ async function threadLines(thread: Thread, view: View, names: Names, full: boole
   const status = [
     ...(thread.suggestion ? ['suggestion'] : []),
     ...(decision ? [decision.kind === 'accepted' ? `accepted in v${decision.version}` : 'rejected'] : []),
+    ...(thread.suggestion?.inDraft ? ['in the draft'] : []),
     ...(decision ? [] : [thread.resolved ? 'resolved' : 'open']),
     ...(thread.state === 'exact' ? [] : [thread.state]),
     ...(thread.addressedIn.length ? [`addressed in ${thread.addressedIn.map((v) => `v${v}`).join(', ')}`] : []),

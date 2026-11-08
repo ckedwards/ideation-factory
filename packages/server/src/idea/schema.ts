@@ -50,6 +50,8 @@ export interface IdeaDB {
     state: 'exact' | 'moved' | 'changed' | 'outdated'
     anchor: string | null
   }
+  /** The idea's draft: changes on the latest version, in the order they were made, until it's committed or discarded. */
+  draft: { key: string; seq: number; change: string; by: string; at: number }
   writes: { key: string; result: string; at: number }
   schema_version: { version: number }
 }
@@ -73,6 +75,7 @@ export const IDEA_COLUMNS = {
   steps: ['version', 'step', 'command', 'addresses'],
   comments: ['id', 'parent', 'version', 'author', 'created_at', 'body', 'resolved', 'suggestion', 'decision'],
   anchors: ['comment', 'version', 'state', 'anchor'],
+  draft: ['key', 'seq', 'change', 'by', 'at'],
   writes: ['key', 'result', 'at'],
   schema_version: ['version'],
 } as const satisfies { [T in keyof IdeaDB]: ReadonlyArray<keyof IdeaDB[T]> }
@@ -146,6 +149,13 @@ const MIGRATIONS: Migration[] = [
       PRIMARY KEY (comment, version)
     )`,
     `CREATE INDEX anchors_version ON anchors (version)`,
+    `CREATE TABLE draft (
+      key TEXT PRIMARY KEY,
+      seq INTEGER NOT NULL UNIQUE,
+      change TEXT NOT NULL,
+      by TEXT NOT NULL,
+      at INTEGER NOT NULL
+    )`,
     // results of recent writes by idempotency key, so a retried write isn't applied twice
     `CREATE TABLE writes (key TEXT PRIMARY KEY, result TEXT NOT NULL, at INTEGER NOT NULL)`,
     `CREATE INDEX writes_at ON writes (at)`,

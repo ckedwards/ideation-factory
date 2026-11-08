@@ -355,12 +355,41 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
 
     acceptSuggestions: (input, context) =>
       withAccess(input.idea, context, 'edit', () =>
-        write(input.idea, context, { type: 'accept', suggestions: input.suggestions }, (value) => ({
-          ...version(value),
-          accepted: value.kind === 'version' ? (value.accepted ?? []) : [],
-          skipped: value.kind === 'version' ? (value.skipped ?? []) : [],
+        write(
+          input.idea,
+          context,
+          { type: 'accept', suggestions: input.suggestions, ...(input.into ? { into: input.into } : {}) },
+          (value) =>
+            value.kind === 'drafted'
+              ? { version: null, accepted: value.accepted, skipped: value.skipped }
+              : {
+                  version: version(value).version,
+                  accepted: value.kind === 'version' ? (value.accepted ?? []) : [],
+                  skipped: value.kind === 'version' ? (value.skipped ?? []) : [],
+                },
+        ),
+      ),
+
+    getDraft: (input, { caller, token }) =>
+      withAccess(input.idea, { caller, token }, 'edit', () => read(() => ideaOf(input.idea).draft())),
+
+    changeDraft: (input, context) =>
+      withAccess(input.idea, context, 'edit', () =>
+        write(input.idea, context, { type: 'draft', change: input.change }, (value) => ({
+          key: value.kind === 'draft' ? (value.key ?? '') : '',
         })),
       ),
+
+    undoDraftChange: (input, context) =>
+      withAccess(input.idea, context, 'edit', () =>
+        write(input.idea, context, { type: 'undraft', key: input.key }, () => ({})),
+      ),
+
+    discardDraft: (input, context) =>
+      withAccess(input.idea, context, 'edit', () => write(input.idea, context, { type: 'discard' }, () => ({}))),
+
+    commitDraft: (input, context) =>
+      withAccess(input.idea, context, 'edit', () => write(input.idea, context, { type: 'commit' }, version)),
 
     rejectSuggestion: (input, context) =>
       withAccess(input.idea, context, 'edit', () =>

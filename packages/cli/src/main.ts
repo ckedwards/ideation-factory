@@ -6,6 +6,7 @@ import { parseArgs } from 'node:util'
 import * as auth from './commands/auth.ts'
 import { change } from './commands/change.ts'
 import * as comments from './commands/comment.ts'
+import * as drafts from './commands/draft.ts'
 import { edit } from './commands/edit.ts'
 import { list as listIdeas } from './commands/list.ts'
 import { move } from './commands/move.ts'
@@ -281,11 +282,12 @@ const comment: Family = {
     },
     {
       name: 'accept',
-      usage: 'ideaf comment accept <suggestion>…',
+      usage: 'ideaf comment accept <suggestion>… [--draft]',
       summary:
-        'Accept suggestions as one new version (needs edit access). One whose text has changed or gone, or overlaps another, stays open and says why',
-      flags: { idea: IDEA },
-      run: (ctx, f, a) => comments.accept(ctx, str(f, 'idea') ? { idea: str(f, 'idea')! } : {}, a),
+        'Accept suggestions as one new version, or into the idea’s draft (needs edit access). One whose text has changed or gone, or overlaps another, stays open and says why',
+      flags: { idea: IDEA, draft: { type: 'boolean', description: 'into the draft, to commit with the rest of it' } },
+      run: (ctx, f, a) =>
+        comments.accept(ctx, { ...(str(f, 'idea') ? { idea: str(f, 'idea')! } : {}), draft: f.draft === true }, a),
     },
     {
       name: 'reject',
@@ -312,6 +314,36 @@ const comment: Family = {
 }
 
 /** ideaf auth …: signing in with OAuth, and the sign-in's limits. */
+/** ideaf draft …: the idea's one draft, shared by everyone with edit access. */
+const draftFamily: Family = {
+  name: 'draft',
+  summary:
+    'The idea’s draft: its changes (made in the web app, or suggestions accepted into it), committing and discarding it',
+  subcommands: [
+    {
+      name: 'show',
+      usage: 'ideaf draft show',
+      summary: 'The draft’s changes, who made each, and which are outdated',
+      flags: { idea: IDEA },
+      run: (ctx, f) => drafts.show(ctx, str(f, 'idea') ? { idea: str(f, 'idea')! } : {}),
+    },
+    {
+      name: 'commit',
+      usage: 'ideaf draft commit',
+      summary: 'Commit the draft as one new version; `ideaf pull` brings it into your files',
+      flags: { idea: IDEA },
+      run: (ctx, f) => drafts.commit(ctx, str(f, 'idea') ? { idea: str(f, 'idea')! } : {}),
+    },
+    {
+      name: 'discard',
+      usage: 'ideaf draft discard',
+      summary: 'Discard every change in the draft, for everyone',
+      flags: { idea: IDEA },
+      run: (ctx, f) => drafts.discard(ctx, str(f, 'idea') ? { idea: str(f, 'idea')! } : {}),
+    },
+  ],
+}
+
 const authFamily: Family = {
   name: 'auth',
   summary: 'Sign in (in the browser), see who you are signed in as, and sign out',
@@ -560,6 +592,7 @@ const commands: Array<Command | Family> = [
       }),
   },
   comment,
+  draftFamily,
   family('team'),
   family('group'),
   {

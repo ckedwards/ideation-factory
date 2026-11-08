@@ -18,7 +18,8 @@ export interface Suggestion {
   // the Markdown it replaces, shown as source with the replacement; without it, the quote is
   old?: string
   replacement: string
-  state: 'open' | 'accepted' | 'rejected'
+  // in the draft: accepted into it, to be committed with the rest of it
+  state: 'open' | 'in-draft' | 'accepted' | 'rejected'
 }
 
 export interface CommentReply {
@@ -55,6 +56,8 @@ export interface CommentCardProps {
   onReply?: ((body: string) => void) | undefined
   onResolve?: ((resolved: boolean) => void) | undefined
   onAccept?: (() => void) | undefined
+  // into the idea's draft, rather than a version now
+  onAddToDraft?: (() => void) | undefined
   onReject?: (() => void) | undefined
   onViewInVersion?: ((version: number) => void) | undefined
   // more actions in the footer, from the page
@@ -72,6 +75,7 @@ export function CommentCard({
   onReply,
   onResolve,
   onAccept,
+  onAddToDraft,
   onReject,
   onViewInVersion,
   extra,
@@ -126,7 +130,8 @@ export function CommentCard({
       {suggestion && target.kind === 'text' && (
         <div className={`suggestion suggestion-${suggestion.state}${suggestion.old !== undefined ? ' is-source' : ''}`}>
           <div className="suggestion-label">
-            Suggested edit{suggestion.state !== 'open' && ` · ${suggestion.state}`}
+            Suggested edit
+            {suggestion.state !== 'open' && ` · ${suggestion.state === 'in-draft' ? 'in the draft' : suggestion.state}`}
           </div>
           <div className="suggestion-diff">
             {suggestion.state !== 'accepted' && (
@@ -145,6 +150,11 @@ export function CommentCard({
               <Button variant="primary" size="sm" onClick={onAccept}>
                 Accept as a new version
               </Button>
+              {onAddToDraft && (
+                <Button size="sm" onClick={onAddToDraft}>
+                  Add to draft
+                </Button>
+              )}
               <Button variant="ghost" size="sm" onClick={onReject}>
                 Reject
               </Button>

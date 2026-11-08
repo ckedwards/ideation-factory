@@ -34,8 +34,17 @@ export function teamRef(
   return team ? { name: team.name, archived: team.archived } : { name: 'Team' }
 }
 
-/** A thread as a comment card shows it; `titles` names sections by their heading's ID. */
-export function commentInfo(thread: Thread, people: Map<string, Person>, titles: Map<string, string>): CommentInfo {
+/**
+ * A thread as a comment card shows it; `titles` names sections by their
+ * heading's ID. `drafted`: the suggestions in the idea's draft as it is now,
+ * for people who can read it (the thread says as of when it was read).
+ */
+export function commentInfo(
+  thread: Thread,
+  people: Map<string, Person>,
+  titles: Map<string, string>,
+  drafted?: Set<string>,
+): CommentInfo {
   const anchor = thread.anchor
   return {
     id: thread.id,
@@ -58,7 +67,9 @@ export function commentInfo(thread: Thread, people: Map<string, Person>, titles:
               ? {}
               : { old: thread.suggestion.old }),
             replacement: thread.suggestion.new,
-            state: thread.suggestion.decision?.kind ?? 'open',
+            state:
+              thread.suggestion.decision?.kind ??
+              ((drafted ? drafted.has(thread.id) : thread.suggestion.inDraft) ? 'in-draft' : 'open'),
           },
         }
       : {}),
@@ -111,7 +122,7 @@ export function commentWrites(
     comment: (anchor: Thread['anchor'], body: string) => settle(comments.insert(thread(anchor, body, null))),
     /** A suggestion: `old` is what it replaces (suggestionSource), `replacement` its Markdown. */
     suggest: (anchor: Thread['anchor'], old: string, replacement: string, body: string) =>
-      settle(comments.insert(thread(anchor, body, { old, new: replacement, decision: null }))),
+      settle(comments.insert(thread(anchor, body, { old, new: replacement, decision: null, inDraft: false }))),
     reject: (id: string) =>
       settle(
         comments.update(id, (draft) => {

@@ -12,7 +12,7 @@ import type { Nodes } from 'mdast'
 import { applyBatch, type BatchResult, occurrences, sectionExtent } from './apply.ts'
 import type { Command } from './batch.ts'
 import { type Anchor, type Comment, fileById, type Idea } from './idea.ts'
-import { markdownTree, parseMarkdown } from './markdown.ts'
+import { markdownTree, parseMarkdown, type ParsedFile } from './markdown.ts'
 
 /** Inline syntax a replacement must take whole: its markers sit around the text a selection covers. */
 const INLINE = new Set([
@@ -92,8 +92,6 @@ export function suggestionCommand(
   }
   const { source, parsed, unit, unitId } = range
   const u = parsed.units[unit]!
-  const [scopeStart, scopeEnd] = u.kind === 'heading' ? sectionExtent(parsed, unit) : [u.start, u.end]
-  const scope = source.slice(scopeStart, scopeEnd)
   // the occurrences in the comment's own block, nearest it first
   const here = occurrences(source.slice(u.start, u.end), suggestion.old)
     .map((i) => i + u.start)
@@ -102,18 +100,41 @@ export function suggestionCommand(
   if (at === undefined) {
     return { ok: false, message: 'the text it changes has changed since' }
   }
-  // take in surrounding text, within the block, until it occurs once in what replace searches
-  const end = at + suggestion.old.length
+  const command = uniqueReplace(parsed, unit, unitId, at, at + suggestion.old.length, suggestion.new, addresses)
+  return command
+    ? { ok: true, command }
+    : { ok: false, message: 'its text occurs more than once, and can’t be told apart' }
+}
+
+/**
+ * A `replace` of source [at, end) in a unit with `replacement`, taking in
+ * surrounding text from the unit until what it replaces occurs once in what
+ * replace searches (the block, or a heading's whole section). Null if even the
+ * whole unit isn't unique there.
+ */
+export function uniqueReplace(
+  parsed: ParsedFile,
+  unit: number,
+  unitId: string,
+  at: number,
+  end: number,
+  replacement: string,
+  addresses: string[] = [],
+): Command | null {
+  const { source } = parsed
+  const u = parsed.units[unit]!
+  const [scopeStart, scopeEnd] = u.kind === 'heading' ? sectionExtent(parsed, unit) : [u.start, u.end]
+  const scope = source.slice(scopeStart, scopeEnd)
   for (let k = 0; ; k++) {
     const from = Math.max(u.start, at - k)
     const to = Math.min(u.end, end + k)
     const old = source.slice(from, to)
-    if (occurrences(scope, old).length === 1) {
-      const replacement = source.slice(from, at) + suggestion.new + source.slice(end, to)
-      return { ok: true, command: { command: 'replace', in: unitId, old, new: replacement, addresses } }
+    if (old.length > 0 && occurrences(scope, old).length === 1) {
+      const next = source.slice(from, at) + replacement + source.slice(end, to)
+      return { command: 'replace', in: unitId, old, new: next, ...(addresses.length ? { addresses } : {}) }
     }
     if (from === u.start && to === u.end) {
-      return { ok: false, message: 'its text occurs more than once, and can’t be told apart' }
+      return null
     }
   }
 }

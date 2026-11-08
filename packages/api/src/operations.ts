@@ -10,6 +10,8 @@ import {
   CommentOutcome,
   CommentThread,
   Conflict,
+  Draft,
+  DraftChange,
   Skipped,
   FileContent,
   FileId,
@@ -260,12 +262,22 @@ export const operations = {
     name: 'accept_suggestions',
     summary: 'Accept suggested edits',
     description:
-      "Accepts suggestions as one new version, a step for each that addresses it, and resolves them. One whose text has changed or gone since, or that overlaps one before it, is skipped and stays open, saying why; if none apply, it's refused with conflict. Needs edit access.",
+      "Accepts suggestions as one new version, a step for each that addresses it, and resolves them; or, with `into: draft`, adds them to the idea's draft, to be committed with the rest of it. One whose text has changed or gone since (in the version, or in the draft), or that overlaps one before it, is skipped and stays open, saying why; if none apply, it's refused with conflict. Needs edit access.",
     method: 'POST',
     path: '/ideas/{idea}/suggestions/accept',
     kind: 'write',
-    input: z.strictObject({ idea: IdeaId, suggestions: z.array(CommentId).min(1).max(100) }),
-    output: VersionResult.extend({ accepted: z.array(z.string()), skipped: z.array(Skipped) }),
+    input: z.strictObject({
+      idea: IdeaId,
+      suggestions: z.array(CommentId).min(1).max(100),
+      /** `draft`: into the idea's draft, to commit with the rest of it, instead of a version now. */
+      into: z.enum(['version', 'draft']).optional(),
+    }),
+    output: z.object({
+      /** The new version; null when they went into the draft. */
+      version: z.number().int().nullable(),
+      accepted: z.array(z.string()),
+      skipped: z.array(Skipped),
+    }),
   }),
 
   rejectSuggestion: defineOperation({
@@ -280,6 +292,65 @@ export const operations = {
     output: z.object({ comment: z.string() }),
   }),
 
+  getDraft: defineOperation({
+    name: 'get_draft',
+    summary: 'Read the draft',
+    description:
+      "The idea's draft: one per idea, shared by everyone with edit access, on its latest version. Its changes in the order they were made, each with why it doesn't apply if it's outdated; the files as they'd be, each block with where it came from; and where each comment would be. Empty until someone edits. Needs edit access.",
+    method: 'GET',
+    path: '/ideas/{idea}/draft',
+    kind: 'read',
+    input: z.strictObject({ idea: IdeaId }),
+    output: Draft,
+  }),
+
+  changeDraft: defineOperation({
+    name: 'change_draft',
+    summary: 'Change the draft',
+    description:
+      "Adds a change to the idea's draft: a block's (or heading's) new source, a deletion (a heading deletes its section), or new Markdown at a place. Blocks are named by their IDs in the draft (get_draft), and an edit or deletion gives the block as it read (`was`): if it reads differently now, the change is refused with conflict, as outdated. Editing a block again straight after is one change. Needs edit access.",
+    method: 'POST',
+    path: '/ideas/{idea}/draft/changes',
+    kind: 'write',
+    input: z.strictObject({ idea: IdeaId, change: DraftChange }),
+    output: z.object({ key: z.string() }),
+  }),
+
+  undoDraftChange: defineOperation({
+    name: 'undo_draft_change',
+    summary: 'Take a change out of the draft',
+    description:
+      'Takes one change out of the draft. A later change that built on it may become outdated. A suggestion taken out is open again. Needs edit access.',
+    method: 'POST',
+    path: '/ideas/{idea}/draft/changes/{key}/undo',
+    kind: 'write',
+    input: z.strictObject({ idea: IdeaId, key: z.string().min(1).max(64) }),
+    output: z.object({}),
+  }),
+
+  discardDraft: defineOperation({
+    name: 'discard_draft',
+    summary: 'Discard the draft',
+    description: "Empties the idea's draft. Suggestions accepted into it are open again. Needs edit access.",
+    method: 'POST',
+    path: '/ideas/{idea}/draft/discard',
+    kind: 'write',
+    input: z.strictObject({ idea: IdeaId }),
+    output: z.object({}),
+  }),
+
+  commitDraft: defineOperation({
+    name: 'commit_draft',
+    summary: 'Commit the draft',
+    description:
+      "Makes the draft one new version, a step for each command, and resolves the suggestions in it as accepted. Every change must still apply: if any is outdated, it's refused with conflict, naming them, and nothing changes. Needs edit access.",
+    method: 'POST',
+    path: '/ideas/{idea}/draft/commit',
+    kind: 'write',
+    input: z.strictObject({ idea: IdeaId }),
+    output: VersionResult,
+  }),
+
   ...directoryOperations,
 } as const
 
@@ -289,7 +360,14 @@ export type OperationKey = keyof Operations
 /** Error details, for the codes that carry them. */
 export const ErrorDetails = {
   /** An edit's steps that no longer apply, or (accepting suggestions) the suggestions that don't. */
-  conflict: z.object({ conflicts: z.array(Conflict).optional(), skipped: z.array(Skipped).optional() }),
+  conflict: z.object({
+    conflicts: z.array(Conflict).optional(),
+    skipped: z.array(Skipped).optional(),
+    /** Committing the draft: its outdated changes. */
+    changes: z.array(z.object({ key: z.string(), problem: z.string() })).optional(),
+    /** Changing the draft: why the change is outdated. */
+    problem: z.string().optional(),
+  }),
   pull_first: z.object({
     latest: z.number().int(),
     files: z.array(z.object({ file: z.string(), path: z.string(), base: z.string().nullable(), latest: z.string() })),

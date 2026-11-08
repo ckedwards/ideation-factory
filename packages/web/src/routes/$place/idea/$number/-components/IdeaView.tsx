@@ -1,10 +1,12 @@
 // An idea's files, read (/files) or compared (/changes/1..3): loads what the
 // page shows, keeps the latest version's comments live, and writes comments
-// and suggestions, and accepts and rejects them.
+// and suggestions, and accepts and rejects them. Someone with edit access can
+// open the idea's draft on the latest version here and change it (editing.tsx),
+// and accept suggestions into it.
 // The routes say which version, which file and what to compare against.
 import { useEffect, useRef, useState } from 'react'
 import { type Anchor, parseMarkdown, suggestionSource } from '@ideaf/core'
-import { Toast } from '@ideaf/ui'
+import { Button, Toast } from '@ideaf/ui'
 import { useLiveSuspenseQuery } from '@tanstack/react-db'
 import { useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
@@ -13,8 +15,9 @@ import { sectionAt, toPlain } from './anchors.ts'
 import { IdeaPage } from './IdeaPage.tsx'
 import { IdeaTabs } from './IdeaTabs.tsx'
 import type { IdeaLinks } from './links.ts'
+import { useEditing } from './editing.tsx'
 import { commentsOf } from './live.ts'
-import { commentsQuery, filesQuery, ideaQuery, outlineQuery } from './queries.ts'
+import { commentsQuery, draftQuery, filesQuery, ideaQuery, outlineQuery } from './queries.ts'
 import { commentInfo, commentWrites, teamRef, usePeople } from './shared.tsx'
 import { VersionBanner } from './VersionBanner.tsx'
 import { actorOf, type FileView, place, statusOf, type Thread } from './view.ts'
@@ -40,8 +43,13 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path }: IdeaVie
   const queryClient = useQueryClient()
   const { data: idea } = useSuspenseQuery(ideaQuery(id))
   const latest = idea.latest
-  const { version, base } = versionsOf({ v, base: wantedBase }, latest)
+  const [editing, setEditing] = useState(false)
+  const wanted = versionsOf({ v, base: wantedBase }, latest)
+  const version = wanted.version
+  const base = editing ? null : wanted.base
   const older = version < latest
+  // the idea's draft, for people who can edit it
+  const draft = useQuery({ ...draftQuery(id), enabled: idea.you.edit })
   const { data: pulled } = useSuspenseQuery(filesQuery(id, version))
   const { data: outlines } = useSuspenseQuery(outlineQuery(id, version))
   const baseFiles = useQuery({ ...filesQuery(id, base ?? 0), enabled: base !== null })
@@ -57,7 +65,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path }: IdeaVie
   const [note, setNote] = useState<string | null>(null)
 
   // a new version arriving while the latest is shown: the page moves on to it, and says so,
-  // unless it's one this page made (accepting suggestions), which says so itself
+  // unless it's one this page made (accepting suggestions, committing the draft), which says so itself
   const seenLatest = useRef(latest)
   const accepting = useRef(0)
   const ours = useRef(new Set<number>())
@@ -78,6 +86,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path }: IdeaVie
     idea.owner,
     ...threads.flatMap((t) => [t, ...t.replies]).map((c) => c.author.user),
     ...idea.versions.map((n) => n.by.user),
+    ...(draft.data?.changes.map((c) => c.by.user) ?? []),
   ])
   const writes = commentWrites(comments, me.id, version, setNote)
   const by = made ? actorOf(made.by, people) : actorOf({ user: idea.owner, bot: null, purpose: 'me' }, people)
@@ -101,27 +110,52 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path }: IdeaVie
     const found = anchor ? suggestionSource(one, anchor) : null
     return found?.ok ? found.old : null
   }
-  const accept = (suggestions: string[]) => {
+  /** Accepts suggestions as a version now, or into the draft. */
+  const accept = (suggestions: string[], into: 'version' | 'draft' = 'version') => {
     accepting.current++
     void api
-      .acceptSuggestions({ idea: id, suggestions })
+      .acceptSuggestions({ idea: id, suggestions, into })
       .then(
         (done) => {
-          ours.current.add(done.version)
-          setNote(
-            [`Accepted as v${done.version}.`, ...done.skipped.map((s) => `${s.id} stays open: ${s.message}.`)].join(
-              ' ',
-            ),
-          )
+          if (done.version !== null) {
+            ours.current.add(done.version)
+          }
+          const said = done.version !== null ? `Accepted as v${done.version}.` : 'Added to the draft.'
+          setNote([said, ...done.skipped.map((s) => `${s.id} stays open: ${s.message}.`)].join(' '))
+          void queryClient.invalidateQueries({ queryKey: draftQuery(id).queryKey, exact: true })
         },
         (error: unknown) => setNote(`That didn’t work: ${error instanceof Error ? error.message : String(error)}`),
       )
       .finally(() => accepting.current--)
   }
 
+  // the suggestions in the draft, live, for people who can read it
+  const drafted = draft.data
+    ? new Set(draft.data.changes.flatMap((c) => (c.change.kind === 'suggestion' ? [c.change.comment] : [])))
+    : undefined
+  const editor = useEditing({
+    idea: id,
+    draft: draft.data,
+    open: editing,
+    setOpen: setEditing,
+    file: file.id,
+    latestFiles: pulled.files,
+    threads,
+    people,
+    onNote: setNote,
+    onCommitted: (committed) => {
+      ours.current.add(committed)
+      setNote(`Committed as v${committed}.`)
+    },
+  })
+  const canEdit = idea.you.edit && !older && base === null && !editing
+  const draftChanges = draft.data?.changes ?? []
+  const drafters = [...new Set(draftChanges.map((c) => people.get(c.by.user)?.name ?? 'someone'))]
+
   return (
     <>
       <IdeaPage
+        editing={editor}
         title={idea.title}
         team={teamRef(idea, team.data, people, me.id)}
         status={statusOf(idea.status)}
@@ -146,7 +180,19 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path }: IdeaVie
         source={file.source}
         compare={base !== null && baseFiles.data ? { base, source: baseFile?.content ?? '' } : null}
         banner={
-          base !== null ? (
+          canEdit ? (
+            <div className="idea-edit-start">
+              {draftChanges.length > 0 && (
+                <span>
+                  The draft has {draftChanges.length === 1 ? '1 change' : `${draftChanges.length} changes`}, by{' '}
+                  {drafters.join(', ')}.
+                </span>
+              )}
+              <Button size="sm" onClick={() => setEditing(true)} disabled={!draft.data}>
+                {draftChanges.length > 0 ? 'Open the draft' : 'Edit'}
+              </Button>
+            </div>
+          ) : base !== null ? (
             <VersionBanner
               kind="compare"
               version={version}
@@ -182,7 +228,13 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path }: IdeaVie
         comments={threads.flatMap((thread) => {
           const where = place(thread, file)
           return where
-            ? [{ info: commentInfo(thread, people, titles), place: where, pending: thread.id.startsWith('pending-') }]
+            ? [
+                {
+                  info: commentInfo(thread, people, titles, drafted),
+                  place: where,
+                  pending: thread.id.startsWith('pending-'),
+                },
+              ]
             : []
         })}
         // comments go on the latest version only, and so do decisions on suggestions
@@ -202,7 +254,8 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path }: IdeaVie
             writes.suggest(anchor, old, replacement, body)
           }
         }}
-        onAccept={accept}
+        onAccept={(ids) => accept(ids)}
+        onAddToDraft={(ids) => accept(ids, 'draft')}
         onReject={writes.reject}
         onSectionComment={(heading, body) => {
           const section = sectionAt(file.source, file.unitIds, heading)

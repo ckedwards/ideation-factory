@@ -2,7 +2,8 @@
 // the middle with its comments marked, and on the right the comments level
 // with their text, or the versions. Selecting text offers commenting on it or
 // its section, or suggesting an edit; people with edit access accept or reject
-// suggestions, one at a time or all together as one version. Comparing shows the file as a redline against an earlier
+// suggestions, one at a time or all together as one version. While editing,
+// the page gives the document and the panel (IdeaEditor, EditPanel). Comparing shows the file as a redline against an earlier
 // version, with the comments as a list. The route loads the data and does the
 // writing.
 import { type ReactNode, useMemo, useRef, useState } from 'react'
@@ -75,12 +76,16 @@ export interface IdeaPageProps {
   onSuggest?: (selection: TextSelection, replacement: string, body: string) => void
   /** Accepts suggestions as one new version. */
   onAccept?: (suggestions: string[]) => void
+  /** Accepts suggestions into the idea's draft. */
+  onAddToDraft?: (suggestions: string[]) => void
   onReject?: (suggestion: string) => void
   onSectionComment?: (heading: number, body: string) => void
   onReply?: (comment: string, body: string) => void
   onResolve?: (comment: string, resolved: boolean) => void
   /** An outdated comment's "View in v3". */
   onViewInVersion?: (version: number) => void
+  /** Editing: the document and the panel, in place of the file and its comments. */
+  editing?: { document: ReactNode; panel: ReactNode } | null
 }
 
 type Pane = 'comments' | 'versions'
@@ -124,6 +129,7 @@ export function IdeaPage(props: IdeaPageProps) {
       }
       canDecide={canDecide && !comment.pending}
       onAccept={props.onAccept ? () => props.onAccept?.([comment.info.id]) : undefined}
+      onAddToDraft={props.onAddToDraft ? () => props.onAddToDraft?.([comment.info.id]) : undefined}
       onReject={props.onReject ? () => props.onReject?.(comment.info.id) : undefined}
       onViewInVersion={props.onViewInVersion}
     />
@@ -196,9 +202,16 @@ export function IdeaPage(props: IdeaPageProps) {
       {acceptable.length > 1 && props.onAccept && (
         <div className="idea-suggestions">
           <span>{acceptable.length} suggested edits</span>
-          <Button size="sm" variant="primary" onClick={() => props.onAccept?.(acceptable)}>
-            Accept all as one version
-          </Button>
+          <span className="idea-suggestions-buttons">
+            <Button size="sm" variant="primary" onClick={() => props.onAccept?.(acceptable)}>
+              Accept all as one version
+            </Button>
+            {props.onAddToDraft && (
+              <Button size="sm" onClick={() => props.onAddToDraft?.(acceptable)}>
+                Add all to draft
+              </Button>
+            )}
+          </span>
         </div>
       )}
       {onFile.length > 0 && <Section title="On the whole file">{list(onFile)}</Section>}
@@ -226,7 +239,9 @@ export function IdeaPage(props: IdeaPageProps) {
       document={
         <div ref={document}>
           {props.banner}
-          {base ? (
+          {props.editing ? (
+            props.editing.document
+          ) : base ? (
             <Redline base={base} current={{ source, tree }} renderCode={renderMermaid} />
           ) : (
             <MarkdownView
@@ -248,7 +263,7 @@ export function IdeaPage(props: IdeaPageProps) {
           <SelectionMenu
             documentRef={document}
             source={source}
-            enabled={canComment && !base}
+            enabled={canComment && !base && !props.editing}
             {...(props.onComment ? { onComment: props.onComment } : {})}
             {...(props.onSuggest ? { onSuggest: props.onSuggest } : {})}
             {...(props.suggestionOf ? { suggestionOf: props.suggestionOf } : {})}
@@ -259,17 +274,21 @@ export function IdeaPage(props: IdeaPageProps) {
         </div>
       }
       panel={
-        <Tabs
-          label="Panel"
-          tabs={[
-            { id: 'comments', label: 'Comments', count: open.length },
-            { id: 'versions', label: 'Versions' },
-          ]}
-          value={pane}
-          onChange={setPane}
-        >
-          {pane === 'comments' ? comments : <VersionList {...props.versions} />}
-        </Tabs>
+        props.editing ? (
+          props.editing.panel
+        ) : (
+          <Tabs
+            label="Panel"
+            tabs={[
+              { id: 'comments', label: 'Comments', count: open.length },
+              { id: 'versions', label: 'Versions' },
+            ]}
+            value={pane}
+            onChange={setPane}
+          >
+            {pane === 'comments' ? comments : <VersionList {...props.versions} />}
+          </Tabs>
+        )
       }
     />
   )

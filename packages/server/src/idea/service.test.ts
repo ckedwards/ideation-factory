@@ -462,6 +462,122 @@ describe('suggested edits', () => {
   })
 })
 
+describe('the draft', () => {
+  // f1; s2 Plan, b3 "The quick brown fox.", s4 Risks, b5 "It might rain."; next ID 6
+  const RAIN = { kind: 'text', file: 'f1', start: 35, end: 45 } as const
+
+  test('collects changes, checked against it, and commits them as one version', async () => {
+    const { service, write } = await created()
+    expect((await service.draft()).changes).toEqual([])
+    const first = value(
+      await write({
+        type: 'draft',
+        change: { kind: 'edit', id: 'b3', source: 'The quick red fox.', was: 'The quick brown fox.' },
+      }),
+    )
+    // editing it again straight after is the same change
+    const again = value(
+      await write({
+        type: 'draft',
+        change: { kind: 'edit', id: 'b3', source: 'The slow red fox.', was: 'The quick red fox.' },
+      }),
+    )
+    expect(again).toEqual(first)
+    value(await write({ type: 'draft', change: { kind: 'insert', at: { after: 'b3' }, markdown: 'New.' } }))
+    // made against what the block used to read: outdated, and refused
+    expect(
+      await write({ type: 'draft', change: { kind: 'edit', id: 'b3', source: 'x', was: 'The quick brown fox.' } }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: 'conflict', details: { problem: expect.stringContaining('changed') } },
+    })
+
+    const draft = await service.draft()
+    expect(draft.changes.map((c) => c.change.kind)).toEqual(['edit', 'insert'])
+    expect(draft.files[0]!.content).toBe('# Plan\n\nThe slow red fox.\n\nNew.\n\n## Risks\n\nIt might rain.\n')
+    expect(draft.files[0]!.units.find((u) => u.source === 'New.')).toMatchObject({ id: 'b6', origin: { kind: 'new' } })
+    // the latest version is untouched until it's committed
+    expect((await service.summary())!.latest).toBe(1)
+
+    expect(value(await write({ type: 'commit' }))).toMatchObject({ kind: 'version', version: 2 })
+    expect((await service.file(2, 'f1'))!.content).toBe(draft.files[0]!.content)
+    expect((await service.outline()).map((f) => f.entries.map((e) => e.id))).toEqual([['s2', 'b3', 'b6', 's4', 'b5']])
+    expect((await service.draft()).changes).toEqual([])
+    expect(await write({ type: 'commit' })).toMatchObject({ ok: false, error: { code: 'invalid' } })
+  })
+
+  test('is on the latest version: a version made elsewhere can make its changes outdated', async () => {
+    const { service, write } = await created()
+    const stale = value(
+      await write({
+        type: 'draft',
+        change: { kind: 'edit', id: 'b3', source: 'The quick red fox.', was: 'The quick brown fox.' },
+      }),
+    )
+    value(
+      await write({ type: 'draft', change: { kind: 'edit', id: 'b5', source: 'It may pour.', was: 'It might rain.' } }),
+    )
+    // an agent's batch changes the fox
+    value(
+      await write({
+        type: 'edit',
+        batch: { base: 1, steps: [{ command: 'replace', in: 'b3', old: 'quick', new: 'slow' }] },
+      }),
+    )
+    const draft = await service.draft()
+    expect(draft.version).toBe(2)
+    expect(draft.changes.map((c) => c.problem)).toEqual([
+      'that block has changed since; undo this, and edit it again',
+      null,
+    ])
+    expect(await write({ type: 'commit' })).toMatchObject({
+      ok: false,
+      error: { code: 'conflict', message: '1 change is outdated: undo or redo it first' },
+    })
+    value(await write({ type: 'undraft', key: (stale as { key: string }).key }))
+    expect(value(await write({ type: 'commit' }))).toMatchObject({ version: 3 })
+    expect((await service.file(3, 'f1'))!.content).toContain('The slow brown fox.\n\n## Risks\n\nIt may pour.')
+  })
+
+  test('takes accepted suggestions, which are accepted when it is committed, and open again if it is discarded', async () => {
+    const { service, write } = await created()
+    value(await write({ type: 'suggest', version: 1, anchor: RAIN, new: 'may pour', body: '' }, REVIEWER))
+    const drafted = value(await write({ type: 'accept', suggestions: ['c1'], into: 'draft' }))
+    expect(drafted).toEqual({ kind: 'drafted', accepted: ['c1'], skipped: [] })
+    expect((await service.comments())[0]).toMatchObject({
+      resolved: false,
+      suggestion: { inDraft: true, decision: null },
+    })
+    expect((await service.draft()).files[0]!.content).toContain('It may pour.')
+    // already in it
+    expect(await write({ type: 'accept', suggestions: ['c1'], into: 'draft' })).toMatchObject({
+      ok: false,
+      error: { details: { skipped: [{ id: 'c1', message: 'it’s in the draft already' }] } },
+    })
+
+    value(await write({ type: 'discard' }))
+    expect((await service.comments())[0]).toMatchObject({ suggestion: { inDraft: false, decision: null } })
+
+    value(await write({ type: 'accept', suggestions: ['c1'], into: 'draft' }))
+    value(await write({ type: 'commit' }))
+    expect((await service.comments())[0]).toMatchObject({
+      resolved: true,
+      addressedIn: [2],
+      suggestion: { inDraft: false, decision: { kind: 'accepted', version: 2 } },
+    })
+  })
+
+  test('a suggestion whose text the draft has changed is left out, saying why', async () => {
+    const { write } = await created()
+    value(await write({ type: 'suggest', version: 1, anchor: RAIN, new: 'may pour', body: '' }, REVIEWER))
+    value(await write({ type: 'draft', change: { kind: 'delete', id: 'b5', was: 'It might rain.' } }))
+    expect(await write({ type: 'accept', suggestions: ['c1'], into: 'draft' })).toMatchObject({
+      ok: false,
+      error: { code: 'conflict', details: { skipped: [{ id: 'c1', message: 'its text is gone' }] } },
+    })
+  })
+})
+
 describe('retries', () => {
   test('a write retried with the same key is applied once and returns the same result', async () => {
     const { service } = await created()

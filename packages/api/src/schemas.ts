@@ -1,9 +1,9 @@
 // Schemas shared by the operations. The server's handlers are typed by these,
 // so if what the server returns drifts from what's published, it doesn't compile.
-import { Batch } from '@ideaf/core'
+import { Batch, DraftChange } from '@ideaf/core'
 import { z } from 'zod'
 
-export { Batch }
+export { Batch, DraftChange }
 
 export const IdeaId = z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/, 'an idea ID: lowercase letters, digits and dashes')
 export const FileId = z.string().regex(/^f[0-9]+$/)
@@ -159,7 +159,13 @@ export const Decision = z.object({
  * formatting) and the replacement, and what became of it. As of an older
  * version, one accepted later shows as still open.
  */
-export const SuggestionInfo = z.object({ old: z.string(), new: z.string(), decision: Decision.nullable() })
+export const SuggestionInfo = z.object({
+  old: z.string(),
+  new: z.string(),
+  decision: Decision.nullable(),
+  /** Accepted into the idea's draft, not committed yet. */
+  inDraft: z.boolean(),
+})
 
 export const CommentThread = CommentBase.extend({
   resolved: z.boolean(),
@@ -192,6 +198,8 @@ export const LiveEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('resolved'), comment: z.string(), resolved: z.boolean(), by: Caller }),
   /** A suggestion accepted or rejected; its thread is resolved with it. */
   z.object({ type: z.literal('decided'), comment: z.string(), decision: Decision, by: Caller }),
+  /** The idea's draft changed, was committed or was discarded: read it again (people with edit access). */
+  z.object({ type: z.literal('draft'), by: Caller }),
   /** A new version: its files and where each comment is have changed. */
   z.object({ type: z.literal('version'), version: z.number().int(), how: VersionHow, by: Caller }),
 ])
@@ -199,6 +207,42 @@ export type LiveEvent = z.infer<typeof LiveEvent>
 
 /** Close codes: no valid token (or it expired), and no such idea (or not one you can see). */
 export const LIVE_CLOSE = { unauthorized: 4401, notFound: 4404 } as const
+
+/** A unit of the draft: a block that was in the latest version (changed in the draft or not), or new text and the change that added it. */
+export const DraftUnit = z.object({
+  id: z.string(),
+  kind: OutlineEntry.shape.kind,
+  source: z.string(),
+  level: z.number().int(),
+  origin: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('base'), changed: z.boolean() }),
+    z.object({ kind: z.literal('new'), change: z.string() }),
+  ]),
+})
+
+/**
+ * An idea's draft: one per idea, on its latest version. Its changes in the
+ * order they were made (each with why it doesn't apply, if it doesn't), the
+ * files as they'd be, and where each comment would be.
+ */
+export const Draft = z.object({
+  /** The latest version: what the draft is on, and what committing it builds on. */
+  version: z.number().int(),
+  changes: z.array(
+    z.object({
+      key: z.string(),
+      change: DraftChange,
+      by: Caller,
+      at: z.number(),
+      /** Why it doesn't apply to the draft as it is (outdated); null if it does. */
+      problem: z.string().nullable(),
+    }),
+  ),
+  files: z.array(z.object({ file: z.string(), path: z.string(), content: z.string(), units: z.array(DraftUnit) })),
+  comments: z.array(CommentOutcome),
+  /** How many commands committing makes. */
+  steps: z.number().int(),
+})
 
 /** A suggestion left out of an accept, and why. */
 export const Skipped = z.object({ id: z.string(), message: z.string() })

@@ -10,6 +10,9 @@ import {
   applyUpload,
   type Batch,
   type BatchResult,
+  type BuiltDraft,
+  buildDraft,
+  type DraftEntry,
   checkAnchor,
   type Comment,
   createIdea,
@@ -33,6 +36,7 @@ export interface CoreRunner {
   ): Promise<{ ok: true; idea: Idea } | { ok: false; message: string }>
   checkAnchor(key: string, idea: Idea, input: AnchorInput): Promise<ReturnType<typeof checkAnchor>>
   suggestionSource(key: string, idea: Idea, anchor: Anchor): Promise<ReturnType<typeof suggestionSource>>
+  buildDraft(key: string, idea: Idea, comments: Comment[], entries: DraftEntry[]): Promise<BuiltDraft>
   acceptSuggestions(
     key: string,
     idea: Idea,
@@ -61,6 +65,7 @@ export const core = {
   checkAnchor,
   suggestionSource,
   acceptSuggestions,
+  buildDraft,
 }
 export type CoreMethod = keyof typeof core
 
@@ -72,6 +77,7 @@ export function inProcessCore(): CoreRunner {
     createIdea: async (_key, files) => tryCreateIdea(files),
     checkAnchor: async (_key, idea, input) => checkAnchor(idea, input),
     suggestionSource: async (_key, idea, anchor) => suggestionSource(idea, anchor),
+    buildDraft: async (_key, idea, comments, entries) => buildDraft(idea, comments, entries),
     acceptSuggestions: async (_key, idea, comments, base, suggestions) =>
       acceptSuggestions(idea, comments, base, suggestions),
     close: async () => {},

@@ -7,6 +7,7 @@ CREATE TABLE comments ( id TEXT PRIMARY KEY, parent TEXT REFERENCES comments (id
 CREATE INDEX comments_parent ON comments (parent);
 CREATE TABLE anchors ( comment TEXT NOT NULL REFERENCES comments (id), version INTEGER NOT NULL REFERENCES versions (number), state TEXT NOT NULL CHECK (state IN ('exact', 'moved', 'changed', 'outdated')), anchor TEXT, PRIMARY KEY (comment, version) );
 CREATE INDEX anchors_version ON anchors (version);
+CREATE TABLE draft ( key TEXT PRIMARY KEY, seq INTEGER NOT NULL UNIQUE, change TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL );
 CREATE TABLE writes (key TEXT PRIMARY KEY, result TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE INDEX writes_at ON writes (at);
 INSERT INTO schema_version (version) VALUES (1);

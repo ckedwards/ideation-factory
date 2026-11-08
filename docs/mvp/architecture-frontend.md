@@ -129,9 +129,11 @@ Editing builds the same command batches an agent sends (see [backend](architectu
 | Rename a heading inline | `rename-heading` |
 | Rewrite a whole section | `set-section` |
 | Delete a block or section | `delete` |
-| Accept a suggested edit | its pending `replace` |
+| Accept a suggested edit | its pending `replace`, as a version now or into the draft |
 
 Changes collect in a **pending batch**. Before it's applied, a **preview** shows the diff and what happens to each comment (moves with its text, changed, or becomes outdated). Applying makes one new version. If someone else changed the idea meanwhile, the batch is replayed onto the latest version. It only fails if one of its edits no longer applies, and then the preview shows which ones, for the author to redo.
+
+**As built** (step 9, part 2): changes don't collect in the browser but in the idea's **draft**: one per idea, kept by its actor, shared by everyone with edit access, always on the latest version, and live (the socket's `draft` event). Each change goes to it as it's made: a block's new source, new text, a deletion, or a suggestion accepted into it. An edit or deletion carries the block as it read; if it reads differently now, the change is refused as outdated. A version made elsewhere marks the draft's changes it overtook as outdated, and committing waits for them to be undone or redone. The preview is the redline of the latest version against the draft, with where each comment would be. The block editor is the draft's first client; a fuller editor later writes the same changes.
 
 ## Data loading and live updates
 

@@ -227,3 +227,25 @@ describe('ideaf comment suggest', () => {
     expect(again.err).toContain('c1, it was accepted in v2')
   })
 })
+
+describe('ideaf draft', () => {
+  test('suggestions accepted into the draft are committed with it as one version', async () => {
+    const { r, idea } = await started()
+    await r.ideaf('comment', 'suggest', 'in Q3', '--quote', 'this quarter')
+    await r.ideaf('comment', 'suggest', 'It may rain', '--quote', 'It might rain', '--file', 'docs/notes.md')
+    expect((await r.ideaf('draft', 'show')).out).toBe(`The draft of ${idea} is empty.`)
+    expect((await r.ideaf('comment', 'accept', 'c1', 'c2', '--draft')).out).toBe('Added c1, c2 to the draft.')
+    expect((await r.ideaf('comment', 'list')).out).toContain('suggestion · in the draft · open')
+    const shown = (await r.ideaf('draft', 'show')).out
+    expect(shown).toContain('2 changes')
+    expect(shown).toContain('suggestion c1: "this quarter" → "in Q3"')
+    expect((await api(h('riley')).getIdea({ idea })).latest).toBe(1)
+
+    expect((await r.ideaf('draft', 'commit')).out).toContain('Committed the draft as v2.')
+    const files = (await api(h('riley')).pull({ idea })).files
+    expect(files.find((f) => f.path === 'docs/plan.md')!.content).toContain('**offline mode** in Q3.')
+    expect(files.find((f) => f.path === 'docs/notes.md')!.content).toContain('It may rain.')
+    expect((await r.ideaf('comment', 'list', '--all')).out).toContain('suggestion · accepted in v2')
+    expect((await r.ideaf('draft', 'commit')).exit).not.toBe(0)
+  })
+})
