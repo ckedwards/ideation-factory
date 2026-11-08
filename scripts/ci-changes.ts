@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-// Whether a change needs CI's story tests: ui's (the storybook job) and
-// web's (the web job, which also builds the app). Each depends on its own
+// Whether a change needs CI's story tests: ui's (the ui job) and web's (the
+// web job, which also builds the app). Each depends on its own
 // package and the packages it builds from, on the dependencies those resolve
 // to, on the shared TypeScript settings and on the CI workflow. A change to
 // anything else, a server dependency in bun.lock included, skips them.

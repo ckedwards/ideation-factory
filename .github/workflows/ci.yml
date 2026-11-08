@@ -58,7 +58,7 @@ jobs:
   # its play function and passes axe's accessibility checks, in every theme.
   # Then Storybook builds, as it would be published. Storybook and Vitest run
   # on Node, so this job sets up Node beside Bun.
-  storybook:
+  ui:
     name: ui/storybook
     needs: changes
     if: needs.changes.outputs.ui == 'true'
