@@ -86,6 +86,11 @@ export interface InboxEvent {
 export interface NotifyBatch {
   idea: string
   events: InboxEvent[]
+  /**
+   * Unique per batch, so one sent twice (a retried send whose first try got
+   * through after all) is written once; its events' IDs come from it.
+   */
+  id?: string
 }
 
 /** An inbox row: the idea as lists show it, and what's happened since you last looked. */

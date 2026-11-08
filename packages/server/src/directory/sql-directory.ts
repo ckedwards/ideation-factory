@@ -795,8 +795,13 @@ export class SqlDirectory implements Directory {
   }
 
   /** Writes one event to these people's inboxes: one statement for all of them. */
-  async #deliver(db: Kysely<DB>, idea: string, event: InboxEvent, to: Map<string, InboxReason>): Promise<void> {
-    const id = newId('ev')
+  async #deliver(
+    db: Kysely<DB>,
+    idea: string,
+    event: InboxEvent,
+    to: Map<string, InboxReason>,
+    id = newId('ev'),
+  ): Promise<void> {
     await db
       .insertInto('inbox_events')
       .values({
@@ -877,7 +882,7 @@ export class SqlDirectory implements Directory {
         for (const batch of some) {
           const idea = ideas.get(batch.idea)
           if (idea) {
-            await this.#notifyOne(db, idea, batch.events, quiet)
+            await this.#notifyOne(db, idea, batch, quiet)
           }
         }
       })
@@ -898,7 +903,16 @@ export class SqlDirectory implements Directory {
   }
 
   /** One idea's events, inside the caller's transaction. */
-  async #notifyOne(db: Kysely<DB>, idea: IdeaRow, events: InboxEvent[], quiet: Set<string>): Promise<void> {
+  async #notifyOne(db: Kysely<DB>, idea: IdeaRow, batch: NotifyBatch, quiet: Set<string>): Promise<void> {
+    const { events } = batch
+    // a batch sent twice is written once: its first event's ID says whether it's here
+    const ids = events.map((_, i) => (batch.id ? `ev-${batch.id}-${i}` : newId('ev')))
+    if (batch.id) {
+      const seen = await db.selectFrom('inbox_events').select('id').where('id', '=', ids[0]!).executeTakeFirst()
+      if (seen) {
+        return
+      }
+    }
     // taking part subscribes you, unless you've unsubscribed
     const taking = [
       ...new Set(
@@ -915,7 +929,7 @@ export class SqlDirectory implements Directory {
         .execute()
     }
     const audience = await this.#audience(idea, db)
-    for (const event of events) {
+    for (const [i, event] of events.entries()) {
       // you don't hear about what you did; what your bots did, unless you said not to
       const to = new Map(
         [...audience].filter(
@@ -925,7 +939,7 @@ export class SqlDirectory implements Directory {
             event.actor.purpose === 'bot',
         ),
       )
-      await this.#deliver(db, idea.id, event, to)
+      await this.#deliver(db, idea.id, event, to, ids[i])
     }
   }
 

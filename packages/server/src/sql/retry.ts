@@ -64,3 +64,39 @@ export function retryOverloaded(sql: Sql, options: RetryOptions = {}): Sql {
       options.transactions === false ? sql.transaction(callback) : retrying(() => sql.transaction(callback)),
   }
 }
+
+/**
+ * Whether a call to another actor failed in a way worth trying again. Its
+ * storage being busy reaches the caller only as RivetKit's generic internal
+ * error (the detail stays with the actor), so that's retried too: only for
+ * calls that are safe to repeat (an index update, a notification with its ID).
+ */
+export function retryableCall(error: unknown): boolean {
+  if (overloadedRetryMs(error) !== null) {
+    return true
+  }
+  const e = error as { group?: unknown; code?: unknown } | null
+  return typeof e === 'object' && e !== null && e.group === 'core' && e.code === 'internal_error'
+}
+
+/** Calls another actor, trying again (every 500 ms, up to `maxWaitMs`, default 10 s) while it fails retryably. */
+export async function callRetrying<T>(
+  run: () => Promise<T>,
+  options: { maxWaitMs?: number; sleep?: (ms: number) => Promise<void> } = {},
+): Promise<T> {
+  const maxWaitMs = options.maxWaitMs ?? 10_000
+  const sleep = options.sleep ?? ((ms: number) => Bun.sleep(ms))
+  let waited = 0
+  for (;;) {
+    try {
+      return await run()
+    } catch (error) {
+      if (!retryableCall(error) || waited >= maxWaitMs) {
+        throw error
+      }
+      const wait = Math.min(overloadedRetryMs(error) ?? 500, 2_000, maxWaitMs - waited)
+      await sleep(wait)
+      waited += wait
+    }
+  }
+}

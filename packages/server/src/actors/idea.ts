@@ -9,7 +9,7 @@ import { inboxEvents } from '../idea/notify.ts'
 import { migrate } from '../idea/schema.ts'
 import { type IdeaEvent, IdeaService, Refused, type WriteRequest, type WriteResult } from '../idea/service.ts'
 import type { Registry } from '../registry.ts'
-import { retryOverloaded } from '../sql/retry.ts'
+import { callRetrying, retryOverloaded } from '../sql/retry.ts'
 import { DIRECTORY_KEY } from './directory.ts'
 
 /**
@@ -41,19 +41,34 @@ export const idea = actor({
   run: async (c) => {
     const service = serviceOf(c)
     for await (const message of c.queue.iter({ completable: true })) {
+      let written: Awaited<ReturnType<IdeaService['write']>>
       try {
-        const { result, events } = await service.write(message.body)
-        for (const e of events) {
-          c.broadcast(e.name, e.payload)
-        }
-        // who hears about it: the directory writes their inboxes, without this waiting
+        written = await service.write(message.body)
+      } catch (error) {
+        c.log.error({ msg: 'idea write failed', error: String(error) })
+        await message.complete({
+          ok: false,
+          error: { code: 'invalid', message: 'the write failed on the server; retry it with the same key' },
+        })
+        continue
+      }
+      const { result, events } = written
+      for (const e of events) {
+        c.broadcast(e.name, e.payload)
+      }
+      // the write stands from here: what follows can't undo it, so its failures are logged, not returned
+      try {
+        // who hears about it: the directory writes their inboxes, without this waiting. Sent
+        // again while the directory's storage is busy; the ID means it's written once.
         const told = inboxEvents(events, Date.now())
         if (told.length > 0) {
-          await c
-            .client<Registry>()
-            .directory.getOrCreate(DIRECTORY_KEY)
-            .send('notify', { idea: c.key[0]!, events: told })
+          const batch = { idea: c.key[0]!, events: told, id: crypto.randomUUID() }
+          await callRetrying(() => c.client<Registry>().directory.getOrCreate(DIRECTORY_KEY).send('notify', batch))
         }
+      } catch (error) {
+        c.log.error({ msg: 'notifying the directory failed', error: String(error) })
+      }
+      try {
         if (events.length > 0) {
           c.state.lastActivity = Date.now()
           if (!c.state.indexDue) {
@@ -61,14 +76,10 @@ export const idea = actor({
             await c.schedule.after(indexDelayMs(), 'flushIndex')
           }
         }
-        await message.complete(result)
       } catch (error) {
-        c.log.error({ msg: 'idea write failed', error: String(error) })
-        await message.complete({
-          ok: false,
-          error: { code: 'invalid', message: 'the write failed on the server; retry it with the same key' },
-        })
+        c.log.error({ msg: 'scheduling the index update failed', error: String(error) })
       }
+      await message.complete(result)
     }
   },
   actions: {
@@ -92,8 +103,7 @@ export const idea = actor({
       if (!summary) {
         return
       }
-      const directory = c.client<Registry>().directory.getOrCreate(DIRECTORY_KEY)
-      await directory.send('index', {
+      const update = {
         id: summary.id,
         title: summary.title,
         description: summary.description,
@@ -101,7 +111,9 @@ export const idea = actor({
         latest: summary.latest,
         openComments: await serviceOf(c).openComments(),
         updatedAt: c.state.lastActivity || Date.now(),
-      })
+      }
+      // an index update is safe to send twice: the newest wins
+      await callRetrying(() => c.client<Registry>().directory.getOrCreate(DIRECTORY_KEY).send('index', update))
     },
   },
 })
