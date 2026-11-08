@@ -12,6 +12,7 @@ import { WorkerPool } from './core-pool/pool.ts'
 import { configureNode } from './deps.ts'
 import { LocalFolderFileStore } from './files/local-folder.ts'
 import { limitsFromEnv } from './limits.ts'
+import { notificationEmailFromEnv } from './mail/sender.ts'
 import { createLive, type LiveData } from './live.ts'
 import { registry, type Registry } from './registry.ts'
 import { devWebApp, staticWebApp } from './web.ts'
@@ -26,6 +27,7 @@ configureNode({
   core,
   limits: limitsFromEnv(process.env),
   auth,
+  email: notificationEmailFromEnv(process.env),
 })
 
 await registry.startAndWait()

@@ -3,6 +3,8 @@
 // at once because the tables' keys and transactions make them so, not the
 // actor's queue. Index updates and notifications from idea actors come through
 // the queue instead, sent without waiting, and are applied in batches.
+// Notification emails go on an alarm: when the next is due, the actor sends
+// what's due and sets the next.
 import { actor, queue, UserError } from 'rivetkit'
 import { db } from 'rivetkit/db'
 import type { Auth } from '../auth/config.ts'
@@ -18,6 +20,7 @@ import {
   type WireRequest,
 } from '../auth/in-directory.ts'
 import { nodeDeps } from '../deps.ts'
+import { notificationEmail } from '../mail/notification.ts'
 import { migrateDirectory } from '../directory/schema.ts'
 import { fts5Search } from '../directory/search.ts'
 import { SqlDirectory } from '../directory/sql-directory.ts'
@@ -36,6 +39,7 @@ import type {
   TeamDefaults,
   TeamRequirements,
   InboxFilter,
+  NotificationSettings,
   NotifyBatch,
   WatchLevel,
 } from '../directory/types.ts'
@@ -53,9 +57,13 @@ export const directory = actor({
     },
   }),
   queues: { index: queue<IndexUpdate>(), notify: queue<NotifyBatch>() },
-  createVars: () => ({ directory: null as Directory | null, auth: null as Auth | null }),
-  // the cli's OAuth client, there before anyone signs in with it
-  onWake: (c) => ensureCliClient(authOf(c), nodeDeps().auth),
+  createVars: () => ({ directory: null as Directory | null, auth: null as Auth | null, sending: false }),
+  onWake: async (c) => {
+    // the cli's OAuth client, there before anyone signs in with it
+    await ensureCliClient(authOf(c), nodeDeps().auth)
+    // emails left waiting (say, the node stopped before their alarm) get one
+    await scheduleEmails(c)
+  },
   run: async (c) => {
     const d = directoryOf(c)
     for (;;) {
@@ -69,6 +77,8 @@ export const directory = actor({
         } catch (error) {
           c.log.error({ msg: 'notifying failed', ideas: notifications.map((n) => n.idea), error: String(error) })
         }
+        // a notification may have queued an email: an alarm for when it's due
+        await scheduleEmails(c)
       }
       // only the newest update per idea matters
       const latest = new Map<string, IndexUpdate>()
@@ -126,8 +136,39 @@ export const directory = actor({
     watch: (c, user: string, team: string) => directoryOf(c).watch(user, team),
     setWatch: (c, user: string, team: string, level: WatchLevel) => directoryOf(c).setWatch(user, team, level),
     notificationSettings: (c, user: string) => directoryOf(c).notificationSettings(user),
-    setNotificationSettings: (c, user: string, settings: { ownBots: boolean }) =>
+    setNotificationSettings: (c, user: string, settings: Partial<NotificationSettings>) =>
       directoryOf(c).setNotificationSettings(user, settings),
+    /** Sends the emails due (the alarm scheduleEmails sets calls it), then sets the next alarm. */
+    sendEmails: async (c) => {
+      const email = nodeDeps().email
+      if (!email || c.vars.sending) {
+        return
+      }
+      c.vars.sending = true
+      let failed = false
+      try {
+        const { baseURL, secret } = nodeDeps().auth
+        for (;;) {
+          const due = await directoryOf(c).dueEmails(email.timing)
+          for (const message of due) {
+            try {
+              await email.sender.send(notificationEmail(message, { baseURL, secret }))
+              await directoryOf(c).emailSent(message)
+            } catch (error) {
+              failed = true
+              c.log.error({ msg: 'sending an email failed', user: message.to.id, error: String(error) })
+            }
+          }
+          // a full run may have left more due; a failure waits for the next alarm
+          if (failed || due.length < 50) {
+            break
+          }
+        }
+      } finally {
+        c.vars.sending = false
+      }
+      await scheduleEmails(c, failed ? email.timing.quietMs : 0)
+    },
     updateTeam: (
       c,
       by: string,
@@ -187,7 +228,34 @@ export const directory = actor({
 
 type DirectoryContext = {
   db: Parameters<typeof migrateDirectory>[0]
-  vars: { directory: Directory | null; auth: Auth | null }
+  vars: { directory: Directory | null; auth: Auth | null; sending: boolean }
+}
+
+type Scheduling = DirectoryContext & {
+  schedule: {
+    at(timestamp: number, action: string, ...args: unknown[]): Promise<string>
+    list(): Promise<Array<{ action: string; runAt: number }>>
+  }
+}
+
+/**
+ * Sets an alarm for when the next email is due (no sooner than `wait` from
+ * now), unless one is set for then or sooner already.
+ */
+async function scheduleEmails(c: Scheduling, wait = 0): Promise<void> {
+  const email = nodeDeps().email
+  if (!email) {
+    return
+  }
+  const next = await directoryOf(c).nextEmailAt(email.timing)
+  if (next === null) {
+    return
+  }
+  const at = Math.max(next, Date.now() + wait)
+  const set = (await c.schedule.list()).some((e) => e.action === 'sendEmails' && e.runAt <= at)
+  if (!set) {
+    await c.schedule.at(at, 'sendEmails')
+  }
 }
 
 /** Better Auth for this wake-up, on the actor's database. */
@@ -200,7 +268,7 @@ function authOf(c: DirectoryContext): Auth {
 function directoryOf(c: DirectoryContext): Directory {
   if (!c.vars.directory) {
     // the engine refuses writes for a moment when storage is busy: wait and retry
-    c.vars.directory = new SqlDirectory({ sql: retryOverloaded(c.db), search })
+    c.vars.directory = new SqlDirectory({ sql: retryOverloaded(c.db), search, email: nodeDeps().email !== null })
   }
   return c.vars.directory
 }

@@ -10,6 +10,7 @@ import { inProcessCore } from './core-pool/runner.ts'
 import { configureNode, type NodeDeps } from './deps.ts'
 import { MemoryFileStore } from './files/memory.ts'
 import { DEFAULT_LIMITS } from './limits.ts'
+import { CapturingSender } from './mail/sender.ts'
 import { registry, type Registry } from './registry.ts'
 
 let started: Promise<Client<Registry>> | null = null
@@ -18,6 +19,9 @@ let started: Promise<Client<Registry>> | null = null
 // a loopback host: OAuth allows plain http redirects only there (a deployment uses https)
 export const TEST_URL = 'http://localhost:4100'
 export const testMailer = new CapturingMailer()
+/** The notification emails sent, quickly: an idea's once it's been quiet for a moment. */
+export const testEmail = new CapturingSender()
+export const TEST_EMAIL_TIMING = { quietMs: 300, maxWaitMs: 2_000, digestMs: 60_000 }
 export const TEST_ADMIN = 'admin@example.test'
 export const testAuth: AuthSettings = {
   baseURL: TEST_URL,
@@ -40,6 +44,7 @@ export function startTestActors(deps: Partial<NodeDeps> = {}): Promise<Client<Re
     core: inProcessCore(),
     limits: DEFAULT_LIMITS,
     auth: testAuth,
+    email: { sender: testEmail, timing: TEST_EMAIL_TIMING },
     ...deps,
   })
   started ??= (async () => {

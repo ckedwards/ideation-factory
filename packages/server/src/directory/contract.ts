@@ -2,13 +2,25 @@
 // SQLite now, Postgres if it's added. Each implementation's test file calls
 // directoryContract with a way to make an empty directory.
 import { describe, expect, test } from 'bun:test'
-import type { Directory, IdeaRow, InboxEvent, MovePreview } from './types.ts'
+import type { Directory, DueEmail, IdeaRow, InboxEvent, MovePreview } from './types.ts'
 
-export function directoryContract(name: string, make: () => Promise<Directory>): void {
-  async function people() {
-    const d = await make()
+/** How a test makes a directory: with email queued, and on a clock of its own. */
+export interface DirectoryOptions {
+  email?: boolean
+  now?: () => number
+}
+
+export function directoryContract(name: string, make: (options?: DirectoryOptions) => Promise<Directory>): void {
+  async function people(options?: DirectoryOptions) {
+    const d = await make(options)
     for (const handle of ['riley', 'maya', 'sam', 'devon', 'outsider']) {
-      await d.ensureUser({ id: `u-${handle}`, handle, name: handle[0]!.toUpperCase() + handle.slice(1) })
+      await d.ensureUser({
+        id: `u-${handle}`,
+        handle,
+        name: handle[0]!.toUpperCase() + handle.slice(1),
+        // everyone but the outsider has an address to email
+        ...(options?.email && handle !== 'outsider' ? { email: `${handle}@example.test` } : {}),
+      })
     }
     return d
   }
@@ -1098,7 +1110,12 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
         const bot = { user: 'u-riley', bot: 'planbot', purpose: 'bot-for-me' as const }
         await d.notify({ idea: 'i1', events: [event('comment', bot)] })
         expect(await ids(d, 'u-riley')).toEqual([['i1', 'author', 1]])
-        expect(await d.notificationSettings('u-riley')).toEqual({ ownBots: true })
+        expect(await d.notificationSettings('u-riley')).toEqual({
+          ownBots: true,
+          email: 'involved',
+          emailWatching: false,
+          cadence: 'bundled',
+        })
         await d.setNotificationSettings('u-riley', { ownBots: false })
         await d.notify({ idea: 'i1', events: [event('comment', bot)] })
         expect(await ids(d, 'u-riley')).toEqual([['i1', 'author', 1]])
@@ -1110,6 +1127,186 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
         await d.setGrant('u-riley', 'i1', { kind: 'user', id: 'u-maya' }, null)
         expect(await ids(d, 'u-maya')).toEqual([])
         expect(await d.unreadCount('u-maya')).toBe(0)
+      })
+    })
+
+    describe('email', () => {
+      const me = (user: string) => ({ user, bot: null, purpose: 'me' as const })
+      const timing = { quietMs: 1_000, maxWaitMs: 5_000, digestMs: 100_000 }
+      let tick = 0
+      const event = (kind: InboxEvent['kind'], actor: InboxEvent['actor'], detail = {}): InboxEvent => ({
+        kind,
+        actor,
+        at: 1_000 + ++tick,
+        detail,
+      })
+      /** A directory on a clock the test moves. */
+      async function mailing() {
+        const clock = { now: 5_000_000 }
+        const d = await people({ email: true, now: () => clock.now })
+        await d.registerIdea(idea('i1', { status: 'requesting-review' }))
+        await d.setGrant('u-riley', 'i1', { kind: 'user', id: 'u-maya' }, { edit: false, share: false })
+        await d.setGrant('u-riley', 'i1', { kind: 'user', id: 'u-sam' }, { edit: false, share: false })
+        return { d, clock }
+      }
+      /** Sends what's due: who it went to, and each idea's updates by kind. */
+      async function send(d: Directory) {
+        const due = await d.dueEmails(timing)
+        for (const email of due) {
+          await d.emailSent(email)
+        }
+        return due
+      }
+      const summary = (due: DueEmail[]) =>
+        due
+          .map((e) => [e.to.handle, e.digest, e.ideas.map((i) => [i.idea.id, i.reason, i.events.map((x) => x.kind)])])
+          .toSorted()
+
+      test('an idea’s updates go in one email once it has gone quiet, to those involved who have an address', async () => {
+        const { d, clock } = await mailing()
+        await d.setSubscription('u-sam', 'i1', true)
+        await d.notify({ idea: 'i1', events: [event('comment', me('u-maya'), { body: 'Which fox?' })] })
+        clock.now += 500
+        await d.notify({ idea: 'i1', events: [event('version', me('u-riley'), { version: 2 })] })
+        // not yet: it isn't quiet
+        clock.now += 400
+        expect(await d.dueEmails(timing)).toEqual([])
+        expect(await d.nextEmailAt(timing)).toBe(clock.now + 100)
+        clock.now += 600
+        const due = await send(d)
+        // nobody hears of what they did; maya took part, so she hears of riley's version
+        expect(summary(due)).toEqual([
+          ['maya', false, [['i1', 'participating', ['version']]]],
+          ['riley', false, [['i1', 'author', ['comment']]]],
+          ['sam', false, [['i1', 'subscribed', ['comment', 'version']]]],
+        ])
+        const sam = due.find((e) => e.to.handle === 'sam')!
+        expect(sam.to.email).toBe('sam@example.test')
+        expect(sam.ideas[0]!.idea).toMatchObject({ id: 'i1', place: '@riley', title: 'Idea i1' })
+        expect(sam.people['u-maya']).toEqual({ handle: 'maya', name: 'Maya' })
+        // sent once
+        expect(await d.dueEmails(timing)).toEqual([])
+        expect(await d.nextEmailAt(timing)).toBeNull()
+      })
+
+      test('a busy idea still goes by the longest wait; nobody without an address is emailed', async () => {
+        const { d, clock } = await mailing()
+        await d.setGrant('u-riley', 'i1', { kind: 'user', id: 'u-outsider' }, { edit: false, share: false })
+        await d.setSubscription('u-outsider', 'i1', true)
+        for (let i = 0; i < 12; i++) {
+          await d.notify({ idea: 'i1', events: [event('comment', me('u-maya'), { body: `${i}` })] })
+          clock.now += 600
+        }
+        // past the longest wait, though never quiet
+        const due = await send(d)
+        expect(due.map((e) => e.to.handle)).toEqual(['riley'])
+        // the latest ten, and how many more
+        expect(due[0]!.ideas[0]!.events.map((e) => e.detail.body)).toEqual([
+          '2',
+          '3',
+          '4',
+          '5',
+          '6',
+          '7',
+          '8',
+          '9',
+          '10',
+          '11',
+        ])
+        expect(due[0]!.ideas[0]!.more).toBe(2)
+      })
+
+      test('reading it first, or marking it done, means no email', async () => {
+        const { d, clock } = await mailing()
+        await d.setSubscription('u-sam', 'i1', true)
+        await d.setSubscription('u-maya', 'i1', true)
+        await d.notify({ idea: 'i1', events: [event('comment', me('u-riley'))] })
+        await d.markInbox('u-sam', ['i1'], { read: true })
+        await d.markInbox('u-maya', null, { done: true })
+        clock.now += 2_000
+        expect(summary(await send(d))).toEqual([])
+      })
+
+      test('what each person asked for: everything, only review requests, or nothing; bundled or a daily digest', async () => {
+        const { d, clock } = await mailing()
+        await d.registerIdea(idea('i2'))
+        await d.setGrant('u-riley', 'i2', { kind: 'user', id: 'u-sam' }, { edit: false, share: false })
+        for (const user of ['u-maya', 'u-sam']) {
+          await d.setSubscription(user, 'i1', true)
+        }
+        await d.setSubscription('u-sam', 'i2', true)
+        expect(await d.setNotificationSettings('u-maya', { email: 'review-requests' })).toMatchObject({
+          ok: true,
+          value: { email: 'review-requests' },
+        })
+        await d.setNotificationSettings('u-riley', { email: 'off' })
+        await d.setNotificationSettings('u-sam', { cadence: 'daily' })
+        expect(await d.setNotificationSettings('u-sam', { cadence: 'weekly' as never })).toMatchObject({
+          ok: false,
+          error: { code: 'invalid' },
+        })
+        await d.notify({ idea: 'i1', events: [event('comment', me('u-devon'))] })
+        await d.notify({ idea: 'i2', events: [event('comment', me('u-devon'))] })
+        await d.setReviewer('u-riley', 'i1', { kind: 'user', id: 'u-maya' }, true)
+        clock.now += 2_000
+        // maya: just the request; riley: nothing; sam: both ideas in one digest
+        expect(summary(await send(d))).toEqual([
+          ['maya', false, [['i1', 'review-requested', ['requested']]]],
+          [
+            'sam',
+            true,
+            [
+              ['i2', 'subscribed', ['comment']],
+              ['i1', 'subscribed', ['comment']],
+            ],
+          ],
+        ])
+        // the next digest waits a day
+        await d.notify({ idea: 'i2', events: [event('version', me('u-riley'), { version: 2 })] })
+        clock.now += 2_000
+        expect(await send(d)).toEqual([])
+        expect(await d.nextEmailAt(timing)).toBe(clock.now - 2_000 + timing.digestMs)
+        clock.now += timing.digestMs
+        expect(summary(await send(d))).toEqual([['sam', true, [['i2', 'subscribed', ['version']]]]])
+      })
+
+      test('unsubscribing, or losing access, stops what was waiting; a review request still goes', async () => {
+        const { d, clock } = await mailing()
+        await d.setSubscription('u-maya', 'i1', true)
+        await d.setSubscription('u-sam', 'i1', true)
+        await d.notify({ idea: 'i1', events: [event('comment', me('u-riley'))] })
+        await d.setReviewer('u-riley', 'i1', { kind: 'user', id: 'u-maya' }, true)
+        await d.setSubscription('u-maya', 'i1', false)
+        await d.setGrant('u-riley', 'i1', { kind: 'user', id: 'u-sam' }, null)
+        clock.now += 2_000
+        expect(summary(await send(d))).toEqual([['maya', false, [['i1', 'review-requested', ['requested']]]]])
+        expect(await d.nextEmailAt(timing)).toBeNull()
+      })
+
+      test('watched teams email only those who asked, at their level', async () => {
+        const { d, clock } = await mailing()
+        const team = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
+          .value.id
+        await d.addMember('u-riley', 'team', team, 'u-maya')
+        await d.addMember('u-riley', 'team', team, 'u-sam')
+        await d.addMember('u-riley', 'team', team, 'u-devon')
+        await d.registerIdea(idea('draft', { team }))
+        await d.registerIdea(idea('open', { team, status: 'requesting-review' }))
+        await d.setWatch('u-maya', team, 'active')
+        await d.setWatch('u-sam', team, 'all')
+        await d.setWatch('u-devon', team, 'all')
+        await d.setNotificationSettings('u-maya', { emailWatching: true })
+        await d.setNotificationSettings('u-sam', { emailWatching: true })
+        await d.setNotificationSettings('u-riley', { email: 'off' })
+        await d.notify({ idea: 'draft', events: [event('comment', me('u-riley'))] })
+        await d.notify({ idea: 'open', events: [event('version', me('u-riley')), event('comment', me('u-sam'))] })
+        clock.now += 2_000
+        // maya (active): the open idea; sam (all): the draft too, but not his own comment; devon didn't ask
+        expect(summary(await send(d))).toEqual([
+          ['maya', false, [['open', 'watching', ['version', 'comment']]]],
+          ['sam', false, [['draft', 'watching', ['comment']]]],
+          ['sam', false, [['open', 'participating', ['version']]]],
+        ])
       })
     })
   })

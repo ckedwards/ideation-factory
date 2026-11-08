@@ -5,3 +5,19 @@
   font-family: var(--font-ui);
   font-size: var(--text-sm);
 }
+.settings-field {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: start;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+}
+.settings-field .select {
+  max-width: 100%;
+}
+.settings-note {
+  margin: 0;
+  color: var(--ink-3);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+}

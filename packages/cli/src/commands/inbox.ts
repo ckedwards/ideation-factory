@@ -100,17 +100,58 @@ export async function mark(
   return EXIT.ok
 }
 
-export async function settings(ctx: Context, flags: { ownBots?: boolean }): Promise<number> {
+const EMAIL = ['involved', 'review-requests', 'off'] as const
+const CADENCE = ['bundled', 'daily'] as const
+
+export async function settings(
+  ctx: Context,
+  flags: { ownBots?: boolean; email?: string; emailWatching?: boolean; cadence?: string },
+): Promise<number> {
+  if (flags.email !== undefined && !EMAIL.includes(flags.email as (typeof EMAIL)[number])) {
+    throw new CliError(`--email takes ${EMAIL.join(', ')}`, EXIT.usage, 'invalid')
+  }
+  if (flags.cadence !== undefined && !CADENCE.includes(flags.cadence as (typeof CADENCE)[number])) {
+    throw new CliError(`--cadence takes ${CADENCE.join(', ')}`, EXIT.usage, 'invalid')
+  }
+  const changes = {
+    ...(flags.ownBots !== undefined ? { ownBots: flags.ownBots } : {}),
+    ...(flags.email !== undefined ? { email: flags.email as (typeof EMAIL)[number] } : {}),
+    ...(flags.emailWatching !== undefined ? { emailWatching: flags.emailWatching } : {}),
+    ...(flags.cadence !== undefined ? { cadence: flags.cadence as (typeof CADENCE)[number] } : {}),
+  }
   const now =
-    flags.ownBots === undefined
+    Object.keys(changes).length === 0
       ? await ctx.api.getNotificationSettings({})
-      : await ctx.api.setNotificationSettings({ ownBots: flags.ownBots })
+      : await ctx.api.setNotificationSettings(changes)
   ctx.result(now)
   ctx.say(
     now.ownBots
       ? 'What your bots do on your behalf lands in your inbox (--no-own-bots to stop it).'
       : 'What your bots do on your behalf stays out of your inbox (--own-bots to hear about it).',
   )
+  if (!now.emailAvailable) {
+    ctx.say('This server doesn’t send notification emails.')
+    return EXIT.ok
+  }
+  ctx.say(
+    now.email === 'off'
+      ? 'Email: off (--email involved to turn it on).'
+      : now.email === 'review-requests'
+        ? 'Email: only when you’re asked to review (--email involved for everything).'
+        : 'Email: everything your inbox has for ideas you’re involved in (--email review-requests for less).',
+  )
+  if (now.email !== 'off') {
+    ctx.say(
+      now.emailWatching
+        ? 'The teams you watch email you too (--no-email-watching to stop it).'
+        : 'The teams you watch only fill your inbox (--email-watching to email them too).',
+    )
+    ctx.say(
+      now.cadence === 'daily'
+        ? 'One digest a day (--cadence bundled for an email per idea).'
+        : 'An email per idea, once it has gone quiet for a few minutes (--cadence daily for one a day).',
+    )
+  }
   return EXIT.ok
 }
 

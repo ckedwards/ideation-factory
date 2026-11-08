@@ -6,11 +6,11 @@ import { fts5Search } from './search.ts'
 import { SqlDirectory } from './sql-directory.ts'
 import { HANDLE_PARKED_MS } from './types.ts'
 
-directoryContract('SqlDirectory on SQLite', async () => {
+directoryContract('SqlDirectory on SQLite', async (options = {}) => {
   const sql = bunSql()
   const search = fts5Search()
   await migrateDirectory(sql, [search.migrate])
-  return new SqlDirectory({ sql, search })
+  return new SqlDirectory({ sql, search, ...options })
 })
 
 test('a search that matches more than the work cap uses the most recently updated matches and says it is incomplete', async () => {

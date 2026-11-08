@@ -572,17 +572,35 @@ const inboxFamily: Family = {
     },
     {
       name: 'settings',
-      usage: 'ideaf inbox settings [--own-bots | --no-own-bots]',
-      summary: 'Show or change whether what your bots do on your behalf lands in your inbox',
+      usage:
+        'ideaf inbox settings [--own-bots | --no-own-bots] [--email involved|review-requests|off] [--email-watching | --no-email-watching] [--cadence bundled|daily]',
+      summary: 'Show or change what you hear about: what your bots do, and what reaches you by email',
       flags: {
-        'own-bots': { type: 'boolean', description: 'hear about what your bots do (the default)' },
+        'own-bots': { type: 'boolean', description: 'hear about what your bots do on your behalf (the default)' },
         'no-own-bots': { type: 'boolean', description: 'don’t' },
+        email: {
+          type: 'string',
+          description:
+            'what reaches you by email: involved (the default: everything for ideas you’re involved in), review-requests, or off',
+        },
+        'email-watching': { type: 'boolean', description: 'the teams you watch email you too' },
+        'no-email-watching': { type: 'boolean', description: 'they only fill your inbox (the default)' },
+        cadence: {
+          type: 'string',
+          description: 'bundled (the default: an email per idea once it goes quiet) or daily (one digest a day)',
+        },
       },
       run: (ctx, f) =>
-        inbox.settings(
-          ctx,
-          f['own-bots'] === true ? { ownBots: true } : f['no-own-bots'] === true ? { ownBots: false } : {},
-        ),
+        inbox.settings(ctx, {
+          ...(f['own-bots'] === true ? { ownBots: true } : f['no-own-bots'] === true ? { ownBots: false } : {}),
+          ...(typeof f.email === 'string' ? { email: f.email } : {}),
+          ...(f['email-watching'] === true
+            ? { emailWatching: true }
+            : f['no-email-watching'] === true
+              ? { emailWatching: false }
+              : {}),
+          ...(typeof f.cadence === 'string' ? { cadence: f.cadence } : {}),
+        }),
     },
   ],
 }

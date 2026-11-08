@@ -1,6 +1,7 @@
 // Your settings: your name and handle, where you're signed in, your
-// passkeys, and the tokens and apps that act for you. Each list comes from
-// sign-in, and each change goes straight to it.
+// passkeys, what you hear about (in the inbox and by email), and the tokens
+// and apps that act for you. Each list comes from sign-in, and each change
+// goes straight to it.
 import { useState } from 'react'
 import { Button, Page, PageHeader, RelativeTime, Section, Stack, Toast } from '@ideaf/ui'
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
@@ -8,6 +9,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { api, meQuery } from '../../api.ts'
 import { account, AuthError } from '../../auth.ts'
 import { AccountList } from './-components/AccountList.tsx'
+import { NotificationSettingsForm } from './-components/NotificationSettingsForm.tsx'
 import { ProfileForm } from './-components/ProfileForm.tsx'
 import './-components/settings.css'
 
@@ -154,20 +156,18 @@ function Settings() {
       </Section>
 
       <Section title="Notifications">
-        <label className="settings-check">
-          <input
-            type="checkbox"
-            checked={notifications.data?.ownBots ?? true}
-            disabled={!notifications.data}
-            onChange={(event) => {
-              const ownBots = event.target.checked
-              void api.setNotificationSettings({ ownBots }).then((now) => {
-                queryClient.setQueryData(['me', 'notifications'], now)
-              })
-            }}
-          />
-          What a bot does on your behalf shows in your inbox
-        </label>
+        <NotificationSettingsForm
+          value={notifications.data ?? null}
+          onChange={(changes) => {
+            // shown at once; the server's answer (or, on failure, what it has) replaces it
+            const key = ['me', 'notifications']
+            queryClient.setQueryData(key, (was: typeof notifications.data) => (was ? { ...was, ...changes } : was))
+            void api
+              .setNotificationSettings(changes)
+              .then((now) => queryClient.setQueryData(key, now))
+              .catch(() => queryClient.invalidateQueries({ queryKey: key }))
+          }}
+        />
       </Section>
 
       <Section title="Apps and the cli">

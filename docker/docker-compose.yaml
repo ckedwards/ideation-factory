@@ -27,6 +27,7 @@ services:
       IDEAF_PERSONAL_TOKENS: ${IDEAF_PERSONAL_TOKENS:-admins}
       IDEAF_SMTP_URL: smtp://mailpit:1025
       IDEAF_EMAIL_FROM: Ideation Factory <sign-in@ideaf.test>
+      IDEAF_NOTIFY_FROM: Ideation Factory <notifications@ideaf.test>
     depends_on:
       - mailpit
     volumes:

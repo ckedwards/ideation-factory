@@ -1,7 +1,8 @@
 // The inbox, end to end: an idea's events go from its actor through the
 // directory's queue into the inboxes of those who hear about it, one row per
-// idea; read, done, unsubscribing, and what your bots do.
+// idea; read, done, unsubscribing, and what your bots do; and by email.
 import { beforeAll, describe, expect, test } from 'bun:test'
+import { testEmail } from '@ideaf/server/testing.ts'
 import { api, repo, server, token } from './harness.ts'
 
 beforeAll(() => server(), 60_000)
@@ -86,7 +87,7 @@ describe('the inbox', () => {
     const lee = await repoAs('lee')
     expect((await lee.ideaf('inbox', 'settings')).out).toContain('lands in your inbox')
     expect((await lee.ideaf('inbox', 'settings', '--no-own-bots')).out).toContain('stays out of your inbox')
-    expect(await api(h('lee')).getNotificationSettings({})).toEqual({ ownBots: false })
+    expect(await api(h('lee')).getNotificationSettings({})).toMatchObject({ ownBots: false })
   })
 
   test('watching a team: its active ideas join your inbox, at the level you pick', async () => {
@@ -111,5 +112,71 @@ describe('the inbox', () => {
     expect((await kim.ideaf('inbox', 'show', '--reason', 'watching')).out).toContain('(watching a team)')
     expect((await kim.ideaf('inbox', 'read', idea)).out).toContain('1 idea marked read')
     expect((await api(h('kim')).unreadNotifications({})).count).toBe(0)
+  })
+
+  test('by email: an idea’s updates in one email once it’s quiet, unless read first; one click unsubscribes', async () => {
+    await Promise.all([api(h('ash')).me({}), api(h('kai')).me({})])
+    const riley = await repoAs('riley', { 'plan.md': '# Plan\n\nText.\n' })
+    const { idea } = (await riley.ideaf('start', '--title', 'Mailed plan', '--json')).json()
+    await api(h('riley')).setAccess({
+      idea,
+      subject: { kind: 'user', id: h('kai') },
+      access: { edit: false, share: false },
+    })
+    await api(h('kai')).setSubscription({ idea, subscribed: true })
+    await riley.ideaf('review', 'ask', h('ash'))
+    await api(h('riley')).addComment({ idea, version: 1, anchor: { kind: 'file', file: 'f1' }, body: 'Thoughts?' })
+
+    // kai reads it in the app before its email goes: none comes
+    await inboxOf('kai', (items) => items.length > 0)
+    await api(h('kai')).markNotifications({ ideas: [idea], read: true })
+
+    // ash gets one email: asked to review, and the comment
+    const ash = `${h('ash')}@example.test`
+    let mail = testEmail.to(ash)
+    for (let i = 0; i < 100 && mail.length === 0; i++) {
+      await Bun.sleep(50)
+      mail = testEmail.to(ash)
+    }
+    expect(mail).toHaveLength(1)
+    const [email] = mail
+    expect(email!.subject).toMatch(new RegExp(`^\\[@${h('riley')}\\] Mailed plan \\(@${h('riley')}/idea/\\d+\\)$`))
+    expect(email!.text).toContain('asked you to review it')
+    expect(email!.text).toContain('commented: “Thoughts?”')
+    expect(email!.headers['X-Ideaf-Reason']).toBe('review-requested')
+    await Bun.sleep(500)
+    expect(testEmail.to(`${h('kai')}@example.test`)).toEqual([])
+
+    // its unsubscribe link works without signing in
+    const link = email!.headers['List-Unsubscribe']!.slice(1, -1)
+    const app = await server()
+    expect(await (await app(new Request(link))).text()).toContain('Unsubscribe from “Mailed plan”?')
+    expect((await app(new Request(link, { method: 'POST', body: 'List-Unsubscribe=One-Click' }))).status).toBe(200)
+    expect(await api(h('ash')).getSubscription({ idea })).toEqual({ subscribed: false, reason: null })
+  })
+
+  test('email settings, from the cli', async () => {
+    const lee = await repoAs('lee')
+    expect((await lee.ideaf('inbox', 'settings')).out).toContain('Email: everything your inbox has')
+    const set = await lee.ideaf(
+      'inbox',
+      'settings',
+      '--email',
+      'review-requests',
+      '--email-watching',
+      '--cadence',
+      'daily',
+    )
+    expect(set.out).toContain('only when you’re asked to review')
+    expect(set.out).toContain('The teams you watch email you too')
+    expect(set.out).toContain('One digest a day')
+    expect((await lee.ideaf('inbox', 'settings', '--email', 'sometimes')).exit).toBe(2)
+    expect(await api(h('lee')).getNotificationSettings({})).toEqual({
+      ownBots: false,
+      email: 'review-requests',
+      emailWatching: true,
+      cadence: 'daily',
+      emailAvailable: true,
+    })
   })
 })

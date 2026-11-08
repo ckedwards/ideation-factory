@@ -17,10 +17,14 @@ import {
 } from '@ideaf/api'
 import type { Client } from 'rivetkit/client'
 import { DIRECTORY_KEY } from './actors/directory.ts'
+import { nodeDeps } from './deps.ts'
 import type { ContainerKind, IdeaListing, Permission, RequirementCheck, Result } from './directory/types.ts'
 import { reviewerOf } from './idea/reviewer.ts'
 import type { IdeaWrite, WriteResult, WriteValue } from './idea/service.ts'
 import type { Registry } from './registry.ts'
+
+/** Whether this deployment sends notification emails (otherwise nobody sees email settings). */
+const emailAvailable = () => nodeDeps().email !== null
 
 const WRITE_TIMEOUT_MS = 60_000
 
@@ -705,10 +709,17 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
       return set.ok ? { ok: true, value: { level: set.value } } : set
     },
 
-    getNotificationSettings: (_input, { caller }) => read(() => directory().notificationSettings(caller.user)),
+    getNotificationSettings: (_input, { caller }) =>
+      read(async () => ({
+        ...(await directory().notificationSettings(caller.user)),
+        emailAvailable: emailAvailable(),
+      })),
 
-    setNotificationSettings: (input, { caller }) =>
-      read(() => directory().setNotificationSettings(caller.user, { ownBots: input.ownBots })),
+    setNotificationSettings: async (input, { caller }) => {
+      const changes = Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined))
+      const set = await directory().setNotificationSettings(caller.user, changes)
+      return set.ok ? { ok: true, value: { ...set.value, emailAvailable: emailAvailable() } } : set
+    },
 
     listIdeas: (input, { caller, token }) =>
       read(async () => {
