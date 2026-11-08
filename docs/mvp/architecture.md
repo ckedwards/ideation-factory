@@ -134,7 +134,7 @@ packages/
 - Sign-in with an email code or a passkey.
 - **Self-hosting** on one VM or a three-node cluster, with Docker Compose, plus a Kubernetes example.
 
-**After the MVP:** a Site admin page for single sign-on (it's configuration in the MVP), other site-admin tools, site admin tokens, review batching, email notifications, fuzzy comment re-anchoring, and per-deployment settings in the UI (they're install-time configuration in the MVP).
+**After the MVP:** a Site admin page for single sign-on (it's configuration in the MVP), other site-admin tools, site admin tokens, fuzzy comment re-anchoring, and per-deployment settings in the UI (they're install-time configuration in the MVP).
 
 ## Already validated
 
