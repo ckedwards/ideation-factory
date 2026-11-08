@@ -5,10 +5,12 @@
 // Once the server says it's ready, the threads are read in one go, then each
 // comment, reply and resolve arrives on the socket and is written in as it
 // is: nobody reads the list again. A new version re-reads it, since every
-// comment's place in the file has changed.
+// comment's place in the file has changed. A suggestion accepted or rejected
+// arrives as `decided`, resolving its thread.
 //
-// Writes go through the API like any other client's. Commenting inserts a
-// thread with a temporary ID, and replying or resolving updates one; each
+// Writes go through the API like any other client's. Commenting (or
+// suggesting) inserts a thread with a temporary ID, and replying, resolving
+// or rejecting a suggestion updates one; each
 // shows at once. Its handler sends it, then waits for the socket to bring back
 // what the server made of it (the server's ID), so the optimistic row gives
 // way to the real one without a flicker. If the server refuses it, the
@@ -21,7 +23,7 @@ import type { Thread } from './view.ts'
 export type SocketLike = Pick<WebSocket, 'send' | 'close' | 'onopen' | 'onmessage' | 'onclose'>
 
 export interface CommentsDeps {
-  api: Pick<ApiClient, 'listComments' | 'addComment' | 'reply' | 'resolveComment'>
+  api: Pick<ApiClient, 'listComments' | 'addComment' | 'suggestEdit' | 'reply' | 'resolveComment' | 'rejectSuggestion'>
   /** Opens a WebSocket to a path on this site. */
   open: (path: string) => SocketLike
   token: () => Promise<string>
@@ -108,6 +110,14 @@ export function commentsCollection(idea: string, deps: CommentsDeps) {
               commit()
             }
             saw(`resolved:${event.comment}:${event.resolved}`)
+          } else if (event.type === 'decided') {
+            const thread = synced.get(event.comment)
+            if (thread?.suggestion) {
+              begin()
+              put({ ...thread, resolved: true, suggestion: { ...thread.suggestion, decision: event.decision } })
+              commit()
+            }
+            saw(`decided:${event.comment}:${event.decision.kind}`)
           }
         }
         // every thread, replacing what's held
@@ -180,6 +190,20 @@ export function commentsCollection(idea: string, deps: CommentsDeps) {
     onInsert: async ({ transaction }) => {
       for (const { modified: thread } of transaction.mutations) {
         const anchor = thread.anchor
+        if (thread.suggestion) {
+          if (anchor?.kind !== 'text') {
+            throw new Error('a suggestion is on a selection of text')
+          }
+          const { comment } = await api.suggestEdit({
+            idea,
+            version: thread.version,
+            anchor: { kind: 'text', file: anchor.file, start: anchor.start, end: anchor.end },
+            new: thread.suggestion.new,
+            ...(thread.body ? { body: thread.body } : {}),
+          })
+          await echo(comment)
+          continue
+        }
         const { comment } = await api.addComment({
           idea,
           version: thread.version,
@@ -200,6 +224,11 @@ export function commentsCollection(idea: string, deps: CommentsDeps) {
         for (const reply of modified.replies.filter((r) => !original.replies.some((o) => o.id === r.id))) {
           const { comment } = await api.reply({ idea, comment: modified.id, body: reply.body })
           await echo(comment)
+        }
+        if (modified.suggestion?.decision?.kind === 'rejected' && !original.suggestion?.decision) {
+          await api.rejectSuggestion({ idea, comment: modified.id })
+          await echo(`decided:${modified.id}:rejected`)
+          continue
         }
         if (modified.resolved !== original.resolved) {
           await api.resolveComment({ idea, comment: modified.id, resolved: modified.resolved })

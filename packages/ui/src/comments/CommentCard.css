@@ -104,6 +104,11 @@
   font-family: var(--font-prose);
   line-height: 1.5;
 }
+.suggestion.is-source .suggestion-diff {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+}
 .suggestion-diff del {
   background: var(--del-bg);
   color: var(--del-ink);

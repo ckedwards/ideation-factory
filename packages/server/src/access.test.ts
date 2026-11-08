@@ -75,6 +75,37 @@ describe('ideas outside a team', () => {
   })
 })
 
+describe('suggested edits', () => {
+  test('anyone who can view suggests; people with edit access accept or reject', async () => {
+    const riley = as('riley')
+    const maya = as('maya')
+    await maya.me({})
+    const { idea } = await riley.createIdea({ title: 'Suggested', files: [{ path: 'a.md', content: PLAN }] })
+    await riley.setAccess({
+      idea,
+      subject: { kind: 'user', id: handle('maya') },
+      access: { edit: false, share: false },
+    })
+
+    // "quick brown" is plain text 9–20
+    const anchor = { kind: 'text' as const, file: 'f1', start: 9, end: 20 }
+    expect(await maya.suggestionSource({ idea, file: 'f1', start: 9, end: 20 })).toEqual({
+      version: 1,
+      old: 'quick brown',
+    })
+    const { comment, old } = await maya.suggestEdit({ idea, version: 1, anchor, new: 'slow red' })
+    expect(old).toBe('quick brown')
+    await expect(maya.acceptSuggestions({ idea, suggestions: [comment] })).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(maya.rejectSuggestion({ idea, comment })).rejects.toMatchObject({ code: 'forbidden' })
+
+    const accepted = await riley.acceptSuggestions({ idea, suggestions: [comment] })
+    expect(accepted).toMatchObject({ version: 2, accepted: [comment], skipped: [] })
+    expect((await riley.pull({ idea })).files[0]!.content).toBe('# Plan\n\nThe slow red fox.\n')
+    const [thread] = await maya.listComments({ idea })
+    expect(thread).toMatchObject({ resolved: true, suggestion: { decision: { kind: 'accepted', version: 2 } } })
+  })
+})
+
 describe('ideas in a team', () => {
   test("start with the team's defaults, and access follows membership", async () => {
     const riley = as('riley')

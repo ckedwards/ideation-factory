@@ -365,7 +365,7 @@ function unitTarget(idea: Idea, id: string, expect: string | undefined): UnitTar
   return { ...at, extent, removal: removalRange(at.parsed, extent[0], extent[1]) }
 }
 
-function sectionExtent(parsed: ParsedFile, headingUnit: number): [number, number] {
+export function sectionExtent(parsed: ParsedFile, headingUnit: number): [number, number] {
   const section = parsed.sections.find((s) => s.heading === headingUnit)!
   let end = parsed.units[headingUnit]!.end
   for (let u = headingUnit; u <= section.last; u++) {
@@ -488,7 +488,7 @@ function checkNewPath(idea: Idea, path: string, self: string | null): void {
   }
 }
 
-function occurrences(text: string, needle: string): number[] {
+export function occurrences(text: string, needle: string): number[] {
   const found: number[] = []
   for (let i = text.indexOf(needle); i >= 0; i = text.indexOf(needle, i + 1)) {
     found.push(i)

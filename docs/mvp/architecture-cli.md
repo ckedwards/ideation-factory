@@ -69,7 +69,7 @@ flowchart TB
 | `ideaf pull` | Bring the latest version into your files (accepted suggestions, edits made remotely), merging with local edits like git |
 | `ideaf show --blocks [--json]` | The structured view: each file's sections and blocks with IDs and text, and the open comments on them |
 | `ideaf edit <batch> [--dry-run]` | Edit the idea in place with commands (replace, move, rename a heading, …). One batch makes one version |
-| `ideaf comment …` | List, show, add, reply to, resolve and reopen threads, and suggest edits. A comment goes on a file, a section by ID, or a quote: `--quote` takes the text as it reads, and the cli finds it in the file's plain text, so no one counts characters. Suggested edits wait for their API |
+| `ideaf comment …` | List, show, add, reply to, resolve and reopen threads, and suggest edits. A comment goes on a file, a section by ID, or a quote: `--quote` takes the text as it reads, and the cli finds it in the file's plain text, so no one counts characters. `suggest <replacement> --quote …` proposes Markdown for the quote's source; if that has formatting the quote doesn't show, `--replaces` must confirm it, so a replacement can't drop formatting by accident. `accept <suggestion>…` (one new version, the rest left open saying why) and `reject` need edit access |
 | `ideaf review …` | Request reviewers, approve, or request changes |
 | `ideaf skills install` | Install the Ideation Factory skills for your agent |
 

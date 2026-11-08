@@ -10,6 +10,7 @@ import {
   CommentOutcome,
   CommentThread,
   Conflict,
+  Skipped,
   FileContent,
   FileId,
   FileOutline,
@@ -213,6 +214,72 @@ export const operations = {
     output: z.object({ comment: z.string(), resolved: z.boolean() }),
   }),
 
+  suggestEdit: defineOperation({
+    name: 'suggest_edit',
+    summary: 'Suggest an edit',
+    description:
+      "Suggests a replacement for a range of a file's plain text (from show_blocks), on the latest version: a comment that carries a change. What it replaces is the range's Markdown source, widened to whole formatting where the range cuts through it; the answer says what that is, so send `new` as its replacement. Anyone who can comment can suggest; people with edit access accept or reject. If the idea has moved on, it's refused with stale_version: read it again.",
+    method: 'POST',
+    path: '/ideas/{idea}/suggestions',
+    kind: 'write',
+    input: z.strictObject({
+      idea: IdeaId,
+      version: z.number().int().positive(),
+      anchor: z.strictObject({
+        kind: z.literal('text'),
+        file: FileId,
+        start: z.number().int().nonnegative(),
+        end: z.number().int().positive(),
+      }),
+      /** The replacement, as Markdown. */
+      new: z.string().max(1_000_000),
+      /** Why, if it needs saying. */
+      body: z.string().trim().max(20_000).optional(),
+    }),
+    output: z.object({ comment: z.string(), old: z.string() }),
+  }),
+
+  suggestionSource: defineOperation({
+    name: 'suggestion_source',
+    summary: 'What a suggestion would replace',
+    description:
+      "The Markdown source a suggestion on a range of a file's plain text would replace (on the latest version): the range's source, widened to whole formatting where the range cuts through it. Read it to write the replacement.",
+    method: 'GET',
+    path: '/ideas/{idea}/suggestions/source',
+    kind: 'read',
+    input: z.strictObject({
+      idea: IdeaId,
+      file: FileId,
+      start: z.coerce.number().int().nonnegative(),
+      end: z.coerce.number().int().positive(),
+    }),
+    output: z.object({ version: z.number().int(), old: z.string() }),
+  }),
+
+  acceptSuggestions: defineOperation({
+    name: 'accept_suggestions',
+    summary: 'Accept suggested edits',
+    description:
+      "Accepts suggestions as one new version, a step for each that addresses it, and resolves them. One whose text has changed or gone since, or that overlaps one before it, is skipped and stays open, saying why; if none apply, it's refused with conflict. Needs edit access.",
+    method: 'POST',
+    path: '/ideas/{idea}/suggestions/accept',
+    kind: 'write',
+    input: z.strictObject({ idea: IdeaId, suggestions: z.array(CommentId).min(1).max(100) }),
+    output: VersionResult.extend({ accepted: z.array(z.string()), skipped: z.array(Skipped) }),
+  }),
+
+  rejectSuggestion: defineOperation({
+    name: 'reject_suggestion',
+    summary: 'Reject a suggested edit',
+    description:
+      'Rejects a suggestion, resolving it. One already accepted can’t be: edit the idea instead. Needs edit access.',
+    method: 'POST',
+    path: '/ideas/{idea}/suggestions/{comment}/reject',
+    kind: 'write',
+    input: z.strictObject({ idea: IdeaId, comment: CommentId }),
+    output: z.object({ comment: z.string() }),
+  }),
+
   ...directoryOperations,
 } as const
 
@@ -221,7 +288,8 @@ export type OperationKey = keyof Operations
 
 /** Error details, for the codes that carry them. */
 export const ErrorDetails = {
-  conflict: z.object({ conflicts: z.array(Conflict) }),
+  /** An edit's steps that no longer apply, or (accepting suggestions) the suggestions that don't. */
+  conflict: z.object({ conflicts: z.array(Conflict).optional(), skipped: z.array(Skipped).optional() }),
   pull_first: z.object({
     latest: z.number().int(),
     files: z.array(z.object({ file: z.string(), path: z.string(), base: z.string().nullable(), latest: z.string() })),

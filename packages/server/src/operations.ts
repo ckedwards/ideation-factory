@@ -333,6 +333,45 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         }),
       ),
 
+    suggestEdit: (input, context) =>
+      withAccess(input.idea, context, 'view', () =>
+        write(
+          input.idea,
+          context,
+          { type: 'suggest', version: input.version, anchor: input.anchor, new: input.new, body: input.body ?? '' },
+          (value) => {
+            if (value.kind !== 'suggestion') {
+              throw new Error(`expected a suggestion, got ${value.kind}`)
+            }
+            return { comment: value.comment, old: value.old }
+          },
+        ),
+      ),
+
+    suggestionSource: (input, { caller, token }) =>
+      withAccess(input.idea, { caller, token }, 'view', () =>
+        read(() => ideaOf(input.idea).suggestionSource(input.file, input.start, input.end)),
+      ),
+
+    acceptSuggestions: (input, context) =>
+      withAccess(input.idea, context, 'edit', () =>
+        write(input.idea, context, { type: 'accept', suggestions: input.suggestions }, (value) => ({
+          ...version(value),
+          accepted: value.kind === 'version' ? (value.accepted ?? []) : [],
+          skipped: value.kind === 'version' ? (value.skipped ?? []) : [],
+        })),
+      ),
+
+    rejectSuggestion: (input, context) =>
+      withAccess(input.idea, context, 'edit', () =>
+        write(input.idea, context, { type: 'reject', suggestion: input.comment }, (value) => {
+          if (value.kind !== 'rejected') {
+            throw new Error(`expected a rejected suggestion, got ${value.kind}`)
+          }
+          return { comment: value.comment }
+        }),
+      ),
+
     // --- access --------------------------------------------------------------------
 
     getAccess: (input, { caller, token }) =>

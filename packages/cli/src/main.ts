@@ -171,7 +171,8 @@ const stdin = () => Bun.stdin.text()
 /** ideaf comment …: comment threads, mostly for agents and skills. */
 const comment: Family = {
   name: 'comment',
-  summary: 'Comments: list and read threads, comment on a file, section or quote, reply, resolve',
+  summary:
+    'Comments: list and read threads, comment on a file, section or quote, reply, resolve, and suggest edits, accept or reject them',
   subcommands: [
     {
       name: 'list',
@@ -242,6 +243,56 @@ const comment: Family = {
         const [id, body] = containers.need(a, ['comment', 'body'], 'ideaf comment reply <comment> <body>')
         return comments.reply(ctx, str(f, 'idea') ? { idea: str(f, 'idea')! } : {}, id!, body!, stdin)
       },
+    },
+    {
+      name: 'suggest',
+      usage: 'ideaf comment suggest <replacement | -> --quote <text> [--file <file>] [-m <why>]',
+      summary:
+        'Suggest a replacement for a quote, on the latest version: Markdown for the quote’s source. People with edit access accept or reject it. "-" reads the replacement from stdin',
+      flags: {
+        idea: IDEA,
+        quote: {
+          type: 'string',
+          description: 'the text it replaces, as it reads (without Markdown); it must match once, or pass --occurrence',
+        },
+        occurrence: { type: 'string', description: 'which match of --quote, from 1' },
+        file: { type: 'string', description: 'where to look for --quote (ID or path)' },
+        replaces: {
+          type: 'string',
+          description:
+            'the quote’s Markdown source, when it has formatting the quote doesn’t show: confirms the replacement is for that',
+        },
+        message: { type: 'string', short: 'm', description: 'why, if it needs saying' },
+      },
+      run: (ctx, f, a) =>
+        comments.suggest(
+          ctx,
+          {
+            ...(str(f, 'idea') ? { idea: str(f, 'idea')! } : {}),
+            ...(str(f, 'quote') !== undefined ? { quote: str(f, 'quote')! } : {}),
+            ...(str(f, 'occurrence') ? { occurrence: str(f, 'occurrence')! } : {}),
+            ...(str(f, 'file') ? { file: str(f, 'file')! } : {}),
+            ...(str(f, 'replaces') !== undefined ? { replaces: str(f, 'replaces')! } : {}),
+            ...(str(f, 'message') ? { message: str(f, 'message')! } : {}),
+          },
+          containers.need(a, ['replacement'], 'ideaf comment suggest <replacement> --quote <text>')[0]!,
+          stdin,
+        ),
+    },
+    {
+      name: 'accept',
+      usage: 'ideaf comment accept <suggestion>…',
+      summary:
+        'Accept suggestions as one new version (needs edit access). One whose text has changed or gone, or overlaps another, stays open and says why',
+      flags: { idea: IDEA },
+      run: (ctx, f, a) => comments.accept(ctx, str(f, 'idea') ? { idea: str(f, 'idea')! } : {}, a),
+    },
+    {
+      name: 'reject',
+      usage: 'ideaf comment reject <suggestion>…',
+      summary: 'Reject suggestions, resolving them (needs edit access)',
+      flags: { idea: IDEA },
+      run: (ctx, f, a) => comments.reject(ctx, str(f, 'idea') ? { idea: str(f, 'idea')! } : {}, a),
     },
     {
       name: 'resolve',

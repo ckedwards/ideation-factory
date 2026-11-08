@@ -9,6 +9,7 @@
 //   version or a conflict (batch.ts, apply.ts)
 // - Re-anchoring an uploaded copy from its base (upload.ts)
 // - The structured view agents and the web editor read (outline.ts)
+// - What a suggested edit replaces, and the command accepting it applies (suggest.ts)
 
 export { applyBatch, type BatchResult, type Conflict, type ConflictReason, type StepResult } from './apply.ts'
 export { Batch, batchJsonSchema, Command, Position } from './batch.ts'
@@ -36,4 +37,12 @@ export {
   type UnitKind,
 } from './markdown.ts'
 export { type FileOutline, type OutlineEntry, outline } from './outline.ts'
+export {
+  type AcceptResult,
+  acceptSuggestions,
+  type Skipped,
+  type Suggestion,
+  suggestionCommand,
+  suggestionSource,
+} from './suggest.ts'
 export { applyUpload, type Upload, type UploadResult } from './upload.ts'

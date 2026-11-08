@@ -135,6 +135,55 @@ export const Reply: Story = {
   },
 }
 
+const suggestions: PageComment[] = [
+  {
+    info: comment(
+      'c6',
+      '',
+      { kind: 'text', quote: 'oldest first' },
+      { suggestion: { old: '**oldest first**', replacement: '**in order**', state: 'open' } },
+    ),
+    place: { kind: 'text', ...at('oldest first') },
+  },
+  {
+    info: comment(
+      'c7',
+      'Shorter.',
+      { kind: 'text', quote: 'one team at a time' },
+      { suggestion: { replacement: 'team by team', state: 'open' } },
+    ),
+    place: { kind: 'text', ...at('one team at a time') },
+  },
+]
+
+// Suggested edits, for someone with edit access: each can be accepted or
+// rejected, or all accepted together as one version
+export const Suggestions: Story = {
+  args: { comments: suggestions, canDecide: true, onAccept: fn(), onReject: fn() },
+  play: async ({ args, canvasElement, userEvent }) => {
+    const page = within(canvasElement)
+    await expect(page.getByText('2 suggested edits')).toBeVisible()
+    // one that has formatting shows the Markdown it replaces
+    await expect(page.getByText('**oldest first**')).toBeVisible()
+    await userEvent.click(page.getByRole('button', { name: 'Accept all as one version' }))
+    await expect(args.onAccept).toHaveBeenCalledWith(['c6', 'c7'])
+    await userEvent.click(page.getAllByRole('button', { name: 'Reject' })[1]!)
+    await expect(args.onReject).toHaveBeenCalledWith('c7')
+    await userEvent.click(page.getAllByRole('button', { name: 'Accept as a new version' })[0]!)
+    await expect(args.onAccept).toHaveBeenCalledWith(['c6'])
+  },
+}
+
+// A reviewer sees suggestions, but can't decide on them
+export const SuggestionsForAReviewer: Story = {
+  args: { comments: suggestions, onAccept: fn(), onReject: fn() },
+  play: async ({ canvasElement }) => {
+    const page = within(canvasElement)
+    await expect(page.queryByText('2 suggested edits')).toBeNull()
+    await expect(page.queryByRole('button', { name: 'Reject' })).toBeNull()
+  },
+}
+
 // Someone who can only read: no replying, resolving or commenting on a selection
 export const ReadOnly: Story = {
   args: { canComment: false },

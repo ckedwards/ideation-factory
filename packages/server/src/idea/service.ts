@@ -21,6 +21,8 @@ import {
   type CommentOutcome,
   type Conflict,
   contentHash,
+  type Skipped,
+  type Suggestion,
   type FileOutline,
   type Idea,
   type StepResult,
@@ -59,6 +61,24 @@ export const IdeaWrite = z.discriminatedUnion('type', [
     ]),
     body: z.string().trim().min(1).max(20_000),
   }),
+  z.strictObject({
+    type: z.literal('suggest'),
+    /** The version the anchor refers to; it must be the latest. */
+    version: z.number().int().positive(),
+    anchor: z.strictObject({
+      kind: z.literal('text'),
+      file: z.string(),
+      start: z.number().int(),
+      end: z.number().int(),
+    }),
+    /** The replacement for the selection's source (suggestionSource): Markdown. */
+    new: z.string().max(1_000_000),
+    /** Why, if anything: a suggestion can speak for itself. */
+    body: z.string().trim().max(20_000),
+  }),
+  /** Accepts suggestions as one version; those that no longer apply are skipped. */
+  z.strictObject({ type: z.literal('accept'), suggestions: z.array(z.string()).min(1).max(100) }),
+  z.strictObject({ type: z.literal('reject'), suggestion: z.string() }),
   z.strictObject({ type: z.literal('reply'), parent: z.string(), body: z.string().trim().min(1).max(20_000) }),
   z.strictObject({ type: z.literal('resolve'), comment: z.string(), resolved: z.boolean() }),
   z.strictObject({ type: z.literal('edit'), batch: Batch }),
@@ -99,19 +119,34 @@ export type WriteError = { code: WriteErrorCode; message: string; details?: unkn
 export type WriteValue =
   | { kind: 'created'; version: number }
   | { kind: 'comment'; comment: string }
+  | { kind: 'suggestion'; comment: string; old: string }
+  | { kind: 'rejected'; comment: string }
   | { kind: 'resolved'; comment: string; resolved: boolean }
-  | { kind: 'version'; version: number; comments: CommentOutcome[]; steps: StepResult[] }
+  | {
+      kind: 'version'
+      version: number
+      comments: CommentOutcome[]
+      steps: StepResult[]
+      /** Accepting suggestions: those in the version, and those left open, saying why. */
+      accepted?: string[]
+      skipped?: Skipped[]
+    }
 
 export type WriteResult = { ok: true; value: WriteValue } | { ok: false; error: WriteError }
 
 /** A comment as list_comments shows it: its thread, or one reply. */
 export type CommentShape = { id: string; author: Caller; createdAt: number; body: string; version: number }
+/** Whether a suggestion was accepted (in which version) or rejected, by whom and when. */
+export type Decision = { kind: 'accepted' | 'rejected'; by: Caller; at: number; version: number | null }
+export type SuggestionShape = { old: string; new: string; decision: Decision | null }
 export type ThreadShape = CommentShape & {
   resolved: boolean
   state: AnchorState
   anchor: Anchor | null
   lastVersion: number | null
   addressedIn: number[]
+  /** A suggested edit's change; null for a plain comment. */
+  suggestion: SuggestionShape | null
   replies: CommentShape[]
 }
 
@@ -125,6 +160,8 @@ export type IdeaEvent =
   | { name: 'comment'; payload: { thread: ThreadShape; by: Caller } }
   | { name: 'reply'; payload: { parent: string; reply: CommentShape; by: Caller } }
   | { name: 'resolved'; payload: { comment: string; resolved: boolean; by: Caller } }
+  /** A suggestion accepted or rejected: its thread is resolved too. */
+  | { name: 'decided'; payload: { comment: string; decision: Decision; by: Caller } }
 
 export type VersionHow = 'created' | 'commands' | 'upload'
 
@@ -215,7 +252,12 @@ export class IdeaService {
         case 'create':
           return await this.#create(request, write)
         case 'comment':
+        case 'suggest':
           return await this.#comment(request, write)
+        case 'accept':
+          return await this.#accept(request, write)
+        case 'reject':
+          return await this.#reject(request, write)
         case 'reply':
           return await this.#reply(request, write)
         case 'resolve':
@@ -287,7 +329,7 @@ export class IdeaService {
     }
   }
 
-  async #comment(request: WriteRequest, write: Extract<IdeaWrite, { type: 'comment' }>) {
+  async #comment(request: WriteRequest, write: Extract<IdeaWrite, { type: 'comment' | 'suggest' }>) {
     const meta = await this.#requireMeta()
     if (write.version !== meta.latest) {
       refuse('stale_version', `comments are made on the latest version, v${meta.latest}`, { latest: meta.latest })
@@ -298,9 +340,24 @@ export class IdeaService {
       refuse('invalid', checked.message)
     }
     const anchor = (checked as { anchor: Anchor }).anchor
+    let suggestion: SuggestionShape | null = null
+    if (write.type === 'suggest') {
+      const found = await this.#core.suggestionSource(this.id, latest.idea, anchor)
+      if (!found.ok) {
+        refuse('invalid', found.message)
+      }
+      const old = (found as { old: string }).old
+      if (old === write.new) {
+        refuse('invalid', "the suggestion doesn't change anything")
+      }
+      suggestion = { old, new: write.new, decision: null }
+    }
     const id = `c${meta.next_comment}`
     const at = this.#now()
-    const result: WriteResult = { ok: true, value: { kind: 'comment', comment: id } }
+    const result: WriteResult = {
+      ok: true,
+      value: suggestion ? { kind: 'suggestion', comment: id, old: suggestion.old } : { kind: 'comment', comment: id },
+    }
     await this.#transaction(async (tx) => {
       await tx
         .insertInto('comments')
@@ -312,6 +369,8 @@ export class IdeaService {
           created_at: at,
           body: write.body,
           resolved: 0,
+          suggestion: suggestion ? JSON.stringify({ old: suggestion.old, new: suggestion.new }) : null,
+          decision: null,
         })
         .execute()
       await tx
@@ -342,6 +401,7 @@ export class IdeaService {
               anchor,
               lastVersion: meta.latest,
               addressedIn: [],
+              suggestion,
               replies: [],
             },
             by: request.caller,
@@ -368,6 +428,8 @@ export class IdeaService {
           created_at: at,
           body: write.body,
           resolved: 0,
+          suggestion: null,
+          decision: null,
         })
         .execute()
       await tx
@@ -409,6 +471,104 @@ export class IdeaService {
         { name: 'resolved', payload: { comment: id, resolved: write.resolved, by: request.caller } },
       ] satisfies IdeaEvent[],
     }
+  }
+
+  async #accept(request: WriteRequest, write: Extract<IdeaWrite, { type: 'accept' }>) {
+    const meta = await this.#requireMeta()
+    const latest = await this.#loadLatest()
+    const ids = [...new Set(write.suggestions)]
+    const rows = new Map((await this.#suggestions(ids)).map((r) => [r.id, r]))
+    const anchors = new Map(latest.comments.map((c) => [c.id, c.anchor]))
+    const skipped: Skipped[] = []
+    const candidates: Suggestion[] = []
+    for (const id of ids) {
+      const row = rows.get(id)!
+      if (row.decision?.kind === 'accepted') {
+        skipped.push({ id, message: `it was accepted in v${row.decision.version}` })
+        continue
+      }
+      candidates.push({ id, anchor: anchors.get(id) ?? null, old: row.old, new: row.new })
+    }
+    const accepted =
+      candidates.length > 0
+        ? await this.#core.acceptSuggestions(this.id, latest.idea, latest.comments, meta.latest, candidates)
+        : ({ ok: false, skipped: [] } as const)
+    if (!accepted.ok) {
+      const all = [...skipped, ...accepted.skipped]
+      refuse('conflict', `none of these suggestions apply: ${all.map((s) => `${s.id}, ${s.message}`).join('; ')}`, {
+        skipped: all,
+      })
+    }
+    const ok = accepted as Extract<typeof accepted, { ok: true }>
+    this.#checkSizes(
+      latest.bytes,
+      ok.applied.idea.files.map((f) => ({ file: f.id, path: f.path, bytes: byteLength(f.source) })),
+    )
+    const steps = ok.commands.map((command, step) => ({ step, command, addresses: command.addresses ?? [] }))
+    const number = meta.latest + 1
+    const decision: Decision = { kind: 'accepted', by: request.caller, at: this.#now(), version: number }
+    return this.#newVersion(
+      request,
+      meta,
+      latest,
+      'commands',
+      ok.applied.idea,
+      ok.applied.comments,
+      steps,
+      ok.applied.steps,
+      {
+        decide: { ids: ok.accepted, decision },
+        value: { accepted: ok.accepted, skipped: [...skipped, ...ok.skipped] },
+      },
+    )
+  }
+
+  async #reject(request: WriteRequest, write: Extract<IdeaWrite, { type: 'reject' }>) {
+    await this.#requireMeta()
+    const [row] = await this.#suggestions([write.suggestion])
+    if (row!.decision?.kind === 'accepted') {
+      refuse('invalid', `${row!.id} was accepted in v${row!.decision.version}; edit the idea to undo it`)
+    }
+    const decision: Decision = { kind: 'rejected', by: request.caller, at: this.#now(), version: null }
+    const result: WriteResult = { ok: true, value: { kind: 'rejected', comment: row!.id } }
+    await this.#transaction(async (tx) => {
+      await this.#decide(tx, [row!.id], decision)
+      await this.#remember(tx, request.key, result)
+    })
+    return {
+      result,
+      events: [{ name: 'decided', payload: { comment: row!.id, decision, by: request.caller } }] satisfies IdeaEvent[],
+    }
+  }
+
+  /** Suggestions by ID, refusing any that isn't one. */
+  async #suggestions(ids: string[]) {
+    const rows = await this.#db
+      .selectFrom('comments')
+      .select(['id', 'parent', 'suggestion', 'decision'])
+      .where('id', 'in', ids)
+      .execute()
+    const byId = new Map(rows.map((r) => [r.id, r]))
+    return ids.map((id) => {
+      const row = byId.get(id)
+      if (!row || row.parent || !row.suggestion) {
+        refuse('not_found', `${id} isn't a suggestion on this idea`)
+      }
+      const { old, new: replacement } = JSON.parse(row!.suggestion!) as { old: string; new: string }
+      return { id, old, new: replacement, decision: row!.decision ? (JSON.parse(row!.decision) as Decision) : null }
+    })
+  }
+
+  /** Records a decision on suggestions, resolving their threads. */
+  async #decide(tx: Kysely<IdeaDB>, ids: string[], decision: Decision): Promise<void> {
+    if (ids.length === 0) {
+      return
+    }
+    await tx
+      .updateTable('comments')
+      .set({ decision: JSON.stringify(decision), resolved: 1 })
+      .where('id', 'in', ids)
+      .execute()
   }
 
   async #edit(request: WriteRequest, write: Extract<IdeaWrite, { type: 'edit' }>) {
@@ -479,7 +639,17 @@ export class IdeaService {
       refuse('invalid', applied.problems.join('; '), { problems: applied.problems })
     }
     const ok = applied as Extract<typeof applied, { ok: true }>
-    return this.#newVersion(request, meta, latest, 'upload', ok.idea, ok.comments, [], [], write.gitHint)
+    return this.#newVersion(
+      request,
+      meta,
+      latest,
+      'upload',
+      ok.idea,
+      ok.comments,
+      [],
+      [],
+      write.gitHint ? { gitHint: write.gitHint } : {},
+    )
   }
 
   async #newVersion(
@@ -491,12 +661,18 @@ export class IdeaService {
     outcomes: CommentOutcome[],
     steps: Array<{ step: number; command: unknown; addresses: string[] }>,
     stepResults: StepResult[],
-    gitHint?: { uri: string | null; branch: string },
+    more: {
+      gitHint?: { uri: string | null; branch: string }
+      /** Suggestions this version accepts. */
+      decide?: { ids: string[]; decision: Decision }
+      value?: { accepted: string[]; skipped: Skipped[] }
+    } = {},
   ) {
     const number = meta.latest + 1
+    const { gitHint, decide } = more
     const result: WriteResult = {
       ok: true,
-      value: { kind: 'version', version: number, comments: outcomes, steps: stepResults },
+      value: { kind: 'version', version: number, comments: outcomes, steps: stepResults, ...more.value },
     }
     const stored = await this.#storeContents(idea)
     await this.#transaction(async (tx) => {
@@ -514,6 +690,9 @@ export class IdeaService {
         .updateTable('idea')
         .set({ latest: number, ...(gitHint ? { git_uri: gitHint.uri, git_branch: gitHint.branch } : {}) })
         .execute()
+      if (decide) {
+        await this.#decide(tx, decide.ids, decide.decision)
+      }
       await this.#remember(tx, request.key, result)
     })
     this.#latest = {
@@ -526,7 +705,13 @@ export class IdeaService {
     }
     return {
       result,
-      events: [{ name: 'version', payload: { version: number, how, by: request.caller } }] satisfies IdeaEvent[],
+      events: [
+        { name: 'version', payload: { version: number, how, by: request.caller } },
+        ...(decide?.ids ?? []).map((comment): IdeaEvent => ({
+          name: 'decided',
+          payload: { comment, decision: decide!.decision, by: request.caller },
+        })),
+      ] satisfies IdeaEvent[],
     }
   }
 
@@ -637,7 +822,7 @@ export class IdeaService {
     const v = await this.#versionNumber(version)
     const rows = await this.#db
       .selectFrom('comments')
-      .select(['id', 'parent', 'version', 'author', 'created_at', 'body', 'resolved'])
+      .select(['id', 'parent', 'version', 'author', 'created_at', 'body', 'resolved', 'suggestion', 'decision'])
       .where('version', '<=', v)
       .orderBy('created_at')
       .orderBy('id')
@@ -693,9 +878,24 @@ export class IdeaService {
           anchor: at?.anchor ? (JSON.parse(at.anchor) as Anchor) : null,
           lastVersion: last.get(r.id) ?? null,
           addressedIn: addressed.get(r.id) ?? [],
+          suggestion: suggestionOf(r, v),
           replies: (replies.get(r.id) ?? []).map(shape),
         }
       })
+  }
+
+  /** What a suggestion on this range of the latest version's plain text would replace. */
+  async suggestionSource(file: string, start: number, end: number) {
+    const latest = await this.#loadLatest()
+    const checked = await this.#core.checkAnchor(this.id, latest.idea, { kind: 'text', file, start, end })
+    if (!checked.ok) {
+      refuse('invalid', checked.message)
+    }
+    const found = await this.#core.suggestionSource(this.id, latest.idea, (checked as { anchor: Anchor }).anchor)
+    if (!found.ok) {
+      refuse('invalid', found.message)
+    }
+    return { version: latest.version, old: (found as { old: string }).old }
   }
 
   /** A dry run of a batch: what would happen, with nothing changed. */
@@ -937,6 +1137,23 @@ export class IdeaService {
       .where('at', '<', now - KEEP_RESULTS_MS)
       .execute()
   }
+}
+
+/**
+ * A suggestion as of a version: one accepted after it shows as still open
+ * there, as it was then.
+ */
+function suggestionOf(
+  row: { suggestion: string | null; decision: string | null },
+  version: number,
+): SuggestionShape | null {
+  if (!row.suggestion) {
+    return null
+  }
+  const { old, new: replacement } = JSON.parse(row.suggestion) as { old: string; new: string }
+  const decision = row.decision ? (JSON.parse(row.decision) as Decision) : null
+  const then = decision && (decision.version === null || decision.version <= version) ? decision : null
+  return { old, new: replacement, decision: then }
 }
 
 function kb(bytes: number): string {

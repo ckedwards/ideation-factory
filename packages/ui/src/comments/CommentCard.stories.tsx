@@ -55,6 +55,14 @@ const comments = {
     body: text('Tighter wording:'),
     suggestion: { replacement: 'a p95 latency below 200 ms', state: 'open' },
   },
+  suggestionOfSource: {
+    ...base,
+    id: 'c9',
+    author: { kind: 'person', person: devon },
+    target: { kind: 'text', quote: 'Offline sync' },
+    body: text(''),
+    suggestion: { old: '**Offline** sync', replacement: '**Local-first** sync', state: 'open' },
+  },
   suggestionAccepted: {
     ...base,
     id: 'c7',
@@ -112,6 +120,9 @@ export const AutomatedBot: Story = { args: { comment: comments.bot } }
 export const SuggestedEdit: Story = { args: { comment: comments.suggestion, canDecide: true } }
 
 export const SuggestedEditNotAuthor: Story = { args: { comment: comments.suggestion } }
+
+// a suggestion shows the Markdown it replaces when that has formatting
+export const SuggestedEditOfSource: Story = { args: { comment: comments.suggestionOfSource, canDecide: true } }
 
 export const SuggestionAccepted: Story = { args: { comment: comments.suggestionAccepted } }
 

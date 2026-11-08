@@ -3,7 +3,7 @@ CREATE TABLE idea ( id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT N
 CREATE TABLE versions ( number INTEGER PRIMARY KEY, parent INTEGER, created_at INTEGER NOT NULL, created_by TEXT NOT NULL, how TEXT NOT NULL CHECK (how IN ('created', 'commands', 'upload')), next_id INTEGER NOT NULL );
 CREATE TABLE version_files ( version INTEGER NOT NULL REFERENCES versions (number), file TEXT NOT NULL, path TEXT NOT NULL, hash TEXT NOT NULL, bytes INTEGER NOT NULL, unit_ids TEXT NOT NULL, PRIMARY KEY (version, file) );
 CREATE TABLE steps ( version INTEGER NOT NULL REFERENCES versions (number), step INTEGER NOT NULL, command TEXT NOT NULL, addresses TEXT NOT NULL, PRIMARY KEY (version, step) );
-CREATE TABLE comments ( id TEXT PRIMARY KEY, parent TEXT REFERENCES comments (id), version INTEGER NOT NULL, author TEXT NOT NULL, created_at INTEGER NOT NULL, body TEXT NOT NULL, resolved INTEGER NOT NULL DEFAULT 0 );
+CREATE TABLE comments ( id TEXT PRIMARY KEY, parent TEXT REFERENCES comments (id), version INTEGER NOT NULL, author TEXT NOT NULL, created_at INTEGER NOT NULL, body TEXT NOT NULL, resolved INTEGER NOT NULL DEFAULT 0, suggestion TEXT, decision TEXT );
 CREATE INDEX comments_parent ON comments (parent);
 CREATE TABLE anchors ( comment TEXT NOT NULL REFERENCES comments (id), version INTEGER NOT NULL REFERENCES versions (number), state TEXT NOT NULL CHECK (state IN ('exact', 'moved', 'changed', 'outdated')), anchor TEXT, PRIMARY KEY (comment, version) );
 CREATE INDEX anchors_version ON anchors (version);

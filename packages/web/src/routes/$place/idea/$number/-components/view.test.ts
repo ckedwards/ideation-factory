@@ -22,6 +22,7 @@ const thread = (anchor: Thread['anchor'], state: Thread['state'] = 'exact'): Thr
   anchor,
   lastVersion: null,
   addressedIn: [],
+  suggestion: null,
   replies: [],
 })
 
