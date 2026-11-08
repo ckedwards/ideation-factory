@@ -30,6 +30,10 @@ export const outlineQuery = (idea: string, version: number) =>
     staleTime: Infinity,
   })
 
+/** The idea's status and its history, who's asked to review, and each reviewer's verdict: live (the socket's status and review events). */
+export const reviewsQuery = (idea: string) =>
+  queryOptions({ queryKey: ['idea', idea, 'reviews'], queryFn: () => api.listReviews({ idea }) })
+
 /** The comments as of an older version, where they were then (the latest's are live, in comments.ts). */
 export const commentsQuery = (idea: string, version: number) =>
   queryOptions({

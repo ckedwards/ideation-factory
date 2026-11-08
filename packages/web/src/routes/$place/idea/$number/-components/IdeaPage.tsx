@@ -19,7 +19,6 @@ import {
   headings,
   IdeaHeading,
   IdeaPageLayout,
-  type IdeaStatus,
   Link,
   MarkdownView,
   Redline,
@@ -37,6 +36,7 @@ import {
 } from '@ideaf/ui'
 import { VersionList, type VersionListProps } from './VersionList.tsx'
 import type { Placement } from './view.ts'
+import type { ShownStatus } from '../../../../../ideas.ts'
 import './IdeaPage.css'
 
 /** A comment, as shown, and where it goes in the file shown. */
@@ -50,7 +50,7 @@ export interface PageComment {
 export interface IdeaPageProps {
   title: string
   team: TeamRef & { href?: string | undefined }
-  status: IdeaStatus
+  status: ShownStatus
   /** The version shown: its number, who made it and when. */
   version: { number: number; by: Actor; at: number }
   /** The idea's pages (IdeaTabs), under its heading. */
@@ -148,7 +148,12 @@ export function IdeaPage(props: IdeaPageProps) {
         <IdeaHeading
           title={props.title}
           team={props.team}
-          status={<StatusPill status={props.status} />}
+          status={
+            <StatusPill
+              status={props.status.status}
+              {...(props.status.reason ? { reason: props.status.reason } : {})}
+            />
+          }
           meta={
             <>
               v{props.version.number} · <ActorLabel actor={props.version.by} short /> ·{' '}

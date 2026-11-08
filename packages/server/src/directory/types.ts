@@ -137,6 +137,8 @@ export interface Grant {
   subject: GrantSubject
   edit: boolean
   share: boolean
+  /** Asked to review it (a person or a group). */
+  reviewer: boolean
 }
 
 /** Who would lose or gain access: counts, with the first names. */
@@ -204,6 +206,8 @@ export interface IdeaFilter {
   team?: string
   owner?: string
   status?: string
+  /** Open, or closed: closed as accepted or rejected, or in an archived team. */
+  state?: 'open' | 'closed'
   cursor?: string
   limit?: number
 }
@@ -301,6 +305,8 @@ export interface Directory {
   findIdea(place: string, number: number): Promise<IdeaPlace | null>
   permission(idea: string, user: string, token?: string | null): Promise<Permission>
   grants(idea: string): Promise<Grant[]>
+  /** Asks a person or group to review an idea (giving them view access), or takes them off its reviewers (leaving their access). Needs share. */
+  setReviewer(actor: string, idea: string, subject: GrantSubject, reviewer: boolean): Promise<Result<Grant[]>>
   setGrant(
     actor: string,
     idea: string,

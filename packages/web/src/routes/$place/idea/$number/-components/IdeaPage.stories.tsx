@@ -92,7 +92,7 @@ const meta = {
   args: {
     title: 'Offline-first sync for the field app',
     team: { name: 'Mobile' },
-    status: 'draft',
+    status: { status: 'draft' },
     version: { number: 3, by: actors.person, at: NOW - 2 * 3_600_000 },
     files: [{ path: 'plan.md', href: '#plan', current: true }],
     source,

@@ -7,6 +7,7 @@ import * as auth from './commands/auth.ts'
 import { change } from './commands/change.ts'
 import * as comments from './commands/comment.ts'
 import * as drafts from './commands/draft.ts'
+import * as reviews from './commands/review.ts'
 import { edit } from './commands/edit.ts'
 import { list as listIdeas } from './commands/list.ts'
 import { move } from './commands/move.ts'
@@ -359,6 +360,75 @@ const draftFamily: Family = {
   ],
 }
 
+/** One or more arguments, or a usage error. */
+const some = (args: string[], usage: string): string[] => {
+  if (args.length === 0) {
+    throw new CliError(`missing who: ${usage}`, EXIT.usage, 'usage')
+  }
+  return args
+}
+
+/** ideaf review …: who's asked to review the idea, and their verdicts. */
+const MESSAGE: Flag = { type: 'string', short: 'm', description: 'a summary of your review' }
+const ideaFlags = (f: Values) => ({
+  ...(str(f, 'idea') ? { idea: str(f, 'idea')! } : {}),
+  ...(str(f, 'message') ? { message: str(f, 'message')! } : {}),
+})
+const verdictCommand = (name: string, verdict: 'approve' | 'request-changes' | 'reject', summary: string): Command => ({
+  name,
+  usage: `ideaf review ${name} [-m <summary>]`,
+  summary,
+  flags: { idea: IDEA, message: MESSAGE },
+  run: (ctx, f) => reviews.verdict(ctx, ideaFlags(f), verdict),
+})
+const reviewFamily: Family = {
+  name: 'review',
+  summary: 'Reviews: ask people or groups to review, give your verdict on the latest version, and dismiss an objection',
+  subcommands: [
+    {
+      name: 'show',
+      usage: 'ideaf review show',
+      summary: 'The idea’s status, who’s asked to review it, and each reviewer’s latest verdict',
+      flags: { idea: IDEA },
+      run: (ctx, f) => reviews.show(ctx, ideaFlags(f)),
+    },
+    verdictCommand('approve', 'approve', 'Approve the latest version (a person’s approval counts; a bot’s only shows)'),
+    verdictCommand(
+      'request-changes',
+      'request-changes',
+      'Ask for changes: it stands through new versions, and stops it closing as accepted, until you change it or it’s dismissed',
+    ),
+    verdictCommand('reject', 'reject', 'Reject it: stops it closing as accepted, like requesting changes'),
+    {
+      name: 'dismiss',
+      usage: 'ideaf review dismiss <reviewer> -m <reason>',
+      summary:
+        'Dismiss a reviewer’s Request changes or Reject (a person, or a bot’s [key] from `ideaf review show`), with the reason',
+      flags: { idea: IDEA, message: { type: 'string', short: 'm', description: 'why it’s dismissed' } },
+      run: (ctx, f, a) =>
+        reviews.dismiss(
+          ctx,
+          ideaFlags(f),
+          containers.need(a, ['reviewer'], 'ideaf review dismiss <reviewer> -m <reason>')[0]!,
+        ),
+    },
+    {
+      name: 'ask',
+      usage: 'ideaf review ask <who>…',
+      summary: 'Ask people (maya) or groups (group:security) to review it; it gives them view access',
+      flags: { idea: IDEA },
+      run: (ctx, f, a) => reviews.ask(ctx, ideaFlags(f), some(a, 'ideaf review ask <who>…'), true),
+    },
+    {
+      name: 'unask',
+      usage: 'ideaf review unask <who>…',
+      summary: 'Take people or groups off its reviewers; they keep their access',
+      flags: { idea: IDEA },
+      run: (ctx, f, a) => reviews.ask(ctx, ideaFlags(f), some(a, 'ideaf review unask <who>…'), false),
+    },
+  ],
+}
+
 const authFamily: Family = {
   name: 'auth',
   summary: 'Sign in (in the browser), see who you are signed in as, and sign out',
@@ -448,7 +518,7 @@ const commands: Array<Command | Family> = [
       server: { type: 'boolean', description: 'ideas on the server you can see, not just this repository’s' },
       team: { type: 'string', description: 'ideas in this team (on the server)' },
       owner: { type: 'string', description: 'ideas this person owns (on the server)' },
-      status: { type: 'string', description: 'ideas with this status (on the server)' },
+      status: { type: 'string', description: 'open, closed, or ideas with this status (on the server)' },
       search: { type: 'string', description: 'ideas whose titles match, closest first (on the server)' },
       cursor: { type: 'string', description: 'the next page, from the last --server list' },
     },
@@ -630,6 +700,34 @@ const commands: Array<Command | Family> = [
       }),
   },
   comment,
+  reviewFamily,
+  {
+    name: 'status',
+    usage: 'ideaf status [draft | review | changes] [-m <note>]',
+    summary: 'Where the idea is, with its reviews; or move it: back to a draft, out for review, or changes in progress',
+    flags: { idea: IDEA, message: { type: 'string', short: 'm', description: 'why, if it needs saying' } },
+    run: (ctx, f, a) => reviews.status(ctx, ideaFlags(f), a[0]),
+  },
+  {
+    name: 'close',
+    usage: 'ideaf close --accepted | --rejected [-m <note>]',
+    summary: 'Close it: accepted (it goes ahead; not while a reviewer’s objection stands) or rejected (it doesn’t)',
+    flags: {
+      idea: IDEA,
+      accepted: { type: 'boolean', description: 'it goes ahead' },
+      rejected: { type: 'boolean', description: 'it doesn’t' },
+      message: { type: 'string', short: 'm', description: 'why, if it needs saying' },
+    },
+    run: (ctx, f) =>
+      reviews.close(ctx, { ...ideaFlags(f), accepted: f.accepted === true, rejected: f.rejected === true }),
+  },
+  {
+    name: 'reopen',
+    usage: 'ideaf reopen [-m <note>]',
+    summary: 'Open a closed idea again, in the status it had',
+    flags: { idea: IDEA, message: { type: 'string', short: 'm', description: 'why, if it needs saying' } },
+    run: (ctx, f) => reviews.reopen(ctx, ideaFlags(f)),
+  },
   draftFamily,
   family('team'),
   family('group'),

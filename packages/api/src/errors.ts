@@ -13,6 +13,8 @@ export const ERROR_STATUS = {
   conflict: 409,
   /** A version would make changes in the idea's draft outdated: send it again with `outdateDraft` to confirm. */
   draft_outdated: 409,
+  /** Something stands in the way, like a reviewer's objection to closing an idea as accepted. */
+  blocked: 409,
   too_large: 413,
   internal: 500,
   timed_out: 504,

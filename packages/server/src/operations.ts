@@ -10,6 +10,7 @@ import {
   type Context,
   type HandlerResult,
   type Handlers,
+  type IdeaStatus,
   isApiErrorCode,
   type Operations,
   type TokenScope,
@@ -100,6 +101,18 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
       throw new Error(`expected a new version, got ${value.kind}`)
     }
     return { version: value.version, comments: value.comments, steps: value.steps }
+  }
+  const status = (value: WriteValue) => {
+    if (value.kind !== 'status') {
+      throw new Error(`expected a status, got ${value.kind}`)
+    }
+    return { status: value.status }
+  }
+  const review = (value: WriteValue) => {
+    if (value.kind !== 'review') {
+      throw new Error(`expected a review, got ${value.kind}`)
+    }
+    return value.review
   }
   const comment = (value: WriteValue) => {
     if (value.kind !== 'comment') {
@@ -203,6 +216,7 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
           ...(input.description !== undefined ? { description: input.description } : {}),
           files: input.files,
           ...(input.gitHint ? { gitHint: input.gitHint } : {}),
+          ...(input.status ? { status: input.status } : {}),
         },
         (value) => {
           if (value.kind !== 'created') {
@@ -222,7 +236,7 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         description: input.description ?? '',
         team: teamId,
         owner: context.caller.user,
-        status: 'draft',
+        status: input.status ?? 'draft',
         latest: 1,
         createdAt: now,
         updatedAt: now,
@@ -260,6 +274,59 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         async () =>
           (await directory().findIdeaFor(input.place, input.number, caller.user, token?.id ?? null)) ??
           notFound(`there's no ${input.place}/idea/${input.number}, or you can't see it`),
+      ),
+
+    listReviews: (input, { caller, token }) =>
+      withAccess(input.idea, { caller, token }, 'view', () =>
+        read(async () => {
+          const [reviews, grants] = await Promise.all([ideaOf(input.idea).reviews(), directory().grants(input.idea)])
+          return { ...reviews, reviewers: grants.filter((g) => g.reviewer).map((g) => g.subject) }
+        }),
+      ),
+
+    setStatus: (input, context) =>
+      withAccess(input.idea, context, 'edit', () =>
+        write(
+          input.idea,
+          context,
+          { type: 'status', status: input.status, ...(input.note ? { note: input.note } : {}) },
+          status,
+        ),
+      ),
+
+    closeIdea: (input, context) =>
+      withAccess(input.idea, context, 'edit', () =>
+        write(
+          input.idea,
+          context,
+          { type: 'close', reason: input.reason, ...(input.note ? { note: input.note } : {}) },
+          status,
+        ),
+      ),
+
+    reopenIdea: (input, context) =>
+      withAccess(input.idea, context, 'edit', () =>
+        write(input.idea, context, { type: 'reopen', ...(input.note ? { note: input.note } : {}) }, status),
+      ),
+
+    reviewIdea: (input, context) =>
+      withAccess(input.idea, context, 'view', () =>
+        write(
+          input.idea,
+          context,
+          {
+            type: 'review',
+            version: input.version,
+            verdict: input.verdict,
+            ...(input.body ? { body: input.body } : {}),
+          },
+          review,
+        ),
+      ),
+
+    dismissReview: (input, context) =>
+      withAccess(input.idea, context, 'edit', () =>
+        write(input.idea, context, { type: 'dismiss', reviewer: input.reviewer, reason: input.reason }, review),
       ),
 
     showBlocks: (input, { caller, token }) =>
@@ -440,6 +507,23 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
       return set.ok ? { ok: true, value: { grants: set.value } } : set
     },
 
+    setReviewer: async (input, { caller, token }) => {
+      const checked = await access(input.idea, { caller, token }, 'view')
+      if (!checked.ok) {
+        return { ok: false, error: checked.error }
+      }
+      let subject = input.subject
+      if (subject.kind === 'user') {
+        const who = await person(subject.id)
+        if (!who.ok) {
+          return who
+        }
+        subject = { kind: 'user', id: who.id }
+      }
+      const set = await directory().setReviewer(caller.user, input.idea, subject, input.reviewer)
+      return set.ok ? { ok: true, value: { grants: set.value } } : set
+    },
+
     previewMove: async (input, { caller }) =>
       fromResult(
         await directory().previewMove(caller.user, input.idea, input.team, {
@@ -488,6 +572,7 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
             ...(team ? { team: team.id } : {}),
             ...(owner ? { owner: owner.id } : {}),
             ...(input.status ? { status: input.status } : {}),
+            ...(input.state ? { state: input.state } : {}),
             ...(input.cursor ? { cursor: input.cursor } : {}),
             ...(input.limit ? { limit: input.limit } : {}),
           },
@@ -597,7 +682,8 @@ const container = (input: { handle: string; name: string; description?: string |
 class NotFound extends Error {}
 /** A listing as the API gives it: its team and owner by name in place of their IDs. */
 function listed({ teamInfo, ownerInfo, team: _team, owner: _owner, ...idea }: IdeaListing) {
-  return { ...idea, team: teamInfo, owner: ownerInfo }
+  // the index holds what ideas send it: one of their statuses
+  return { ...idea, status: idea.status as IdeaStatus, team: teamInfo, owner: ownerInfo }
 }
 
 const notFound = (message: string): never => {

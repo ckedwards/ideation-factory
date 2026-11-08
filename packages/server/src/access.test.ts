@@ -124,7 +124,7 @@ describe('ideas in a team', () => {
       files: [{ path: 'a.md', content: PLAN }],
     })
     expect((await riley.getAccess({ idea })).grants).toEqual([
-      { subject: { kind: 'team', id: team.id }, edit: false, share: false },
+      { subject: { kind: 'team', id: team.id }, edit: false, share: false, reviewer: false },
     ])
     await expect(sam.getIdea({ idea })).rejects.toMatchObject({ code: 'not_found' })
     // the idea says which team it's in, and what you can do with it

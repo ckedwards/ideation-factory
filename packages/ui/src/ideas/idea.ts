@@ -43,7 +43,8 @@ export interface IdeaInfo {
 }
 
 // The coarse state: draft, in review (requirements met or not), or closed.
-// "In review" covers requesting review, changes in progress and approved.
+// "In review" covers requesting review and changes in progress; "met" means
+// it can be closed as accepted.
 export type IdeaStateKey = 'draft' | 'review' | 'met' | 'accepted' | 'rejected' | 'archived'
 
 export function ideaState(idea: Pick<IdeaInfo, 'status' | 'closedReason' | 'archived' | 'requirements'>): IdeaStateKey {

@@ -105,5 +105,7 @@ export function sameSubject(a: Subject, b: Subject): boolean {
 
 export function grantLines(grants: Labelled[], indent = '  '): string[] {
   const width = Math.max(0, ...grants.map((g) => g.who.length))
-  return grants.map((g) => `${indent}${g.who.padEnd(width)}  ${accessWords(g)}`)
+  return grants.map(
+    (g) => `${indent}${g.who.padEnd(width)}  ${accessWords(g)}${g.reviewer ? ' · asked to review' : ''}`,
+  )
 }

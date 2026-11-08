@@ -135,6 +135,8 @@ export const directory = actor({
     findIdea: (c, place: string, number: number) => directoryOf(c).findIdea(place, number),
     permission: (c, idea: string, user: string, token?: string | null) => directoryOf(c).permission(idea, user, token),
     grants: (c, idea: string) => directoryOf(c).grants(idea),
+    setReviewer: (c, by: string, idea: string, subject: GrantSubject, reviewer: boolean) =>
+      directoryOf(c).setReviewer(by, idea, subject, reviewer),
     setGrant: (c, by: string, idea: string, subject: GrantSubject, access: { edit: boolean; share: boolean } | null) =>
       directoryOf(c).setGrant(by, idea, subject, access),
     previewMove: (c, by: string, idea: string, to: string | null, adjustments?: MoveAdjustments) =>

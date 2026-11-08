@@ -217,7 +217,9 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
       test("an idea in a team starts with the team's defaults, and access follows membership", async () => {
         const { d, team } = await withTeam()
         await d.registerIdea(idea('i1', { team, owner: 'u-maya' }))
-        expect(await d.grants('i1')).toEqual([{ subject: { kind: 'team', id: team }, edit: false, share: false }])
+        expect(await d.grants('i1')).toEqual([
+          { subject: { kind: 'team', id: team }, edit: false, share: false, reviewer: false },
+        ])
         expect(await d.permission('i1', 'u-riley')).toMatchObject({ view: true, edit: false, share: true }) // a team admin can share
         await d.addMember('u-riley', 'team', team, 'u-sam')
         expect((await d.permission('i1', 'u-sam')).view).toBe(true)
@@ -267,6 +269,49 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
         expect((await d.permission('i1', 'u-outsider')).view).toBe(false)
       })
 
+      test('asking for a review gives view access; taking someone off leaves it, and removing access ends both', async () => {
+        const { d, team } = await withTeam()
+        const group = (
+          (await d.createGroup('u-devon', { handle: 'security', name: 'Security' })) as { value: { id: string } }
+        ).value.id
+        await d.registerIdea(idea('i1', { team }))
+        expect(await d.setReviewer('u-sam', 'i1', { kind: 'user', id: 'u-sam' }, true)).toMatchObject({
+          ok: false,
+          error: { code: 'forbidden' },
+        })
+        expect(await d.setReviewer('u-riley', 'i1', { kind: 'user', id: 'u-riley' }, true)).toMatchObject({
+          ok: false,
+          error: { code: 'invalid' },
+        })
+        expect(await d.setReviewer('u-riley', 'i1', { kind: 'team', id: team }, true)).toMatchObject({
+          ok: false,
+          error: { code: 'invalid' },
+        })
+        expect((await d.permission('i1', 'u-sam')).view).toBe(false)
+        await d.setReviewer('u-riley', 'i1', { kind: 'user', id: '@sam' }, true)
+        await d.setReviewer('u-riley', 'i1', { kind: 'group', id: 'security' }, true)
+        // someone who already has access keeps it, and is asked too
+        await d.setGrant('u-riley', 'i1', { kind: 'user', id: 'u-maya' }, { edit: true, share: false })
+        await d.setReviewer('u-riley', 'i1', { kind: 'user', id: 'u-maya' }, true)
+        expect((await d.permission('i1', 'u-sam')).view).toBe(true)
+        expect((await d.permission('i1', 'u-devon')).view).toBe(true)
+        expect(await d.grants('i1')).toEqual([
+          { subject: { kind: 'group', id: group }, edit: false, share: false, reviewer: true },
+          { subject: { kind: 'team', id: team }, edit: false, share: false, reviewer: false },
+          { subject: { kind: 'user', id: 'u-maya' }, edit: true, share: false, reviewer: true },
+          { subject: { kind: 'user', id: 'u-sam' }, edit: false, share: false, reviewer: true },
+        ])
+        // off the reviewers, still a viewer
+        await d.setReviewer('u-riley', 'i1', { kind: 'user', id: 'u-sam' }, false)
+        expect((await d.permission('i1', 'u-sam')).view).toBe(true)
+        // changing someone's access keeps them a reviewer; removing it ends both
+        await d.setGrant('u-riley', 'i1', { kind: 'user', id: 'u-maya' }, { edit: false, share: false })
+        await d.setGrant('u-riley', 'i1', { kind: 'group', id: group }, null)
+        expect((await d.grants('i1')).filter((g) => g.reviewer).map((g) => g.subject)).toEqual([
+          { kind: 'user', id: 'u-maya' },
+        ])
+      })
+
       test('people, groups and teams can be named by handle, and are stored by ID', async () => {
         const { d, team } = await withTeam()
         const group = (
@@ -278,9 +323,9 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
         expect(await d.setGrant('u-riley', 'i1', { kind: 'group', id: 'security' }, view)).toMatchObject({ ok: true })
         expect(await d.setGrant('u-riley', 'i1', { kind: 'team', id: '@core' }, view)).toMatchObject({ ok: true })
         expect(await d.grants('i1')).toEqual([
-          { subject: { kind: 'group', id: group }, ...view },
-          { subject: { kind: 'team', id: team }, ...view },
-          { subject: { kind: 'user', id: 'u-sam' }, ...view },
+          { subject: { kind: 'group', id: group }, ...view, reviewer: false },
+          { subject: { kind: 'team', id: team }, ...view, reviewer: false },
+          { subject: { kind: 'user', id: 'u-sam' }, ...view, reviewer: false },
         ])
         expect((await d.permission('i1', 'u-devon')).view).toBe(true)
         // and removed by handle
@@ -641,7 +686,7 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
           skip: [{ kind: 'team', id: '@web' }],
         })
         expect((byHandle as { value: MovePreview }).value.grants.after).toEqual([
-          { subject: { kind: 'team', id: core }, edit: false, share: false },
+          { subject: { kind: 'team', id: core }, edit: false, share: false, reviewer: false },
         ])
         expect(await d.previewMove('u-riley', 'i1', web, { keep: [{ kind: 'team', id: 'nowhere' }] })).toMatchObject({
           ok: false,

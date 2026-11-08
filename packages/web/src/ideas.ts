@@ -2,16 +2,25 @@
 // linked to its address, its team linked to the team's page, or marked as
 // someone's own. Reviews and requirements come with step 9; until then a row
 // has none.
-import { type Operations, type Output, ideaPath } from '@ideaf/api'
-import type { IdeaInfo, IdeaStatus } from '@ideaf/ui'
+import { type IdeaStatus as ApiStatus, type Operations, type Output, ideaPath } from '@ideaf/api'
+import type { ClosedReason, IdeaInfo, IdeaStatus } from '@ideaf/ui'
 
 export type ListedIdea = Output<Operations['listIdeas']>['items'][number]
 
-const STATUSES: readonly IdeaStatus[] = ['draft', 'requesting review', 'changes in progress', 'approved', 'closed']
+/** An idea's status as ui shows it: its words, and why it closed. */
+export type ShownStatus = { status: IdeaStatus; reason?: ClosedReason }
+
+const SHOWN: Record<ApiStatus, ShownStatus> = {
+  draft: { status: 'draft' },
+  'requesting-review': { status: 'requesting review' },
+  'changes-in-progress': { status: 'changes in progress' },
+  'closed-accepted': { status: 'closed', reason: 'accepted' },
+  'closed-rejected': { status: 'closed', reason: 'rejected' },
+}
 
 /** An idea's status as ui shows it; one it doesn't know reads as a draft. */
-export function statusOf(status: string): IdeaStatus {
-  return STATUSES.includes(status as IdeaStatus) ? (status as IdeaStatus) : 'draft'
+export function statusOf(status: string): ShownStatus {
+  return SHOWN[status as ApiStatus] ?? SHOWN.draft
 }
 
 export function ideaInfo(row: ListedIdea, me: string): IdeaInfo {
@@ -29,7 +38,8 @@ export function ideaInfo(row: ListedIdea, me: string): IdeaInfo {
           href: `/@${row.owner.handle}`,
         },
     author,
-    status: statusOf(row.status),
+    status: statusOf(row.status).status,
+    ...(statusOf(row.status).reason ? { closedReason: statusOf(row.status).reason! } : {}),
     ...(row.team?.archived ? { archived: true } : {}),
     version: row.latest,
     updatedAt: row.updatedAt,

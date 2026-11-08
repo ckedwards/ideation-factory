@@ -136,7 +136,7 @@ async function serverList(ctx: Context, flags: ListFlags): Promise<number> {
     const page = await ctx.api.listIdeas({
       ...(flags.team !== undefined ? { team: flags.team } : {}),
       ...(owner !== undefined ? { owner } : {}),
-      ...(flags.status !== undefined ? { status: flags.status } : {}),
+      ...statusFilter(flags.status),
       ...(flags.cursor !== undefined ? { cursor: flags.cursor } : {}),
     })
     items = page.items
@@ -209,4 +209,21 @@ function ago(at: number, now = Date.now()): string {
   }
   const days = Math.round(hours / 24)
   return days < 30 ? `${days}d ago` : new Date(at).toISOString().slice(0, 10)
+}
+
+const STATUSES = ['draft', 'requesting-review', 'changes-in-progress', 'closed-accepted', 'closed-rejected'] as const
+
+/** --status: open or closed, or one status. */
+function statusFilter(status: string | undefined) {
+  if (status === undefined) {
+    return {}
+  }
+  if (status === 'open' || status === 'closed') {
+    return { state: status as 'open' | 'closed' }
+  }
+  const found = STATUSES.find((s) => s === status)
+  if (!found) {
+    throw new CliError(`--status takes open, closed or one of ${STATUSES.join(', ')}`, EXIT.usage, 'invalid')
+  }
+  return { status: found }
 }

@@ -2,9 +2,20 @@
 // content hash and unit IDs); the contents are in the file store by hash.
 // Every comment has an anchor per version, so older versions show comments
 // where they were then.
-import type { Kysely } from 'kysely'
+import type { Generated, Kysely } from 'kysely'
 import { sqliteKysely } from '../sql/kysely.ts'
 import type { Sql } from '../sql/sql.ts'
+
+export const IDEA_STATUSES = [
+  'draft',
+  'requesting-review',
+  'changes-in-progress',
+  'closed-accepted',
+  'closed-rejected',
+] as const
+export type IdeaStatus = (typeof IDEA_STATUSES)[number]
+export const VERDICTS = ['approve', 'request-changes', 'reject'] as const
+export type Verdict = (typeof VERDICTS)[number]
 
 /** The idea actor's tables, as Kysely types: what its queries are written against. */
 export interface IdeaDB {
@@ -13,7 +24,8 @@ export interface IdeaDB {
     title: string
     description: string
     owner: string
-    status: string
+    /** Open (draft, requesting-review, changes-in-progress) or closed (closed-accepted, closed-rejected). */
+    status: IdeaStatus
     created_at: number
     latest: number
     next_comment: number
@@ -50,6 +62,23 @@ export interface IdeaDB {
     state: 'exact' | 'moved' | 'changed' | 'outdated'
     anchor: string | null
   }
+  /** Every change of status, in order: its first is the status it was created with. */
+  status_changes: { seq: Generated<number>; status: IdeaStatus; by: string; at: number; note: string }
+  /**
+   * Verdicts, in the order they were given. A reviewer (an account: a person,
+   * or a bot) stands by their latest; `dismissed` ({ by, at, reason }, as
+   * JSON) is set when someone with edit access dismisses an objection.
+   */
+  reviews: {
+    seq: Generated<number>
+    reviewer: string
+    by: string
+    verdict: Verdict
+    version: number
+    body: string
+    at: number
+    dismissed: string | null
+  }
   /** The idea's draft: changes on the latest version, in the order they were made, until it's committed or discarded. */
   draft: { key: string; seq: number; change: string; by: string; at: number }
   writes: { key: string; result: string; at: number }
@@ -75,6 +104,8 @@ export const IDEA_COLUMNS = {
   steps: ['version', 'step', 'command', 'addresses'],
   comments: ['id', 'parent', 'version', 'author', 'created_at', 'body', 'resolved', 'suggestion', 'decision'],
   anchors: ['comment', 'version', 'state', 'anchor'],
+  status_changes: ['seq', 'status', 'by', 'at', 'note'],
+  reviews: ['seq', 'reviewer', 'by', 'verdict', 'version', 'body', 'at', 'dismissed'],
   draft: ['key', 'seq', 'change', 'by', 'at'],
   writes: ['key', 'result', 'at'],
   schema_version: ['version'],
@@ -98,7 +129,7 @@ const MIGRATIONS: Migration[] = [
       title TEXT NOT NULL,
       description TEXT NOT NULL,
       owner TEXT NOT NULL,
-      status TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('draft', 'requesting-review', 'changes-in-progress', 'closed-accepted', 'closed-rejected')),
       created_at INTEGER NOT NULL,
       latest INTEGER NOT NULL,
       next_comment INTEGER NOT NULL,
@@ -149,6 +180,24 @@ const MIGRATIONS: Migration[] = [
       PRIMARY KEY (comment, version)
     )`,
     `CREATE INDEX anchors_version ON anchors (version)`,
+    `CREATE TABLE status_changes (
+      seq INTEGER PRIMARY KEY,
+      status TEXT NOT NULL,
+      by TEXT NOT NULL,
+      at INTEGER NOT NULL,
+      note TEXT NOT NULL
+    )`,
+    `CREATE TABLE reviews (
+      seq INTEGER PRIMARY KEY,
+      reviewer TEXT NOT NULL,
+      by TEXT NOT NULL,
+      verdict TEXT NOT NULL CHECK (verdict IN ('approve', 'request-changes', 'reject')),
+      version INTEGER NOT NULL REFERENCES versions (number),
+      body TEXT NOT NULL,
+      at INTEGER NOT NULL,
+      dismissed TEXT
+    )`,
+    `CREATE INDEX reviews_reviewer ON reviews (reviewer, seq)`,
     `CREATE TABLE draft (
       key TEXT PRIMARY KEY,
       seq INTEGER NOT NULL UNIQUE,

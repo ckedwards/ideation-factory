@@ -1,5 +1,5 @@
 CREATE TABLE schema_version (version INTEGER NOT NULL);
-CREATE TABLE idea ( id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL, owner TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, latest INTEGER NOT NULL, next_comment INTEGER NOT NULL, git_uri TEXT, git_branch TEXT );
+CREATE TABLE idea ( id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL, owner TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('draft', 'requesting-review', 'changes-in-progress', 'closed-accepted', 'closed-rejected')), created_at INTEGER NOT NULL, latest INTEGER NOT NULL, next_comment INTEGER NOT NULL, git_uri TEXT, git_branch TEXT );
 CREATE TABLE versions ( number INTEGER PRIMARY KEY, parent INTEGER, created_at INTEGER NOT NULL, created_by TEXT NOT NULL, how TEXT NOT NULL CHECK (how IN ('created', 'commands', 'upload')), next_id INTEGER NOT NULL );
 CREATE TABLE version_files ( version INTEGER NOT NULL REFERENCES versions (number), file TEXT NOT NULL, path TEXT NOT NULL, hash TEXT NOT NULL, bytes INTEGER NOT NULL, unit_ids TEXT NOT NULL, PRIMARY KEY (version, file) );
 CREATE TABLE steps ( version INTEGER NOT NULL REFERENCES versions (number), step INTEGER NOT NULL, command TEXT NOT NULL, addresses TEXT NOT NULL, PRIMARY KEY (version, step) );
@@ -7,6 +7,9 @@ CREATE TABLE comments ( id TEXT PRIMARY KEY, parent TEXT REFERENCES comments (id
 CREATE INDEX comments_parent ON comments (parent);
 CREATE TABLE anchors ( comment TEXT NOT NULL REFERENCES comments (id), version INTEGER NOT NULL REFERENCES versions (number), state TEXT NOT NULL CHECK (state IN ('exact', 'moved', 'changed', 'outdated')), anchor TEXT, PRIMARY KEY (comment, version) );
 CREATE INDEX anchors_version ON anchors (version);
+CREATE TABLE status_changes ( seq INTEGER PRIMARY KEY, status TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL, note TEXT NOT NULL );
+CREATE TABLE reviews ( seq INTEGER PRIMARY KEY, reviewer TEXT NOT NULL, by TEXT NOT NULL, verdict TEXT NOT NULL CHECK (verdict IN ('approve', 'request-changes', 'reject')), version INTEGER NOT NULL REFERENCES versions (number), body TEXT NOT NULL, at INTEGER NOT NULL, dismissed TEXT );
+CREATE INDEX reviews_reviewer ON reviews (reviewer, seq);
 CREATE TABLE draft ( key TEXT PRIMARY KEY, seq INTEGER NOT NULL UNIQUE, change TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL );
 CREATE TABLE writes (key TEXT PRIMARY KEY, result TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE INDEX writes_at ON writes (at);

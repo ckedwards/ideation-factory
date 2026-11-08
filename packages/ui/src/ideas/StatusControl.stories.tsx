@@ -22,5 +22,5 @@ export const Draft: Story = { args: { value: 'draft' } }
 
 export const ChangesInProgress: Story = { args: { value: 'changes in progress' } }
 
-// Anyone but the author sees the status, without the picker
+// Without edit access, the status shows without the picker
 export const NotAuthor: Story = { args: { canChange: false } }

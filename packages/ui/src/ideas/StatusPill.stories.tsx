@@ -16,8 +16,6 @@ export const RequestingReview: Story = {}
 
 export const ChangesInProgress: Story = { args: { status: 'changes in progress' } }
 
-export const Approved: Story = { args: { status: 'approved' } }
-
 export const ClosedAccepted: Story = { args: { status: 'closed', reason: 'accepted' } }
 
 export const ClosedRejected: Story = { args: { status: 'closed', reason: 'rejected' } }
@@ -31,7 +29,6 @@ export const Every: Story = {
       <StatusPill status="draft" />
       <StatusPill status="requesting review" />
       <StatusPill status="changes in progress" />
-      <StatusPill status="approved" />
       <StatusPill status="closed" reason="accepted" />
       <StatusPill status="closed" reason="rejected" />
       <StatusPill status="requesting review" archived />
