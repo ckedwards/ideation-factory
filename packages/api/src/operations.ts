@@ -18,9 +18,15 @@ import {
   FileId,
   FileOutline,
   GitHint,
+  GrantSubject,
   IdeaId,
   IdeaPlace,
+  IdeaStatus,
   IdeaSummary,
+  OpenStatus,
+  Review,
+  StatusChange,
+  Verdict,
   Ref,
   StepResult,
   VersionParam,
@@ -45,6 +51,8 @@ export const operations = {
       files: z.array(MarkdownFile).min(1).max(500),
       /** The git branch (and repository) the files come from, so another machine can find it. */
       gitHint: GitHint.optional(),
+      /** Out for review straight away, instead of a draft. */
+      status: z.enum(['draft', 'requesting-review']).optional(),
     }),
     output: z.object({
       idea: z.string(),
@@ -361,6 +369,97 @@ export const operations = {
     output: VersionResult,
   }),
 
+  listReviews: defineOperation({
+    name: 'list_reviews',
+    summary: "Read an idea's status and reviews",
+    description:
+      "The idea's status and every change of it (who, when, and why), and each reviewer's latest verdict: the version it was on, whether it counts as an approval (a person's, on the latest version) and whether it stands in the way of closing as accepted (a Request changes or Reject not withdrawn or dismissed).",
+    method: 'GET',
+    path: '/ideas/{idea}/reviews',
+    kind: 'read',
+    input: z.strictObject({ idea: IdeaId }),
+    output: z.object({
+      status: IdeaStatus,
+      latest: z.number().int(),
+      history: z.array(StatusChange),
+      /** The people and groups asked to review it (set_reviewer). */
+      reviewers: z.array(GrantSubject),
+      reviews: z.array(Review),
+    }),
+  }),
+
+  setStatus: defineOperation({
+    name: 'set_status',
+    summary: "Change an open idea's status",
+    description:
+      'Moves an open idea to draft, requesting review or changes in progress. A closed idea has to be reopened first. A verdict never moves it: people do. Needs edit access.',
+    method: 'POST',
+    path: '/ideas/{idea}/status',
+    kind: 'write',
+    input: z.strictObject({ idea: IdeaId, status: OpenStatus, note: z.string().trim().max(5000).optional() }),
+    output: z.object({ status: IdeaStatus }),
+  }),
+
+  closeIdea: defineOperation({
+    name: 'close_idea',
+    summary: 'Close an idea',
+    description:
+      "Closes an idea as accepted (it goes ahead) or rejected (it doesn't), with an optional note. Closing as accepted is refused with blocked while any reviewer's Request changes or Reject stands (details: the objections): they change their verdict, or someone with edit access dismisses it. Needs edit access.",
+    method: 'POST',
+    path: '/ideas/{idea}/close',
+    kind: 'write',
+    input: z.strictObject({
+      idea: IdeaId,
+      reason: z.enum(['accepted', 'rejected']),
+      note: z.string().trim().max(5000).optional(),
+    }),
+    output: z.object({ status: IdeaStatus }),
+  }),
+
+  reopenIdea: defineOperation({
+    name: 'reopen_idea',
+    summary: 'Reopen an idea',
+    description: 'Opens a closed idea again, in the open status it had before it closed. Needs edit access.',
+    method: 'POST',
+    path: '/ideas/{idea}/reopen',
+    kind: 'write',
+    input: z.strictObject({ idea: IdeaId, note: z.string().trim().max(5000).optional() }),
+    output: z.object({ status: IdeaStatus }),
+  }),
+
+  reviewIdea: defineOperation({
+    name: 'review_idea',
+    summary: 'Review an idea',
+    description:
+      "Gives your verdict on the latest version: approve, request changes or reject, with an optional summary. `version` is the one you read; if there's a newer one, it's refused with stale_version. Your new verdict replaces your last. Approvals count only on the latest version and only from people (a bot's shows, but never counts); a Request changes or Reject stands through later versions until you change it or it's dismissed. You can't review your own idea, or a closed one. Needs view access.",
+    method: 'POST',
+    path: '/ideas/{idea}/reviews',
+    kind: 'write',
+    input: z.strictObject({
+      idea: IdeaId,
+      version: z.number().int().positive(),
+      verdict: Verdict,
+      body: z.string().trim().max(20_000).optional(),
+    }),
+    output: Review,
+  }),
+
+  dismissReview: defineOperation({
+    name: 'dismiss_review',
+    summary: "Dismiss a reviewer's objection",
+    description:
+      "Dismisses a reviewer's standing Request changes or Reject (named as list_reviews names the reviewer), with a reason, so it no longer stops the idea closing as accepted. Their verdict still shows, as dismissed. Needs edit access.",
+    method: 'POST',
+    path: '/ideas/{idea}/reviews/{reviewer}/dismiss',
+    kind: 'write',
+    input: z.strictObject({
+      idea: IdeaId,
+      reviewer: z.string().min(1).max(300),
+      reason: z.string().trim().min(1).max(5000),
+    }),
+    output: Review,
+  }),
+
   ...directoryOperations,
 } as const
 
@@ -382,6 +481,8 @@ export const ErrorDetails = {
   draft_outdated: z.object({
     changes: z.array(z.object({ key: z.string(), change: DraftChange, by: Caller, problem: z.string() })),
   }),
+  /** Closing as accepted: the reviewers' objections that stand. */
+  blocked: z.object({ objections: z.array(Review) }),
   pull_first: z.object({
     latest: z.number().int(),
     files: z.array(z.object({ file: z.string(), path: z.string(), base: z.string().nullable(), latest: z.string() })),

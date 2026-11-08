@@ -95,7 +95,7 @@ export const ideas = {
     description: 'Card payments that time out are retried once, with the same idempotency key.',
     team: { name: 'Payments', href: '#teams/payments' },
     author: maya,
-    status: 'approved',
+    status: 'requesting review',
     approvals: [devon, sam],
     openThreads: 0,
     requirements: requirements.allMet,

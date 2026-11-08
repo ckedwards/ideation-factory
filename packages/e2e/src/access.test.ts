@@ -39,6 +39,7 @@ describe('ideaf share', () => {
     expect((await r.ideaf('share', `group:${h('security')}`, '--json')).json().grants).toContainEqual({
       who: `group:${h('security')}`,
       subject: { kind: 'group', id: security.id },
+      reviewer: false,
       edit: false,
       share: false,
     })

@@ -1196,6 +1196,7 @@ export class SqlDirectory implements Directory {
       subject: toSubject(r.kind, r.subject),
       edit: r.can_edit === 1,
       share: r.can_share === 1,
+      reviewer: r.reviewer === 1,
     }))
   }
 
@@ -1252,6 +1253,56 @@ export class SqlDirectory implements Directory {
         .where('idea', '=', ideaId)
         .where('kind', '=', subject.kind)
         .where('subject', '=', id)
+        .execute()
+    }
+    return ok(await this.grants(ideaId))
+  }
+
+  async setReviewer(actor: string, ideaId: string, named: GrantSubject, reviewer: boolean): Promise<Result<Grant[]>> {
+    const idea = await this.idea(ideaId)
+    if (!idea) {
+      return fail('not_found', `no idea ${ideaId}`)
+    }
+    if (!(await this.permission(ideaId, actor)).share) {
+      return fail('forbidden', 'you need share access to ask for reviews')
+    }
+    if (named.kind !== 'user' && named.kind !== 'group') {
+      return fail('invalid', 'a reviewer is a person or a group')
+    }
+    const found = await this.#subject(named)
+    if (!found.ok) {
+      return found
+    }
+    const subject = found.value as { kind: 'user' | 'group'; id: string }
+    if (subject.kind === 'user' && subject.id === idea.owner) {
+      return fail('invalid', "the owner can't review their own idea")
+    }
+    if (subject.kind === 'group' && (await this.group(subject.id))?.deleted) {
+      return fail('invalid', `${named.id} is deleted`)
+    }
+    if (reviewer) {
+      // asking gives view access; access they already have stays as it is
+      await this.#db
+        .insertInto('grants')
+        .values({
+          idea: ideaId,
+          kind: subject.kind,
+          subject: subject.id,
+          can_edit: 0,
+          can_share: 0,
+          reviewer: 1,
+          created_at: this.#now(),
+        })
+        .onConflict((oc) => oc.columns(['idea', 'kind', 'subject']).doUpdateSet({ reviewer: 1 }))
+        .execute()
+    } else {
+      // taken off the reviewers, they keep their access
+      await this.#db
+        .updateTable('grants')
+        .set({ reviewer: 0 })
+        .where('idea', '=', ideaId)
+        .where('kind', '=', subject.kind)
+        .where('subject', '=', subject.id)
         .execute()
     }
     return ok(await this.grants(ideaId))
@@ -1341,6 +1392,7 @@ export class SqlDirectory implements Directory {
             subject: g.subject.kind === 'everyone' ? '*' : g.subject.id,
             edit: g.edit,
             share: g.share,
+            reviewer: g.reviewer,
           },
           now,
         )
@@ -1431,6 +1483,17 @@ export class SqlDirectory implements Directory {
     }
     if (filter.status) {
       query = query.where('status', '=', filter.status)
+    }
+    if (filter.state) {
+      const closed = ['closed-accepted', 'closed-rejected']
+      const archived = (eb: ExpressionBuilder<DB, 'ideas'>) =>
+        eb('team', 'in', eb.selectFrom('teams').select('id').where('archived', '=', 1))
+      query =
+        filter.state === 'closed'
+          ? query.where((eb) => eb.or([eb('status', 'in', closed), archived(eb)]))
+          : query.where((eb) =>
+              eb.and([eb('status', 'not in', closed), eb.or([eb('team', 'is', null), eb.not(archived(eb))])]),
+            )
     }
     if (after) {
       const [updated, id] = [Number(after[0]), String(after[1])]
@@ -1593,7 +1656,7 @@ function tokenReaches(eb: ExpressionBuilder<DB, 'ideas'>, user: string, token: s
 
 const BOT_NAME = /^[a-z0-9][a-z0-9-]{0,38}$/
 
-type GrantRow = { kind: DB['grants']['kind']; subject: string; edit: boolean; share: boolean }
+type GrantRow = { kind: DB['grants']['kind']; subject: string; edit: boolean; share: boolean; reviewer?: boolean }
 
 const sameSubject = (a: GrantSubject, b: GrantSubject) =>
   a.kind === b.kind && (a.kind === 'everyone' || a.id === (b as { id: string }).id)
@@ -1618,7 +1681,7 @@ function moveGrants(now: Grant[], from: string | null, to: Team | null, adjustme
         existing.edit ||= d.edit
         existing.share ||= d.share
       } else {
-        after.push({ subject, edit: d.edit, share: d.share })
+        after.push({ subject, edit: d.edit, share: d.share, reviewer: false })
       }
     }
   }
@@ -1648,6 +1711,7 @@ async function insertGrant(db: Kysely<DB>, idea: string, grant: GrantRow, now: n
       subject: grant.subject,
       can_edit: grant.edit ? 1 : 0,
       can_share: grant.share ? 1 : 0,
+      reviewer: grant.reviewer ? 1 : 0,
       created_at: now,
     })
     .onConflict((oc) =>

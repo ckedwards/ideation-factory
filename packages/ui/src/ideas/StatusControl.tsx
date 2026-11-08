@@ -2,20 +2,20 @@ import type { IdeaStatus } from './StatusPill.tsx'
 import { StatusPill } from './StatusPill.tsx'
 import './StatusControl.css'
 
-// The statuses an author moves an idea between. Closing has its own action,
+// The statuses people move an open idea between. Closing has its own action,
 // with a reason.
 export type OpenStatus = Exclude<IdeaStatus, 'closed'>
 
-const STATUSES: OpenStatus[] = ['draft', 'requesting review', 'changes in progress', 'approved']
+const STATUSES: OpenStatus[] = ['draft', 'requesting review', 'changes in progress']
 
 export interface StatusControlProps {
   value: OpenStatus
   onChange: (status: OpenStatus) => void
-  // only the author changes the status; everyone else sees the pill
+  // people with edit access change it; everyone else sees the pill
   canChange?: boolean
 }
 
-// An idea's status, as a pill the author can change.
+// An idea's status, as a pill people with edit access can change.
 export function StatusControl({ value, onChange, canChange = true }: StatusControlProps) {
   if (!canChange) {
     return <StatusPill status={value} />

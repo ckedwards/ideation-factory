@@ -1,8 +1,9 @@
 import './StatusPill.css'
 
-// Open: draft → requesting review ⇄ changes in progress → approved.
-// Closed, with a reason: accepted or rejected.
-export type IdeaStatus = 'draft' | 'requesting review' | 'changes in progress' | 'approved' | 'closed'
+// Open: draft → requesting review ⇄ changes in progress, as people move it.
+// Closed, with a reason: accepted (once the team's requirements are met) or
+// rejected.
+export type IdeaStatus = 'draft' | 'requesting review' | 'changes in progress' | 'closed'
 export type ClosedReason = 'accepted' | 'rejected'
 
 export interface StatusPillProps {

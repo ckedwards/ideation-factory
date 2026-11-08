@@ -75,7 +75,7 @@ const meta = {
   args: {
     title: 'Offline-first sync for the field app',
     team: { name: 'Mobile' },
-    status: 'draft',
+    status: { status: 'draft' },
     startedBy: actors.person,
     startedAt: hours(72),
     description: 'Field technicians lose signal in basements. Queue their changes, and send them **oldest first**.',

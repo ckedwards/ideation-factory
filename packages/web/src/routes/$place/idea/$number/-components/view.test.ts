@@ -62,7 +62,8 @@ test('agent work is labeled; someone not loaded yet shows by ID', () => {
   })
 })
 
-test("a status ui doesn't know reads as a draft", () => {
-  expect(statusOf('approved')).toBe('approved')
-  expect(statusOf('something new')).toBe('draft')
+test("each status as ui shows it, and one it doesn't know reads as a draft", () => {
+  expect(statusOf('changes-in-progress')).toEqual({ status: 'changes in progress' })
+  expect(statusOf('closed-accepted')).toEqual({ status: 'closed', reason: 'accepted' })
+  expect(statusOf('something new')).toEqual({ status: 'draft' })
 })

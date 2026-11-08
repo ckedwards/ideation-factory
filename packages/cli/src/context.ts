@@ -118,17 +118,19 @@ export function fromApiError(error: unknown): CliError {
         ? EXIT.pullFirst
         : error.code === 'draft_outdated'
           ? EXIT.draftOutdated
-          : error.code === 'conflict' || error.code === 'stale_version'
-            ? EXIT.conflict
-            : error.code === 'not_found'
-              ? EXIT.notFound
-              : error.code === 'unauthorized' || error.code === 'forbidden'
-                ? EXIT.unauthorized
-                : error.code === 'invalid' || error.code === 'too_large'
-                  ? EXIT.usage
-                  : error.code === 'timed_out'
-                    ? EXIT.unreachable
-                    : EXIT.error
+          : error.code === 'blocked'
+            ? EXIT.blocked
+            : error.code === 'conflict' || error.code === 'stale_version'
+              ? EXIT.conflict
+              : error.code === 'not_found'
+                ? EXIT.notFound
+                : error.code === 'unauthorized' || error.code === 'forbidden'
+                  ? EXIT.unauthorized
+                  : error.code === 'invalid' || error.code === 'too_large'
+                    ? EXIT.usage
+                    : error.code === 'timed_out'
+                      ? EXIT.unreachable
+                      : EXIT.error
     return new CliError(error.message, exit, error.code, error.details)
   }
   return new CliError(error instanceof Error ? error.message : String(error), EXIT.error, 'error')

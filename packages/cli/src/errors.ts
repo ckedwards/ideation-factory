@@ -13,6 +13,8 @@ export const EXIT = {
   busy: 10,
   /** A version would make changes in the idea's draft outdated, and wasn't confirmed. */
   draftOutdated: 11,
+  /** Something stands in the way, like a reviewer's objection to closing an idea as accepted. */
+  blocked: 12,
 } as const
 
 export class CliError extends Error {

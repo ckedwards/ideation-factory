@@ -38,13 +38,15 @@ import { byteLength, checkSizes, type Limits, type SizeProblem } from '../limits
 import { type Kysely, sql as raw } from 'kysely'
 import { sqliteKysely } from '../sql/kysely.ts'
 import type { Sql } from '../sql/sql.ts'
-import type { IdeaDB } from './schema.ts'
+import { type IdeaDB, type IdeaStatus, VERDICTS, type Verdict } from './schema.ts'
 
 import { type Caller, schemas } from '@ideaf/api'
 
 export type { Caller }
 
 const FileInput = z.strictObject({ path: z.string().min(1).max(512), content: z.string() })
+const OpenStatus = z.enum(['draft', 'requesting-review', 'changes-in-progress'])
+const Note = z.string().trim().max(5000)
 
 export const IdeaWrite = z.discriminatedUnion('type', [
   z.strictObject({
@@ -53,7 +55,24 @@ export const IdeaWrite = z.discriminatedUnion('type', [
     description: z.string().max(5000).optional(),
     files: z.array(FileInput).min(1).max(500),
     gitHint: schemas.GitHint.optional(),
+    /** Out for review from the start, or a draft (the default). */
+    status: z.enum(['draft', 'requesting-review']).optional(),
   }),
+  /** Moves an open idea to another open status. */
+  z.strictObject({ type: z.literal('status'), status: OpenStatus, note: Note.optional() }),
+  /** Closes it: accepted only if no reviewer's objection stands. */
+  z.strictObject({ type: z.literal('close'), reason: z.enum(['accepted', 'rejected']), note: Note.optional() }),
+  /** Opens a closed idea again, in the open status it had. */
+  z.strictObject({ type: z.literal('reopen'), note: Note.optional() }),
+  /** A verdict on the latest version (`version` says which the reviewer read). */
+  z.strictObject({
+    type: z.literal('review'),
+    version: z.number().int().positive(),
+    verdict: z.enum(VERDICTS),
+    body: z.string().trim().max(20_000).optional(),
+  }),
+  /** Dismisses a reviewer's standing Request changes or Reject. */
+  z.strictObject({ type: z.literal('dismiss'), reviewer: z.string().min(1).max(300), reason: Note.min(1) }),
   z.strictObject({
     type: z.literal('comment'),
     /** The version the anchor refers to; it must be the latest. */
@@ -133,6 +152,7 @@ export type WriteErrorCode =
   | 'too_large'
   | 'conflict'
   | 'draft_outdated'
+  | 'blocked'
 export type WriteError = { code: WriteErrorCode; message: string; details?: unknown }
 
 export type WriteValue =
@@ -145,6 +165,8 @@ export type WriteValue =
   /** Suggestions accepted into the draft, and those left out. */
   | { kind: 'drafted'; accepted: string[]; skipped: Skipped[] }
   | { kind: 'resolved'; comment: string; resolved: boolean }
+  | { kind: 'status'; status: IdeaStatus }
+  | { kind: 'review'; review: ReviewShape }
   | {
       kind: 'version'
       version: number
@@ -161,6 +183,27 @@ export type WriteResult = { ok: true; value: WriteValue } | { ok: false; error: 
 export type CommentShape = { id: string; author: Caller; createdAt: number; body: string; version: number }
 /** Whether a suggestion was accepted (in which version) or rejected, by whom and when. */
 export type Decision = { kind: 'accepted' | 'rejected'; by: Caller; at: number; version: number | null }
+/** A change of the idea's status, with who made it and why. */
+export type StatusChange = { status: IdeaStatus; by: Caller; at: number; note: string }
+export type Dismissal = { by: Caller; at: number; reason: string }
+/**
+ * A reviewer's latest verdict. `reviewer` names the account (u:<user>, or
+ * b:<user>:<bot> for a bot). `counts`: an approval from a person on the latest
+ * version, which is what approval rules count. `standing`: a Request changes
+ * or Reject that hasn't been withdrawn or dismissed, which blocks closing as
+ * accepted.
+ */
+export type ReviewShape = {
+  reviewer: string
+  by: Caller
+  verdict: Verdict
+  version: number
+  body: string
+  at: number
+  dismissed: Dismissal | null
+  counts: boolean
+  standing: boolean
+}
 export type SuggestionShape = { old: string; new: string; decision: Decision | null; inDraft: boolean }
 export type ThreadShape = CommentShape & {
   resolved: boolean
@@ -187,6 +230,10 @@ export type IdeaEvent =
   | { name: 'decided'; payload: { comment: string; decision: Decision; by: Caller } }
   /** The draft changed (or was committed or discarded): editors read it again. */
   | { name: 'draft'; payload: { by: Caller } }
+  /** The idea's status changed: opened, moved, closed or reopened. */
+  | { name: 'status'; payload: { status: IdeaStatus; change: StatusChange; by: Caller } }
+  /** A verdict given, or dismissed: the reviewer's verdict as it stands now. */
+  | { name: 'review'; payload: { review: ReviewShape; by: Caller } }
 
 export type VersionHow = 'created' | 'commands' | 'upload'
 
@@ -276,6 +323,16 @@ export class IdeaService {
       switch (write.type) {
         case 'create':
           return await this.#create(request, write)
+        case 'status':
+          return await this.#status(request, write)
+        case 'close':
+          return await this.#close(request, write)
+        case 'reopen':
+          return await this.#reopen(request, write)
+        case 'review':
+          return await this.#review(request, write)
+        case 'dismiss':
+          return await this.#dismiss(request, write)
         case 'comment':
         case 'suggest':
           return await this.#comment(request, write)
@@ -335,7 +392,7 @@ export class IdeaService {
           title: write.title,
           description: write.description ?? '',
           owner: request.caller.user,
-          status: 'draft',
+          status: write.status ?? 'draft',
           created_at: now,
           latest: 1,
           next_comment: 1,
@@ -353,6 +410,10 @@ export class IdeaService {
         steps: [],
         outcomes: [],
       })
+      await tx
+        .insertInto('status_changes')
+        .values({ status: write.status ?? 'draft', by: JSON.stringify(request.caller), at: now, note: '' })
+        .execute()
       await this.#remember(tx, request.key, result)
     })
     this.#latest = { version: 1, idea, ...stored, comments: [] }
@@ -360,6 +421,169 @@ export class IdeaService {
       result,
       events: [{ name: 'version', payload: { version: 1, how: 'created', by: request.caller } }] satisfies IdeaEvent[],
     }
+  }
+
+  // --- status and reviews ---------------------------------------------------------
+
+  async #status(request: WriteRequest, write: Extract<IdeaWrite, { type: 'status' }>) {
+    const meta = await this.#requireMeta()
+    if (closed(meta.status)) {
+      refuse('invalid', `it's ${words(meta.status)}; reopen it first`)
+    }
+    return this.#changeStatus(request, meta.status, write.status, write.note ?? '')
+  }
+
+  async #close(request: WriteRequest, write: Extract<IdeaWrite, { type: 'close' }>) {
+    const meta = await this.#requireMeta()
+    if (closed(meta.status)) {
+      refuse('invalid', `it's already ${words(meta.status)}`)
+    }
+    if (write.reason === 'accepted') {
+      const standing = (await this.#latestReviews(meta)).filter((r) => r.standing)
+      if (standing.length > 0) {
+        const n = standing.length
+        refuse(
+          'blocked',
+          `${n === 1 ? 'a reviewer objects' : `${n} reviewers object`}: it can be closed as accepted once ${n === 1 ? 'their verdict changes or is' : 'their verdicts change or are'} dismissed`,
+          { objections: standing },
+        )
+      }
+    }
+    return this.#changeStatus(request, meta.status, `closed-${write.reason}`, write.note ?? '')
+  }
+
+  async #reopen(request: WriteRequest, write: Extract<IdeaWrite, { type: 'reopen' }>) {
+    const meta = await this.#requireMeta()
+    if (!closed(meta.status)) {
+      refuse('invalid', `it's open (${words(meta.status)})`)
+    }
+    // back to the open status it last had
+    const last = await this.#db
+      .selectFrom('status_changes')
+      .select('status')
+      .where('status', 'not in', ['closed-accepted', 'closed-rejected'])
+      .orderBy('seq', 'desc')
+      .limit(1)
+      .executeTakeFirst()
+    return this.#changeStatus(request, meta.status, last?.status ?? 'requesting-review', write.note ?? '')
+  }
+
+  async #changeStatus(request: WriteRequest, from: IdeaStatus, to: IdeaStatus, note: string) {
+    const result: WriteResult = { ok: true, value: { kind: 'status', status: to } }
+    if (from === to) {
+      await this.#remember(this.#db, request.key, result)
+      return { result, events: [] }
+    }
+    const change: StatusChange = { status: to, by: request.caller, at: this.#now(), note }
+    await this.#transaction(async (tx) => {
+      await tx.updateTable('idea').set({ status: to }).execute()
+      await tx
+        .insertInto('status_changes')
+        .values({ status: to, by: JSON.stringify(change.by), at: change.at, note })
+        .execute()
+      await this.#remember(tx, request.key, result)
+    })
+    return {
+      result,
+      events: [{ name: 'status', payload: { status: to, change, by: request.caller } }] satisfies IdeaEvent[],
+    }
+  }
+
+  async #review(request: WriteRequest, write: Extract<IdeaWrite, { type: 'review' }>) {
+    const meta = await this.#requireMeta()
+    const { caller } = request
+    if (caller.purpose !== 'bot' && caller.user === meta.owner) {
+      refuse(
+        'invalid',
+        caller.purpose === 'me' ? "you can't review your own idea" : "a bot can't review its owner's idea for them",
+      )
+    }
+    if (closed(meta.status)) {
+      refuse('invalid', `it's ${words(meta.status)}; reopen it to review it`)
+    }
+    if (write.version !== meta.latest) {
+      refuse('stale_version', `v${meta.latest} is the latest version; read it, then review it`, { latest: meta.latest })
+    }
+    const reviewer = reviewerOf(caller)
+    const at = this.#now()
+    await this.#transaction(async (tx) => {
+      await tx
+        .insertInto('reviews')
+        .values({
+          reviewer,
+          by: JSON.stringify(caller),
+          verdict: write.verdict,
+          version: write.version,
+          body: write.body ?? '',
+          at,
+          dismissed: null,
+        })
+        .execute()
+    })
+    const review = (await this.#latestReviews(meta)).find((r) => r.reviewer === reviewer)!
+    const result: WriteResult = { ok: true, value: { kind: 'review', review } }
+    await this.#remember(this.#db, request.key, result)
+    return { result, events: [{ name: 'review', payload: { review, by: caller } }] satisfies IdeaEvent[] }
+  }
+
+  async #dismiss(request: WriteRequest, write: Extract<IdeaWrite, { type: 'dismiss' }>) {
+    const meta = await this.#requireMeta()
+    const row = await this.#db
+      .selectFrom('reviews')
+      .select(['seq', 'verdict', 'dismissed'])
+      .where('reviewer', '=', write.reviewer)
+      .orderBy('seq', 'desc')
+      .limit(1)
+      .executeTakeFirst()
+    if (!row) {
+      refuse('not_found', `${write.reviewer} hasn't reviewed this idea`)
+    }
+    if (row!.verdict === 'approve' || row!.dismissed) {
+      refuse(
+        'invalid',
+        row!.dismissed ? 'that verdict is already dismissed' : 'only a Request changes or a Reject can be dismissed',
+      )
+    }
+    const dismissed: Dismissal = { by: request.caller, at: this.#now(), reason: write.reason }
+    await this.#db
+      .updateTable('reviews')
+      .set({ dismissed: JSON.stringify(dismissed) })
+      .where('seq', '=', row!.seq)
+      .execute()
+    const review = (await this.#latestReviews(meta)).find((r) => r.reviewer === write.reviewer)!
+    const result: WriteResult = { ok: true, value: { kind: 'review', review } }
+    await this.#remember(this.#db, request.key, result)
+    return { result, events: [{ name: 'review', payload: { review, by: request.caller } }] satisfies IdeaEvent[] }
+  }
+
+  /** Each reviewer's latest verdict, oldest first. */
+  async #latestReviews(meta: Meta): Promise<ReviewShape[]> {
+    const rows = await this.#db
+      .selectFrom('reviews as r')
+      .selectAll()
+      .where('r.seq', 'in', (eb) =>
+        eb
+          .selectFrom('reviews')
+          .select((e) => e.fn.max<number>('seq').as('seq'))
+          .groupBy('reviewer'),
+      )
+      .orderBy('r.seq')
+      .execute()
+    return rows.map((r): ReviewShape => {
+      const by = JSON.parse(r.by) as Caller
+      const dismissed = r.dismissed ? (JSON.parse(r.dismissed) as Dismissal) : null
+      return {
+        reviewer: r.reviewer,
+        by,
+        verdict: r.verdict,
+        version: r.version,
+        body: r.body,
+        at: r.at,
+        dismissed,
+        counts: r.verdict === 'approve' && r.version === meta.latest && by.purpose === 'me',
+        standing: r.verdict !== 'approve' && !dismissed,
+      }
+    })
   }
 
   async #comment(request: WriteRequest, write: Extract<IdeaWrite, { type: 'comment' | 'suggest' }>) {
@@ -1067,6 +1291,23 @@ export class IdeaService {
     }
   }
 
+  /** The idea's status and its history, and each reviewer's latest verdict. */
+  async reviews() {
+    const meta = await this.#requireMeta()
+    const history = await this.#db.selectFrom('status_changes').selectAll().orderBy('seq').execute()
+    return {
+      status: meta.status,
+      latest: meta.latest,
+      history: history.map((h): StatusChange => ({
+        status: h.status,
+        by: JSON.parse(h.by) as Caller,
+        at: h.at,
+        note: h.note,
+      })),
+      reviews: await this.#latestReviews(meta),
+    }
+  }
+
   /** A version's files: IDs, paths and content hashes. */
   async files(version?: number) {
     const v = await this.#versionNumber(version)
@@ -1467,6 +1708,14 @@ export class IdeaService {
       .where('at', '<', now - KEEP_RESULTS_MS)
       .execute()
   }
+}
+
+const closed = (status: IdeaStatus) => status === 'closed-accepted' || status === 'closed-rejected'
+const words = (status: IdeaStatus) => status.replace(/-/g, ' ')
+
+/** The account a verdict is from: a person, or a bot (each bot apart from the person it acts for). */
+export function reviewerOf(caller: Caller): string {
+  return caller.purpose === 'me' ? `u:${caller.user}` : `b:${caller.user}:${caller.bot ?? ''}`
 }
 
 /**

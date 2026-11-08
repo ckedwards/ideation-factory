@@ -600,6 +600,133 @@ describe('the draft', () => {
   })
 })
 
+describe('status and reviews', () => {
+  const BOT: Caller = { user: 'maya', bot: 'checkbot', purpose: 'bot-for-me' }
+  const OTHER: Caller = { user: 'sam', bot: null, purpose: 'me' }
+  const edit = (base: number) => ({
+    type: 'edit',
+    batch: { base, steps: [{ command: 'replace', in: 'b3', old: 'quick', new: `quick${base}` }] },
+  })
+
+  test('people move an open idea between statuses, with its history kept', async () => {
+    const { service, write } = await created()
+    expect(value(await write({ type: 'status', status: 'requesting-review', note: 'ready' }))).toEqual({
+      kind: 'status',
+      status: 'requesting-review',
+    })
+    // the same status again changes nothing
+    value(await write({ type: 'status', status: 'requesting-review' }))
+    value(await write({ type: 'status', status: 'changes-in-progress' }, REVIEWER))
+    const { status, history } = await service.reviews()
+    expect(status).toBe('changes-in-progress')
+    expect(history.map((h) => [h.status, h.by.user, h.note])).toEqual([
+      ['draft', 'riley', ''],
+      ['requesting-review', 'riley', 'ready'],
+      ['changes-in-progress', 'maya', ''],
+    ])
+    expect((await service.summary())!.status).toBe('changes-in-progress')
+  })
+
+  test('an idea can be created out for review', async () => {
+    const s = await setup()
+    value(
+      await s.write({
+        type: 'create',
+        title: 'Plan',
+        status: 'requesting-review',
+        files: [{ path: 'plan.md', content: PLAN }],
+      }),
+    )
+    expect((await s.service.reviews()).history.map((h) => h.status)).toEqual(['requesting-review'])
+  })
+
+  test('a verdict is on the latest version; approvals count only there, and only from people', async () => {
+    const { service, write } = await created()
+    expect(await write({ type: 'review', version: 1, verdict: 'approve' })).toMatchObject({
+      ok: false,
+      error: { code: 'invalid', message: "you can't review your own idea" },
+    })
+    const approved = value(
+      await write({ type: 'review', version: 1, verdict: 'approve', body: 'Looks good' }, REVIEWER),
+    )
+    expect(approved).toMatchObject({
+      kind: 'review',
+      review: { reviewer: 'u:maya', verdict: 'approve', version: 1, body: 'Looks good', counts: true, standing: false },
+    })
+    value(await write({ type: 'review', version: 1, verdict: 'approve' }, BOT))
+    let reviews = (await service.reviews()).reviews
+    expect(reviews.map((r) => [r.reviewer, r.counts])).toEqual([
+      ['u:maya', true],
+      // a bot acting for maya is its own reviewer, and its approval never counts
+      ['b:maya:checkbot', false],
+    ])
+
+    value(await write(edit(1)))
+    expect(await write({ type: 'review', version: 1, verdict: 'approve' }, OTHER)).toMatchObject({
+      ok: false,
+      error: { code: 'stale_version', details: { latest: 2 } },
+    })
+    reviews = (await service.reviews()).reviews
+    // still shown, on v1, but no longer counting
+    expect(reviews[0]).toMatchObject({ reviewer: 'u:maya', version: 1, counts: false })
+  })
+
+  test('an objection stands through new versions until it is withdrawn or dismissed, and blocks accepting', async () => {
+    const { service, write } = await created()
+    value(await write({ type: 'review', version: 1, verdict: 'request-changes', body: 'Name the risks' }, REVIEWER))
+    value(await write({ type: 'review', version: 1, verdict: 'reject' }, BOT))
+    value(await write(edit(1)))
+    // a verdict never moves the status
+    expect((await service.reviews()).status).toBe('draft')
+
+    const blocked = await write({ type: 'close', reason: 'accepted' })
+    expect(blocked).toMatchObject({
+      ok: false,
+      error: { code: 'blocked', message: expect.stringContaining('2 reviewers object') },
+    })
+    expect((blocked as { error: { details: { objections: unknown[] } } }).error.details.objections).toHaveLength(2)
+
+    // maya approves the new version, which withdraws her objection
+    value(await write({ type: 'review', version: 2, verdict: 'approve' }, REVIEWER))
+    // the bot's is dismissed by someone with edit access
+    expect(await write({ type: 'dismiss', reviewer: 'u:maya', reason: 'x' })).toMatchObject({
+      ok: false,
+      error: { code: 'invalid', message: 'only a Request changes or a Reject can be dismissed' },
+    })
+    const dismissed = value(await write({ type: 'dismiss', reviewer: 'b:maya:checkbot', reason: 'it misread v1' }))
+    expect(dismissed).toMatchObject({
+      review: { verdict: 'reject', standing: false, dismissed: { by: OWNER, reason: 'it misread v1' } },
+    })
+    expect(value(await write({ type: 'close', reason: 'accepted', note: 'going ahead' }))).toEqual({
+      kind: 'status',
+      status: 'closed-accepted',
+    })
+  })
+
+  test('a closed idea takes no status changes or verdicts until it is reopened, in the status it had', async () => {
+    const { service, write } = await created()
+    value(await write({ type: 'status', status: 'changes-in-progress' }))
+    value(await write({ type: 'close', reason: 'rejected' }))
+    expect(await write({ type: 'status', status: 'draft' })).toMatchObject({
+      ok: false,
+      error: { message: "it's closed rejected; reopen it first" },
+    })
+    expect(await write({ type: 'review', version: 1, verdict: 'approve' }, REVIEWER)).toMatchObject({
+      ok: false,
+      error: { code: 'invalid' },
+    })
+    expect(await write({ type: 'close', reason: 'accepted' })).toMatchObject({ ok: false, error: { code: 'invalid' } })
+    expect(value(await write({ type: 'reopen' }))).toEqual({ kind: 'status', status: 'changes-in-progress' })
+    expect(await write({ type: 'reopen' })).toMatchObject({ ok: false, error: { code: 'invalid' } })
+    expect((await service.reviews()).history.map((h) => h.status)).toEqual([
+      'draft',
+      'changes-in-progress',
+      'closed-rejected',
+      'changes-in-progress',
+    ])
+  })
+})
+
 describe('retries', () => {
   test('a write retried with the same key is applied once and returns the same result', async () => {
     const { service } = await created()

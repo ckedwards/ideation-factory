@@ -66,8 +66,21 @@ export interface DB {
    * it, until someone else takes the handle (or a site admin releases it).
    */
   handle_aliases: { kind: 'user' | 'team'; handle: string; owner: string; created_at: number }
-  /** Access to an idea. A row gives view; can_edit and can_share add to it. `subject` is a user, group or team ID, or '*' for everyone. */
-  grants: { idea: string; kind: GrantKind; subject: string; can_edit: number; can_share: number; created_at: number }
+  /**
+   * Access to an idea. A row gives view; can_edit and can_share add to it.
+   * `subject` is a user, group or team ID, or '*' for everyone. `reviewer`: a
+   * person or group asked to review it (asking gives view access, and
+   * removing the access takes them off the reviewers).
+   */
+  grants: {
+    idea: string
+    kind: GrantKind
+    subject: string
+    can_edit: number
+    can_share: number
+    reviewer: number
+    created_at: number
+  }
   /**
    * What a token was made to do, chosen when it was approved: its purpose (and
    * bot name), and limits that can only narrow what its owner can do. Not to
@@ -120,7 +133,7 @@ export const COLUMNS = {
   numbering: ['place', 'next'],
   idea_aliases: ['place', 'number', 'idea'],
   handle_aliases: ['kind', 'handle', 'owner', 'created_at'],
-  grants: ['idea', 'kind', 'subject', 'can_edit', 'can_share', 'created_at'],
+  grants: ['idea', 'kind', 'subject', 'can_edit', 'can_share', 'reviewer', 'created_at'],
   token_grants: ['id', 'user', 'purpose', 'bot', 'read_only', 'limited', 'created_at', 'revoked_at'],
   token_grant_targets: ['token_grant', 'kind', 'target'],
   schema_version: ['version'],
@@ -225,6 +238,7 @@ const MIGRATIONS: Migration[] = [
       .addColumn('subject', 'text', (c) => c.notNull())
       .addColumn('can_edit', 'integer', (c) => c.notNull())
       .addColumn('can_share', 'integer', (c) => c.notNull())
+      .addColumn('reviewer', 'integer', (c) => c.notNull().defaultTo(0))
       .addColumn('created_at', 'bigint', (c) => c.notNull())
       .addPrimaryKeyConstraint('grants_pk', ['idea', 'kind', 'subject'])
       .execute()

@@ -13,7 +13,7 @@ CREATE TABLE "handle_aliases" ("kind" text not null, "handle" text not null, "ow
 CREATE INDEX "ideas_updated" on "ideas" ("updated_at", "id");
 CREATE INDEX "ideas_team" on "ideas" ("team", "updated_at", "id");
 CREATE INDEX "ideas_owner" on "ideas" ("owner", "updated_at", "id");
-CREATE TABLE "grants" ("idea" text not null, "kind" text not null, "subject" text not null, "can_edit" integer not null, "can_share" integer not null, "created_at" bigint not null, constraint "grants_pk" primary key ("idea", "kind", "subject"));
+CREATE TABLE "grants" ("idea" text not null, "kind" text not null, "subject" text not null, "can_edit" integer not null, "can_share" integer not null, "reviewer" integer default 0 not null, "created_at" bigint not null, constraint "grants_pk" primary key ("idea", "kind", "subject"));
 CREATE INDEX "grants_subject" on "grants" ("kind", "subject", "idea");
 CREATE TABLE "token_grants" ("id" text primary key, "user" text not null, "purpose" text not null, "bot" text, "read_only" integer not null, "limited" integer not null, "created_at" bigint not null, "revoked_at" bigint);
 CREATE INDEX "token_grants_user" on "token_grants" ("user", "created_at");

@@ -40,5 +40,9 @@ test("someone's own idea: yours, or theirs, linked to their page", () => {
 
 test("an archived team's idea, and a status ui doesn't know", () => {
   expect(ideaInfo(row({ team: { id: 't1', handle: 'old', name: 'Old', archived: true } }), 'u-me').archived).toBe(true)
-  expect(ideaInfo(row({ status: 'something new' }), 'u-me').status).toBe('draft')
+  expect(ideaInfo(row({ status: 'something new' as never }), 'u-me').status).toBe('draft')
+  expect(ideaInfo(row({ status: 'closed-rejected' }), 'u-me')).toMatchObject({
+    status: 'closed',
+    closedReason: 'rejected',
+  })
 })

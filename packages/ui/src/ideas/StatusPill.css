@@ -29,9 +29,6 @@
 .status-changes-in-progress {
   --c: var(--bot);
 }
-.status-approved {
-  --c: var(--ok);
-}
 /* closed: outlined rather than filled */
 .status-closed-accepted,
 .status-closed-rejected {

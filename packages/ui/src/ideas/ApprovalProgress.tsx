@@ -32,7 +32,7 @@ export function ApprovalProgress({ approvals, requirements, teamName = 'the team
           <>
             <p className="approvals-note">
               {teamName}’s approval requirements name a deleted group. A maintainer or admin of {teamName} needs to fix
-              them before this idea can be approved.
+              them before this idea can be closed as accepted.
             </p>
             <RequirementList checks={requirements} />
           </>

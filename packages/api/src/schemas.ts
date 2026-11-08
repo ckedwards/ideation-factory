@@ -106,6 +106,47 @@ export const GitHint = z.strictObject({
   branch: z.string().min(1).max(250),
 })
 
+/**
+ * Where an idea is: open (a draft, requesting review, or changes in progress)
+ * or closed, as accepted (it goes ahead) or rejected. People move it; nothing
+ * moves it by itself.
+ */
+export const IdeaStatus = z.enum([
+  'draft',
+  'requesting-review',
+  'changes-in-progress',
+  'closed-accepted',
+  'closed-rejected',
+])
+export type IdeaStatus = z.infer<typeof IdeaStatus>
+export const OpenStatus = z.enum(['draft', 'requesting-review', 'changes-in-progress'])
+
+/** A change of an idea's status, who made it and why. */
+export const StatusChange = z.object({ status: IdeaStatus, by: Caller, at: z.number(), note: z.string() })
+
+export const Verdict = z.enum(['approve', 'request-changes', 'reject'])
+export type Verdict = z.infer<typeof Verdict>
+
+/**
+ * A reviewer's latest verdict, on the version they reviewed. `reviewer` names
+ * the account: u:<user> for a person, b:<user>:<bot> for a bot. `counts`: an
+ * approval from a person on the latest version (what approval rules count).
+ * `standing`: a Request changes or Reject not withdrawn or dismissed, which
+ * stops it being closed as accepted, whatever version it was on.
+ */
+export const Review = z.object({
+  reviewer: z.string(),
+  by: Caller,
+  verdict: Verdict,
+  version: z.number().int(),
+  body: z.string(),
+  at: z.number(),
+  dismissed: z.object({ by: Caller, at: z.number(), reason: z.string() }).nullable(),
+  counts: z.boolean(),
+  standing: z.boolean(),
+})
+export type Review = z.infer<typeof Review>
+
 /** What someone can do with an idea. */
 export const Permission = z.object({ view: z.boolean(), edit: z.boolean(), share: z.boolean(), owner: z.boolean() })
 
@@ -121,7 +162,7 @@ export const IdeaSummary = z.object({
   number: z.number().int(),
   /** What you can do with it. */
   you: Permission,
-  status: z.string(),
+  status: IdeaStatus,
   createdAt: z.number(),
   latest: z.number().int(),
   /** Where it was last synced from, if from a git branch: how another machine finds it. */
@@ -200,6 +241,10 @@ export const LiveEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('decided'), comment: z.string(), decision: Decision, by: Caller }),
   /** The idea's draft changed, was committed or was discarded: read it again (people with edit access). */
   z.object({ type: z.literal('draft'), by: Caller }),
+  /** The idea's status changed. */
+  z.object({ type: z.literal('status'), status: IdeaStatus, change: StatusChange, by: Caller }),
+  /** A verdict given or dismissed: the reviewer's verdict as it stands. */
+  z.object({ type: z.literal('review'), review: Review, by: Caller }),
   /** A new version: its files and where each comment is have changed. */
   z.object({ type: z.literal('version'), version: z.number().int(), how: VersionHow, by: Caller }),
 ])
@@ -307,7 +352,7 @@ export const IdeaRow = z.object({
   id: z.string(),
   title: z.string(),
   description: z.string(),
-  status: z.string(),
+  status: IdeaStatus,
   latest: z.number().int(),
   createdAt: z.number(),
   updatedAt: z.number(),
@@ -334,7 +379,13 @@ export const GrantSubject = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('team'), id: z.string() }),
   z.strictObject({ kind: z.literal('everyone') }),
 ])
-export const Grant = z.object({ subject: GrantSubject, edit: z.boolean(), share: z.boolean() })
+export const Grant = z.object({
+  subject: GrantSubject,
+  edit: z.boolean(),
+  share: z.boolean(),
+  /** Asked to review it: a person or a group. */
+  reviewer: z.boolean(),
+})
 
 /** What a token may do: see current_token. */
 export const TokenInfo = z.object({

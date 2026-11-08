@@ -1,28 +1,33 @@
-// Every idea you can see, newest change first, 25 at a time; or a search of
-// their titles (?q=), closest first.
+// Every idea you can see, open ones by default (?state=closed for the
+// closed), newest change first, 25 at a time; or a search of their titles
+// (?q=), closest first.
 import { useState } from 'react'
-import { Page, PageHeader, SearchInput, Stack } from '@ideaf/ui'
+import { Page, PageHeader, SearchInput, SegmentedControl, Stack } from '@ideaf/ui'
 import { useInfiniteQuery, useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { meQuery } from '../../api.ts'
 import { IdeaList } from '../../components/IdeaList.tsx'
 import { ideaInfo } from '../../ideas.ts'
-import { ideasQuery, searchable, searchQuery } from '../../lists.ts'
+import { type IdeaState, ideasQuery, STATES, searchable, searchQuery } from '../../lists.ts'
 
 export const Route = createFileRoute('/ideas/')({
-  validateSearch: (search: Record<string, unknown>): { q?: string } =>
-    typeof search['q'] === 'string' && search['q'] ? { q: search['q'] } : {},
+  validateSearch: (search: Record<string, unknown>): { q?: string; state?: 'closed' } => ({
+    ...(typeof search['q'] === 'string' && search['q'] ? { q: search['q'] } : {}),
+    ...(search['state'] === 'closed' ? { state: 'closed' as const } : {}),
+  }),
+  loaderDeps: ({ search }): { state: IdeaState } => ({ state: search.state ?? 'open' }),
   staticData: { nav: 'ideas' },
-  loader: ({ context: { queryClient } }) => queryClient.infiniteQuery({ ...ideasQuery(), staleTime: 'static' }),
+  loader: ({ context: { queryClient }, deps }) =>
+    queryClient.infiniteQuery({ ...ideasQuery({ state: deps.state }), staleTime: 'static' }),
   component: Ideas,
 })
 
 function Ideas() {
-  const { q = '' } = Route.useSearch()
+  const { q = '', state = 'open' } = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
   const [text, setText] = useState(q)
   const { data: me } = useSuspenseQuery(meQuery)
-  const all = useInfiniteQuery(ideasQuery())
+  const all = useInfiniteQuery(ideasQuery({ state }))
   const found = useQuery(searchQuery(q))
   const searching = searchable(q)
   const rows = searching ? (found.data?.items ?? []) : (all.data?.pages.flatMap((p) => p.items) ?? [])
@@ -41,6 +46,14 @@ function Ideas() {
           }}
           shortcut="/"
         />
+        {!searching && (
+          <SegmentedControl<IdeaState>
+            label="Open or closed"
+            options={STATES}
+            value={state}
+            onChange={(next) => void navigate({ search: next === 'closed' ? { state: next } : {}, replace: true })}
+          />
+        )}
         {searching && found.isPending ? (
           <p>Searching…</p>
         ) : (
@@ -52,7 +65,9 @@ function Ideas() {
                 ? `No ideas you can see match “${q.trim()}”.`
                 : q.trim()
                   ? 'A search needs a word of at least 3 letters.'
-                  : 'No ideas yet. Start one with ideaf start.'
+                  : state === 'closed'
+                    ? 'No closed ideas you can see.'
+                    : 'No open ideas yet. Start one with ideaf start.'
             }
             more={
               !searching && all.hasNextPage

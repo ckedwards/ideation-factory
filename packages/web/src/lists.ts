@@ -1,12 +1,21 @@
 // The lists of ideas pages load: the ideas you can see (optionally in one
-// team, or one person's), 25 at a time with "Show more", or a search.
+// team, or one person's, and open or closed), 25 at a time with "Show more",
+// or a search.
 import { type InfiniteData, infiniteQueryOptions, queryOptions } from '@tanstack/react-query'
 import { api } from './api.ts'
 import type { ListedIdea } from './ideas.ts'
 
 type Page = { items: ListedIdea[]; next: string | null }
 
-export const ideasQuery = (filter: { team?: string; owner?: string } = {}) =>
+export type IdeaState = 'open' | 'closed'
+
+/** Open or closed, for a list's filter. */
+export const STATES = [
+  { value: 'open', label: 'Open' },
+  { value: 'closed', label: 'Closed' },
+] satisfies Array<{ value: IdeaState; label: string }>
+
+export const ideasQuery = (filter: { team?: string; owner?: string; state?: IdeaState } = {}) =>
   infiniteQueryOptions<Page, Error, InfiniteData<Page>, readonly unknown[], string | null>({
     queryKey: ['ideas', filter],
     queryFn: ({ pageParam }) => api.listIdeas({ ...filter, ...(pageParam ? { cursor: pageParam } : {}) }),

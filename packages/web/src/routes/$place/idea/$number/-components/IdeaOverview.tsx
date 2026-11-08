@@ -1,7 +1,8 @@
 // An idea's overview, like a pull request's conversation: what it is (its
 // title, team, status and description), then everything that happened to it,
-// oldest first: each version, and each comment thread, which can be replied to
-// and resolved here. Reviews and approvals join it in step 9.
+// oldest first: each version, each change of status, and each comment
+// thread, which can be replied to and resolved here. Its reviews (ReviewPanel)
+// come first.
 import type { ReactNode } from 'react'
 import { markdownTree } from '@ideaf/core'
 import {
@@ -9,7 +10,6 @@ import {
   ActorLabel,
   CommentCard,
   Empty,
-  type IdeaStatus,
   Link,
   MarkdownView,
   Page,
@@ -20,6 +20,7 @@ import {
   TeamChip,
   type TeamRef,
 } from '@ideaf/ui'
+import type { ShownStatus } from '../../../../../ideas.ts'
 import type { PageComment } from './IdeaPage.tsx'
 import { describe, type VersionInfo } from './VersionList.tsx'
 import './IdeaOverview.css'
@@ -31,6 +32,7 @@ export type ActivityItem =
       href: string
       changesHref: string | null
     })
+  | { kind: 'status'; at: number; status: ShownStatus; by: Actor; note: string; reopened: boolean }
   | {
       kind: 'comment'
       at: number
@@ -43,13 +45,15 @@ export type ActivityItem =
 export interface IdeaOverviewProps {
   title: string
   team: TeamRef & { href?: string | undefined }
-  status: IdeaStatus
+  status: ShownStatus
   startedBy: Actor
   startedAt: number
   /** Markdown; empty when there's none. */
   description: string
   /** The idea's pages (IdeaTabs). */
   tabs: ReactNode
+  /** Its reviews: status, reviewers and verdicts (ReviewPanel). */
+  review?: ReactNode
   /** Who has access, and moving it. */
   sharingHref: string
   /** Oldest first. */
@@ -69,7 +73,10 @@ export function IdeaOverview(props: IdeaOverviewProps) {
         sub={
           <span className="idea-overview-sub">
             <TeamChip team={props.team} href={props.team.href} />
-            <StatusPill status={props.status} />
+            <StatusPill
+              status={props.status.status}
+              {...(props.status.reason ? { reason: props.status.reason } : {})}
+            />
             <span>
               Started by <ActorLabel actor={props.startedBy} short /> <RelativeTime at={props.startedAt} />
             </span>
@@ -78,6 +85,7 @@ export function IdeaOverview(props: IdeaOverviewProps) {
       />
       {props.tabs}
       <div className="idea-overview">
+        {props.review}
         <Section title="Description">
           {props.description.trim() ? (
             <MarkdownView tree={markdownTree(props.description)} variant="compact" />
@@ -98,6 +106,13 @@ export function IdeaOverview(props: IdeaOverviewProps) {
                       <ActorLabel actor={item.by} short /> · <RelativeTime at={item.at} />
                     </span>
                     {item.changesHref && <Link href={item.changesHref}>What changed</Link>}
+                  </li>
+                ) : item.kind === 'status' ? (
+                  <li key={`s${item.at}`} className="idea-activity-version">
+                    <span>
+                      {statusWords(item)} by <ActorLabel actor={item.by} short /> · <RelativeTime at={item.at} />
+                      {item.note && <span className="idea-activity-note">: {item.note}</span>}
+                    </span>
                   </li>
                 ) : (
                   <li key={item.comment.info.id} className="idea-activity-comment">
@@ -128,4 +143,19 @@ export function IdeaOverview(props: IdeaOverviewProps) {
       </div>
     </Page>
   )
+}
+
+function statusWords(item: Extract<ActivityItem, { kind: 'status' }>): string {
+  const { status, reason } = item.status
+  if (status === 'closed') {
+    return reason === 'rejected' ? 'Closed as rejected' : 'Closed as accepted'
+  }
+  if (item.reopened) {
+    return `Reopened, ${status}`
+  }
+  return status === 'draft'
+    ? 'Back to a draft'
+    : status === 'requesting review'
+      ? 'Out for review'
+      : 'Changes in progress'
 }
