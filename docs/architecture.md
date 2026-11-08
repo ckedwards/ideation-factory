@@ -153,7 +153,9 @@ Only someone with edit access to the idea (or a bot acting for them) can accept 
 
 If a suggestion's text isn't in a newer version, it's outdated like any comment, and can no longer be accepted.
 
-TODO: apply changes batching. Someone with edit access should be able to accept several suggestions (across files) at once. That's one batch (see Editing with commands): one new version, with each suggestion its own step, so every suggestion's comment follows its new wording. Two suggestions on overlapping text conflict: the second one's expected text is gone, so it stays open. Open question: should rejecting be batched the same way, or stay immediate?
+**Accepting several at once:** someone with edit access can accept several suggestions (across files) together. That's one batch (see Editing with commands): one new version, with each suggestion its own step, so every suggestion's comment follows its new wording. Two suggestions on overlapping text conflict: the second one's text is gone, so it stays open, and says why. Rejecting stays immediate, one at a time: it makes no version, so there's nothing to batch.
+
+**What a suggestion replaces:** the source of the selected text, widened to whole formatting where the selection crosses it (selecting "line sync" in `**Offline** sync` takes `**Offline** sync`), which the suggester edits. Accepting finds that source where the comment is now, so a suggestion survives its paragraph moving or changing elsewhere; if the source itself has changed, it can't be accepted.
 
 ## Reviews
 
