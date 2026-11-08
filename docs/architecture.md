@@ -145,6 +145,16 @@ Comments can have a status associated with them. Currenly only "resolved" and "u
 
 Comments can have replies associated with them to start conversations.
 
+## Drafts
+
+Each idea has **one draft**, shared by everyone with edit access: changes on the latest version, collected until someone commits them as one new version. Editing in the web app adds to it (a block's new source, new text, a deletion), and so does accepting a suggestion into it. Everyone editing sees the same draft, live, with who made each change.
+
+- **Checked as it's added:** an edit or deletion carries the block as it read when the change was made. If it reads differently now (someone else changed it, in the draft or in a newer version), the change is refused as outdated. Nothing is merged by guessing.
+- **Always on the latest version:** a version made elsewhere (an agent's batch, an upload, a suggestion accepted as a version) is what the draft is then built on. Changes it overtook are marked outdated, and committing waits until they're undone or redone.
+- **Committing** makes one version, a step for each command, and accepts the suggestions in it. **Discarding** empties it for everyone, and opens its suggestions again.
+
+Agents editing with batches, and uploads, make versions directly. A full editor in the web app, later, writes to the same draft.
+
 ## Suggested edits
 
 Suggested edits are required for 1.0. A reviewer (human or agent) can propose a concrete change to a highlighted selection or section instead of only describing it in a comment. A suggestion is a comment with a proposed replacement attached, so it uses the same anchoring, replies, status and bot/user attribution as any other comment.
@@ -152,6 +162,8 @@ Suggested edits are required for 1.0. A reviewer (human or agent) can propose a 
 Only someone with edit access to the idea (or a bot acting for them) can accept a suggestion. Accepting a suggestion applies its `replace` command (see Editing with commands), which creates a new version in Ideation Factory; `ideaf pull` brings it into the source. Reviewers propose, the people with edit access decide, and the repository (or wherever the idea ends up) stays the final home.
 
 If a suggestion's text isn't in a newer version, it's outdated like any comment, and can no longer be accepted.
+
+**Accepting into the draft:** instead of a version now, a suggestion can be accepted into the idea's draft (see Drafts), to be committed with the rest of it. It's checked against the draft as it is: if the draft has already changed or removed its text, it isn't added, and stays open saying why. Committing the draft accepts it, in that version; discarding the draft opens it again.
 
 **Accepting several at once:** someone with edit access can accept several suggestions (across files) together. That's one batch (see Editing with commands): one new version, with each suggestion its own step, so every suggestion's comment follows its new wording. Two suggestions on overlapping text conflict: the second one's text is gone, so it stays open, and says why. Rejecting stays immediate, one at a time: it makes no version, so there's nothing to batch.
 

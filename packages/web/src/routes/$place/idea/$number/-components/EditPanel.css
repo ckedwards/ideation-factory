@@ -1,0 +1,67 @@
+.edit-panel {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+}
+.edit-panel-note {
+  margin: 0;
+  color: var(--ink-2);
+}
+.edit-panel-changes,
+.edit-panel-outcomes {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.edit-panel-changes li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-left: var(--rail) solid var(--changed);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.edit-panel-changes li.has-problem {
+  border-left-color: var(--del-ink);
+}
+.edit-panel-label {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.edit-panel-problem {
+  flex-basis: 100%;
+  color: var(--del-ink);
+}
+.edit-panel-outcomes li.is-outdated {
+  color: var(--del-ink);
+}
+.edit-panel-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.idea-edit-start {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+}
+.edit-panel-by {
+  color: var(--ink-3);
+}
+.edit-panel-confirm {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: var(--hairline) solid var(--del-ink);
+  border-radius: var(--radius);
+}

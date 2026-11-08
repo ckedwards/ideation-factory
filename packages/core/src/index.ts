@@ -9,10 +9,22 @@
 //   version or a conflict (batch.ts, apply.ts)
 // - Re-anchoring an uploaded copy from its base (upload.ts)
 // - The structured view agents and the web editor read (outline.ts)
+// - A block's new source as the smallest command, for editing in place (edit.ts)
+// - An idea's draft: changes on the latest version, checked as they're built (draft.ts)
 // - What a suggested edit replaces, and the command accepting it applies (suggest.ts)
 
 export { applyBatch, type BatchResult, type Conflict, type ConflictReason, type StepResult } from './apply.ts'
 export { Batch, batchJsonSchema, Command, Position } from './batch.ts'
+export {
+  type BuiltDraft,
+  buildDraft,
+  DraftChange,
+  type DraftEntry,
+  type DraftFile,
+  type DraftUnit,
+  unitSource,
+} from './draft.ts'
+export { type BlockEdit, blockEdit } from './edit.ts'
 export { contentHash } from './hash.ts'
 export {
   type Anchor,

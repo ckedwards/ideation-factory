@@ -37,6 +37,10 @@ export const commentsQuery = (idea: string, version: number) =>
     queryFn: () => api.listComments({ idea, version }),
   })
 
+/** The idea's draft, for people with edit access: changed by them and others, live (the socket's draft event). */
+export const draftQuery = (idea: string) =>
+  queryOptions({ queryKey: ['idea', idea, 'draft'], queryFn: () => api.getDraft({ idea }) })
+
 /** Who has access to an idea, and what you can do with it. */
 export const accessQuery = (idea: string) =>
   queryOptions({ queryKey: ['idea', idea, 'access'], queryFn: () => api.getAccess({ idea }) })

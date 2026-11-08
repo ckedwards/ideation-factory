@@ -2,7 +2,9 @@
 // that feeds this its queued writes (one at a time, in order) and its reads.
 //
 // Storage: the idea's SQLite holds versions (manifests), steps, comments and an
-// anchor per comment per version; file contents go to the file store by hash.
+// anchor per comment per version, and the idea's one draft (changes on the
+// latest version, committed as one version: core's draft.ts); file contents go
+// to the file store by hash.
 // Every write carries an idempotency key, and its result is kept, because a
 // queued write that fails midway isn't redelivered: the client retries, and the
 // retry must not apply twice.
@@ -21,6 +23,8 @@ import {
   type CommentOutcome,
   type Conflict,
   contentHash,
+  type DraftEntry,
+  DraftChange,
   type Skipped,
   type Suggestion,
   type FileOutline,
@@ -76,8 +80,19 @@ export const IdeaWrite = z.discriminatedUnion('type', [
     /** Why, if anything: a suggestion can speak for itself. */
     body: z.string().trim().max(20_000),
   }),
-  /** Accepts suggestions as one version; those that no longer apply are skipped. */
-  z.strictObject({ type: z.literal('accept'), suggestions: z.array(z.string()).min(1).max(100) }),
+  /** Accepts suggestions as one version, or into the draft; those that no longer apply are skipped. */
+  z.strictObject({
+    type: z.literal('accept'),
+    suggestions: z.array(z.string()).min(1).max(100),
+    into: z.enum(['version', 'draft']).optional(),
+  }),
+  /** Adds a change to the draft, if it applies to the draft as it is. Suggestions go in by `accept`. */
+  z.strictObject({ type: z.literal('draft'), change: DraftChange }),
+  /** Takes a change out of the draft. */
+  z.strictObject({ type: z.literal('undraft'), key: z.string().min(1).max(64) }),
+  z.strictObject({ type: z.literal('discard') }),
+  /** Commits the draft as one version. */
+  z.strictObject({ type: z.literal('commit') }),
   z.strictObject({ type: z.literal('reject'), suggestion: z.string() }),
   z.strictObject({ type: z.literal('reply'), parent: z.string(), body: z.string().trim().min(1).max(20_000) }),
   z.strictObject({ type: z.literal('resolve'), comment: z.string(), resolved: z.boolean() }),
@@ -121,6 +136,10 @@ export type WriteValue =
   | { kind: 'comment'; comment: string }
   | { kind: 'suggestion'; comment: string; old: string }
   | { kind: 'rejected'; comment: string }
+  /** The draft changed: the change added (or merged into), if any. */
+  | { kind: 'draft'; key: string | null }
+  /** Suggestions accepted into the draft, and those left out. */
+  | { kind: 'drafted'; accepted: string[]; skipped: Skipped[] }
   | { kind: 'resolved'; comment: string; resolved: boolean }
   | {
       kind: 'version'
@@ -138,7 +157,7 @@ export type WriteResult = { ok: true; value: WriteValue } | { ok: false; error: 
 export type CommentShape = { id: string; author: Caller; createdAt: number; body: string; version: number }
 /** Whether a suggestion was accepted (in which version) or rejected, by whom and when. */
 export type Decision = { kind: 'accepted' | 'rejected'; by: Caller; at: number; version: number | null }
-export type SuggestionShape = { old: string; new: string; decision: Decision | null }
+export type SuggestionShape = { old: string; new: string; decision: Decision | null; inDraft: boolean }
 export type ThreadShape = CommentShape & {
   resolved: boolean
   state: AnchorState
@@ -162,6 +181,8 @@ export type IdeaEvent =
   | { name: 'resolved'; payload: { comment: string; resolved: boolean; by: Caller } }
   /** A suggestion accepted or rejected: its thread is resolved too. */
   | { name: 'decided'; payload: { comment: string; decision: Decision; by: Caller } }
+  /** The draft changed (or was committed or discarded): editors read it again. */
+  | { name: 'draft'; payload: { by: Caller } }
 
 export type VersionHow = 'created' | 'commands' | 'upload'
 
@@ -258,6 +279,14 @@ export class IdeaService {
           return await this.#accept(request, write)
         case 'reject':
           return await this.#reject(request, write)
+        case 'draft':
+          return await this.#draftAdd(request, write.change)
+        case 'undraft':
+          return await this.#undraft(request, write.key)
+        case 'discard':
+          return await this.#discard(request)
+        case 'commit':
+          return await this.#commit(request)
         case 'reply':
           return await this.#reply(request, write)
         case 'resolve':
@@ -350,7 +379,7 @@ export class IdeaService {
       if (old === write.new) {
         refuse('invalid', "the suggestion doesn't change anything")
       }
-      suggestion = { old, new: write.new, decision: null }
+      suggestion = { old, new: write.new, decision: null, inDraft: false }
     }
     const id = `c${meta.next_comment}`
     const at = this.#now()
@@ -489,6 +518,9 @@ export class IdeaService {
       }
       candidates.push({ id, anchor: anchors.get(id) ?? null, old: row.old, new: row.new })
     }
+    if (write.into === 'draft') {
+      return this.#acceptIntoDraft(request, candidates, skipped)
+    }
     const accepted =
       candidates.length > 0
         ? await this.#core.acceptSuggestions(this.id, latest.idea, latest.comments, meta.latest, candidates)
@@ -531,13 +563,29 @@ export class IdeaService {
     }
     const decision: Decision = { kind: 'rejected', by: request.caller, at: this.#now(), version: null }
     const result: WriteResult = { ok: true, value: { kind: 'rejected', comment: row!.id } }
+    const drafted = (await this.#draftEntries()).filter(
+      (e) => e.change.kind === 'suggestion' && e.change.comment === row!.id,
+    )
     await this.#transaction(async (tx) => {
       await this.#decide(tx, [row!.id], decision)
+      if (drafted.length > 0) {
+        await tx
+          .deleteFrom('draft')
+          .where(
+            'key',
+            'in',
+            drafted.map((e) => e.key),
+          )
+          .execute()
+      }
       await this.#remember(tx, request.key, result)
     })
     return {
       result,
-      events: [{ name: 'decided', payload: { comment: row!.id, decision, by: request.caller } }] satisfies IdeaEvent[],
+      events: [
+        { name: 'decided', payload: { comment: row!.id, decision, by: request.caller } },
+        ...(drafted.length > 0 ? [{ name: 'draft' as const, payload: { by: request.caller } }] : []),
+      ] satisfies IdeaEvent[],
     }
   }
 
@@ -569,6 +617,203 @@ export class IdeaService {
       .set({ decision: JSON.stringify(decision), resolved: 1 })
       .where('id', 'in', ids)
       .execute()
+  }
+
+  // --- the draft ------------------------------------------------------------------
+
+  /** The draft's changes, in the order they were made. */
+  async #draftEntries(): Promise<Array<DraftEntry & { seq: number; by: Caller; at: number }>> {
+    const rows = await this.#db.selectFrom('draft').selectAll().orderBy('seq').execute()
+    return rows.map((r) => ({
+      key: r.key,
+      seq: r.seq,
+      change: JSON.parse(r.change) as DraftChange,
+      by: JSON.parse(r.by) as Caller,
+      at: r.at,
+    }))
+  }
+
+  async #buildDraft(latest: Latest, entries: DraftEntry[]) {
+    return this.#core.buildDraft(
+      this.id,
+      latest.idea,
+      latest.comments,
+      entries.map(({ key, change }) => ({ key, change })),
+    )
+  }
+
+  /**
+   * Adds a change, if it applies to the draft as it is now; otherwise it's
+   * refused as outdated. Editing a block again, straight after editing it,
+   * changes that edit rather than adding another.
+   */
+  async #draftAdd(request: WriteRequest, change: DraftChange) {
+    if (change.kind === 'suggestion') {
+      refuse('invalid', 'suggestions go into the draft by accepting them')
+    }
+    await this.#requireMeta()
+    const latest = await this.#loadLatest()
+    const entries = await this.#draftEntries()
+    const last = entries.at(-1)
+    const merge =
+      change.kind === 'edit' &&
+      last?.change.kind === 'edit' &&
+      last.change.id === change.id &&
+      last.change.source === change.was
+    const key = merge ? last!.key : crypto.randomUUID().slice(0, 8)
+    const next: DraftEntry[] = merge
+      ? [
+          ...entries.slice(0, -1),
+          {
+            key,
+            change: {
+              ...(last!.change as Extract<DraftChange, { kind: 'edit' }>),
+              source: (change as { source: string }).source,
+            },
+          },
+        ]
+      : [...entries, { key, change }]
+    const built = await this.#buildDraft(latest, next)
+    const problem = built.problems[key]
+    if (problem !== undefined) {
+      refuse('conflict', `outdated: ${problem}`, { problem })
+    }
+    const result: WriteResult = { ok: true, value: { kind: 'draft', key } }
+    const at = this.#now()
+    await this.#transaction(async (tx) => {
+      if (merge) {
+        await tx
+          .updateTable('draft')
+          .set({ change: JSON.stringify(next.at(-1)!.change), at })
+          .where('key', '=', key)
+          .execute()
+      } else {
+        await tx
+          .insertInto('draft')
+          .values({
+            key,
+            seq: (last?.seq ?? 0) + 1,
+            change: JSON.stringify(change),
+            by: JSON.stringify(request.caller),
+            at,
+          })
+          .execute()
+      }
+      await this.#remember(tx, request.key, result)
+    })
+    return { result, events: [{ name: 'draft', payload: { by: request.caller } }] satisfies IdeaEvent[] }
+  }
+
+  async #undraft(request: WriteRequest, key: string) {
+    await this.#requireMeta()
+    const found = await this.#db.selectFrom('draft').select('key').where('key', '=', key).executeTakeFirst()
+    if (!found) {
+      refuse('not_found', `no change ${key} in the draft`)
+    }
+    const result: WriteResult = { ok: true, value: { kind: 'draft', key: null } }
+    await this.#transaction(async (tx) => {
+      await tx.deleteFrom('draft').where('key', '=', key).execute()
+      await this.#remember(tx, request.key, result)
+    })
+    return { result, events: [{ name: 'draft', payload: { by: request.caller } }] satisfies IdeaEvent[] }
+  }
+
+  async #discard(request: WriteRequest) {
+    await this.#requireMeta()
+    const result: WriteResult = { ok: true, value: { kind: 'draft', key: null } }
+    await this.#transaction(async (tx) => {
+      await tx.deleteFrom('draft').execute()
+      await this.#remember(tx, request.key, result)
+    })
+    return { result, events: [{ name: 'draft', payload: { by: request.caller } }] satisfies IdeaEvent[] }
+  }
+
+  /** Suggestions into the draft, one by one; one that doesn't apply to the draft as it is stays open, saying why. */
+  async #acceptIntoDraft(request: WriteRequest, candidates: Suggestion[], skipped: Skipped[]) {
+    const latest = await this.#loadLatest()
+    const entries = await this.#draftEntries()
+    const inDraft = new Set(entries.flatMap((e) => (e.change.kind === 'suggestion' ? [e.change.comment] : [])))
+    let next: DraftEntry[] = entries
+    const added: Array<DraftEntry & { comment: string }> = []
+    for (const s of candidates) {
+      if (inDraft.has(s.id)) {
+        skipped.push({ id: s.id, message: 'it’s in the draft already' })
+        continue
+      }
+      const entry: DraftEntry = {
+        key: crypto.randomUUID().slice(0, 8),
+        change: { kind: 'suggestion', comment: s.id, old: s.old, new: s.new },
+      }
+      const built = await this.#buildDraft(latest, [...next, entry])
+      const problem = built.problems[entry.key]
+      if (problem !== undefined) {
+        skipped.push({ id: s.id, message: problem })
+        continue
+      }
+      next = [...next, entry]
+      added.push({ ...entry, comment: s.id })
+    }
+    if (added.length === 0) {
+      refuse(
+        'conflict',
+        `none of these suggestions apply to the draft: ${skipped.map((s) => `${s.id}, ${s.message}`).join('; ')}`,
+        { skipped },
+      )
+    }
+    const result: WriteResult = { ok: true, value: { kind: 'drafted', accepted: added.map((a) => a.comment), skipped } }
+    const at = this.#now()
+    let seq = entries.at(-1)?.seq ?? 0
+    await this.#transaction(async (tx) => {
+      for (const a of added) {
+        await tx
+          .insertInto('draft')
+          .values({ key: a.key, seq: ++seq, change: JSON.stringify(a.change), by: JSON.stringify(request.caller), at })
+          .execute()
+      }
+      await this.#remember(tx, request.key, result)
+    })
+    return { result, events: [{ name: 'draft', payload: { by: request.caller } }] satisfies IdeaEvent[] }
+  }
+
+  /** Commits the draft as one version. Every change must still apply: outdated ones are undone or redone first. */
+  async #commit(request: WriteRequest) {
+    const meta = await this.#requireMeta()
+    const latest = await this.#loadLatest()
+    const entries = await this.#draftEntries()
+    if (entries.length === 0) {
+      refuse('invalid', 'the draft is empty')
+    }
+    const built = await this.#buildDraft(latest, entries)
+    const outdated = Object.entries(built.problems)
+    if (outdated.length > 0) {
+      const n = outdated.length
+      refuse(
+        'conflict',
+        `${n === 1 ? '1 change is' : `${n} changes are`} outdated: undo or redo ${n === 1 ? 'it' : 'them'} first`,
+        {
+          changes: outdated.map(([key, problem]) => ({ key, problem })),
+        },
+      )
+    }
+    if (built.commands.length === 0) {
+      refuse('invalid', 'the draft changes nothing')
+    }
+    this.#checkSizes(
+      latest.bytes,
+      built.idea.files.map((f) => ({ file: f.id, path: f.path, bytes: byteLength(f.source) })),
+    )
+    const steps = built.commands.map((command, step) => ({ step, command, addresses: command.addresses ?? [] }))
+    const stepResults = built.commands.map((command, step) => ({
+      step,
+      command: command.command,
+      addresses: command.addresses ?? [],
+    }))
+    const accepted = entries.flatMap((e) => (e.change.kind === 'suggestion' ? [e.change.comment] : []))
+    const decision: Decision = { kind: 'accepted', by: request.caller, at: this.#now(), version: meta.latest + 1 }
+    return this.#newVersion(request, meta, latest, 'commands', built.idea, built.comments, steps, stepResults, {
+      decide: { ids: accepted, decision },
+      clearDraft: true,
+    })
   }
 
   async #edit(request: WriteRequest, write: Extract<IdeaWrite, { type: 'edit' }>) {
@@ -666,6 +911,8 @@ export class IdeaService {
       /** Suggestions this version accepts. */
       decide?: { ids: string[]; decision: Decision }
       value?: { accepted: string[]; skipped: Skipped[] }
+      /** Committing the draft: it's emptied with the new version. */
+      clearDraft?: boolean
     } = {},
   ) {
     const number = meta.latest + 1
@@ -693,6 +940,9 @@ export class IdeaService {
       if (decide) {
         await this.#decide(tx, decide.ids, decide.decision)
       }
+      if (more.clearDraft) {
+        await tx.deleteFrom('draft').execute()
+      }
       await this.#remember(tx, request.key, result)
     })
     this.#latest = {
@@ -711,6 +961,8 @@ export class IdeaService {
           name: 'decided',
           payload: { comment, decision: decide!.decision, by: request.caller },
         })),
+        // a new version is what the draft is built on: editors read it again
+        { name: 'draft', payload: { by: request.caller } },
       ] satisfies IdeaEvent[],
     }
   }
@@ -854,6 +1106,9 @@ export class IdeaService {
         addressed.set(id, [...new Set([...(addressed.get(id) ?? []), step.version])])
       }
     }
+    const drafted = new Set(
+      (await this.#draftEntries()).flatMap((e) => (e.change.kind === 'suggestion' ? [e.change.comment] : [])),
+    )
     const replies = new Map<string, typeof rows>()
     for (const r of rows) {
       if (r.parent) {
@@ -878,10 +1133,35 @@ export class IdeaService {
           anchor: at?.anchor ? (JSON.parse(at.anchor) as Anchor) : null,
           lastVersion: last.get(r.id) ?? null,
           addressedIn: addressed.get(r.id) ?? [],
-          suggestion: suggestionOf(r, v),
+          suggestion: suggestionOf(r, v, drafted.has(r.id)),
           replies: (replies.get(r.id) ?? []).map(shape),
         }
       })
+  }
+
+  /**
+   * The draft: its changes (each with why it doesn't apply, if it doesn't),
+   * the files as they'd be, each unit with where it came from, and where each
+   * comment would be.
+   */
+  async draft() {
+    await this.#requireMeta()
+    const latest = await this.#loadLatest()
+    const entries = await this.#draftEntries()
+    const built = await this.#buildDraft(latest, entries)
+    return {
+      version: latest.version,
+      changes: entries.map((e) => ({
+        key: e.key,
+        change: e.change,
+        by: e.by,
+        at: e.at,
+        problem: built.problems[e.key] ?? null,
+      })),
+      files: built.files.map((f) => ({ file: f.id, path: f.path, content: f.source, units: f.units })),
+      comments: built.comments,
+      steps: built.commands.length,
+    }
   }
 
   /** What a suggestion on this range of the latest version's plain text would replace. */
@@ -1146,6 +1426,7 @@ export class IdeaService {
 function suggestionOf(
   row: { suggestion: string | null; decision: string | null },
   version: number,
+  inDraft: boolean,
 ): SuggestionShape | null {
   if (!row.suggestion) {
     return null
@@ -1153,7 +1434,7 @@ function suggestionOf(
   const { old, new: replacement } = JSON.parse(row.suggestion) as { old: string; new: string }
   const decision = row.decision ? (JSON.parse(row.decision) as Decision) : null
   const then = decision && (decision.version === null || decision.version <= version) ? decision : null
-  return { old, new: replacement, decision: then }
+  return { old, new: replacement, decision: then, inDraft: inDraft && !then }
 }
 
 function kb(bytes: number): string {

@@ -29,6 +29,8 @@ export interface CommentsDeps {
   token: () => Promise<string>
   /** The idea has a new version: the page reads the idea again. */
   onVersion?: (version: number) => void
+  /** The idea's draft changed: the page reads it again. */
+  onDraft?: () => void
   /** How long a write waits for the socket to echo it before reading the threads again instead. */
   echoTimeoutMs?: number
   /** How often the socket gets a fresh token (one counts for 15 minutes at most, and is refreshed in its last minute). */
@@ -156,6 +158,8 @@ export function commentsCollection(idea: string, deps: CommentsDeps) {
             } else if (event.type === 'version') {
               deps.onVersion?.(event.version)
               await read()
+            } else if (event.type === 'draft') {
+              deps.onDraft?.()
             } else if (reading) {
               reading.push(event)
             } else {

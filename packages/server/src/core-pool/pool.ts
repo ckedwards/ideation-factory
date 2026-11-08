@@ -39,6 +39,7 @@ export class WorkerPool implements CoreRunner {
   checkAnchor: CoreRunner['checkAnchor'] = (key, ...args) => this.#call(key, 'checkAnchor', args) as never
   suggestionSource: CoreRunner['suggestionSource'] = (key, ...args) =>
     this.#call(key, 'suggestionSource', args) as never
+  buildDraft: CoreRunner['buildDraft'] = (key, ...args) => this.#call(key, 'buildDraft', args) as never
   acceptSuggestions: CoreRunner['acceptSuggestions'] = (key, ...args) =>
     this.#call(key, 'acceptSuggestions', args) as never
 
