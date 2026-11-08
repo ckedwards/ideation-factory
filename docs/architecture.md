@@ -172,13 +172,23 @@ If a suggestion's text isn't in a newer version, it's outdated like any comment,
 
 ## Reviews
 
-Ideas move through the states defined in `idea.md`: draft, requesting review, changes in progress and approved while open, then closed accepted or closed rejected.
+Ideas move through the states defined in `idea.md`: draft, requesting review and changes in progress while open, then closed accepted or closed rejected. People move an idea between its open states, and close and reopen it; anyone with edit access can. Nothing moves it by itself: meeting the requirements doesn't, and neither does a verdict.
 
-TODO: review verdicts. A reviewer can finish a review with **Approve**, **Request changes** or **Reject**, from any account: a user, a bot associated with a user, or a bot. Verdicts carry the same attribution as comments (`[bot emoji] <bot> on behalf of <user>`), so an automated approval is never mistaken for a person's. A verdict applies to a specific version, and the idea shows each reviewer's latest verdict and which version it was for. Open questions: does a new version reset earlier approvals? Does "Request changes" move the idea to "changes in progress"? Does a reviewer's "Reject" close the idea as rejected, or is closing always the author's call? Can a bot's approval count toward a team's approval requirements, or only a person's?
+**Verdicts.** A reviewer finishes a review with **Approve**, **Request changes** or **Reject**, from any account: a user, a bot associated with a user, or a bot. Verdicts carry the same attribution as comments (`[bot emoji] <bot> on behalf of <user>`), so an automated approval is never mistaken for a person's. A verdict is on a specific version, and the idea shows each reviewer's latest verdict and which version it was for.
 
-TODO: approval requirements. Each team sets requirements (see Team support in `idea.md`): a minimum number of approvals (0 = none), group rules that are either "any of" (or) or "each of" (and) a list of groups, and optionally "all discussions resolved". A group rule can auto-add its groups as reviewers (which gives them view access, see Authorization) when an idea goes out for review (created out of draft, moved out of draft, or moved into the team while in review); this happens in the idea's actor on that state change, skips deleted groups and groups already reviewing, and doesn't touch ideas already in review when the setting is turned on. An idea is approved once all of its team's requirements are met, with approvals on the current version and no open comment threads when that check is on. Requirements name groups rather than people, so they keep working as people join and leave groups. Open questions: does meeting the requirements move an idea to approved automatically, or does the author do it? Does approved still need an explicit close as accepted? For an "each of" rule, can one person who is in two of the groups count for both? Does "all discussions resolved" count resolved-but-reopened threads, and should it ignore bot-only threads? Only a team's maintainers and admins can change its requirements. Open question: should changes apply to ideas already in review (they do in the prototype)?
+- **Approvals are for a version.** An approval on an earlier version still shows ("approved v2"), but only approvals on the latest version count toward the requirements.
+- **Objections stand until they're withdrawn.** A Request changes or a Reject carries on through newer versions, like a pull request's requested changes. It blocks closing the idea as accepted until the reviewer gives another verdict, or someone with edit access dismisses it (recorded, with who and why). Neither changes the idea's status or closes it.
+- **Only people approve.** A bot's verdict shows, attributed, but its approval never counts toward the requirements, not even a bot acting on behalf of a person. A bot's Request changes or Reject does block, until it's dismissed.
 
-TODO: review comment batching. A reviewer can start a review and leave comments, replies and suggested edits as pending: visible only to them, and editable or deletable until submitted. Submitting publishes them all at once, optionally with a verdict and a summary comment, so the author gets one review instead of a stream of notifications. This matters for agents too: a bot reviewing a whole idea should submit one review, not dozens of separate comments. Open questions: are pending comments saved server side (so a review can continue on another machine or be finished by the cli) or kept locally? What happens to pending comments if a new version is uploaded before the review is submitted?
+**Approval requirements.** Each team sets requirements (see Team support in `idea.md`): a minimum number of approvals (0 = none), group rules that are either "any of" (or) or "each of" (and) a list of groups, and optionally "all discussions resolved". An idea can be closed as accepted only when they're all met, with approvals from people on the latest version and, when that check is on, no open comment threads (whoever started them, bots too). Nothing else needs them: an idea that meets them stays open until someone closes it.
+
+- **Worked out live.** Whether the requirements are met is worked out from the team's current requirements and groups whenever it's shown or someone closes an idea as accepted, never stored. So a change to the requirements applies at once to ideas already in review, and so does a change to a group's members.
+- **One person can meet several groups.** In an "each of" rule, an approval from someone in two of its groups counts for both.
+- **Groups as reviewers.** A group rule can auto-add its groups as reviewers (which gives them view access, see Authorization) when an idea goes out for review (created out of draft, moved out of draft, or moved into the team while in review); this happens in the idea's actor on that state change, skips deleted groups and groups already reviewing, and doesn't touch ideas already in review when the setting is turned on.
+
+Requirements name groups rather than people, so they keep working as people join and leave groups. Only a team's maintainers and admins can change its requirements.
+
+**Pending reviews.** A reviewer can start a review and leave comments, replies and suggested edits as pending: visible only to them, and editable or deletable until submitted. Submitting publishes them all at once, optionally with a verdict and a summary comment, so the author gets one review instead of a stream of notifications. This matters for agents too: a bot reviewing a whole idea should submit one review, not dozens of separate comments. Pending comments are kept by the idea's actor, so a review can be continued on another machine or finished from the cli, and they follow new versions like any other comment.
 
 ## Future consisterations
 
@@ -237,7 +247,7 @@ Access is per idea, like a shared document: each idea says who can view it, edit
 | Permission | Allows | Includes |
 |---|---|---|
 | **View** | Reading it, commenting, replying, suggesting edits, and reviewing when asked | |
-| **Edit** | Editing it (commands or uploads), accepting or rejecting suggested edits, and changing its status | View |
+| **Edit** | Editing it (commands or uploads), accepting or rejecting suggested edits, changing its status, closing and reopening it, and dismissing a reviewer's Request changes or Reject | View |
 | **Share** | Changing who has access: adding and removing people, groups and the team's members, making it public, and asking for reviews (which gives view access, see below) | View |
 | **Owner** | Everything, including transferring ownership. Every idea has exactly one owner, who starts as its creator | Edit and share |
 
@@ -288,7 +298,7 @@ Groups have admins and maintainers, like teams (see Team support in `idea.md`). 
 Only a group's admins (or a site admin) can delete it. Before deleting, the settings page shows what would break: teams whose approval requirements name the group (and how many active ideas that blocks), open ideas where it's a reviewer, and its members. A deleted group is kept as a record rather than removed, so anything still pointing at it can say so:
 
 - Approvals from a deleted group's members no longer count toward any requirement that names the group.
-- A requirement only breaks if the deletion makes it impossible to meet: an "each of" rule where any of its groups is deleted, or an "any of" rule where all of them are deleted (with one group, either breaks when it's deleted). A broken requirement shows an error on the team page, on every active idea in the team ("Requirements need fixing"), and on the home page of the team's maintainers and admins. Ideas in that team can't be approved until a maintainer or admin of the team replaces or removes the group.
+- A requirement only breaks if the deletion makes it impossible to meet: an "each of" rule where any of its groups is deleted, or an "any of" rule where all of them are deleted (with one group, either breaks when it's deleted). A broken requirement shows an error on the team page, on every active idea in the team ("Requirements need fixing"), and on the home page of the team's maintainers and admins. Ideas in that team can't be closed as accepted until a maintainer or admin of the team replaces or removes the group.
 - "One person from any of several groups" with other groups left keeps working through them. It shows a warning (not an error) so a maintainer can tidy it up.
 - The delete report separates the two cases: requirements that will break (and how many active ideas that blocks) and requirements that keep working through other groups.
 - An idea that had the group as a reviewer shows it as a deleted reviewer.
@@ -354,7 +364,7 @@ Permanently deleting a team (site admins only) erases its index rows in the dire
 ## Limits
 
 - Every token is rate-limited, bot tokens more tightly than people's, and each idea has a cap on comments per minute. Review comment batching (see Reviews) is the normal way for a bot to post many comments: one submission, one notification.
-- Approval requirements are evaluated by the idea's actor when an approval arrives. Changing a group's membership doesn't re-evaluate every idea at once; affected open ideas are re-checked in the background.
+- Approval requirements are worked out when they're shown or an idea is closed as accepted, never stored, so changing a group's members or a team's requirements re-evaluates nothing up front.
 
 ## Open questions
 
