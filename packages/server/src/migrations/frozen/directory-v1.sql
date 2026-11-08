@@ -1,6 +1,6 @@
 CREATE TABLE "schema_version" ("version" integer not null);
 CREATE TABLE "users" ("id" text primary key, "handle" text not null unique, "name" text not null, "email" text unique, "inactive" integer default 0 not null, "created_at" bigint not null);
-CREATE TABLE "teams" ("id" text primary key, "handle" text not null unique, "name" text not null, "description" text not null, "created_by" text not null, "created_at" bigint not null, "archived" integer default 0 not null, "create_policy" text not null, "defaults" text not null);
+CREATE TABLE "teams" ("id" text primary key, "handle" text not null unique, "name" text not null, "description" text not null, "created_by" text not null, "created_at" bigint not null, "archived" integer default 0 not null, "create_policy" text not null, "defaults" text not null, "requirements" text not null);
 CREATE TABLE "groups" ("id" text primary key, "handle" text not null unique, "name" text not null, "description" text not null, "created_by" text not null, "created_at" bigint not null, "deleted_at" bigint);
 CREATE TABLE "memberships" ("kind" text not null, "container" text not null, "user" text not null, "role" text not null, "created_at" bigint not null, constraint "memberships_pk" primary key ("kind", "container", "user"));
 CREATE INDEX "memberships_user" on "memberships" ("user", "kind", "container");

@@ -613,6 +613,7 @@ describe('status and reviews', () => {
     expect(value(await write({ type: 'status', status: 'requesting-review', note: 'ready' }))).toEqual({
       kind: 'status',
       status: 'requesting-review',
+      from: 'draft',
     })
     // the same status again changes nothing
     value(await write({ type: 'status', status: 'requesting-review' }))
@@ -700,6 +701,7 @@ describe('status and reviews', () => {
     expect(value(await write({ type: 'close', reason: 'accepted', note: 'going ahead' }))).toEqual({
       kind: 'status',
       status: 'closed-accepted',
+      from: 'draft',
     })
   })
 
@@ -716,7 +718,11 @@ describe('status and reviews', () => {
       error: { code: 'invalid' },
     })
     expect(await write({ type: 'close', reason: 'accepted' })).toMatchObject({ ok: false, error: { code: 'invalid' } })
-    expect(value(await write({ type: 'reopen' }))).toEqual({ kind: 'status', status: 'changes-in-progress' })
+    expect(value(await write({ type: 'reopen' }))).toEqual({
+      kind: 'status',
+      status: 'changes-in-progress',
+      from: 'closed-rejected',
+    })
     expect(await write({ type: 'reopen' })).toMatchObject({ ok: false, error: { code: 'invalid' } })
     expect((await service.reviews()).history.map((h) => h.status)).toEqual([
       'draft',

@@ -109,3 +109,7 @@
 .review-panel-ask .review-panel-error {
   flex-basis: 100%;
 }
+.review-panel-requirements {
+  display: grid;
+  gap: var(--space-1);
+}

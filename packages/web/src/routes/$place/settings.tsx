@@ -1,5 +1,5 @@
 // A team's settings (/mobile/settings): its members, people asking to join,
-// and for its admins, its rules for new ideas. Someone's own settings are at
+// its approval requirements, and for its admins, its rules for new ideas. Someone's own settings are at
 // /settings.
 import { ApiError } from '@ideaf/api'
 import { Section } from '@ideaf/ui'
@@ -10,6 +10,7 @@ import { ContainerSettings } from '../../components/ContainerSettings.tsx'
 import { groupByHandleQuery, teamByHandleQuery } from '../../places.ts'
 import { TeamPolicies, type TeamDefaults } from './-components/TeamPolicies.tsx'
 import { TeamProfile } from './-components/TeamProfile.tsx'
+import { type RequirementsView, TeamRequirements } from './-components/TeamRequirements.tsx'
 
 export const Route = createFileRoute('/$place/settings')({
   loader: async ({ context: { queryClient }, params }) => {
@@ -34,6 +35,26 @@ function TeamSettings() {
   const navigate = useNavigate()
   const { data: team } = useSuspenseQuery(teamByHandleQuery(place))
   const groups = useQueries({ queries: team.defaults.groups.map((g) => groupByHandleQuery(g.group)) })
+  const ruleIds = [...new Set(team.requirements.groups.flatMap((r) => r.groups))]
+  const ruleGroups = useQueries({ queries: ruleIds.map((id) => groupByHandleQuery(id)) })
+  const groupRef = (id: string) => ruleGroups[ruleIds.indexOf(id)]?.data ?? { id, handle: id, name: 'A group' }
+  const requirements: RequirementsView = {
+    approvals: team.requirements.approvals,
+    resolved: team.requirements.resolved,
+    groups: team.requirements.groups.map((r) => ({ mode: r.mode, request: r.request, groups: r.groups.map(groupRef) })),
+  }
+  const setRequirements = useMutation({
+    mutationFn: (next: RequirementsView) =>
+      api.setTeamRequirements({
+        team: team.handle,
+        requirements: {
+          approvals: next.approvals,
+          resolved: next.resolved,
+          groups: next.groups.map((r) => ({ mode: r.mode, request: r.request, groups: r.groups.map((g) => g.id) })),
+        },
+      }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: teamByHandleQuery(place).queryKey }),
+  })
   const update = useMutation({
     mutationFn: (changes: Omit<Parameters<typeof api.updateTeam>[0], 'team'>) =>
       api.updateTeam({ team: team.handle, ...changes }),
@@ -48,7 +69,19 @@ function TeamSettings() {
     }),
   }
   return (
-    <ContainerSettings kind="team" container={team} href={`/${team.handle}`}>
+    <ContainerSettings
+      kind="team"
+      container={team}
+      href={`/${team.handle}`}
+      managed={({ onProblem }) => (
+        <Section title="Approval requirements">
+          <TeamRequirements
+            requirements={requirements}
+            onChange={(next) => setRequirements.mutate(next, { onError: (e) => onProblem(e.message) })}
+          />
+        </Section>
+      )}
+    >
       {({ onProblem }) => (
         <>
           <Section title="Profile">

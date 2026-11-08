@@ -319,6 +319,55 @@ export const TeamDefaults = z.strictObject({
   groups: z.array(z.strictObject({ group: z.string(), edit: z.boolean() })).max(50),
 })
 
+/**
+ * What an idea in a team needs before it can be closed as accepted: a number
+ * of approvals from people on the latest version, group rules (one approval
+ * from any of the groups, or one from each; `request` asks the groups to
+ * review when an idea goes out for review), and every thread resolved.
+ */
+export const TeamRequirements = z.strictObject({
+  approvals: z.number().int().min(0).max(50),
+  groups: z
+    .array(
+      z.strictObject({
+        mode: z.enum(['any', 'each']),
+        /** By ID or handle; stored by ID. */
+        groups: z.array(z.string().min(1).max(64)).min(1).max(10),
+        request: z.boolean(),
+      }),
+    )
+    .max(10),
+  resolved: z.boolean(),
+})
+export type TeamRequirements = z.infer<typeof TeamRequirements>
+
+/** One requirement, checked against an idea. */
+export const RequirementCheck = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('approvals'), need: z.number().int(), have: z.number().int(), met: z.boolean() }),
+  z.object({
+    kind: z.literal('groups'),
+    mode: z.enum(['any', 'each']),
+    /** Each group, and the people in it whose approvals count. */
+    groups: z.array(
+      z.object({
+        id: z.string(),
+        handle: z.string(),
+        name: z.string(),
+        deleted: z.boolean(),
+        approvedBy: z.array(z.string()),
+      }),
+    ),
+    met: z.boolean(),
+    /** It can't be met until a maintainer fixes it: it names a deleted group. */
+    broken: z.boolean(),
+  }),
+  z.object({ kind: z.literal('resolved'), open: z.number().int(), met: z.boolean() }),
+])
+export type RequirementCheck = z.infer<typeof RequirementCheck>
+
+/** A team's requirements checked against an idea; met with no checks when it has none. */
+export const RequirementsCheck = z.object({ met: z.boolean(), checks: z.array(RequirementCheck) })
+
 const ContainerFields = {
   id: z.string(),
   handle: z.string(),
@@ -333,6 +382,7 @@ export const Team = z.object({
   archived: z.boolean(),
   createPolicy: CreatePolicy,
   defaults: TeamDefaults,
+  requirements: TeamRequirements,
 })
 export const Group = z.object({ kind: z.literal('group'), ...ContainerFields, deleted: z.boolean() })
 export const Member = z.object({ user: User, role: Role })

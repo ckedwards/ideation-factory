@@ -28,6 +28,47 @@ export interface TeamDefaults {
 
 export const DEFAULT_TEAM_DEFAULTS: TeamDefaults = { members: 'view', public: false, groups: [] }
 
+/**
+ * A group rule: one approval from any of its groups, or one from each. With
+ * `request`, its groups are asked to review when an idea goes out for review.
+ */
+export interface GroupRule {
+  mode: 'any' | 'each'
+  groups: string[]
+  request: boolean
+}
+
+/** What an idea in a team needs before it can be closed as accepted. */
+export interface TeamRequirements {
+  /** Approvals from people on the latest version, in all; 0 for no minimum. */
+  approvals: number
+  groups: GroupRule[]
+  /** Every comment thread resolved. */
+  resolved: boolean
+}
+
+export const NO_REQUIREMENTS: TeamRequirements = { approvals: 0, groups: [], resolved: false }
+
+/** One requirement, checked against an idea. */
+export type RequirementCheck =
+  | { kind: 'approvals'; need: number; have: number; met: boolean }
+  | {
+      kind: 'groups'
+      mode: 'any' | 'each'
+      /** Each group, and who in it approved; a deleted group's approvals don't count. */
+      groups: Array<{ id: string; handle: string; name: string; deleted: boolean; approvedBy: string[] }>
+      met: boolean
+      /** Can't be met: a deleted group in an "each of" rule, or every group of an "any of". */
+      broken: boolean
+    }
+  | { kind: 'resolved'; open: number; met: boolean }
+
+/** A team's requirements checked against an idea: met when every check is. */
+export interface RequirementsCheck {
+  met: boolean
+  checks: RequirementCheck[]
+}
+
 export interface Container {
   kind: ContainerKind
   id: string
@@ -43,6 +84,7 @@ export interface Team extends Container {
   archived: boolean
   createPolicy: CreatePolicy
   defaults: TeamDefaults
+  requirements: TeamRequirements
 }
 
 export interface Group extends Container {
@@ -251,6 +293,20 @@ export interface Directory {
       description?: string
     },
   ): Promise<Result<Team>>
+  /** A team's approval requirements, for its maintainers and admins: groups are named by ID or handle, and stored by ID. */
+  setRequirements(actor: string, team: string, requirements: TeamRequirements): Promise<Result<Team>>
+  /**
+   * An idea's team's requirements checked: `approvers` are the people whose
+   * approvals count (on the latest version), `open` its open threads. An idea
+   * outside a team, or in an archived one, has none.
+   */
+  checkRequirements(idea: string, approvers: string[], open: number): Promise<RequirementsCheck>
+  /**
+   * Asks the groups of the idea's team's rules that say so to review it (an
+   * idea going out for review). Skips deleted groups and those already
+   * reviewing; gives the rest view access. Says which it asked.
+   */
+  requestRuleGroups(idea: string): Promise<string[]>
   /**
    * Frees a handle, a site admin's decision: a team holding it is renamed to
    * `replacement`, and no old handle leads anywhere any more. (A person

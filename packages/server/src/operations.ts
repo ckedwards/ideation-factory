@@ -17,7 +17,7 @@ import {
 } from '@ideaf/api'
 import type { Client } from 'rivetkit/client'
 import { DIRECTORY_KEY } from './actors/directory.ts'
-import type { ContainerKind, IdeaListing, Permission, Result } from './directory/types.ts'
+import type { ContainerKind, IdeaListing, Permission, RequirementCheck, Result } from './directory/types.ts'
 import type { IdeaWrite, WriteResult, WriteValue } from './idea/service.ts'
 import type { Registry } from './registry.ts'
 
@@ -106,7 +106,14 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
     if (value.kind !== 'status') {
       throw new Error(`expected a status, got ${value.kind}`)
     }
-    return { status: value.status }
+    return { status: value.status, from: value.from }
+  }
+
+  /** The idea's team's requirements, checked against its reviews now. */
+  const requirementsOf = async (idea: string) => {
+    const reviews = await ideaOf(idea).reviews()
+    const approvers = reviews.reviews.filter((r) => r.counts).map((r) => r.by.user)
+    return { reviews, check: await directory().checkRequirements(idea, approvers, reviews.openThreads) }
   }
   const review = (value: WriteValue) => {
     if (value.kind !== 'review') {
@@ -241,6 +248,9 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         createdAt: now,
         updatedAt: now,
       })
+      if (input.status === 'requesting-review') {
+        await directory().requestRuleGroups(id)
+      }
       const place = await directory().placeOf(id)
       if (!place) {
         throw new Error(`idea ${id} was registered but isn't in the directory`)
@@ -279,35 +289,73 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
     listReviews: (input, { caller, token }) =>
       withAccess(input.idea, { caller, token }, 'view', () =>
         read(async () => {
-          const [reviews, grants] = await Promise.all([ideaOf(input.idea).reviews(), directory().grants(input.idea)])
-          return { ...reviews, reviewers: grants.filter((g) => g.reviewer).map((g) => g.subject) }
+          const [{ reviews, check }, grants] = await Promise.all([
+            requirementsOf(input.idea),
+            directory().grants(input.idea),
+          ])
+          const { openThreads: _open, ...rest } = reviews
+          return {
+            ...rest,
+            reviewers: grants.filter((g) => g.reviewer).map((g) => g.subject),
+            requirements: check,
+          }
         }),
       ),
 
     setStatus: (input, context) =>
-      withAccess(input.idea, context, 'edit', () =>
-        write(
+      withAccess(input.idea, context, 'edit', async () => {
+        const done = await write(
           input.idea,
           context,
           { type: 'status', status: input.status, ...(input.note ? { note: input.note } : {}) },
           status,
-        ),
-      ),
+        )
+        if (!done.ok) {
+          return done
+        }
+        // out of draft: the team's rules ask their groups to review
+        if (done.value.from === 'draft' && done.value.status !== 'draft') {
+          await directory().requestRuleGroups(input.idea)
+        }
+        return { ok: true, value: { status: done.value.status } }
+      }),
 
     closeIdea: (input, context) =>
-      withAccess(input.idea, context, 'edit', () =>
-        write(
+      withAccess(input.idea, context, 'edit', async () => {
+        if (input.reason === 'accepted') {
+          // the requirements, checked here; the objections, by the idea as it closes
+          const { check } = await requirementsOf(input.idea)
+          if (!check.met) {
+            const unmet = check.checks.filter((c) => !c.met)
+            return {
+              ok: false,
+              error: {
+                code: 'blocked',
+                message: `its team's approval requirements aren't met yet: ${unmet.map(describeCheck).join('; ')}`,
+                details: { unmet },
+              },
+            }
+          }
+        }
+        const done = await write(
           input.idea,
           context,
           { type: 'close', reason: input.reason, ...(input.note ? { note: input.note } : {}) },
           status,
-        ),
-      ),
+        )
+        return done.ok ? { ok: true, value: { status: done.value.status } } : done
+      }),
 
     reopenIdea: (input, context) =>
-      withAccess(input.idea, context, 'edit', () =>
-        write(input.idea, context, { type: 'reopen', ...(input.note ? { note: input.note } : {}) }, status),
-      ),
+      withAccess(input.idea, context, 'edit', async () => {
+        const done = await write(
+          input.idea,
+          context,
+          { type: 'reopen', ...(input.note ? { note: input.note } : {}) },
+          status,
+        )
+        return done.ok ? { ok: true, value: { status: done.value.status } } : done
+      }),
 
     reviewIdea: (input, context) =>
       withAccess(input.idea, context, 'view', () =>
@@ -644,6 +692,8 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
           ...(input.description !== undefined ? { description: input.description } : {}),
         }),
       ),
+    setTeamRequirements: async (input, { caller }) =>
+      fromResult(await directory().setRequirements(caller.user, input.team, input.requirements)),
     listTeamMembers: team.members,
     addTeamMember: team.addMember,
     removeTeamMember: team.removeMember,
@@ -681,6 +731,21 @@ const container = (input: { handle: string; name: string; description?: string |
 
 class NotFound extends Error {}
 /** A listing as the API gives it: its team and owner by name in place of their IDs. */
+/** A requirement that isn't met, in words. */
+function describeCheck(check: RequirementCheck): string {
+  if (check.kind === 'approvals') {
+    return `${check.have} of ${check.need} approvals`
+  }
+  if (check.kind === 'resolved') {
+    return `${check.open} open ${check.open === 1 ? 'thread' : 'threads'}`
+  }
+  const names = check.groups.map((g) => g.handle).join(', ')
+  if (check.broken) {
+    return `a rule names a deleted group (${names}): a maintainer has to fix it`
+  }
+  return check.mode === 'each' ? `an approval from each of ${names}` : `an approval from any of ${names}`
+}
+
 function listed({ teamInfo, ownerInfo, team: _team, owner: _owner, ...idea }: IdeaListing) {
   // the index holds what ideas send it: one of their statuses
   return { ...idea, status: idea.status as IdeaStatus, team: teamInfo, owner: ownerInfo }

@@ -48,6 +48,14 @@ async function print(ctx: Context, idea: string, reviews: Reviews): Promise<void
     const asked = await Promise.all(reviews.reviewers.map((s) => names.label(s)))
     ctx.say(`Asked to review: ${asked.join(', ')}`)
   }
+  const unmet = reviews.requirements.checks.filter((c) => !c.met)
+  if (reviews.requirements.checks.length > 0) {
+    ctx.say(
+      unmet.length === 0
+        ? 'Its team’s approval requirements are met.'
+        : `Its team’s approval requirements aren’t met yet:\n${unmet.map((c) => `  ${checkWords(c)}`).join('\n')}`,
+    )
+  }
   if (reviews.reviews.length === 0) {
     ctx.say('No verdicts yet.')
     return
@@ -70,6 +78,22 @@ async function print(ctx: Context, idea: string, reviews: Reviews): Promise<void
       `\n${standing === 1 ? 'An objection stands' : `${standing} objections stand`}: it can't be closed as accepted until ${standing === 1 ? 'it changes or is' : 'they change or are'} dismissed (ideaf review dismiss).`,
     )
   }
+}
+
+type Check = Reviews['requirements']['checks'][number]
+
+function checkWords(c: Check): string {
+  if (c.kind === 'approvals') {
+    return `${c.have} of ${c.need} approvals`
+  }
+  if (c.kind === 'resolved') {
+    return `${c.open} open ${c.open === 1 ? 'discussion' : 'discussions'}`
+  }
+  const names = c.groups.map((g) => `group:${g.handle}${g.deleted ? ' (deleted)' : ''}`).join(', ')
+  if (c.broken) {
+    return `a rule names a deleted group (${names}): a maintainer has to fix it`
+  }
+  return `an approval from ${c.mode === 'each' ? 'each of' : 'any of'} ${names}`
 }
 
 async function line(names: Names, r: Review): Promise<string> {

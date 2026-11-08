@@ -15,6 +15,7 @@ import {
   type Grant,
   type GrantSubject,
   type Group,
+  type GroupRule,
   type AccessChange,
   type IdeaFilter,
   type IdeaPlace,
@@ -28,11 +29,15 @@ import {
   type MoveAdjustments,
   type MovePreview,
   type Page,
+  NO_REQUIREMENTS,
   type Permission,
+  type RequirementCheck,
+  type RequirementsCheck,
   type Result,
   type SearchResult,
   type Team,
   type TeamDefaults,
+  type TeamRequirements,
   type TokenGrant,
   type TokenGrantInput,
   type User,
@@ -359,7 +364,13 @@ export class SqlDirectory implements Directory {
         if (kind === 'team') {
           await db
             .insertInto('teams')
-            .values({ ...base, archived: 0, create_policy: 'members', defaults: JSON.stringify(DEFAULT_TEAM_DEFAULTS) })
+            .values({
+              ...base,
+              archived: 0,
+              create_policy: 'members',
+              defaults: JSON.stringify(DEFAULT_TEAM_DEFAULTS),
+              requirements: JSON.stringify(NO_REQUIREMENTS),
+            })
             .execute()
         } else {
           await db
@@ -438,6 +449,7 @@ export class SqlDirectory implements Directory {
       archived: row.archived === 1,
       createPolicy: row.create_policy as CreatePolicy,
       defaults: JSON.parse(row.defaults) as TeamDefaults,
+      requirements: JSON.parse(row.requirements) as TeamRequirements,
     }
   }
 
@@ -575,6 +587,149 @@ export class SqlDirectory implements Directory {
       throw error
     }
     return ok((await this.team(team.id))!)
+  }
+
+  async setRequirements(actor: string, teamId: string, requirements: TeamRequirements): Promise<Result<Team>> {
+    const team = await this.team(teamId)
+    if (!team) {
+      return fail('not_found', `no team ${teamId}`)
+    }
+    const role = await this.#role('team', team.id, actor)
+    if (role !== 'admin' && role !== 'maintainer') {
+      return fail('forbidden', 'only a team’s maintainers and admins can change its approval requirements')
+    }
+    const r = requirements
+    if (!Number.isInteger(r.approvals) || r.approvals < 0 || r.approvals > 50) {
+      return fail('invalid', 'approvals is a whole number from 0 to 50')
+    }
+    if (!Array.isArray(r.groups) || r.groups.length > 10) {
+      return fail('invalid', 'a team has at most 10 group rules')
+    }
+    const rules: GroupRule[] = []
+    for (const rule of r.groups) {
+      if ((rule.mode !== 'any' && rule.mode !== 'each') || rule.groups.length === 0 || rule.groups.length > 10) {
+        return fail('invalid', 'a group rule is "any" or "each" of 1 to 10 groups')
+      }
+      const ids: string[] = []
+      for (const name of rule.groups) {
+        const group = await this.group(name)
+        if (!group) {
+          return fail('invalid', `no group ${name}`)
+        }
+        if (group.deleted) {
+          return fail('invalid', `${group.handle} is deleted`)
+        }
+        // stored by ID, whether named by ID or handle
+        if (!ids.includes(group.id)) {
+          ids.push(group.id)
+        }
+      }
+      rules.push({ mode: rule.mode, groups: ids, request: rule.request === true })
+    }
+    const stored: TeamRequirements = { approvals: r.approvals, groups: rules, resolved: r.resolved === true }
+    await this.#db
+      .updateTable('teams')
+      .set({ requirements: JSON.stringify(stored) })
+      .where('id', '=', team.id)
+      .execute()
+    return ok((await this.team(team.id))!)
+  }
+
+  async checkRequirements(ideaId: string, approvers: string[], open: number): Promise<RequirementsCheck> {
+    const idea = await this.idea(ideaId)
+    const team = idea?.team ? await this.team(idea.team) : null
+    if (!team || team.archived) {
+      return { met: true, checks: [] }
+    }
+    const r = team.requirements
+    const checks: RequirementCheck[] = []
+    if (r.approvals > 0) {
+      checks.push({
+        kind: 'approvals',
+        need: r.approvals,
+        have: approvers.length,
+        met: approvers.length >= r.approvals,
+      })
+    }
+    const named = [...new Set(r.groups.flatMap((rule) => rule.groups))]
+    // who of the approvers is in each group the rules name
+    const members =
+      named.length > 0 && approvers.length > 0
+        ? await this.#db
+            .selectFrom('memberships')
+            .select(['container', 'user'])
+            .where('kind', '=', 'group')
+            .where('container', 'in', named)
+            .where('user', 'in', approvers)
+            .execute()
+        : []
+    for (const rule of r.groups) {
+      const groups = await Promise.all(
+        rule.groups.map(async (id) => {
+          const group = await this.group(id)
+          const deleted = !group || group.deleted
+          return {
+            id,
+            handle: group?.handle ?? id,
+            name: group?.name ?? id,
+            deleted,
+            // a deleted group's members' approvals don't count toward it
+            approvedBy: deleted ? [] : members.filter((m) => m.container === id).map((m) => m.user),
+          }
+        }),
+      )
+      const live = groups.filter((g) => !g.deleted)
+      const broken = rule.mode === 'each' ? live.length < groups.length : live.length === 0
+      const met =
+        !broken &&
+        (rule.mode === 'each' ? live.every((g) => g.approvedBy.length > 0) : live.some((g) => g.approvedBy.length > 0))
+      checks.push({ kind: 'groups', mode: rule.mode, groups, met, broken })
+    }
+    if (r.resolved) {
+      checks.push({ kind: 'resolved', open, met: open === 0 })
+    }
+    return { met: checks.every((c) => c.met), checks }
+  }
+
+  async requestRuleGroups(ideaId: string): Promise<string[]> {
+    const idea = await this.idea(ideaId)
+    const team = idea?.team ? await this.team(idea.team) : null
+    if (!team || team.archived) {
+      return []
+    }
+    const wanted = [...new Set(team.requirements.groups.filter((r) => r.request).flatMap((r) => r.groups))]
+    const asked: string[] = []
+    for (const id of wanted) {
+      const group = await this.group(id)
+      if (!group || group.deleted) {
+        continue
+      }
+      const existing = await this.#db
+        .selectFrom('grants')
+        .select('reviewer')
+        .where('idea', '=', ideaId)
+        .where('kind', '=', 'group')
+        .where('subject', '=', id)
+        .executeTakeFirst()
+      if (existing?.reviewer === 1) {
+        continue
+      }
+      await this.#db
+        .insertInto('grants')
+        .values({
+          idea: ideaId,
+          kind: 'group',
+          subject: id,
+          can_edit: 0,
+          can_share: 0,
+          reviewer: 1,
+          created_at: this.#now(),
+        })
+        .onConflict((oc) => oc.columns(['idea', 'kind', 'subject']).doUpdateSet({ reviewer: 1 }))
+        .execute()
+      asked.push(id)
+    }
+    return asked
   }
 
   async parkedUntil(kind: 'user' | 'team', handle: string, requester: string | null): Promise<number | null> {
@@ -1398,6 +1553,11 @@ export class SqlDirectory implements Directory {
         )
       }
     })
+    // moved into a team while in review: its rules' groups are asked, as if it had just gone out
+    const status = (await this.idea(ideaId))?.status
+    if (to && (status === 'requesting-review' || status === 'changes-in-progress')) {
+      await this.requestRuleGroups(ideaId)
+    }
     return preview
   }
 

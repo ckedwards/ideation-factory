@@ -137,7 +137,7 @@ describe('data survives migration', () => {
       "INSERT INTO users VALUES ('u-riley', 'riley', 'Riley', NULL, 0, 1), ('u-maya', 'maya', 'Maya', NULL, 0, 1)",
     )
     await sql.execute(
-      `INSERT INTO teams VALUES ('t1', 'core', 'Core', '', 'u-riley', 1, 0, 'members', '{"members":"view","public":false,"groups":[]}')`,
+      `INSERT INTO teams VALUES ('t1', 'core', 'Core', '', 'u-riley', 1, 0, 'members', '{"members":"view","public":false,"groups":[]}', '{"approvals":0,"groups":[],"resolved":false}')`,
     )
     await sql.execute(
       "INSERT INTO memberships VALUES ('team', 't1', 'u-riley', 'admin', 1), ('team', 't1', 'u-maya', 'member', 1)",
