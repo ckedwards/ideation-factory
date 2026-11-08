@@ -1,5 +1,6 @@
 // What an idea's pages share: the people they name, the idea's team as its
-// chip shows it, comments as the cards show them, and writing comments.
+// chip shows it, comments as the cards show them, and writing comments and
+// suggestions.
 import { ApiError } from '@ideaf/api'
 import { markdownTree } from '@ideaf/core'
 import { type CommentInfo, MarkdownView, type Person, type TeamRef } from '@ideaf/ui'
@@ -49,6 +50,18 @@ export function commentInfo(thread: Thread, people: Map<string, Person>, titles:
           : { kind: 'file' },
     resolved: thread.resolved,
     outdated: thread.state === 'outdated',
+    ...(thread.suggestion
+      ? {
+          suggestion: {
+            // the Markdown it replaces, when that isn't just the text as it reads
+            ...(anchor?.kind === 'text' && anchor.quote === thread.suggestion.old
+              ? {}
+              : { old: thread.suggestion.old }),
+            replacement: thread.suggestion.new,
+            state: thread.suggestion.decision?.kind ?? 'open',
+          },
+        }
+      : {}),
     ...(thread.lastVersion !== null ? { lastSeenIn: thread.lastVersion } : {}),
     replies: thread.replies.map((r) => ({
       id: r.id,
@@ -80,21 +93,32 @@ export function commentWrites(
             : `That didn’t work: ${error instanceof Error ? error.message : String(error)}`,
         ),
       )
+  const thread = (anchor: Thread['anchor'], body: string, suggestion: Thread['suggestion']): Thread => ({
+    id: pendingId(),
+    author: caller,
+    createdAt: Date.now(),
+    body,
+    version,
+    resolved: false,
+    state: 'exact',
+    anchor,
+    lastVersion: version,
+    addressedIn: [],
+    suggestion,
+    replies: [],
+  })
   return {
-    comment: (anchor: Thread['anchor'], body: string) =>
+    comment: (anchor: Thread['anchor'], body: string) => settle(comments.insert(thread(anchor, body, null))),
+    /** A suggestion: `old` is what it replaces (suggestionSource), `replacement` its Markdown. */
+    suggest: (anchor: Thread['anchor'], old: string, replacement: string, body: string) =>
+      settle(comments.insert(thread(anchor, body, { old, new: replacement, decision: null }))),
+    reject: (id: string) =>
       settle(
-        comments.insert({
-          id: pendingId(),
-          author: caller,
-          createdAt: Date.now(),
-          body,
-          version,
-          resolved: false,
-          state: 'exact',
-          anchor,
-          lastVersion: version,
-          addressedIn: [],
-          replies: [],
+        comments.update(id, (draft) => {
+          if (draft.suggestion) {
+            draft.suggestion.decision = { kind: 'rejected', by: caller, at: Date.now(), version: null }
+            draft.resolved = true
+          }
         }),
       ),
     reply: (thread: string, body: string) =>

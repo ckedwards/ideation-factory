@@ -26,6 +26,7 @@ export const idea = actor({
     comment: event<Payload<'comment'>>(),
     reply: event<Payload<'reply'>>(),
     resolved: event<Payload<'resolved'>>(),
+    decided: event<Payload<'decided'>>(),
   },
   queues: {
     writes: queue<WriteRequest, WriteResult>(),
@@ -66,6 +67,8 @@ export const idea = actor({
     comments: (c, version?: number) => read(() => serviceOf(c).comments(version)),
     steps: (c, version: number) => read(() => serviceOf(c).steps(version)),
     preview: (c, batch: unknown) => read(() => serviceOf(c).preview(batch)),
+    suggestionSource: (c, file: string, start: number, end: number) =>
+      read(() => serviceOf(c).suggestionSource(file, start, end)),
     /** Sends this idea's current index row to the directory, without waiting (scheduled after a write). */
     flushIndex: async (c) => {
       c.state.indexDue = false

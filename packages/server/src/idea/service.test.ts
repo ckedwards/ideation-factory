@@ -377,6 +377,91 @@ describe('comments', () => {
   })
 })
 
+describe('suggested edits', () => {
+  // "quick brown" is plain text 9–20 of plan.md; "might rain" is 35–45
+  const QUICK = { kind: 'text', file: 'f1', start: 9, end: 20 } as const
+  const RAIN = { kind: 'text', file: 'f1', start: 35, end: 45 } as const
+
+  test('a suggestion is a comment carrying its change, and anyone who can comment can make one', async () => {
+    const { service, write } = await created()
+    expect(await service.suggestionSource('f1', 9, 20)).toEqual({ version: 1, old: 'quick brown' })
+    const made = value(
+      await write({ type: 'suggest', version: 1, anchor: QUICK, new: 'slow red', body: 'calmer' }, REVIEWER),
+    )
+    expect(made).toEqual({ kind: 'suggestion', comment: 'c1', old: 'quick brown' })
+    const [thread] = await service.comments()
+    expect(thread).toMatchObject({
+      id: 'c1',
+      author: REVIEWER,
+      body: 'calmer',
+      state: 'exact',
+      suggestion: { old: 'quick brown', new: 'slow red', decision: null },
+    })
+    expect(await write({ type: 'suggest', version: 1, anchor: QUICK, new: 'quick brown', body: '' })).toMatchObject({
+      ok: false,
+      error: { code: 'invalid', message: "the suggestion doesn't change anything" },
+    })
+  })
+
+  test('accepting several is one version, a step for each; the rest stay open, saying why', async () => {
+    const { service, write } = await created()
+    value(await write({ type: 'suggest', version: 1, anchor: QUICK, new: 'slow red', body: '' }, REVIEWER))
+    value(await write({ type: 'suggest', version: 1, anchor: RAIN, new: 'may pour', body: '' }, REVIEWER))
+    // overlaps the first: "brown" is gone once it's accepted
+    const BROWN = { kind: 'text', file: 'f1', start: 15, end: 24 } as const
+    value(await write({ type: 'suggest', version: 1, anchor: BROWN, new: 'brown cat', body: '' }, REVIEWER))
+    const result = value(await write({ type: 'accept', suggestions: ['c1', 'c2', 'c3'] }))
+    expect(result).toMatchObject({
+      kind: 'version',
+      version: 2,
+      accepted: ['c1', 'c2'],
+      skipped: [{ id: 'c3', message: 'its text changed, by a suggestion accepted with it' }],
+    })
+    expect((await service.file(2, 'f1'))!.content).toBe('# Plan\n\nThe slow red fox.\n\n## Risks\n\nIt may pour.\n')
+    expect((await service.steps(2)).map((s) => s.addresses)).toEqual([['c1'], ['c2']])
+    const threads = await service.comments()
+    const decided = { kind: 'accepted' as const, by: OWNER, at: expect.any(Number), version: 2 }
+    expect(threads.map((t) => [t.id, t.resolved, t.suggestion?.decision ?? null, t.addressedIn])).toEqual([
+      ['c1', true, decided, [2]],
+      ['c2', true, decided, [2]],
+      ['c3', false, null, []],
+    ])
+    // as of v1, they were still open
+    expect((await service.comments(1)).map((t) => t.suggestion?.decision ?? null)).toEqual([null, null, null])
+    // accepting again skips it; with nothing left to apply, nothing changes
+    expect(await write({ type: 'accept', suggestions: ['c1'] })).toMatchObject({
+      ok: false,
+      error: { code: 'conflict', details: { skipped: [{ id: 'c1', message: 'it was accepted in v2' }] } },
+    })
+  })
+
+  test('rejecting resolves it, and makes no version; an accepted one can only be undone by editing', async () => {
+    const { service, write } = await created()
+    value(await write({ type: 'suggest', version: 1, anchor: QUICK, new: 'slow red', body: '' }, REVIEWER))
+    value(await write({ type: 'suggest', version: 1, anchor: RAIN, new: 'may pour', body: '' }, REVIEWER))
+    expect(value(await write({ type: 'reject', suggestion: 'c1' }))).toEqual({ kind: 'rejected', comment: 'c1' })
+    value(await write({ type: 'accept', suggestions: ['c2'] }))
+    expect(await write({ type: 'reject', suggestion: 'c2' })).toMatchObject({ ok: false, error: { code: 'invalid' } })
+    expect(await write({ type: 'reject', suggestion: 'c9' })).toMatchObject({ ok: false, error: { code: 'not_found' } })
+    const [c1] = await service.comments()
+    expect(c1).toMatchObject({ resolved: true, suggestion: { decision: { kind: 'rejected', version: null } } })
+    expect((await service.summary())!.latest).toBe(2)
+  })
+
+  test('a suggestion whose text changed or went no longer applies', async () => {
+    const { write } = await created()
+    value(await write({ type: 'suggest', version: 1, anchor: QUICK, new: 'slow red', body: '' }, REVIEWER))
+    value(await write({ type: 'edit', batch: { base: 1, steps: [{ command: 'delete', target: 'b3' }] } }))
+    expect(await write({ type: 'accept', suggestions: ['c1'] })).toMatchObject({
+      ok: false,
+      error: {
+        code: 'conflict',
+        details: { skipped: [{ id: 'c1', message: "its text isn't in the latest version" }] },
+      },
+    })
+  })
+})
+
 describe('retries', () => {
   test('a write retried with the same key is applied once and returns the same result', async () => {
     const { service } = await created()

@@ -39,6 +39,10 @@ export interface IdeaDB {
     created_at: number
     body: string
     resolved: number
+    /** A suggested edit's change, as JSON ({ old, new }: the source it replaces and the replacement); null for a plain comment. */
+    suggestion: string | null
+    /** Whether a suggestion was accepted or rejected, as JSON ({ kind, by, at, version }); null while it's open. */
+    decision: string | null
   }
   anchors: {
     comment: string
@@ -67,7 +71,7 @@ export const IDEA_COLUMNS = {
   versions: ['number', 'parent', 'created_at', 'created_by', 'how', 'next_id'],
   version_files: ['version', 'file', 'path', 'hash', 'bytes', 'unit_ids'],
   steps: ['version', 'step', 'command', 'addresses'],
-  comments: ['id', 'parent', 'version', 'author', 'created_at', 'body', 'resolved'],
+  comments: ['id', 'parent', 'version', 'author', 'created_at', 'body', 'resolved', 'suggestion', 'decision'],
   anchors: ['comment', 'version', 'state', 'anchor'],
   writes: ['key', 'result', 'at'],
   schema_version: ['version'],
@@ -129,7 +133,9 @@ const MIGRATIONS: Migration[] = [
       author TEXT NOT NULL,
       created_at INTEGER NOT NULL,
       body TEXT NOT NULL,
-      resolved INTEGER NOT NULL DEFAULT 0
+      resolved INTEGER NOT NULL DEFAULT 0,
+      suggestion TEXT,
+      decision TEXT
     )`,
     `CREATE INDEX comments_parent ON comments (parent)`,
     `CREATE TABLE anchors (

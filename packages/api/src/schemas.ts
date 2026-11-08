@@ -146,6 +146,21 @@ export const CommentBase = z.object({
   version: z.number().int(),
 })
 
+/** Whether a suggestion was accepted (in which version) or rejected, by whom and when. */
+export const Decision = z.object({
+  kind: z.enum(['accepted', 'rejected']),
+  by: Caller,
+  at: z.number(),
+  version: z.number().int().nullable(),
+})
+
+/**
+ * A suggested edit: the source it replaces (the selection, widened to whole
+ * formatting) and the replacement, and what became of it. As of an older
+ * version, one accepted later shows as still open.
+ */
+export const SuggestionInfo = z.object({ old: z.string(), new: z.string(), decision: Decision.nullable() })
+
 export const CommentThread = CommentBase.extend({
   resolved: z.boolean(),
   state: AnchorState,
@@ -154,6 +169,8 @@ export const CommentThread = CommentBase.extend({
   lastVersion: z.number().int().nullable(),
   /** Versions whose steps said they address this comment. */
   addressedIn: z.array(z.number().int()),
+  /** A suggested edit's change; null for a plain comment. */
+  suggestion: SuggestionInfo.nullable(),
   replies: z.array(CommentBase),
 })
 
@@ -173,6 +190,8 @@ export const LiveEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('comment'), thread: CommentThread, by: Caller }),
   z.object({ type: z.literal('reply'), parent: z.string(), reply: CommentBase, by: Caller }),
   z.object({ type: z.literal('resolved'), comment: z.string(), resolved: z.boolean(), by: Caller }),
+  /** A suggestion accepted or rejected; its thread is resolved with it. */
+  z.object({ type: z.literal('decided'), comment: z.string(), decision: Decision, by: Caller }),
   /** A new version: its files and where each comment is have changed. */
   z.object({ type: z.literal('version'), version: z.number().int(), how: VersionHow, by: Caller }),
 ])
@@ -180,6 +199,9 @@ export type LiveEvent = z.infer<typeof LiveEvent>
 
 /** Close codes: no valid token (or it expired), and no such idea (or not one you can see). */
 export const LIVE_CLOSE = { unauthorized: 4401, notFound: 4404 } as const
+
+/** A suggestion left out of an accept, and why. */
+export const Skipped = z.object({ id: z.string(), message: z.string() })
 
 export const VersionResult = z.object({
   version: z.number().int(),

@@ -164,3 +164,66 @@ describe('ideaf comment threads', () => {
     expect((await r.ideaf('comment', 'list', '--version', 'x')).exit).toBe(2)
   })
 })
+
+describe('ideaf comment suggest', () => {
+  test('a reviewer suggests; the owner accepts several as one version, and rejects', async () => {
+    const { r, idea } = await started()
+    await api(h('maya')).me({})
+    expect((await r.ideaf('share', h('maya'))).exit).toBe(0)
+    const maya = await repo({}, { token: token(h('maya')) })
+
+    // the quote reads as the text does; one with formatting it doesn't show must say so
+    const bold = await maya.ideaf('comment', 'suggest', 'the local mode', '--idea', idea, '--quote', 'the offline mode')
+    expect(bold.exit).toBe(2)
+    expect(bold.err).toContain('is "the **offline mode**" in the source')
+    expect(bold.err).toContain('--replaces "the **offline mode**"')
+    const confirmed = await maya.ideaf(
+      'comment',
+      'suggest',
+      'the **local mode**',
+      '--idea',
+      idea,
+      '--quote',
+      'the offline mode',
+      '--replaces',
+      'the **offline mode**',
+      '-m',
+      'Clearer',
+      '--json',
+    )
+    expect(confirmed.exit).toBe(0)
+    expect(confirmed.json()).toMatchObject({ comment: 'c1', old: 'the **offline mode**', new: 'the **local mode**' })
+    const quarter = await maya.ideaf('comment', 'suggest', 'in Q3', '--idea', idea, '--quote', 'this quarter')
+    expect(quarter.out).toBe('Suggested c2 on v1: "this quarter" → "in Q3".')
+    await maya.ideaf(
+      'comment',
+      'suggest',
+      'It may rain',
+      '--idea',
+      idea,
+      '--quote',
+      'It might rain',
+      '--file',
+      'docs/notes.md',
+    )
+
+    const listed = await r.ideaf('comment', 'list')
+    expect(listed.out).toContain(`c1  @${h('maya')}, v1 · suggestion · open`)
+    expect(listed.out).toContain('suggests "the **offline mode**" → "the **local mode**"')
+
+    // a reviewer can't decide; the owner accepts two as one version, and rejects the third
+    expect((await maya.ideaf('comment', 'accept', 'c1', '--idea', idea)).exit).not.toBe(0)
+    expect((await r.ideaf('comment', 'accept', 'c1', 'c2')).out).toBe('Accepted c1, c2 as v2.')
+    expect((await r.ideaf('comment', 'reject', 'c3')).out).toBe('Rejected c3.')
+    const plan = (await api(h('riley')).pull({ idea })).files.find((f) => f.path === 'docs/plan.md')!
+    expect(plan.content).toContain('We should ship the **local mode** in Q3.')
+    const all = await r.ideaf('comment', 'list', '--all')
+    expect(all.out).toContain('suggestion · accepted in v2')
+    expect(all.out).toContain('suggestion · rejected')
+
+    // accepting again: nothing applies
+    const again = await r.ideaf('comment', 'accept', 'c1')
+    expect(again.exit).not.toBe(0)
+    expect(again.err).toContain('c1, it was accepted in v2')
+  })
+})

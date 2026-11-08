@@ -1,13 +1,14 @@
 // An idea's files, read (/files) or compared (/changes/1..3): loads what the
-// page shows, keeps the latest version's comments live, and writes comments.
+// page shows, keeps the latest version's comments live, and writes comments
+// and suggestions, and accepts and rejects them.
 // The routes say which version, which file and what to compare against.
 import { useEffect, useRef, useState } from 'react'
-import { parseMarkdown } from '@ideaf/core'
+import { type Anchor, parseMarkdown, suggestionSource } from '@ideaf/core'
 import { Toast } from '@ideaf/ui'
 import { useLiveSuspenseQuery } from '@tanstack/react-db'
 import { useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { meQuery, teamQuery } from '../../../../../api.ts'
+import { api, meQuery, teamQuery } from '../../../../../api.ts'
 import { sectionAt, toPlain } from './anchors.ts'
 import { IdeaPage } from './IdeaPage.tsx'
 import { IdeaTabs } from './IdeaTabs.tsx'
@@ -55,10 +56,13 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path }: IdeaVie
   const team = useQuery({ ...teamQuery(idea.team ?? ''), enabled: idea.team !== null })
   const [note, setNote] = useState<string | null>(null)
 
-  // a new version arriving while the latest is shown: the page moves on to it, and says so
+  // a new version arriving while the latest is shown: the page moves on to it, and says so,
+  // unless it's one this page made (accepting suggestions), which says so itself
   const seenLatest = useRef(latest)
+  const accepting = useRef(0)
+  const ours = useRef(new Set<number>())
   useEffect(() => {
-    if (latest > seenLatest.current && !v) {
+    if (latest > seenLatest.current && !v && accepting.current === 0 && !ours.current.has(latest)) {
       setNote(`v${latest} just came in: now showing it.`)
     }
     seenLatest.current = latest
@@ -81,6 +85,39 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path }: IdeaVie
   // the version in a link: none for the latest, so the link follows new ones
   const shownV = older ? version : undefined
   const baseFile = base !== null ? baseFiles.data?.files.find((f) => f.file === file.id) : undefined
+  // a selection as a text anchor, in the plain text comments are matched in
+  const anchorOf = (selection: { start: number; end: number }): Extract<Anchor, { kind: 'text' }> | null => {
+    const range = toPlain(file.source, selection)
+    if (!range) {
+      return null
+    }
+    const quote = parseMarkdown(file.source).plain.text.slice(range.start, range.end)
+    return { kind: 'text', file: file.id, ...range, quote }
+  }
+  // what a suggestion there replaces: the same widening the server does
+  const suggestionOf = (selection: { start: number; end: number }) => {
+    const anchor = anchorOf(selection)
+    const one = { files: [{ id: file.id, path: file.path, source: file.source, unitIds: file.unitIds }], nextId: 0 }
+    const found = anchor ? suggestionSource(one, anchor) : null
+    return found?.ok ? found.old : null
+  }
+  const accept = (suggestions: string[]) => {
+    accepting.current++
+    void api
+      .acceptSuggestions({ idea: id, suggestions })
+      .then(
+        (done) => {
+          ours.current.add(done.version)
+          setNote(
+            [`Accepted as v${done.version}.`, ...done.skipped.map((s) => `${s.id} stays open: ${s.message}.`)].join(
+              ' ',
+            ),
+          )
+        },
+        (error: unknown) => setNote(`That didn’t work: ${error instanceof Error ? error.message : String(error)}`),
+      )
+      .finally(() => accepting.current--)
+  }
 
   return (
     <>
@@ -148,15 +185,25 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path }: IdeaVie
             ? [{ info: commentInfo(thread, people, titles), place: where, pending: thread.id.startsWith('pending-') }]
             : []
         })}
-        // comments go on the latest version only
+        // comments go on the latest version only, and so do decisions on suggestions
         canComment={idea.you.view && !older}
+        canDecide={idea.you.edit && !older}
         onComment={(selection, body) => {
-          const range = toPlain(file.source, selection)
-          if (range) {
-            const quote = parseMarkdown(file.source).plain.text.slice(range.start, range.end)
-            writes.comment({ kind: 'text', file: file.id, ...range, quote }, body)
+          const anchor = anchorOf(selection)
+          if (anchor) {
+            writes.comment(anchor, body)
           }
         }}
+        suggestionOf={suggestionOf}
+        onSuggest={(selection, replacement, body) => {
+          const anchor = anchorOf(selection)
+          const old = suggestionOf(selection)
+          if (anchor && old !== null) {
+            writes.suggest(anchor, old, replacement, body)
+          }
+        }}
+        onAccept={accept}
+        onReject={writes.reject}
         onSectionComment={(heading, body) => {
           const section = sectionAt(file.source, file.unitIds, heading)
           if (section) {

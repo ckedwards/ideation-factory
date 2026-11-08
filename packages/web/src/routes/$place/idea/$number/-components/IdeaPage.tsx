@@ -1,7 +1,8 @@
 // The idea page, from data: the idea and its files on the left, the file in
 // the middle with its comments marked, and on the right the comments level
 // with their text, or the versions. Selecting text offers commenting on it or
-// its section. Comparing shows the file as a redline against an earlier
+// its section, or suggesting an edit; people with edit access accept or reject
+// suggestions, one at a time or all together as one version. Comparing shows the file as a redline against an earlier
 // version, with the comments as a list. The route loads the data and does the
 // writing.
 import { type ReactNode, useMemo, useRef, useState } from 'react'
@@ -9,6 +10,7 @@ import { markdownTree } from '@ideaf/core'
 import {
   type Actor,
   ActorLabel,
+  Button,
   changedRanges,
   CommentCard,
   type CommentInfo,
@@ -65,7 +67,15 @@ export interface IdeaPageProps {
   comments: PageComment[]
   /** Commenting is offered only to someone who can, on the latest version. */
   canComment: boolean
+  /** Accepting and rejecting suggestions: for people with edit access, on the latest version. */
+  canDecide?: boolean
   onComment?: (selection: TextSelection, body: string) => void
+  /** What a suggestion on a selection replaces (whole formatting), or null where there can't be one. */
+  suggestionOf?: (selection: TextSelection) => string | null
+  onSuggest?: (selection: TextSelection, replacement: string, body: string) => void
+  /** Accepts suggestions as one new version. */
+  onAccept?: (suggestions: string[]) => void
+  onReject?: (suggestion: string) => void
   onSectionComment?: (heading: number, body: string) => void
   onReply?: (comment: string, body: string) => void
   onResolve?: (comment: string, resolved: boolean) => void
@@ -76,7 +86,7 @@ export interface IdeaPageProps {
 type Pane = 'comments' | 'versions'
 
 export function IdeaPage(props: IdeaPageProps) {
-  const { source, canComment, compare } = props
+  const { source, canComment, compare, canDecide = false } = props
   const document = useRef<HTMLDivElement>(null)
   const [active, setActive] = useState<string | null>(null)
   const [pane, setPane] = useState<Pane>(compare ? 'versions' : 'comments')
@@ -93,6 +103,10 @@ export function IdeaPage(props: IdeaPageProps) {
   const inText = open.filter((c) => c.place.kind === 'text' || c.place.kind === 'section')
   const onFile = open.filter((c) => c.place.kind === 'file')
   const outdated = open.filter((c) => c.place.kind === 'outdated')
+  // the suggestions that can be accepted now
+  const acceptable = canDecide
+    ? open.filter((c) => c.info.suggestion?.state === 'open' && !c.info.outdated && !c.pending).map((c) => c.info.id)
+    : []
 
   const card = (comment: PageComment, showTarget = false): ReactNode => (
     <CommentCard
@@ -108,6 +122,9 @@ export function IdeaPage(props: IdeaPageProps) {
           ? (resolved) => props.onResolve?.(comment.info.id, resolved)
           : undefined
       }
+      canDecide={canDecide && !comment.pending}
+      onAccept={props.onAccept ? () => props.onAccept?.([comment.info.id]) : undefined}
+      onReject={props.onReject ? () => props.onReject?.(comment.info.id) : undefined}
       onViewInVersion={props.onViewInVersion}
     />
   )
@@ -176,6 +193,14 @@ export function IdeaPage(props: IdeaPageProps) {
     )
   ) : (
     <Stack gap={4}>
+      {acceptable.length > 1 && props.onAccept && (
+        <div className="idea-suggestions">
+          <span>{acceptable.length} suggested edits</span>
+          <Button size="sm" variant="primary" onClick={() => props.onAccept?.(acceptable)}>
+            Accept all as one version
+          </Button>
+        </div>
+      )}
       {onFile.length > 0 && <Section title="On the whole file">{list(onFile)}</Section>}
       {outdated.length > 0 && <Section title="Not in this version">{list(outdated, true)}</Section>}
       <CommentGutter
@@ -183,11 +208,13 @@ export function IdeaPage(props: IdeaPageProps) {
         active={active}
         notes={inText.map((c) => ({ id: c.info.id, content: card(c) }))}
         empty={
-          onFile.length + outdated.length === 0
-            ? canComment
-              ? 'No comments yet. Select some text to comment on it.'
-              : 'No comments yet.'
-            : undefined
+          onFile.length + outdated.length > 0
+            ? undefined
+            : props.comments.length > 0
+              ? 'No open comments.'
+              : canComment
+                ? 'No comments yet. Select some text to comment on it.'
+                : 'No comments yet.'
         }
       />
     </Stack>
@@ -223,6 +250,8 @@ export function IdeaPage(props: IdeaPageProps) {
             source={source}
             enabled={canComment && !base}
             {...(props.onComment ? { onComment: props.onComment } : {})}
+            {...(props.onSuggest ? { onSuggest: props.onSuggest } : {})}
+            {...(props.suggestionOf ? { suggestionOf: props.suggestionOf } : {})}
             {...(props.onSectionComment
               ? { onSectionComment: (section, body) => props.onSectionComment?.(section.heading, body) }
               : {})}

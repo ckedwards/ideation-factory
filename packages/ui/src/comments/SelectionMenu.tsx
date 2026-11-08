@@ -10,6 +10,9 @@ export interface SelectionMenuProps {
   documentRef: RefObject<HTMLElement | null>
   // the file's Markdown, so a suggested edit starts from the text as written
   source?: string
+  // what a suggestion on a selection replaces, when that's wider than the selection (whole formatting),
+  // or null when there can't be one there; by default, the selection's source
+  suggestionOf?: (selection: TextSelection) => string | null
   // off on a version that isn't the latest, where nothing can be added
   enabled?: boolean
   // each action is offered only when the page handles it
@@ -37,6 +40,7 @@ interface Pending {
 export function SelectionMenu({
   documentRef,
   source,
+  suggestionOf,
   enabled = true,
   onComment,
   onSuggest,
@@ -52,6 +56,9 @@ export function SelectionMenu({
   // what's typed, read by the listeners without re-adding them
   const typed = useRef(false)
   typed.current = mode !== 'menu' && (body.trim() !== '' || (mode === 'suggest' && replacement !== ''))
+  // what a suggestion on a selection replaces
+  const original = (selection: TextSelection): string | null =>
+    suggestionOf ? suggestionOf(selection) : source ? source.slice(selection.start, selection.end) : selection.quote
 
   useEffect(() => {
     if (!enabled) {
@@ -76,7 +83,7 @@ export function SelectionMenu({
       setPending({ selection: found, range: range.cloneRange(), id: ++selections.current })
       setMode('menu')
       setBody('')
-      setReplacement(source ? source.slice(found.start, found.end) : found.quote)
+      setReplacement(original(found) ?? '')
     }
     // once the pointer lets go, or a key that changes the selection is up
     const pointerUp = (event: PointerEvent) => {
@@ -96,7 +103,7 @@ export function SelectionMenu({
       document.removeEventListener('pointerup', pointerUp)
       document.removeEventListener('keyup', keyUp)
     }
-  }, [enabled, documentRef, source])
+  }, [enabled, documentRef, source, suggestionOf])
 
   // the selected text, for the popover to be placed against; the document is
   // where it looks for what scrolls
@@ -117,9 +124,9 @@ export function SelectionMenu({
     setPending(null)
     window.getSelection()?.removeAllRanges()
   }
-  const original = source ? source.slice(selection.start, selection.end) : selection.quote
+  const replaced = original(selection)
   // a suggestion must change something; a comment must say something
-  const ready = mode === 'suggest' ? replacement !== original : body.trim() !== ''
+  const ready = mode === 'suggest' ? replaced !== null && replacement !== replaced : body.trim() !== ''
   const submit = () => {
     if (!ready) {
       return
@@ -173,7 +180,7 @@ export function SelectionMenu({
                     Comment
                   </Button>
                 )}
-                {onSuggest && (
+                {onSuggest && replaced !== null && (
                   <Button size="sm" variant="ghost" onClick={() => setMode('suggest')}>
                     Suggest an edit
                   </Button>
@@ -193,7 +200,17 @@ export function SelectionMenu({
                 }}
               >
                 <div className="selection-menu-context">
-                  {mode === 'section' ? <>Section · {selection.section?.title}</> : <q>{quote}</q>}
+                  {mode === 'section' ? (
+                    <>Section · {selection.section?.title}</>
+                  ) : mode === 'suggest' &&
+                    replaced !== null &&
+                    replaced !== source?.slice(selection.start, selection.end) ? (
+                    <>
+                      Replacing <code>{replaced}</code>
+                    </>
+                  ) : (
+                    <q>{quote}</q>
+                  )}
                 </div>
                 {mode === 'suggest' && (
                   <TextArea

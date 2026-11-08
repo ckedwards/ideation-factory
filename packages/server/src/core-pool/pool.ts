@@ -37,6 +37,10 @@ export class WorkerPool implements CoreRunner {
   outline: CoreRunner['outline'] = (key, ...args) => this.#call(key, 'outline', args) as never
   createIdea: CoreRunner['createIdea'] = (key, ...args) => this.#call(key, 'createIdea', args) as never
   checkAnchor: CoreRunner['checkAnchor'] = (key, ...args) => this.#call(key, 'checkAnchor', args) as never
+  suggestionSource: CoreRunner['suggestionSource'] = (key, ...args) =>
+    this.#call(key, 'suggestionSource', args) as never
+  acceptSuggestions: CoreRunner['acceptSuggestions'] = (key, ...args) =>
+    this.#call(key, 'acceptSuggestions', args) as never
 
   async close(): Promise<void> {
     this.#closed = true

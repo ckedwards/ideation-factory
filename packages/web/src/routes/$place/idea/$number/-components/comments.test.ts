@@ -19,6 +19,7 @@ const thread = (id: string, extra: Partial<Thread> = {}): Thread => ({
   anchor: { kind: 'text', file: 'f1', start: 0, end: 4, quote: 'Ship' },
   lastVersion: 1,
   addressedIn: [],
+  suggestion: null,
   replies: [],
   ...extra,
 })
@@ -39,8 +40,10 @@ function setup(
         return server
       },
       addComment: async () => ({ comment: 'c9' }),
+      suggestEdit: async () => ({ comment: 'c9', old: 'Ship' }),
       reply: async () => ({ comment: 'c10' }),
       resolveComment: async (input) => ({ comment: input.comment, resolved: input.resolved }),
+      rejectSuggestion: async (input) => ({ comment: input.comment }),
       ...api,
     },
     open: (path) => {
@@ -187,4 +190,54 @@ test("a write whose echo doesn't come reads the threads again instead", async ()
   await comments.insert(thread(pendingId(), { body: 'Saved' })).when('settled')
   expect(calls.filter((c) => c === 'list')).toHaveLength(2)
   expect(comments.get('c9')!.body).toBe('Saved')
+})
+
+test('a suggestion is sent as one, and a rejection shows at once and resolves it', async () => {
+  const sent: unknown[] = []
+  const suggestion = { old: 'Ship', new: 'Release', decision: null }
+  const { comments, sockets, ready } = setup([thread('c1', { suggestion })], {
+    suggestEdit: async (input) => {
+      sent.push(input)
+      return { comment: 'c9', old: 'Ship' }
+    },
+    rejectSuggestion: async (input) => {
+      sent.push(['reject', input.comment])
+      return { comment: input.comment }
+    },
+  })
+  await ready()
+  const id = pendingId()
+  const tx = comments.insert(thread(id, { body: '', suggestion: { old: 'Ship', new: 'Send', decision: null } }))
+  await tick()
+  expect(sent).toEqual([
+    { idea: 'i1', version: 1, anchor: { kind: 'text', file: 'f1', start: 0, end: 4 }, new: 'Send' },
+  ])
+  await sockets[0]!.emit({
+    type: 'comment',
+    thread: thread('c9', { body: '', suggestion: { old: 'Ship', new: 'Send', decision: null } }),
+    by: riley,
+  })
+  await tx.when('settled')
+
+  const rejected = comments.update('c1', (draft) => {
+    draft.suggestion!.decision = { kind: 'rejected', by: riley, at: 3, version: null }
+    draft.resolved = true
+  })
+  expect(comments.get('c1')!.resolved).toBe(true)
+  await tick()
+  expect(sent.at(-1)).toEqual(['reject', 'c1'])
+  const decision = { kind: 'rejected' as const, by: riley, at: 3, version: null }
+  await sockets[0]!.emit({ type: 'decided', comment: 'c1', decision, by: riley })
+  await rejected.when('settled')
+  expect(comments.get('c1')!.suggestion!.decision).toEqual(decision)
+})
+
+test('a suggestion accepted elsewhere arrives decided, resolving its thread', async () => {
+  const { comments, sockets, ready } = setup([
+    thread('c1', { suggestion: { old: 'Ship', new: 'Send', decision: null } }),
+  ])
+  await ready()
+  const decision = { kind: 'accepted' as const, by: riley, at: 5, version: 2 }
+  await sockets[0]!.emit({ type: 'decided', comment: 'c1', decision, by: riley })
+  expect(comments.get('c1')).toMatchObject({ resolved: true, suggestion: { decision } })
 })

@@ -15,6 +15,8 @@ export type CommentTarget =
 
 // A suggested edit: replace the comment's text with this.
 export interface Suggestion {
+  // the Markdown it replaces, shown as source with the replacement; without it, the quote is
+  old?: string
   replacement: string
   state: 'open' | 'accepted' | 'rejected'
 }
@@ -122,7 +124,7 @@ export function CommentCard({
       <div className="comment-body">{comment.body}</div>
 
       {suggestion && target.kind === 'text' && (
-        <div className={`suggestion suggestion-${suggestion.state}`}>
+        <div className={`suggestion suggestion-${suggestion.state}${suggestion.old !== undefined ? ' is-source' : ''}`}>
           <div className="suggestion-label">
             Suggested edit{suggestion.state !== 'open' && ` · ${suggestion.state}`}
           </div>
@@ -130,7 +132,7 @@ export function CommentCard({
             {suggestion.state !== 'accepted' && (
               <del>
                 <span className="visually-hidden">Replace: </span>
-                {target.quote}
+                {suggestion.old ?? target.quote}
               </del>
             )}
             <ins>
