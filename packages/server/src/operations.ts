@@ -652,6 +652,53 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
 
     getPeople: (input) => read(async () => ({ items: await directory().users(input.ids) })),
 
+    // --- the inbox --------------------------------------------------------------------
+
+    listNotifications: (input, { caller, token }) =>
+      read(async () => {
+        const page = await directory().inbox(
+          caller.user,
+          {
+            ...(input.done ? { done: true } : {}),
+            ...(input.reason ? { reason: input.reason } : {}),
+            ...(input.unread ? { unread: true } : {}),
+            ...(input.cursor ? { cursor: input.cursor } : {}),
+            ...(input.limit ? { limit: input.limit } : {}),
+          },
+          token?.id ?? null,
+        )
+        return { items: page.items.map((row) => ({ ...row, idea: listed(row.idea) })), next: page.next }
+      }),
+
+    unreadNotifications: (_input, { caller, token }) =>
+      read(async () => ({ count: await directory().unreadCount(caller.user, token?.id ?? null) })),
+
+    markNotifications: async (input, { caller }) =>
+      read(async () => ({
+        changed: await directory().markInbox(caller.user, input.ideas ?? null, {
+          ...(input.read ? { read: true } : {}),
+          ...(input.done !== undefined ? { done: input.done } : {}),
+        }),
+      })),
+
+    getSubscription: (input, { caller, token }) =>
+      withAccess(input.idea, { caller, token }, 'view', () =>
+        read(() => directory().subscription(caller.user, input.idea)),
+      ),
+
+    setSubscription: async (input, { caller, token }) => {
+      const checked = await access(input.idea, { caller, token }, 'view')
+      if (!checked.ok) {
+        return { ok: false, error: checked.error }
+      }
+      return fromResult(await directory().setSubscription(caller.user, input.idea, input.subscribed))
+    },
+
+    getNotificationSettings: (_input, { caller }) => read(() => directory().notificationSettings(caller.user)),
+
+    setNotificationSettings: (input, { caller }) =>
+      read(() => directory().setNotificationSettings(caller.user, { ownBots: input.ownBots })),
+
     listIdeas: (input, { caller, token }) =>
       read(async () => {
         const team = input.team ? await directory().team(input.team) : null

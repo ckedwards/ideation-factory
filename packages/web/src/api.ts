@@ -44,3 +44,10 @@ export const membershipsQuery = queryOptions({
   queryKey: ['me', 'memberships'],
   queryFn: () => api.myMemberships({}),
 })
+
+/** How many ideas in your inbox have news: the nav's badge. Read again every minute, and on coming back to the page. */
+export const unreadQuery = queryOptions({
+  queryKey: ['notifications', 'unread'],
+  queryFn: async () => (await api.unreadNotifications({})).count,
+  refetchInterval: 60_000,
+})

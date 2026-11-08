@@ -34,6 +34,10 @@ export const outlineQuery = (idea: string, version: number) =>
 export const reviewsQuery = (idea: string) =>
   queryOptions({ queryKey: ['idea', idea, 'reviews'], queryFn: () => api.listReviews({ idea }) })
 
+/** Whether you hear about the idea in your inbox, and why. */
+export const subscriptionQuery = (idea: string) =>
+  queryOptions({ queryKey: ['idea', idea, 'subscription'], queryFn: () => api.getSubscription({ idea }) })
+
 /** The comments as of an older version, where they were then (the latest's are live, in comments.ts). */
 export const commentsQuery = (idea: string, version: number) =>
   queryOptions({

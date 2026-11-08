@@ -2,6 +2,9 @@
 // idea's access (sharing and the move wizard).
 import { z } from 'zod'
 import { defineOperation } from './operation.ts'
+
+/** A yes or no in a query string ("true" or "false"), or as JSON. */
+const Flag = z.union([z.boolean(), z.stringbool()])
 import {
   CreatePolicy,
   Cursor,
@@ -12,7 +15,9 @@ import {
   IdeaId,
   IdeaRow,
   IdeaStatus,
+  InboxReason,
   Limit,
+  Notification,
   Member,
   Memberships,
   MovePreview,
@@ -254,6 +259,90 @@ export const directoryOperations = {
       access: z.strictObject({ edit: z.boolean(), share: z.boolean() }).nullable(),
     }),
     output: z.object({ grants: z.array(Grant) }),
+  }),
+  listNotifications: defineOperation({
+    name: 'list_notifications',
+    summary: 'Your inbox',
+    description:
+      "What's happened to the ideas you hear about: one row per idea (newest first, 25 at a time), with why you hear about it (you wrote it, were asked to review it by name or through a group, took part, or subscribed), how many updates are new, and the latest. `done` lists the ones you've cleared instead. Ideas you can no longer see aren't listed.",
+    method: 'GET',
+    path: '/notifications',
+    kind: 'read',
+    input: z.strictObject({
+      done: Flag.optional(),
+      reason: InboxReason.optional(),
+      unread: Flag.optional(),
+      cursor: Cursor,
+      limit: Limit,
+    }),
+    output: Page(Notification),
+  }),
+  unreadNotifications: defineOperation({
+    name: 'count_unread_notifications',
+    summary: 'How many ideas have news',
+    description: 'How many ideas in your inbox have updates you haven’t read: ideas, not events.',
+    method: 'GET',
+    path: '/notifications/unread',
+    kind: 'read',
+    input: z.strictObject({}),
+    output: z.object({ count: z.number().int() }),
+  }),
+  markNotifications: defineOperation({
+    name: 'mark_notifications',
+    summary: 'Mark ideas read or done',
+    description:
+      'Marks ideas in your inbox read (`read: true`), done (`done: true`: cleared until something new happens) or back in the inbox (`done: false`). Without `ideas`, it applies to every idea in the list it moves them out of (or, for `read`, all of them).',
+    method: 'POST',
+    path: '/notifications/mark',
+    kind: 'write',
+    input: z.strictObject({
+      ideas: z.array(IdeaId).max(100).optional(),
+      read: z.literal(true).optional(),
+      done: z.boolean().optional(),
+    }),
+    output: z.object({ changed: z.number().int() }),
+  }),
+  getSubscription: defineOperation({
+    name: 'get_subscription',
+    summary: 'Whether you hear about an idea',
+    description: 'Whether you hear about an idea, and why (null when you don’t).',
+    method: 'GET',
+    path: '/ideas/{idea}/subscription',
+    kind: 'read',
+    input: z.strictObject({ idea: IdeaId }),
+    output: z.object({ subscribed: z.boolean(), reason: InboxReason.nullable() }),
+  }),
+  setSubscription: defineOperation({
+    name: 'set_subscription',
+    summary: 'Subscribe to an idea, or unsubscribe',
+    description:
+      "Subscribes you to an idea's updates, or unsubscribes you: then you hear nothing more about it, even as its author or reviewer, except when someone asks you to review it.",
+    method: 'POST',
+    path: '/ideas/{idea}/subscription',
+    kind: 'write',
+    input: z.strictObject({ idea: IdeaId, subscribed: z.boolean() }),
+    output: z.object({ subscribed: z.boolean(), reason: InboxReason.nullable() }),
+  }),
+  getNotificationSettings: defineOperation({
+    name: 'get_notification_settings',
+    summary: 'What you want to hear about',
+    description:
+      '`ownBots`: whether what a bot does on your behalf lands in your inbox (it does unless you turn it off).',
+    method: 'GET',
+    path: '/me/notifications',
+    kind: 'read',
+    input: z.strictObject({}),
+    output: z.object({ ownBots: z.boolean() }),
+  }),
+  setNotificationSettings: defineOperation({
+    name: 'set_notification_settings',
+    summary: 'Change what you hear about',
+    description: '`ownBots`: whether what a bot does on your behalf lands in your inbox.',
+    method: 'POST',
+    path: '/me/notifications',
+    kind: 'write',
+    input: z.strictObject({ ownBots: z.boolean() }),
+    output: z.object({ ownBots: z.boolean() }),
   }),
   setReviewer: defineOperation({
     name: 'set_reviewer',

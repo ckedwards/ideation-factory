@@ -2,10 +2,10 @@
 // frame, its navigation beside the page.
 import { useState } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
-import { useSuspenseQuery } from '@tanstack/react-query'
+import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createRootRouteWithContext, Outlet, redirect, useMatches } from '@tanstack/react-router'
 import { AppShell, Empty, Link, Page, PageHeader, type Theme } from '@ideaf/ui'
-import { membershipsQuery, meQuery } from '../api.ts'
+import { membershipsQuery, meQuery, unreadQuery } from '../api.ts'
 import { AppNav, type NavPage } from '../components/AppNav.tsx'
 import { accessToken, SignedOut, signInHref, signOut } from '../session.ts'
 import { savedTheme, setTheme } from '../theme.ts'
@@ -38,6 +38,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 function Root() {
   const { data: me } = useSuspenseQuery(meQuery)
   const { data: memberships } = useSuspenseQuery(membershipsQuery)
+  const unread = useQuery(unreadQuery)
   const [theme, pickTheme] = useState<Theme>(savedTheme)
   // the deepest route that names itself in the nav
   const current = useMatches({
@@ -50,6 +51,7 @@ function Root() {
           me={me}
           teams={memberships.teams}
           current={current}
+          unread={unread.data ?? 0}
           theme={theme}
           onThemeChange={(next) => {
             pickTheme(next)

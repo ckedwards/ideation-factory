@@ -49,6 +49,66 @@ export interface TeamRequirements {
 
 export const NO_REQUIREMENTS: TeamRequirements = { approvals: 0, groups: [], resolved: false }
 
+/** Who did something: a person, or a bot (for a person, or of its own). */
+export interface ActorRef {
+  user: string
+  bot: string | null
+  purpose: 'me' | 'bot-for-me' | 'bot'
+}
+
+/**
+ * Why someone hears about an idea, most direct first: they wrote it, were
+ * asked to review it (by name, or through a group), took part, or chose to.
+ */
+export const INBOX_REASONS = ['author', 'review-requested', 'group-review', 'participating', 'subscribed'] as const
+export type InboxReason = (typeof INBOX_REASONS)[number]
+
+export type InboxEventKind =
+  | 'version'
+  | 'comment'
+  | 'suggestion'
+  | 'reply'
+  | 'review'
+  | 'dismissed'
+  | 'status'
+  | 'decided'
+  | 'requested'
+
+/** Something that happened to an idea, for inboxes: who, when, and what (by kind). */
+export interface InboxEvent {
+  kind: InboxEventKind
+  actor: ActorRef
+  at: number
+  detail: Record<string, unknown>
+}
+
+/** An idea's events from one write, sent by its actor through the directory's queue. */
+export interface NotifyBatch {
+  idea: string
+  events: InboxEvent[]
+}
+
+/** An inbox row: the idea as lists show it, and what's happened since you last looked. */
+export interface InboxRow {
+  idea: IdeaListing
+  reason: InboxReason
+  /** Events since it was last read; 0 once read. */
+  newCount: number
+  done: boolean
+  updatedAt: number
+  latest: InboxEvent
+}
+
+export interface InboxFilter {
+  /** The Done list, rather than the inbox. */
+  done?: boolean
+  reason?: InboxReason
+  /** Only ideas with something new. */
+  unread?: boolean
+  cursor?: string
+  limit?: number
+}
+
 /** One requirement, checked against an idea. */
 export type RequirementCheck =
   | { kind: 'approvals'; need: number; have: number; met: boolean }
@@ -307,6 +367,25 @@ export interface Directory {
    * reviewing; gives the rest view access. Says which it asked.
    */
   requestRuleGroups(idea: string): Promise<string[]>
+  // the inbox: what people hear about the ideas they're involved in
+  /** Writes an idea's events to the inboxes of those who hear about it (from the idea actor, through the queue). */
+  notify(batch: NotifyBatch): Promise<void>
+  /** A person's inbox (or Done list): one row per idea they can still see, newest first. */
+  inbox(user: string, filter?: InboxFilter, token?: string | null): Promise<Page<InboxRow>>
+  /** How many ideas in the inbox have something new. */
+  unreadCount(user: string, token?: string | null): Promise<number>
+  /** Marks ideas in a person's inbox read, done or back in the inbox; `null` for all of them. Says how many changed. */
+  markInbox(user: string, ideas: string[] | null, change: { read?: boolean; done?: boolean }): Promise<number>
+  /** Whether a person hears about an idea, and why (null when they don't). */
+  subscription(user: string, idea: string): Promise<{ subscribed: boolean; reason: InboxReason | null }>
+  /** Subscribes to an idea, or unsubscribes (which stops everything but review requests). */
+  setSubscription(
+    user: string,
+    idea: string,
+    subscribed: boolean,
+  ): Promise<Result<{ subscribed: boolean; reason: InboxReason | null }>>
+  notificationSettings(user: string): Promise<{ ownBots: boolean }>
+  setNotificationSettings(user: string, settings: { ownBots: boolean }): Promise<{ ownBots: boolean }>
   /**
    * Frees a handle, a site admin's decision: a team holding it is renamed to
    * `replacement`, and no old handle leads anywhere any more. (A person

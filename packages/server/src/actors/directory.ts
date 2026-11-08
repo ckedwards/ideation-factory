@@ -1,8 +1,8 @@
 // The directory actor: one for the deployment, a thin shell around
 // SqlDirectory. Reads and writes are actions; writes stay correct when they run
 // at once because the tables' keys and transactions make them so, not the
-// actor's queue. Index updates from idea actors come through the queue instead,
-// sent without waiting, and are applied in batches.
+// actor's queue. Index updates and notifications from idea actors come through
+// the queue instead, sent without waiting, and are applied in batches.
 import { actor, queue, UserError } from 'rivetkit'
 import { db } from 'rivetkit/db'
 import type { Auth } from '../auth/config.ts'
@@ -34,6 +34,8 @@ import type {
   Role,
   TeamDefaults,
   TeamRequirements,
+  InboxFilter,
+  NotifyBatch,
 } from '../directory/types.ts'
 
 const search = fts5Search()
@@ -48,7 +50,7 @@ export const directory = actor({
       await migrateAuth(database, nodeDeps().auth)
     },
   }),
-  queues: { index: queue<IndexUpdate>() },
+  queues: { index: queue<IndexUpdate>(), notify: queue<NotifyBatch>() },
   createVars: () => ({ directory: null as Directory | null, auth: null as Auth | null }),
   // the cli's OAuth client, there before anyone signs in with it
   onWake: (c) => ensureCliClient(authOf(c), nodeDeps().auth),
@@ -56,9 +58,24 @@ export const directory = actor({
     const d = directoryOf(c)
     for (;;) {
       const batch = await c.queue.nextBatch({ count: 50 })
+      // notifications, in the order they came: each writes its events to inboxes
+      for (const message of batch) {
+        if (message.name !== 'notify') {
+          continue
+        }
+        const n = message.body as NotifyBatch
+        try {
+          await d.notify(n)
+        } catch (error) {
+          c.log.error({ msg: 'notifying failed', idea: n.idea, error: String(error) })
+        }
+      }
       // only the newest update per idea matters
       const latest = new Map<string, IndexUpdate>()
       for (const message of batch) {
+        if (message.name !== 'index') {
+          continue
+        }
         const u = message.body as IndexUpdate
         const seen = latest.get(u.id)
         if (!seen || seen.updatedAt <= u.updatedAt) {
@@ -99,6 +116,16 @@ export const directory = actor({
     checkRequirements: (c, idea: string, approvers: string[], open: number) =>
       directoryOf(c).checkRequirements(idea, approvers, open),
     requestRuleGroups: (c, idea: string) => directoryOf(c).requestRuleGroups(idea),
+    inbox: (c, user: string, filter?: InboxFilter, token?: string | null) => directoryOf(c).inbox(user, filter, token),
+    unreadCount: (c, user: string, token?: string | null) => directoryOf(c).unreadCount(user, token),
+    markInbox: (c, user: string, ideas: string[] | null, change: { read?: boolean; done?: boolean }) =>
+      directoryOf(c).markInbox(user, ideas, change),
+    subscription: (c, user: string, idea: string) => directoryOf(c).subscription(user, idea),
+    setSubscription: (c, user: string, idea: string, subscribed: boolean) =>
+      directoryOf(c).setSubscription(user, idea, subscribed),
+    notificationSettings: (c, user: string) => directoryOf(c).notificationSettings(user),
+    setNotificationSettings: (c, user: string, settings: { ownBots: boolean }) =>
+      directoryOf(c).setNotificationSettings(user, settings),
     updateTeam: (
       c,
       by: string,

@@ -56,6 +56,8 @@ export interface IdeaOverviewProps {
   review?: ReactNode
   /** Who has access, and moving it. */
   sharingHref: string
+  /** Subscribe / Unsubscribe (SubscribeButton). */
+  subscribe?: ReactNode
   /** Oldest first. */
   activity: ActivityItem[]
   canComment: boolean
@@ -69,7 +71,12 @@ export function IdeaOverview(props: IdeaOverviewProps) {
     <Page>
       <PageHeader
         title={props.title}
-        actions={<Link href={props.sharingHref}>Sharing</Link>}
+        actions={
+          <span className="idea-overview-actions">
+            {props.subscribe}
+            <Link href={props.sharingHref}>Sharing</Link>
+          </span>
+        }
         sub={
           <span className="idea-overview-sub">
             <TeamChip team={props.team} href={props.team.href} />

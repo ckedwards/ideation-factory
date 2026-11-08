@@ -8,6 +8,7 @@ import { change } from './commands/change.ts'
 import * as comments from './commands/comment.ts'
 import * as drafts from './commands/draft.ts'
 import * as reviews from './commands/review.ts'
+import * as inbox from './commands/inbox.ts'
 import { edit } from './commands/edit.ts'
 import { list as listIdeas } from './commands/list.ts'
 import { move } from './commands/move.ts'
@@ -505,6 +506,70 @@ const reviewFamily: Family = {
   ],
 }
 
+/** ideaf inbox …: what's happened to the ideas you hear about. */
+const inboxFamily: Family = {
+  name: 'inbox',
+  summary: 'Your inbox: one line per idea you hear about, what happened, and marking them read or done',
+  subcommands: [
+    {
+      name: 'show',
+      usage: 'ideaf inbox show [--done] [--unread] [--reason <why>]',
+      summary: 'One line per idea with news, newest first: why you hear about it, how much is new, and the latest',
+      flags: {
+        done: { type: 'boolean', description: 'the ideas you marked done' },
+        unread: { type: 'boolean', description: 'only those with something new' },
+        reason: {
+          type: 'string',
+          description: 'only these: author, review-requested, group-review, participating or subscribed',
+        },
+        cursor: { type: 'string', description: 'the next page, from the last list' },
+      },
+      run: (ctx, f) =>
+        inbox.show(ctx, {
+          done: f.done === true,
+          unread: f.unread === true,
+          ...(str(f, 'reason') ? { reason: str(f, 'reason')! } : {}),
+          ...(str(f, 'cursor') ? { cursor: str(f, 'cursor')! } : {}),
+        }),
+    },
+    {
+      name: 'read',
+      usage: 'ideaf inbox read <idea>… | --all',
+      summary: 'Mark ideas read',
+      flags: { all: { type: 'boolean', description: 'every idea in the inbox' } },
+      run: (ctx, f, a) => inbox.mark(ctx, a, { all: f.all === true }, { read: true }),
+    },
+    {
+      name: 'done',
+      usage: 'ideaf inbox done <idea>… | --all',
+      summary: 'Clear ideas from the inbox until something new happens',
+      flags: { all: { type: 'boolean', description: 'every idea in the inbox' } },
+      run: (ctx, f, a) => inbox.mark(ctx, a, { all: f.all === true }, { done: true }),
+    },
+    {
+      name: 'back',
+      usage: 'ideaf inbox back <idea>… | --all',
+      summary: 'Move ideas marked done back into the inbox',
+      flags: { all: { type: 'boolean', description: 'every idea marked done' } },
+      run: (ctx, f, a) => inbox.mark(ctx, a, { all: f.all === true }, { done: false }),
+    },
+    {
+      name: 'settings',
+      usage: 'ideaf inbox settings [--own-bots | --no-own-bots]',
+      summary: 'Show or change whether what your bots do on your behalf lands in your inbox',
+      flags: {
+        'own-bots': { type: 'boolean', description: 'hear about what your bots do (the default)' },
+        'no-own-bots': { type: 'boolean', description: 'don’t' },
+      },
+      run: (ctx, f) =>
+        inbox.settings(
+          ctx,
+          f['own-bots'] === true ? { ownBots: true } : f['no-own-bots'] === true ? { ownBots: false } : {},
+        ),
+    },
+  ],
+}
+
 const authFamily: Family = {
   name: 'auth',
   summary: 'Sign in (in the browser), see who you are signed in as, and sign out',
@@ -777,6 +842,21 @@ const commands: Array<Command | Family> = [
   },
   comment,
   reviewFamily,
+  inboxFamily,
+  {
+    name: 'subscribe',
+    usage: 'ideaf subscribe',
+    summary: 'Hear about the idea’s updates in your inbox',
+    flags: { idea: IDEA },
+    run: (ctx, f) => inbox.subscribe(ctx, str(f, 'idea') ? { idea: str(f, 'idea')! } : {}, true),
+  },
+  {
+    name: 'unsubscribe',
+    usage: 'ideaf unsubscribe',
+    summary: 'Hear nothing more about the idea, even as its author or reviewer, unless someone asks you to review it',
+    flags: { idea: IDEA },
+    run: (ctx, f) => inbox.subscribe(ctx, str(f, 'idea') ? { idea: str(f, 'idea')! } : {}, false),
+  },
   {
     name: 'status',
     usage: 'ideaf status [draft | review | changes] [-m <note>]',

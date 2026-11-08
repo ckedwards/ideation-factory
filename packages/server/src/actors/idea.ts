@@ -5,6 +5,7 @@
 import { actor, event, queue, UserError } from 'rivetkit'
 import { db } from 'rivetkit/db'
 import { nodeDeps } from '../deps.ts'
+import { inboxEvents } from '../idea/notify.ts'
 import { migrate } from '../idea/schema.ts'
 import { type IdeaEvent, IdeaService, Refused, type WriteRequest, type WriteResult } from '../idea/service.ts'
 import type { Registry } from '../registry.ts'
@@ -43,6 +44,14 @@ export const idea = actor({
         const { result, events } = await service.write(message.body)
         for (const e of events) {
           c.broadcast(e.name, e.payload)
+        }
+        // who hears about it: the directory writes their inboxes, without this waiting
+        const told = inboxEvents(events, Date.now())
+        if (told.length > 0) {
+          await c
+            .client<Registry>()
+            .directory.getOrCreate(DIRECTORY_KEY)
+            .send('notify', { idea: c.key[0]!, events: told })
         }
         if (events.length > 0) {
           c.state.lastActivity = Date.now()

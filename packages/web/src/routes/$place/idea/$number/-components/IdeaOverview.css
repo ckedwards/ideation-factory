@@ -43,3 +43,9 @@
 .idea-activity-where a {
   color: var(--accent);
 }
+.idea-overview-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}

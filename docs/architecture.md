@@ -353,7 +353,10 @@ The full list of open performance risks is in `mvp/scale-concerns.md`.
 
 ## Notification fan-out
 
-- **Direct participants get notifications written to their inbox when the event happens.** These are the owner, reviewers, members of reviewer groups and people following the idea, usually a few dozen at most.
+- **Direct participants get notifications written to their inbox when the event happens.** These are the owner, reviewers, members of reviewer groups and people following the idea, usually a few dozen at most. The idea's actor sends its events through the directory's queue without waiting, and the directory writes each event to all of them in one statement.
+- **A group's size doesn't change what its members hear.** Every member of a group asked to review hears about the idea exactly as someone asked by name would, however big the group. Queuing keeps that off the request path; if big groups make it slow, the work moves, never the experience.
+- **You don't hear about what you did yourself.** What a bot does on your behalf does reach you (you'll want to see what your agent did), unless you turn that off in your settings.
+- **Taking part subscribes you,** commenting, replying or reviewing, and unsubscribing silences an idea except for review requests.
 - **Team watchers are not fanned out per event.** A team with hundreds of watchers would turn every comment into hundreds of writes. Events go to the team's activity log, and a watcher's inbox merges in the teams they watch (at their level) when it's read. Unread counts for watched teams are kept per team, not per event.
 - **Bundling happens at read time** (per idea), so the stored events stay simple.
 
@@ -368,6 +371,5 @@ Permanently deleting a team (site admins only) erases its index rows in the dire
 
 ## Open questions
 
-- What should happen when a large group (say 50+ people) is asked to review? Notify everyone, notify a rotating subset, or send a digest?
 - How long do closed ideas stay in the default search results? They could stay searchable but drop out of default lists after a while.
 - Can very large counts be approximate (e.g. "about 4,000 closed ideas") to keep list queries cheap?

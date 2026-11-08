@@ -2,7 +2,7 @@
 // SQLite now, Postgres if it's added. Each implementation's test file calls
 // directoryContract with a way to make an empty directory.
 import { describe, expect, test } from 'bun:test'
-import type { Directory, IdeaRow, MovePreview } from './types.ts'
+import type { Directory, IdeaRow, InboxEvent, MovePreview } from './types.ts'
 
 export function directoryContract(name: string, make: () => Promise<Directory>): void {
   async function people() {
@@ -898,6 +898,122 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
           updatedAt: clock++,
         })
         expect((await d.searchIdeas('u-riley', 'sync')).items.map((i) => i.id)).toEqual(['a'])
+      })
+    })
+
+    describe('the inbox', () => {
+      const me = (user: string) => ({ user, bot: null, purpose: 'me' as const })
+      // the directory times review requests by the real clock, so these follow it
+      let tick = 0
+      const event = (kind: InboxEvent['kind'], actor: InboxEvent['actor'], detail = {}): InboxEvent => ({
+        kind,
+        actor,
+        at: Date.now() + ++tick,
+        detail,
+      })
+      const ids = async (d: Directory, user: string, filter = {}) =>
+        (await d.inbox(user, filter)).items.map((r) => [r.idea.id, r.reason, r.newCount])
+
+      test('the owner, people asked to review (every member of a group), and those who take part hear about it', async () => {
+        const d = await people()
+        await d.registerIdea(idea('i1'))
+        const group = (
+          (await d.createGroup('u-devon', { handle: 'security', name: 'Security' })) as {
+            value: { id: string }
+          }
+        ).value.id
+        await d.addMember('u-devon', 'group', group, 'u-sam')
+        // asked by name, and through a group: each hears of the request
+        await d.setReviewer('u-riley', 'i1', { kind: 'user', id: 'u-maya' }, true)
+        await d.setReviewer('u-riley', 'i1', { kind: 'group', id: group }, true)
+        expect(await ids(d, 'u-maya')).toEqual([['i1', 'review-requested', 1]])
+        expect(await ids(d, 'u-sam')).toEqual([['i1', 'group-review', 1]])
+        expect(await ids(d, 'u-devon')).toEqual([['i1', 'group-review', 1]])
+        // the one asking doesn't hear of it
+        expect(await ids(d, 'u-riley')).toEqual([])
+
+        // maya comments: everyone else hears; she doesn't, of her own comment
+        await d.notify({ idea: 'i1', events: [event('comment', me('u-maya'), { comment: 'c1', body: 'Why?' })] })
+        expect(await ids(d, 'u-riley')).toEqual([['i1', 'author', 1]])
+        expect(await ids(d, 'u-maya')).toEqual([['i1', 'review-requested', 1]])
+        expect(await ids(d, 'u-sam')).toEqual([['i1', 'group-review', 2]])
+        // several events, one row: bundled per idea
+        await d.notify({
+          idea: 'i1',
+          events: [event('version', me('u-riley'), { version: 2 }), event('status', me('u-riley'))],
+        })
+        const [row] = (await d.inbox('u-sam')).items
+        expect(row).toMatchObject({
+          idea: { id: 'i1', title: 'Idea i1' },
+          newCount: 4,
+          done: false,
+          latest: { kind: 'status', actor: me('u-riley') },
+        })
+        expect(await d.unreadCount('u-sam')).toBe(1)
+        // the owner doesn't hear of their own version
+        expect(await ids(d, 'u-riley')).toEqual([['i1', 'author', 1]])
+
+        // outside the group and not asked: taking part subscribes you
+        await d.setGrant('u-riley', 'i1', { kind: 'user', id: 'u-outsider' }, { edit: false, share: false })
+        await d.notify({ idea: 'i1', events: [event('reply', me('u-outsider'))] })
+        await d.notify({ idea: 'i1', events: [event('comment', me('u-riley'))] })
+        expect(await ids(d, 'u-outsider')).toEqual([['i1', 'participating', 1]])
+        expect(await d.subscription('u-outsider', 'i1')).toEqual({ subscribed: true, reason: 'participating' })
+      })
+
+      test('read, done and back; unsubscribing silences all but review requests', async () => {
+        const d = await people()
+        await d.registerIdea(idea('i1'))
+        await d.registerIdea(idea('i2'))
+        await d.setReviewer('u-riley', 'i1', { kind: 'user', id: 'u-maya' }, true)
+        await d.setReviewer('u-riley', 'i2', { kind: 'user', id: 'u-maya' }, true)
+        expect(await d.unreadCount('u-maya')).toBe(2)
+        expect(await d.markInbox('u-maya', ['i1'], { read: true })).toBe(1)
+        expect(await ids(d, 'u-maya', { unread: true })).toEqual([['i2', 'review-requested', 1]])
+        await d.markInbox('u-maya', ['i2'], { done: true })
+        expect(await ids(d, 'u-maya')).toEqual([['i1', 'review-requested', 0]])
+        expect(await ids(d, 'u-maya', { done: true })).toEqual([['i2', 'review-requested', 1]])
+        // something new brings a done idea back
+        await d.notify({ idea: 'i2', events: [event('version', me('u-riley'))] })
+        expect((await ids(d, 'u-maya')).map((r) => r[0])).toEqual(['i2', 'i1'])
+
+        // unsubscribed: nothing more, not even as a reviewer…
+        expect(await d.setSubscription('u-maya', 'i1', false)).toEqual({
+          ok: true,
+          value: { subscribed: false, reason: null },
+        })
+        await d.markInbox('u-maya', null, { read: true })
+        await d.notify({ idea: 'i1', events: [event('comment', me('u-riley'))] })
+        expect(await d.unreadCount('u-maya')).toBe(0)
+        // …except being asked to review again
+        await d.setReviewer('u-riley', 'i1', { kind: 'user', id: 'u-maya' }, false)
+        await d.setReviewer('u-riley', 'i1', { kind: 'user', id: 'u-maya' }, true)
+        expect(await d.unreadCount('u-maya')).toBe(1)
+        // subscribing again
+        await d.setSubscription('u-maya', 'i1', true)
+        expect(await d.subscription('u-maya', 'i1')).toEqual({ subscribed: true, reason: 'review-requested' })
+        // someone who can't see it can't subscribe
+        expect(await d.setSubscription('u-sam', 'i1', true)).toMatchObject({ ok: false, error: { code: 'not_found' } })
+      })
+
+      test('what your bots do reaches you unless you turn it off; losing access hides the idea', async () => {
+        const d = await people()
+        await d.registerIdea(idea('i1'))
+        const bot = { user: 'u-riley', bot: 'planbot', purpose: 'bot-for-me' as const }
+        await d.notify({ idea: 'i1', events: [event('comment', bot)] })
+        expect(await ids(d, 'u-riley')).toEqual([['i1', 'author', 1]])
+        expect(await d.notificationSettings('u-riley')).toEqual({ ownBots: true })
+        await d.setNotificationSettings('u-riley', { ownBots: false })
+        await d.notify({ idea: 'i1', events: [event('comment', bot)] })
+        expect(await ids(d, 'u-riley')).toEqual([['i1', 'author', 1]])
+
+        await d.setGrant('u-riley', 'i1', { kind: 'user', id: 'u-maya' }, { edit: false, share: false })
+        await d.setSubscription('u-maya', 'i1', true)
+        await d.notify({ idea: 'i1', events: [event('version', me('u-riley'))] })
+        expect(await d.unreadCount('u-maya')).toBe(1)
+        await d.setGrant('u-riley', 'i1', { kind: 'user', id: 'u-maya' }, null)
+        expect(await ids(d, 'u-maya')).toEqual([])
+        expect(await d.unreadCount('u-maya')).toBe(0)
       })
     })
   })
