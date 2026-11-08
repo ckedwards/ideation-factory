@@ -3,12 +3,14 @@
 import { ApiError } from '@ideaf/api'
 import { useState } from 'react'
 import { Page, PageHeader, Section, SegmentedControl } from '@ideaf/ui'
-import { type QueryClient, useInfiniteQuery, useSuspenseQuery } from '@tanstack/react-query'
+import { type QueryClient, useInfiniteQuery, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, notFound, redirect } from '@tanstack/react-router'
-import { meQuery } from '../../api.ts'
+import { api, membershipsQuery, meQuery } from '../../api.ts'
 import { IdeaList } from '../../components/IdeaList.tsx'
 import { Membership } from '../../components/Membership.tsx'
 import { MemberList } from '../../components/MemberList.tsx'
+import { WatchSelect } from '../../components/WatchSelect.tsx'
+import './-components/TeamPage.css'
 import { ideaInfo } from '../../ideas.ts'
 import { type IdeaState, ideasQuery, STATES } from '../../lists.ts'
 import { membersQuery, useMembership } from '../../members.ts'
@@ -64,12 +66,33 @@ function TeamPage({ handle }: { handle: string }) {
   const ideas = useInfiniteQuery(ideasQuery({ team: team.id, state }))
   const members = useInfiniteQuery(membersQuery('team', team.handle))
   const membership = useMembership('team', team)
+  const queryClient = useQueryClient()
+  const watch = useQuery({
+    queryKey: ['team', team.id, 'watch'],
+    queryFn: () => api.getTeamWatch({ team: team.id }),
+  })
   return (
     <Page>
       <PageHeader
         title={team.name}
         sub={`${team.handle} · team · ${plural(team.members, 'member')}${team.archived ? ' · archived' : ''}`}
-        actions={<Membership {...membership} settingsHref={`/${team.handle}/settings`} />}
+        actions={
+          <span className="team-actions">
+            {watch.data && (
+              <WatchSelect
+                value={watch.data.level}
+                onChange={(level) =>
+                  void api.setTeamWatch({ team: team.id, level }).then(() => {
+                    void queryClient.invalidateQueries({ queryKey: ['team', team.id, 'watch'] })
+                    void queryClient.invalidateQueries({ queryKey: membershipsQuery.queryKey })
+                    void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+                  })
+                }
+              />
+            )}
+            <Membership {...membership} settingsHref={`/${team.handle}/settings`} />
+          </span>
+        }
       />
       {team.description && <p>{team.description}</p>}
       <Section title="Ideas">

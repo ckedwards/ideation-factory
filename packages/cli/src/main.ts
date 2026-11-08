@@ -163,6 +163,23 @@ function family(kind: containers.Kind): Family {
               },
               ' [--create <who>] [--members <access>] [--public | --private] [--group <group>[=edit]]…',
             ),
+            {
+              name: 'watch',
+              usage: 'ideaf team watch <team> [participating | active | all]',
+              summary:
+                'Show or change how much of a team you hear about: only what you’re involved in, its active ideas, or all of them',
+              flags: {},
+              run: (ctx: Context, _f: Values, a: string[]) => {
+                if (a.length < 1 || a.length > 2) {
+                  throw new CliError(
+                    'usage: ideaf team watch <team> [participating | active | all]',
+                    EXIT.usage,
+                    'usage',
+                  )
+                }
+                return containers.watch(ctx, a[0]!, a[1])
+              },
+            },
             sub(
               'requirements',
               ['team'],
@@ -520,7 +537,7 @@ const inboxFamily: Family = {
         unread: { type: 'boolean', description: 'only those with something new' },
         reason: {
           type: 'string',
-          description: 'only these: author, review-requested, group-review, participating or subscribed',
+          description: 'only these: author, review-requested, group-review, participating, subscribed or watching',
         },
         cursor: { type: 'string', description: 'the next page, from the last list' },
       },

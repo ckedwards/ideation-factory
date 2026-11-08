@@ -107,7 +107,7 @@ A faster parser is the other option, but the web app must parse with the same li
 
 **Mitigations:** keep unread counts per team, cap how far back the merge looks, and index team activity by team and time.
 
-**Status:** open.
+**Status:** the merge is built (step 9, part 4b), looking back 30 days, with events indexed by idea and time; a watcher's read and done marks are one row per idea they act on. Unread counts are worked out on each read, not kept per team yet: measure in the load test, and keep counts per team if it's slow.
 
 ### 6. Search and counts
 

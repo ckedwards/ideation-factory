@@ -102,8 +102,20 @@ export interface DB {
   }
   /** A limited token's reach: a team's ideas, one idea, or ideas outside any team (target ''). */
   token_grant_targets: { token_grant: string; kind: TokenTargetKind; target: string }
-  /** Something that happened to an idea, as inboxes show it: `actor` and `detail` are JSON. */
-  inbox_events: { id: string; idea: string; kind: string; actor: string; at: number; detail: string }
+  /**
+   * Something that happened to an idea, as inboxes show it: `actor` and
+   * `detail` are JSON. `by_user`: the person, when they did it themselves (so
+   * a watcher's inbox leaves out their own events).
+   */
+  inbox_events: {
+    id: string
+    idea: string
+    kind: string
+    actor: string
+    by_user: string | null
+    at: number
+    detail: string
+  }
   /**
    * One row per person per idea they hear about: the latest event, how many
    * are new since they last read it, why they hear about it, and whether
@@ -120,6 +132,14 @@ export interface DB {
   }
   /** Following an idea: participating (took part), subscribed (chose to), or unsubscribed (chose not to). */
   subscriptions: { user: string; idea: string; state: string; at: number }
+  /** How much of a team someone hears about, beyond what they're involved in: active ideas, or all of them. No row: participating. */
+  watches: { user: string; team: string; level: string; at: number }
+  /**
+   * A watcher's marks on an idea they hear about only through a team: when
+   * they last read it, and when they marked it done (null when not). Its
+   * news is worked out from the team's events when the inbox is read.
+   */
+  watch_marks: { user: string; idea: string; read_at: number; done_at: number | null }
   /** What a person wants to hear about; no row means the defaults. */
   notification_settings: { user: string; own_bots: number }
   schema_version: { version: number }
@@ -169,9 +189,11 @@ export const COLUMNS = {
   grants: ['idea', 'kind', 'subject', 'can_edit', 'can_share', 'reviewer', 'created_at'],
   token_grants: ['id', 'user', 'purpose', 'bot', 'read_only', 'limited', 'created_at', 'revoked_at'],
   token_grant_targets: ['token_grant', 'kind', 'target'],
-  inbox_events: ['id', 'idea', 'kind', 'actor', 'at', 'detail'],
+  inbox_events: ['id', 'idea', 'kind', 'actor', 'by_user', 'at', 'detail'],
   inbox: ['user', 'idea', 'reason', 'event', 'new_count', 'done', 'updated_at'],
   subscriptions: ['user', 'idea', 'state', 'at'],
+  watches: ['user', 'team', 'level', 'at'],
+  watch_marks: ['user', 'idea', 'read_at', 'done_at'],
   notification_settings: ['user', 'own_bots'],
   schema_version: ['version'],
 } as const satisfies { [T in keyof DB]: ReadonlyArray<keyof DB[T]> }
@@ -306,6 +328,7 @@ const MIGRATIONS: Migration[] = [
       .addColumn('idea', 'text', (c) => c.notNull())
       .addColumn('kind', 'text', (c) => c.notNull())
       .addColumn('actor', 'text', (c) => c.notNull())
+      .addColumn('by_user', 'text')
       .addColumn('at', 'bigint', (c) => c.notNull())
       .addColumn('detail', 'text', (c) => c.notNull())
       .execute()
@@ -331,6 +354,22 @@ const MIGRATIONS: Migration[] = [
       .addPrimaryKeyConstraint('subscriptions_pk', ['user', 'idea'])
       .execute()
     await db.schema.createIndex('subscriptions_idea').on('subscriptions').columns(['idea', 'state']).execute()
+    await db.schema
+      .createTable('watches')
+      .addColumn('user', 'text', (c) => c.notNull())
+      .addColumn('team', 'text', (c) => c.notNull())
+      .addColumn('level', 'text', (c) => c.notNull())
+      .addColumn('at', 'bigint', (c) => c.notNull())
+      .addPrimaryKeyConstraint('watches_pk', ['user', 'team'])
+      .execute()
+    await db.schema
+      .createTable('watch_marks')
+      .addColumn('user', 'text', (c) => c.notNull())
+      .addColumn('idea', 'text', (c) => c.notNull())
+      .addColumn('read_at', 'bigint', (c) => c.notNull())
+      .addColumn('done_at', 'bigint')
+      .addPrimaryKeyConstraint('watch_marks_pk', ['user', 'idea'])
+      .execute()
     await db.schema
       .createTable('notification_settings')
       .addColumn('user', 'text', (c) => c.primaryKey())

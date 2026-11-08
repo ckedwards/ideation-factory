@@ -5,7 +5,7 @@ import { CliError, type Context, EXIT } from '../context.ts'
 import { truncate } from './output.ts'
 import { Names } from './subjects.ts'
 
-const REASONS = ['author', 'review-requested', 'group-review', 'participating', 'subscribed'] as const
+const REASONS = ['author', 'review-requested', 'group-review', 'participating', 'subscribed', 'watching'] as const
 type Reason = (typeof REASONS)[number]
 
 const WHY: Record<Reason, string> = {
@@ -14,6 +14,7 @@ const WHY: Record<Reason, string> = {
   'group-review': 'via a group',
   participating: 'participating',
   subscribed: 'subscribed',
+  watching: 'watching a team',
 }
 
 export async function show(

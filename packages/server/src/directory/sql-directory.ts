@@ -24,6 +24,8 @@ import {
   type InboxReason,
   type InboxRow,
   type NotifyBatch,
+  WATCH_LEVELS,
+  type WatchLevel,
   type IdeaFilter,
   type IdeaPlace,
   type IdeaAccess,
@@ -87,6 +89,9 @@ const fail = <T>(code: 'not_found' | 'exists' | 'invalid' | 'forbidden', message
   ok: false,
   error: { code, message },
 })
+
+/** How far back a watcher's inbox looks for a watched team's events (scale concern 5). */
+const WATCH_HORIZON_MS = 30 * 24 * 60 * 60 * 1000
 
 function newId(prefix: string): string {
   const bytes = crypto.getRandomValues(new Uint8Array(8))
@@ -809,6 +814,7 @@ export class SqlDirectory implements Directory {
         idea,
         kind: event.kind,
         actor: JSON.stringify(event.actor),
+        by_user: event.actor.purpose === 'me' && event.actor.user ? event.actor.user : null,
         at: event.at,
         detail: JSON.stringify(event.detail),
       })
@@ -985,24 +991,18 @@ export class SqlDirectory implements Directory {
     )
   }
 
-  async inbox(user: string, filter: InboxFilter = {}, token?: string | null): Promise<Page<InboxRow>> {
-    const limit = pageSize(filter.limit)
-    const after = decodeCursor(filter.cursor)
+  /** A person's own inbox rows (the ideas they're involved in), newest first: a page after `after`, or all of them. */
+  async #direct(
+    user: string,
+    filter: InboxFilter,
+    token: string | null,
+    after: [number, string] | null,
+    limit: number | null,
+  ) {
     let query = this.#db
       .selectFrom('inbox')
       .innerJoin('ideas', 'ideas.id', 'inbox.idea')
-      .innerJoin('inbox_events', 'inbox_events.id', 'inbox.event')
-      .selectAll('ideas')
-      .select([
-        'inbox.reason',
-        'inbox.new_count',
-        'inbox.done',
-        'inbox.updated_at as inbox_at',
-        'inbox_events.kind as event_kind',
-        'inbox_events.actor as event_actor',
-        'inbox_events.at as event_at',
-        'inbox_events.detail as event_detail',
-      ])
+      .select(['inbox.idea', 'inbox.reason', 'inbox.new_count', 'inbox.done', 'inbox.updated_at', 'inbox.event'])
       .where('inbox.user', '=', user)
       .where('inbox.done', '=', filter.done ? 1 : 0)
       // only ideas they can still see: losing access hides what they'd heard
@@ -1013,7 +1013,6 @@ export class SqlDirectory implements Directory {
       )
       .orderBy('inbox.updated_at', 'desc')
       .orderBy('inbox.idea', 'desc')
-      .limit(limit + 1)
     if (filter.reason) {
       query = query.where('inbox.reason', '=', filter.reason)
     }
@@ -1021,29 +1020,196 @@ export class SqlDirectory implements Directory {
       query = query.where('inbox.new_count', '>', 0)
     }
     if (after) {
-      const [at, id] = [Number(after[0]), String(after[1])]
+      const [at, id] = after
       query = query.where((eb) =>
         eb.or([eb('inbox.updated_at', '<', at), eb.and([eb('inbox.updated_at', '=', at), eb('inbox.idea', '<', id)])]),
       )
     }
-    const rows = await query.execute()
+    if (limit !== null) {
+      query = query.limit(limit)
+    }
+    return (await query.execute()).map((r) => ({
+      idea: r.idea,
+      reason: r.reason as InboxReason,
+      newCount: r.new_count,
+      done: r.done === 1,
+      updatedAt: Number(r.updated_at),
+      event: r.event as string | null,
+    }))
+  }
+
+  /**
+   * What a person hears about only by watching teams, worked out from the
+   * teams' events when it's read (nothing is written per watcher): each idea
+   * with an event in the last month that their level covers, that they're
+   * not involved in already and didn't unsubscribe from, with how many
+   * events are new since they read it and whether they've marked it done.
+   */
+  async #watched(user: string, token: string | null) {
+    const closed = ['closed-accepted', 'closed-rejected']
+    const rows = await this.#db
+      .selectFrom('watches as w')
+      .innerJoin('ideas', 'ideas.team', 'w.team')
+      .innerJoin('teams as t', 't.id', 'ideas.team')
+      .innerJoin('inbox_events as e', 'e.idea', 'ideas.id')
+      .leftJoin('watch_marks as m', (j) => j.onRef('m.idea', '=', 'ideas.id').on('m.user', '=', user))
+      .select((eb) => [
+        'ideas.id as idea',
+        eb.fn.max('e.at').as('updated_at'),
+        eb.fn
+          .sum<number>(
+            eb
+              .case()
+              .when('e.at', '>', eb.fn.coalesce('m.read_at', eb.lit(0)))
+              .then(1)
+              .else(0)
+              .end(),
+          )
+          .as('new_count'),
+        eb.fn.max('m.done_at').as('done_at'),
+      ])
+      .where('w.user', '=', user)
+      .where('w.level', 'in', ['active', 'all'])
+      // an archived team's ideas count as closed for every purpose, watching too
+      .where('t.archived', '=', 0)
+      .where('e.at', '>', this.#now() - WATCH_HORIZON_MS)
+      // not what they did themselves
+      .where((eb) => eb.or([eb('e.by_user', 'is', null), eb('e.by_user', '!=', user)]))
+      // active: out of draft, up to and including the close
+      .where((eb) =>
+        eb.or([
+          eb('w.level', '=', 'all'),
+          eb('ideas.status', 'not in', ['draft', ...closed]),
+          eb.and([eb('ideas.status', 'in', closed), eb('e.kind', '=', 'status'), eb('e.detail', 'like', '%"closed-%')]),
+        ]),
+      )
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb.selectFrom('inbox as i').select('i.idea').whereRef('i.idea', '=', 'ideas.id').where('i.user', '=', user),
+          ),
+        ),
+      )
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom('subscriptions as s')
+              .select('s.idea')
+              .whereRef('s.idea', '=', 'ideas.id')
+              .where('s.user', '=', user)
+              .where('s.state', '=', 'unsubscribed'),
+          ),
+        ),
+      )
+      .where((eb) => visibleTo(eb as unknown as ExpressionBuilder<DB, 'ideas'>, user))
+      .where((eb) =>
+        token ? tokenReaches(eb as unknown as ExpressionBuilder<DB, 'ideas'>, user, token) : eb.lit(true),
+      )
+      .groupBy('ideas.id')
+      .execute()
+    return rows.map((r) => {
+      const updatedAt = Number(r.updated_at)
+      return {
+        idea: r.idea,
+        reason: 'watching' as InboxReason,
+        newCount: Number(r.new_count ?? 0),
+        done: r.done_at !== null && Number(r.done_at) >= updatedAt,
+        updatedAt,
+        event: null as string | null,
+      }
+    })
+  }
+
+  async inbox(user: string, filter: InboxFilter = {}, token?: string | null): Promise<Page<InboxRow>> {
+    const limit = pageSize(filter.limit)
+    const cursor = decodeCursor(filter.cursor)
+    const after: [number, string] | null = cursor ? [Number(cursor[0]), String(cursor[1])] : null
+    const newer = (r: { updatedAt: number; idea: string }) =>
+      !after || r.updatedAt < after[0] || (r.updatedAt === after[0] && r.idea < after[1])
+    const direct = filter.reason === 'watching' ? [] : await this.#direct(user, filter, token ?? null, after, limit + 1)
+    const watched =
+      filter.reason && filter.reason !== 'watching'
+        ? []
+        : (await this.#watched(user, token ?? null)).filter(
+            (r) => r.done === Boolean(filter.done) && (!filter.unread || r.newCount > 0) && newer(r),
+          )
+    // both newest first; take a page from the two together
+    const rows = [...direct, ...watched]
+      .sort((a, b) => b.updatedAt - a.updatedAt || (a.idea < b.idea ? 1 : a.idea > b.idea ? -1 : 0))
+      .slice(0, limit + 1)
     const page = rows.slice(0, limit)
-    const listings = await this.#listings(page.map((r) => toIdea(r)))
+    if (page.length === 0) {
+      return { items: [], next: null }
+    }
+    const ideas = await this.#db
+      .selectFrom('ideas')
+      .selectAll()
+      .where(
+        'id',
+        'in',
+        page.map((r) => r.idea),
+      )
+      .execute()
+    const listings = new Map((await this.#listings(ideas.map(toIdea))).map((l) => [l.id, l]))
+    // each row's latest event: by its ID for your own rows, by its time for a watched idea's
+    const events = await this.#db
+      .selectFrom('inbox_events')
+      .selectAll()
+      .where((eb) =>
+        eb.or([
+          eb(
+            'id',
+            'in',
+            page.flatMap((r) => (r.event ? [r.event] : ['-'])),
+          ),
+          eb.and([
+            eb(
+              'idea',
+              'in',
+              page
+                .filter((r) => !r.event)
+                .map((r) => r.idea)
+                .concat('-'),
+            ),
+            eb(
+              'at',
+              'in',
+              page
+                .filter((r) => !r.event)
+                .map((r) => r.updatedAt)
+                .concat(-1),
+            ),
+          ]),
+        ]),
+      )
+      .execute()
+    const latestOf = (r: (typeof page)[number]) =>
+      events.find((e) => (r.event ? e.id === r.event : e.idea === r.idea && Number(e.at) === r.updatedAt))
     return {
-      items: page.map((r, i) => ({
-        idea: listings[i]!,
-        reason: r.reason as InboxReason,
-        newCount: r.new_count,
-        done: r.done === 1,
-        updatedAt: Number(r.inbox_at),
-        latest: {
-          kind: r.event_kind as InboxEvent['kind'],
-          actor: JSON.parse(r.event_actor) as ActorRef,
-          at: Number(r.event_at),
-          detail: JSON.parse(r.event_detail) as Record<string, unknown>,
-        },
-      })),
-      next: rows.length > limit ? encodeCursor([Number(page.at(-1)!.inbox_at), page.at(-1)!.id]) : null,
+      items: page.flatMap((r) => {
+        const idea = listings.get(r.idea)
+        const e = latestOf(r)
+        if (!idea || !e) {
+          return []
+        }
+        return [
+          {
+            idea,
+            reason: r.reason,
+            newCount: r.newCount,
+            done: r.done,
+            updatedAt: r.updatedAt,
+            latest: {
+              kind: e.kind as InboxEvent['kind'],
+              actor: JSON.parse(e.actor) as ActorRef,
+              at: Number(e.at),
+              detail: JSON.parse(e.detail) as Record<string, unknown>,
+            },
+          },
+        ]
+      }),
+      next: rows.length > limit ? encodeCursor([page.at(-1)!.updatedAt, page.at(-1)!.idea]) : null,
     }
   }
 
@@ -1060,14 +1226,15 @@ export class SqlDirectory implements Directory {
         token ? tokenReaches(eb as unknown as ExpressionBuilder<DB, 'ideas'>, user, token) : eb.lit(true),
       )
       .executeTakeFirst()
-    return Number(row?.n ?? 0)
+    const watched = (await this.#watched(user, token ?? null)).filter((r) => !r.done && r.newCount > 0).length
+    return Number(row?.n ?? 0) + watched
   }
 
   async markInbox(user: string, ideas: string[] | null, change: { read?: boolean; done?: boolean }): Promise<number> {
     if (ideas?.length === 0 || (!change.read && change.done === undefined)) {
       return 0
     }
-    // which rows: these ideas, or (for "all") everything in the list they move out of
+    // which of your own rows: these ideas, or (for "all") everything in the list they move out of
     let which = this.#db.selectFrom('inbox').select('idea').where('user', '=', user)
     if (ideas) {
       which = which.where('idea', 'in', ideas)
@@ -1078,19 +1245,36 @@ export class SqlDirectory implements Directory {
       which = which.where('new_count', '>', 0)
     }
     const chosen = (await which.execute()).map((r) => r.idea)
-    if (chosen.length === 0) {
-      return 0
+    if (chosen.length > 0) {
+      await this.#db
+        .updateTable('inbox')
+        .set({
+          ...(change.read ? { new_count: 0 } : {}),
+          ...(change.done !== undefined ? { done: change.done ? 1 : 0 } : {}),
+        })
+        .where('user', '=', user)
+        .where('idea', 'in', chosen)
+        .execute()
     }
-    await this.#db
-      .updateTable('inbox')
-      .set({
-        ...(change.read ? { new_count: 0 } : {}),
-        ...(change.done !== undefined ? { done: change.done ? 1 : 0 } : {}),
-      })
-      .where('user', '=', user)
-      .where('idea', 'in', chosen)
-      .execute()
-    return chosen.length
+    // and ideas heard of through a watched team: their marks
+    const watched = (await this.#watched(user, null)).filter((r) =>
+      ideas ? ideas.includes(r.idea) : change.done !== undefined ? r.done === !change.done : r.newCount > 0,
+    )
+    for (const r of watched) {
+      // up to the latest event at least: events are timed by the idea's actor, whose clock may run ahead
+      const at = Math.max(this.#now(), r.updatedAt)
+      await this.#db
+        .insertInto('watch_marks')
+        .values({ user, idea: r.idea, read_at: change.read ? at : 0, done_at: change.done ? at : null })
+        .onConflict((oc) =>
+          oc.columns(['user', 'idea']).doUpdateSet({
+            ...(change.read ? { read_at: at } : {}),
+            ...(change.done !== undefined ? { done_at: change.done ? at : null } : {}),
+          }),
+        )
+        .execute()
+    }
+    return chosen.length + watched.length
   }
 
   async subscription(user: string, ideaId: string): Promise<{ subscribed: boolean; reason: InboxReason | null }> {
@@ -1099,7 +1283,50 @@ export class SqlDirectory implements Directory {
       return { subscribed: false, reason: null }
     }
     const reason = (await this.#audience(idea)).get(user) ?? null
-    return { subscribed: reason !== null, reason }
+    if (reason) {
+      return { subscribed: true, reason }
+    }
+    // or through a team they watch, unless they unsubscribed from it
+    const unsubscribed = await this.#db
+      .selectFrom('subscriptions')
+      .select('state')
+      .where('user', '=', user)
+      .where('idea', '=', ideaId)
+      .where('state', '=', 'unsubscribed')
+      .executeTakeFirst()
+    const level = idea.team && !unsubscribed ? await this.watch(user, idea.team) : 'participating'
+    const watching = level === 'all' || (level === 'active' && idea.status !== 'draft')
+    return watching ? { subscribed: true, reason: 'watching' } : { subscribed: false, reason: null }
+  }
+
+  async watch(user: string, team: string): Promise<WatchLevel> {
+    const row = await this.#db
+      .selectFrom('watches')
+      .select('level')
+      .where('user', '=', user)
+      .where('team', '=', team)
+      .executeTakeFirst()
+    return (row?.level as WatchLevel | undefined) ?? 'participating'
+  }
+
+  async setWatch(user: string, teamRef: string, level: WatchLevel): Promise<Result<WatchLevel>> {
+    const team = await this.team(teamRef)
+    if (!team) {
+      return fail('not_found', `no team ${teamRef}`)
+    }
+    if (!WATCH_LEVELS.includes(level)) {
+      return fail('invalid', `a watch level is ${WATCH_LEVELS.join(', ')}`)
+    }
+    if (level === 'participating') {
+      await this.#db.deleteFrom('watches').where('user', '=', user).where('team', '=', team.id).execute()
+    } else {
+      await this.#db
+        .insertInto('watches')
+        .values({ user, team: team.id, level, at: this.#now() })
+        .onConflict((oc) => oc.columns(['user', 'team']).doUpdateSet({ level, at: this.#now() }))
+        .execute()
+    }
+    return ok(level)
   }
 
   async setSubscription(
@@ -1215,7 +1442,8 @@ export class SqlDirectory implements Directory {
       this.#db
         .selectFrom('memberships as m')
         .innerJoin('teams as t', 't.id', 'm.container')
-        .select(['t.id', 't.handle', 't.name', 't.archived', 'm.role'])
+        .leftJoin('watches as w', (j) => j.onRef('w.team', '=', 't.id').on('w.user', '=', user))
+        .select(['t.id', 't.handle', 't.name', 't.archived', 'm.role', 'w.level'])
         .where('m.kind', '=', 'team')
         .where('m.user', '=', user)
         .orderBy('t.handle')
@@ -1232,7 +1460,14 @@ export class SqlDirectory implements Directory {
       this.#db.selectFrom('join_requests').select(['kind', 'container']).where('user', '=', user).execute(),
     ])
     return {
-      teams: teams.map((t) => ({ id: t.id, handle: t.handle, name: t.name, archived: t.archived === 1, role: t.role })),
+      teams: teams.map((t) => ({
+        id: t.id,
+        handle: t.handle,
+        name: t.name,
+        archived: t.archived === 1,
+        role: t.role,
+        watch: (t.level as WatchLevel | null) ?? 'participating',
+      })),
       groups: groups.map((g) => ({ id: g.id, handle: g.handle, name: g.name, role: g.role })),
       requested: requested.map((r) => ({ kind: r.kind, id: r.container })),
     }

@@ -354,3 +354,23 @@ export async function settings(
   ctx.result(updated)
   return EXIT.ok
 }
+
+const WATCH = {
+  participating: 'only the ideas you’re involved in',
+  active: 'every idea once it’s out of draft, up to and including its close',
+  all: 'every idea, drafts included',
+} as const
+
+/** ideaf team watch: how much of a team you hear about, or changing it. */
+export async function watch(ctx: Context, ref: string, level: string | undefined) {
+  if (level !== undefined && !(level in WATCH)) {
+    throw new CliError(`a watch level is ${Object.keys(WATCH).join(', ')}`, EXIT.usage, 'invalid')
+  }
+  const now =
+    level === undefined
+      ? await ctx.api.getTeamWatch({ team: ref })
+      : await ctx.api.setTeamWatch({ team: ref, level: level as keyof typeof WATCH })
+  ctx.result({ team: ref, ...now })
+  ctx.say(`You hear about ${WATCH[now.level]} in team:${handleOf(ref)} (${now.level}).`)
+  return EXIT.ok
+}

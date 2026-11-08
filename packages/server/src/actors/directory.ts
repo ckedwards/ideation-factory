@@ -37,6 +37,7 @@ import type {
   TeamRequirements,
   InboxFilter,
   NotifyBatch,
+  WatchLevel,
 } from '../directory/types.ts'
 
 const search = fts5Search()
@@ -122,6 +123,8 @@ export const directory = actor({
     subscription: (c, user: string, idea: string) => directoryOf(c).subscription(user, idea),
     setSubscription: (c, user: string, idea: string, subscribed: boolean) =>
       directoryOf(c).setSubscription(user, idea, subscribed),
+    watch: (c, user: string, team: string) => directoryOf(c).watch(user, team),
+    setWatch: (c, user: string, team: string, level: WatchLevel) => directoryOf(c).setWatch(user, team, level),
     notificationSettings: (c, user: string) => directoryOf(c).notificationSettings(user),
     setNotificationSettings: (c, user: string, settings: { ownBots: boolean }) =>
       directoryOf(c).setNotificationSettings(user, settings),

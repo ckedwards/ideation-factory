@@ -34,6 +34,7 @@ const WHY: Record<Reason, string> = {
   'group-review': 'Via a group',
   participating: 'Participating',
   subscribed: 'Subscribed',
+  watching: 'Watching a team',
 }
 
 const REASONS = [

@@ -60,7 +60,14 @@ export interface ActorRef {
  * Why someone hears about an idea, most direct first: they wrote it, were
  * asked to review it (by name, or through a group), took part, or chose to.
  */
-export const INBOX_REASONS = ['author', 'review-requested', 'group-review', 'participating', 'subscribed'] as const
+export const INBOX_REASONS = [
+  'author',
+  'review-requested',
+  'group-review',
+  'participating',
+  'subscribed',
+  'watching',
+] as const
 export type InboxReason = (typeof INBOX_REASONS)[number]
 
 export type InboxEventKind =
@@ -73,6 +80,14 @@ export type InboxEventKind =
   | 'status'
   | 'decided'
   | 'requested'
+
+/**
+ * How much of a team someone hears about: only what they're involved in (the
+ * default), every idea once it's out of draft up to and including its close,
+ * or every idea, drafts included.
+ */
+export const WATCH_LEVELS = ['participating', 'active', 'all'] as const
+export type WatchLevel = (typeof WATCH_LEVELS)[number]
 
 /** Something that happened to an idea, for inboxes: who, when, and what (by kind). */
 export interface InboxEvent {
@@ -171,7 +186,8 @@ export interface Member {
 
 /** The teams and groups someone is in, with their role, and those they've asked to join. */
 export interface Memberships {
-  teams: Array<{ id: string; handle: string; name: string; archived: boolean; role: Role }>
+  /** With how much of each you hear about. */
+  teams: Array<{ id: string; handle: string; name: string; archived: boolean; role: Role; watch: WatchLevel }>
   groups: Array<{ id: string; handle: string; name: string; role: Role }>
   requested: Array<{ kind: ContainerKind; id: string }>
 }
@@ -389,6 +405,9 @@ export interface Directory {
     idea: string,
     subscribed: boolean,
   ): Promise<Result<{ subscribed: boolean; reason: InboxReason | null }>>
+  /** How much of a team a person hears about (participating unless they chose more). */
+  watch(user: string, team: string): Promise<WatchLevel>
+  setWatch(user: string, team: string, level: WatchLevel): Promise<Result<WatchLevel>>
   notificationSettings(user: string): Promise<{ ownBots: boolean }>
   setNotificationSettings(user: string, settings: { ownBots: boolean }): Promise<{ ownBots: boolean }>
   /**

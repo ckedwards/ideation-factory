@@ -388,9 +388,27 @@ export const Team = z.object({
 })
 export const Group = z.object({ kind: z.literal('group'), ...ContainerFields, deleted: z.boolean() })
 export const Member = z.object({ user: User, role: Role })
+/**
+ * How much of a team you hear about: only the ideas you're involved in (the
+ * default), every idea once it's out of draft up to and including its close,
+ * or every idea, drafts included.
+ */
+export const WatchLevel = z.enum(['participating', 'active', 'all'])
+export type WatchLevel = z.infer<typeof WatchLevel>
+
 /** The teams and groups you're in, with your role in each, and those you've asked to join. */
 export const Memberships = z.object({
-  teams: z.array(z.object({ id: z.string(), handle: z.string(), name: z.string(), archived: z.boolean(), role: Role })),
+  /** With how much of each you hear about (watch). */
+  teams: z.array(
+    z.object({
+      id: z.string(),
+      handle: z.string(),
+      name: z.string(),
+      archived: z.boolean(),
+      role: Role,
+      watch: WatchLevel,
+    }),
+  ),
   groups: z.array(z.object({ id: z.string(), handle: z.string(), name: z.string(), role: Role })),
   requested: z.array(z.object({ kind: z.enum(['team', 'group']), id: z.string() })),
 })
@@ -417,8 +435,15 @@ export const IdeaRow = z.object({
   owner: User,
 })
 
-/** Why you hear about an idea, most direct first. */
-export const InboxReason = z.enum(['author', 'review-requested', 'group-review', 'participating', 'subscribed'])
+/** Why you hear about an idea, most direct first; `watching`: through a team you watch. */
+export const InboxReason = z.enum([
+  'author',
+  'review-requested',
+  'group-review',
+  'participating',
+  'subscribed',
+  'watching',
+])
 export type InboxReason = z.infer<typeof InboxReason>
 
 /**

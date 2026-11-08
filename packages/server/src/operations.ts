@@ -694,6 +694,17 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
       return fromResult(await directory().setSubscription(caller.user, input.idea, input.subscribed))
     },
 
+    getTeamWatch: (input, { caller }) =>
+      read(async () => {
+        const team = await directory().team(input.team)
+        return team ? { level: await directory().watch(caller.user, team.id) } : notFound(`no team ${input.team}`)
+      }),
+
+    setTeamWatch: async (input, { caller }) => {
+      const set = await directory().setWatch(caller.user, input.team, input.level)
+      return set.ok ? { ok: true, value: { level: set.value } } : set
+    },
+
     getNotificationSettings: (_input, { caller }) => read(() => directory().notificationSettings(caller.user)),
 
     setNotificationSettings: (input, { caller }) =>
