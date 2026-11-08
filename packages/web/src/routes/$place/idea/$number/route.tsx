@@ -2,8 +2,12 @@
 // Finds the idea there, for the pages below (its overview, files and
 // changes). An idea that moved is still found at its old address, and the
 // page goes on to its new one, whatever was after it in the address.
+// Opening it marks it read in your inbox.
+import { useEffect } from 'react'
 import { ApiError } from '@ideaf/api'
-import { createFileRoute, notFound, redirect } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
+import { createFileRoute, notFound, Outlet, redirect } from '@tanstack/react-router'
+import { api } from '../../../../api.ts'
 import { ideaRefQuery } from './-components/queries.ts'
 
 export const Route = createFileRoute('/$place/idea/$number')({
@@ -31,4 +35,22 @@ export const Route = createFileRoute('/$place/idea/$number')({
     }
     return { idea: found.id, place: found.place, number: found.number }
   },
+  component: Idea,
 })
+
+function Idea() {
+  const { idea } = Route.useRouteContext()
+  const queryClient = useQueryClient()
+  useEffect(() => {
+    // seen: its news in your inbox is read now
+    void api
+      .markNotifications({ ideas: [idea], read: true })
+      .then(({ changed }) => {
+        if (changed > 0) {
+          void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+        }
+      })
+      .catch(() => {})
+  }, [idea, queryClient])
+  return <Outlet />
+}

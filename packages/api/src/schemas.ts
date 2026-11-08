@@ -417,6 +417,41 @@ export const IdeaRow = z.object({
   owner: User,
 })
 
+/** Why you hear about an idea, most direct first. */
+export const InboxReason = z.enum(['author', 'review-requested', 'group-review', 'participating', 'subscribed'])
+export type InboxReason = z.infer<typeof InboxReason>
+
+/**
+ * An inbox row: one per idea, however much happened. The idea as lists show
+ * it, why you hear about it, how many events are new since you read it, and
+ * the latest of them (its `detail` by kind: a version's number, a comment's
+ * ID and the start of its text, a verdict, a status…).
+ */
+export const Notification = z.object({
+  idea: IdeaRow,
+  reason: InboxReason,
+  newCount: z.number().int(),
+  done: z.boolean(),
+  updatedAt: z.number(),
+  latest: z.object({
+    kind: z.enum([
+      'version',
+      'comment',
+      'suggestion',
+      'reply',
+      'review',
+      'dismissed',
+      'status',
+      'decided',
+      'requested',
+    ]),
+    actor: Caller,
+    at: z.number(),
+    detail: z.record(z.string(), z.unknown()),
+  }),
+})
+export type Notification = z.infer<typeof Notification>
+
 /** Where an idea is found: `mobile/idea/9`, or `@riley/idea/3` for someone's own. */
 export const IdeaPlace = z.object({
   id: z.string(),

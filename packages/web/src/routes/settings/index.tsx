@@ -5,10 +5,11 @@ import { useState } from 'react'
 import { Button, Page, PageHeader, RelativeTime, Section, Stack, Toast } from '@ideaf/ui'
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { meQuery } from '../../api.ts'
+import { api, meQuery } from '../../api.ts'
 import { account, AuthError } from '../../auth.ts'
 import { AccountList } from './-components/AccountList.tsx'
 import { ProfileForm } from './-components/ProfileForm.tsx'
+import './-components/settings.css'
 
 export const Route = createFileRoute('/settings/')({
   staticData: { nav: 'settings' },
@@ -62,6 +63,7 @@ function Settings() {
   const passkeys = useQuery({ queryKey: ['account', 'passkeys'], queryFn: account.passkeys })
   const tokens = useQuery({ queryKey: ['account', 'tokens'], queryFn: account.tokens })
   const consents = useQuery({ queryKey: ['account', 'consents'], queryFn: account.consents })
+  const notifications = useQuery({ queryKey: ['me', 'notifications'], queryFn: () => api.getNotificationSettings({}) })
   const change = useMutation({
     mutationFn: (run: () => Promise<unknown>) => run(),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['account'] }),
@@ -149,6 +151,23 @@ function Settings() {
           }))}
           empty="Nowhere else."
         />
+      </Section>
+
+      <Section title="Notifications">
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={notifications.data?.ownBots ?? true}
+            disabled={!notifications.data}
+            onChange={(event) => {
+              const ownBots = event.target.checked
+              void api.setNotificationSettings({ ownBots }).then((now) => {
+                queryClient.setQueryData(['me', 'notifications'], now)
+              })
+            }}
+          />
+          What a bot does on your behalf shows in your inbox
+        </label>
       </Section>
 
       <Section title="Apps and the cli">

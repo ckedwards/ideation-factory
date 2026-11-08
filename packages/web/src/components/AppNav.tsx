@@ -5,19 +5,21 @@ import { Button, Link, type Person, SideNav, ThemeToggle, type Theme, UserName }
 import './AppNav.css'
 
 /** The page being shown, so its link is marked. */
-export type NavPage = 'home' | 'ideas' | 'teams' | 'groups' | 'settings' | null
+export type NavPage = 'home' | 'notifications' | 'ideas' | 'teams' | 'groups' | 'settings' | null
 
 export interface AppNavProps {
   me: Person
   /** Your teams, by name, linking to their pages. */
   teams: { handle: string; name: string }[]
   current: NavPage
+  /** Ideas in your inbox with news. */
+  unread?: number
   theme: Theme
   onThemeChange: (theme: Theme) => void
   onSignOut: () => void
 }
 
-export function AppNav({ me, teams, current, theme, onThemeChange, onSignOut }: AppNavProps) {
+export function AppNav({ me, teams, current, unread = 0, theme, onThemeChange, onSignOut }: AppNavProps) {
   return (
     <SideNav
       brand={
@@ -30,6 +32,12 @@ export function AppNav({ me, teams, current, theme, onThemeChange, onSignOut }: 
         {
           items: [
             { href: '/', label: 'Home', current: current === 'home' },
+            {
+              href: '/notifications',
+              label: 'Notifications',
+              current: current === 'notifications',
+              ...(unread > 0 ? { count: unread } : {}),
+            },
             { href: '/ideas', label: 'Ideas', current: current === 'ideas' },
             { href: `/@${me.handle}`, label: 'Your ideas' },
             { href: '/teams', label: 'Teams', current: current === 'teams' },

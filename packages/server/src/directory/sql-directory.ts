@@ -17,6 +17,13 @@ import {
   type Group,
   type GroupRule,
   type AccessChange,
+  type ActorRef,
+  INBOX_REASONS,
+  type InboxEvent,
+  type InboxFilter,
+  type InboxReason,
+  type InboxRow,
+  type NotifyBatch,
   type IdeaFilter,
   type IdeaPlace,
   type IdeaAccess,
@@ -727,9 +734,354 @@ export class SqlDirectory implements Directory {
         })
         .onConflict((oc) => oc.columns(['idea', 'kind', 'subject']).doUpdateSet({ reviewer: 1 }))
         .execute()
+      await this.#notifyRequest(ideaId, { kind: 'group', id }, null)
       asked.push(id)
     }
     return asked
+  }
+
+  // --- the inbox ---------------------------------------------------------------------
+
+  /**
+   * Who hears about an idea, and why: its owner, people asked to review it
+   * (by name, or every member of a group asked), and its subscribers; less
+   * anyone who unsubscribed. The most direct reason wins.
+   */
+  async #audience(idea: IdeaRow): Promise<Map<string, InboxReason>> {
+    const reasons = new Map<string, InboxReason>()
+    const add = (user: string, reason: InboxReason) => {
+      const now = reasons.get(user)
+      if (!now || INBOX_REASONS.indexOf(reason) < INBOX_REASONS.indexOf(now)) {
+        reasons.set(user, reason)
+      }
+    }
+    const [subs, asked] = await Promise.all([
+      this.#db.selectFrom('subscriptions').select(['user', 'state']).where('idea', '=', idea.id).execute(),
+      this.#db
+        .selectFrom('grants')
+        .select(['kind', 'subject'])
+        .where('idea', '=', idea.id)
+        .where('reviewer', '=', 1)
+        .execute(),
+    ])
+    const groups = asked.filter((g) => g.kind === 'group').map((g) => g.subject)
+    const members = groups.length
+      ? await this.#db
+          .selectFrom('memberships')
+          .select('user')
+          .where('kind', '=', 'group')
+          .where('container', 'in', groups)
+          .execute()
+      : []
+    add(idea.owner, 'author')
+    for (const g of asked) {
+      if (g.kind === 'user') {
+        add(g.subject, 'review-requested')
+      }
+    }
+    for (const m of members) {
+      add(m.user, 'group-review')
+    }
+    for (const s of subs) {
+      if (s.state !== 'unsubscribed') {
+        add(s.user, s.state as InboxReason)
+      }
+    }
+    for (const s of subs) {
+      if (s.state === 'unsubscribed') {
+        reasons.delete(s.user)
+      }
+    }
+    return reasons
+  }
+
+  /** Writes one event to these people's inboxes: one statement for all of them. */
+  async #deliver(db: Kysely<DB>, idea: string, event: InboxEvent, to: Map<string, InboxReason>): Promise<void> {
+    const id = newId('ev')
+    await db
+      .insertInto('inbox_events')
+      .values({
+        id,
+        idea,
+        kind: event.kind,
+        actor: JSON.stringify(event.actor),
+        at: event.at,
+        detail: JSON.stringify(event.detail),
+      })
+      .execute()
+    if (to.size === 0) {
+      return
+    }
+    await db
+      .insertInto('inbox')
+      .values(
+        [...to].map(([user, reason]) => ({
+          user,
+          idea,
+          reason,
+          event: id,
+          new_count: 1,
+          done: 0,
+          updated_at: event.at,
+        })),
+      )
+      .onConflict((oc) =>
+        oc.columns(['user', 'idea']).doUpdateSet((eb) => ({
+          reason: eb.ref('excluded.reason'),
+          event: eb.ref('excluded.event'),
+          new_count: raw<number>`inbox.new_count + 1`,
+          done: 0,
+          updated_at: eb.ref('excluded.updated_at'),
+        })),
+      )
+      .execute()
+  }
+
+  async notify(batch: NotifyBatch): Promise<void> {
+    const idea = await this.idea(batch.idea)
+    if (!idea || batch.events.length === 0) {
+      return
+    }
+    // taking part subscribes you, unless you've unsubscribed
+    const taking = [
+      ...new Set(
+        batch.events
+          .filter((e) => ['comment', 'suggestion', 'reply', 'review'].includes(e.kind) && e.actor.purpose === 'me')
+          .map((e) => e.actor.user),
+      ),
+    ].filter((u) => u !== idea.owner)
+    const owners = [...new Set(batch.events.filter((e) => e.actor.purpose === 'bot-for-me').map((e) => e.actor.user))]
+    const quiet = new Set(
+      owners.length
+        ? (
+            await this.#db
+              .selectFrom('notification_settings')
+              .select('user')
+              .where('user', 'in', owners)
+              .where('own_bots', '=', 0)
+              .execute()
+          ).map((r) => r.user)
+        : [],
+    )
+    await this.#transaction(async (db) => {
+      if (taking.length) {
+        await db
+          .insertInto('subscriptions')
+          .values(taking.map((user) => ({ user, idea: idea.id, state: 'participating', at: this.#now() })))
+          .onConflict((oc) => oc.columns(['user', 'idea']).doNothing())
+          .execute()
+      }
+    })
+    const audience = await this.#audience(idea)
+    await this.#transaction(async (db) => {
+      for (const event of batch.events) {
+        // you don't hear about what you did; what your bots did, unless you said not to
+        const to = new Map(
+          [...audience].filter(
+            ([user]) =>
+              user !== event.actor.user ||
+              (event.actor.purpose === 'bot-for-me' && !quiet.has(user)) ||
+              event.actor.purpose === 'bot',
+          ),
+        )
+        await this.#deliver(db, idea.id, event, to)
+      }
+    })
+  }
+
+  /** A review request: the person asked, or every member of the group, hears of it even if they unsubscribed. */
+  async #notifyRequest(ideaId: string, subject: { kind: 'user' | 'group'; id: string }, actor: ActorRef | null) {
+    const idea = await this.idea(ideaId)
+    if (!idea) {
+      return
+    }
+    const users =
+      subject.kind === 'user'
+        ? [subject.id]
+        : (
+            await this.#db
+              .selectFrom('memberships')
+              .select('user')
+              .where('kind', '=', 'group')
+              .where('container', '=', subject.id)
+              .execute()
+          ).map((m) => m.user)
+    const reason: InboxReason = subject.kind === 'user' ? 'review-requested' : 'group-review'
+    const audience = await this.#audience(idea)
+    const to = new Map<string, InboxReason>()
+    for (const user of users) {
+      if (user === actor?.user) {
+        continue
+      }
+      const now = audience.get(user)
+      to.set(user, now && INBOX_REASONS.indexOf(now) < INBOX_REASONS.indexOf(reason) ? now : reason)
+    }
+    await this.#transaction((db) =>
+      this.#deliver(
+        db,
+        idea.id,
+        {
+          kind: 'requested',
+          actor: actor ?? { user: '', bot: null, purpose: 'me' },
+          at: this.#now(),
+          detail: { subject },
+        },
+        to,
+      ),
+    )
+  }
+
+  async inbox(user: string, filter: InboxFilter = {}, token?: string | null): Promise<Page<InboxRow>> {
+    const limit = pageSize(filter.limit)
+    const after = decodeCursor(filter.cursor)
+    let query = this.#db
+      .selectFrom('inbox')
+      .innerJoin('ideas', 'ideas.id', 'inbox.idea')
+      .innerJoin('inbox_events', 'inbox_events.id', 'inbox.event')
+      .selectAll('ideas')
+      .select([
+        'inbox.reason',
+        'inbox.new_count',
+        'inbox.done',
+        'inbox.updated_at as inbox_at',
+        'inbox_events.kind as event_kind',
+        'inbox_events.actor as event_actor',
+        'inbox_events.at as event_at',
+        'inbox_events.detail as event_detail',
+      ])
+      .where('inbox.user', '=', user)
+      .where('inbox.done', '=', filter.done ? 1 : 0)
+      // only ideas they can still see: losing access hides what they'd heard
+      .where((eb) => visibleTo(eb as unknown as ExpressionBuilder<DB, 'ideas'>, user))
+      // a limited token sees only what it reaches
+      .where((eb) =>
+        token ? tokenReaches(eb as unknown as ExpressionBuilder<DB, 'ideas'>, user, token) : eb.lit(true),
+      )
+      .orderBy('inbox.updated_at', 'desc')
+      .orderBy('inbox.idea', 'desc')
+      .limit(limit + 1)
+    if (filter.reason) {
+      query = query.where('inbox.reason', '=', filter.reason)
+    }
+    if (filter.unread) {
+      query = query.where('inbox.new_count', '>', 0)
+    }
+    if (after) {
+      const [at, id] = [Number(after[0]), String(after[1])]
+      query = query.where((eb) =>
+        eb.or([eb('inbox.updated_at', '<', at), eb.and([eb('inbox.updated_at', '=', at), eb('inbox.idea', '<', id)])]),
+      )
+    }
+    const rows = await query.execute()
+    const page = rows.slice(0, limit)
+    const listings = await this.#listings(page.map((r) => toIdea(r)))
+    return {
+      items: page.map((r, i) => ({
+        idea: listings[i]!,
+        reason: r.reason as InboxReason,
+        newCount: r.new_count,
+        done: r.done === 1,
+        updatedAt: Number(r.inbox_at),
+        latest: {
+          kind: r.event_kind as InboxEvent['kind'],
+          actor: JSON.parse(r.event_actor) as ActorRef,
+          at: Number(r.event_at),
+          detail: JSON.parse(r.event_detail) as Record<string, unknown>,
+        },
+      })),
+      next: rows.length > limit ? encodeCursor([Number(page.at(-1)!.inbox_at), page.at(-1)!.id]) : null,
+    }
+  }
+
+  async unreadCount(user: string, token?: string | null): Promise<number> {
+    const row = await this.#db
+      .selectFrom('inbox')
+      .innerJoin('ideas', 'ideas.id', 'inbox.idea')
+      .select((eb) => eb.fn.countAll<number>().as('n'))
+      .where('inbox.user', '=', user)
+      .where('inbox.done', '=', 0)
+      .where('inbox.new_count', '>', 0)
+      .where((eb) => visibleTo(eb as unknown as ExpressionBuilder<DB, 'ideas'>, user))
+      .where((eb) =>
+        token ? tokenReaches(eb as unknown as ExpressionBuilder<DB, 'ideas'>, user, token) : eb.lit(true),
+      )
+      .executeTakeFirst()
+    return Number(row?.n ?? 0)
+  }
+
+  async markInbox(user: string, ideas: string[] | null, change: { read?: boolean; done?: boolean }): Promise<number> {
+    if (ideas?.length === 0 || (!change.read && change.done === undefined)) {
+      return 0
+    }
+    // which rows: these ideas, or (for "all") everything in the list they move out of
+    let which = this.#db.selectFrom('inbox').select('idea').where('user', '=', user)
+    if (ideas) {
+      which = which.where('idea', 'in', ideas)
+    } else if (change.done !== undefined) {
+      which = which.where('done', '=', change.done ? 0 : 1)
+    }
+    if (change.read && change.done === undefined) {
+      which = which.where('new_count', '>', 0)
+    }
+    const chosen = (await which.execute()).map((r) => r.idea)
+    if (chosen.length === 0) {
+      return 0
+    }
+    await this.#db
+      .updateTable('inbox')
+      .set({
+        ...(change.read ? { new_count: 0 } : {}),
+        ...(change.done !== undefined ? { done: change.done ? 1 : 0 } : {}),
+      })
+      .where('user', '=', user)
+      .where('idea', 'in', chosen)
+      .execute()
+    return chosen.length
+  }
+
+  async subscription(user: string, ideaId: string): Promise<{ subscribed: boolean; reason: InboxReason | null }> {
+    const idea = await this.idea(ideaId)
+    if (!idea) {
+      return { subscribed: false, reason: null }
+    }
+    const reason = (await this.#audience(idea)).get(user) ?? null
+    return { subscribed: reason !== null, reason }
+  }
+
+  async setSubscription(
+    user: string,
+    ideaId: string,
+    subscribed: boolean,
+  ): Promise<Result<{ subscribed: boolean; reason: InboxReason | null }>> {
+    if (!(await this.permission(ideaId, user)).view) {
+      return fail('not_found', "this idea doesn't exist, or you can't see it")
+    }
+    const state = subscribed ? 'subscribed' : 'unsubscribed'
+    await this.#db
+      .insertInto('subscriptions')
+      .values({ user, idea: ideaId, state, at: this.#now() })
+      .onConflict((oc) => oc.columns(['user', 'idea']).doUpdateSet({ state, at: this.#now() }))
+      .execute()
+    return ok(await this.subscription(user, ideaId))
+  }
+
+  async notificationSettings(user: string): Promise<{ ownBots: boolean }> {
+    const row = await this.#db
+      .selectFrom('notification_settings')
+      .select('own_bots')
+      .where('user', '=', user)
+      .executeTakeFirst()
+    return { ownBots: row ? row.own_bots === 1 : true }
+  }
+
+  async setNotificationSettings(user: string, settings: { ownBots: boolean }): Promise<{ ownBots: boolean }> {
+    const own_bots = settings.ownBots ? 1 : 0
+    await this.#db
+      .insertInto('notification_settings')
+      .values({ user, own_bots })
+      .onConflict((oc) => oc.column('user').doUpdateSet({ own_bots }))
+      .execute()
+    return this.notificationSettings(user)
   }
 
   async parkedUntil(kind: 'user' | 'team', handle: string, requester: string | null): Promise<number | null> {
@@ -1436,6 +1788,13 @@ export class SqlDirectory implements Directory {
       return fail('invalid', `${named.id} is deleted`)
     }
     if (reviewer) {
+      const before = await this.#db
+        .selectFrom('grants')
+        .select('reviewer')
+        .where('idea', '=', ideaId)
+        .where('kind', '=', subject.kind)
+        .where('subject', '=', subject.id)
+        .executeTakeFirst()
       // asking gives view access; access they already have stays as it is
       await this.#db
         .insertInto('grants')
@@ -1450,6 +1809,9 @@ export class SqlDirectory implements Directory {
         })
         .onConflict((oc) => oc.columns(['idea', 'kind', 'subject']).doUpdateSet({ reviewer: 1 }))
         .execute()
+      if (before?.reviewer !== 1) {
+        await this.#notifyRequest(ideaId, subject, { user: actor, bot: null, purpose: 'me' })
+      }
     } else {
       // taken off the reviewers, they keep their access
       await this.#db

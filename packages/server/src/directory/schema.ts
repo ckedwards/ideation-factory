@@ -102,6 +102,26 @@ export interface DB {
   }
   /** A limited token's reach: a team's ideas, one idea, or ideas outside any team (target ''). */
   token_grant_targets: { token_grant: string; kind: TokenTargetKind; target: string }
+  /** Something that happened to an idea, as inboxes show it: `actor` and `detail` are JSON. */
+  inbox_events: { id: string; idea: string; kind: string; actor: string; at: number; detail: string }
+  /**
+   * One row per person per idea they hear about: the latest event, how many
+   * are new since they last read it, why they hear about it, and whether
+   * it's done (cleared until something new happens).
+   */
+  inbox: {
+    user: string
+    idea: string
+    reason: string
+    event: string
+    new_count: number
+    done: number
+    updated_at: number
+  }
+  /** Following an idea: participating (took part), subscribed (chose to), or unsubscribed (chose not to). */
+  subscriptions: { user: string; idea: string; state: string; at: number }
+  /** What a person wants to hear about; no row means the defaults. */
+  notification_settings: { user: string; own_bots: number }
   schema_version: { version: number }
 }
 
@@ -149,6 +169,10 @@ export const COLUMNS = {
   grants: ['idea', 'kind', 'subject', 'can_edit', 'can_share', 'reviewer', 'created_at'],
   token_grants: ['id', 'user', 'purpose', 'bot', 'read_only', 'limited', 'created_at', 'revoked_at'],
   token_grant_targets: ['token_grant', 'kind', 'target'],
+  inbox_events: ['id', 'idea', 'kind', 'actor', 'at', 'detail'],
+  inbox: ['user', 'idea', 'reason', 'event', 'new_count', 'done', 'updated_at'],
+  subscriptions: ['user', 'idea', 'state', 'at'],
+  notification_settings: ['user', 'own_bots'],
   schema_version: ['version'],
 } as const satisfies { [T in keyof DB]: ReadonlyArray<keyof DB[T]> }
 
@@ -275,6 +299,42 @@ const MIGRATIONS: Migration[] = [
       .addColumn('kind', 'text', (c) => c.notNull())
       .addColumn('target', 'text', (c) => c.notNull())
       .addPrimaryKeyConstraint('token_grant_targets_pk', ['token_grant', 'kind', 'target'])
+      .execute()
+    await db.schema
+      .createTable('inbox_events')
+      .addColumn('id', 'text', (c) => c.primaryKey())
+      .addColumn('idea', 'text', (c) => c.notNull())
+      .addColumn('kind', 'text', (c) => c.notNull())
+      .addColumn('actor', 'text', (c) => c.notNull())
+      .addColumn('at', 'bigint', (c) => c.notNull())
+      .addColumn('detail', 'text', (c) => c.notNull())
+      .execute()
+    await db.schema.createIndex('inbox_events_idea').on('inbox_events').columns(['idea', 'at']).execute()
+    await db.schema
+      .createTable('inbox')
+      .addColumn('user', 'text', (c) => c.notNull())
+      .addColumn('idea', 'text', (c) => c.notNull())
+      .addColumn('reason', 'text', (c) => c.notNull())
+      .addColumn('event', 'text', (c) => c.notNull())
+      .addColumn('new_count', 'integer', (c) => c.notNull())
+      .addColumn('done', 'integer', (c) => c.notNull())
+      .addColumn('updated_at', 'bigint', (c) => c.notNull())
+      .addPrimaryKeyConstraint('inbox_pk', ['user', 'idea'])
+      .execute()
+    await db.schema.createIndex('inbox_user').on('inbox').columns(['user', 'done', 'updated_at', 'idea']).execute()
+    await db.schema
+      .createTable('subscriptions')
+      .addColumn('user', 'text', (c) => c.notNull())
+      .addColumn('idea', 'text', (c) => c.notNull())
+      .addColumn('state', 'text', (c) => c.notNull())
+      .addColumn('at', 'bigint', (c) => c.notNull())
+      .addPrimaryKeyConstraint('subscriptions_pk', ['user', 'idea'])
+      .execute()
+    await db.schema.createIndex('subscriptions_idea').on('subscriptions').columns(['idea', 'state']).execute()
+    await db.schema
+      .createTable('notification_settings')
+      .addColumn('user', 'text', (c) => c.primaryKey())
+      .addColumn('own_bots', 'integer', (c) => c.notNull())
       .execute()
   },
 ]

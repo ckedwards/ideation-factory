@@ -61,3 +61,11 @@ export const NoTeams: Story = {
     )
   },
 }
+
+// Ideas with news in your inbox, as a count by Notifications (99+ at most)
+export const Unread: Story = {
+  args: { unread: 140 },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByText('99+')).toBeVisible()
+  },
+}

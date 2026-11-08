@@ -31,6 +31,7 @@ export * as schemas from './schemas.ts'
 export {
   type Caller,
   type IdeaStatus,
+  type Notification,
   LIVE_CLOSE,
   LiveClientMessage,
   LiveEvent,

@@ -12,7 +12,8 @@ import { IdeaTabs } from './-components/IdeaTabs.tsx'
 import { ideaLinks } from './-components/links.ts'
 import { rereadComments } from './-components/comments.ts'
 import { commentsOf } from './-components/live.ts'
-import { filesQuery, ideaQuery, outlineQuery, reviewsQuery } from './-components/queries.ts'
+import { filesQuery, ideaQuery, outlineQuery, reviewsQuery, subscriptionQuery } from './-components/queries.ts'
+import { SubscribeButton } from './-components/SubscribeButton.tsx'
 import { ReviewPanel, type ReviewRow } from './-components/ReviewPanel.tsx'
 import { type Subject, subjectKey, useSubjectNames } from './-components/subjects.ts'
 import { commentInfo, commentWrites, teamRef, usePeople } from './-components/shared.tsx'
@@ -44,6 +45,8 @@ function Overview() {
   )
   const { data: me } = useSuspenseQuery(meQuery)
   const { data: reviews } = useSuspenseQuery(reviewsQuery(id))
+  const subscription = useQuery(subscriptionQuery(id))
+  const [subscribing, setSubscribing] = useState(false)
   const team = useQuery({ ...teamQuery(idea.team ?? ''), enabled: idea.team !== null })
   const [note, setNote] = useState<string | null>(null)
   const people = usePeople([
@@ -188,6 +191,23 @@ function Overview() {
           />
         }
         sharingHref={links.sharing}
+        subscribe={
+          subscription.data && (
+            <SubscribeButton
+              subscribed={subscription.data.subscribed}
+              reason={subscription.data.reason}
+              busy={subscribing}
+              onChange={(subscribed) => {
+                setSubscribing(true)
+                api
+                  .setSubscription({ idea: id, subscribed })
+                  .then((now) => queryClient.setQueryData(subscriptionQuery(id).queryKey, now))
+                  .catch((error: unknown) => setNote(error instanceof Error ? error.message : String(error)))
+                  .finally(() => setSubscribing(false))
+              }}
+            />
+          )
+        }
         activity={activity}
         canComment={idea.you.view}
         onReply={writes.reply}

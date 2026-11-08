@@ -123,9 +123,9 @@ A faster parser is the other option, but the web app must parse with the same li
 
 **Why:** asking a 50-person group to review writes 50 inbox rows, on every update to that idea. That multiplies concern 1.
 
-**Mitigation:** decide the open question in `architecture.md`: notify everyone, a rotating subset, or a digest. Until then, cap per-event inbox fan-out and bundle updates per idea.
+**Mitigation:** decided: every member hears about it as if asked by name, so the experience doesn't depend on the group's size. The writes go through the directory's queue, off the request path, one statement per event for all its recipients, and inboxes bundle per idea. If that gets slow for very big groups, move them to the read-time merge team watchers use (concern 5): the work moves, what members see doesn't.
 
-**Status:** open, with the product question.
+**Status:** queued fan-out built (step 9, part 4a). Measure in the load test.
 
 ### 8. The directory actor is the one shared owner
 
