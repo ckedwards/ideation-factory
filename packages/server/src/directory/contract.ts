@@ -562,7 +562,9 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
         await d.addMember('u-riley', 'group', sec, 'u-maya')
         await d.requestToJoin('u-maya', 'team', web)
         expect(await d.memberships('u-maya')).toEqual({
-          teams: [{ id: core, handle: 'core', name: 'Core', archived: false, role: 'maintainer' }],
+          teams: [
+            { id: core, handle: 'core', name: 'Core', archived: false, role: 'maintainer', watch: 'participating' },
+          ],
           groups: [{ id: sec, handle: 'sec', name: 'Security', role: 'member' }],
           requested: [{ kind: 'team', id: web }],
         })
@@ -1030,6 +1032,64 @@ export function directoryContract(name: string, make: () => Promise<Directory>):
         await d.notify(batch)
         await d.notify([batch, { ...batch, id: 'b2' }])
         expect(await ids(d, 'u-riley')).toEqual([['i1', 'author', 4]])
+      })
+
+      test('watching a team brings its ideas into your inbox, at your level, without a row written per event', async () => {
+        const d = await people()
+        const team = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
+          .value.id
+        await d.addMember('u-riley', 'team', team, 'u-maya')
+        await d.registerIdea(idea('draft', { team }))
+        await d.registerIdea(idea('open', { team, status: 'requesting-review' }))
+        await d.registerIdea(idea('done', { team, status: 'closed-accepted' }))
+        await d.notify({ idea: 'draft', events: [event('comment', me('u-riley'))] })
+        await d.notify({ idea: 'open', events: [event('version', me('u-riley'))] })
+        await d.notify({
+          idea: 'done',
+          events: [event('comment', me('u-riley')), event('status', me('u-riley'), { status: 'closed-accepted' })],
+        })
+        // participating: nothing
+        expect(await d.watch('u-maya', team)).toBe('participating')
+        expect(await ids(d, 'u-maya')).toEqual([])
+
+        // active: out of draft, and a closed idea's close
+        expect(await d.setWatch('u-maya', 'core', 'active')).toEqual({ ok: true, value: 'active' })
+        expect((await ids(d, 'u-maya')).toSorted()).toEqual([
+          ['done', 'watching', 1],
+          ['open', 'watching', 1],
+        ])
+        expect(await d.subscription('u-maya', 'open')).toEqual({ subscribed: true, reason: 'watching' })
+        expect(await d.subscription('u-maya', 'draft')).toEqual({ subscribed: false, reason: null })
+        // nothing was written for her: it's worked out when she reads
+        expect((await d.inbox('u-maya')).items.find((r) => r.idea.id === 'done')!.latest.kind).toBe('status')
+
+        // all: drafts too
+        await d.setWatch('u-maya', team, 'all')
+        expect(await d.unreadCount('u-maya')).toBe(3)
+        expect((await d.memberships('u-maya')).teams[0]!.watch).toBe('all')
+
+        // read and done, kept as marks; new events count again
+        expect(await d.markInbox('u-maya', ['open'], { read: true })).toBe(1)
+        expect(await d.unreadCount('u-maya')).toBe(2)
+        await d.markInbox('u-maya', ['draft'], { done: true })
+        expect((await ids(d, 'u-maya', { done: true })).map((r) => r[0])).toEqual(['draft'])
+        await d.notify({ idea: 'draft', events: [event('comment', me('u-riley'))] })
+        expect((await ids(d, 'u-maya', { done: true })).map((r) => r[0])).toEqual([])
+        expect((await d.inbox('u-maya')).items.find((r) => r.idea.id === 'draft')!.newCount).toBe(2)
+        // her own events don't count
+        await d.notify({ idea: 'open', events: [event('comment', me('u-maya'))] })
+        expect((await d.inbox('u-maya')).items.find((r) => r.idea.id === 'open')!.newCount).toBe(0)
+
+        // involved directly, the idea's own row wins: no double
+        await d.setReviewer('u-riley', 'open', { kind: 'user', id: 'u-maya' }, true)
+        expect((await ids(d, 'u-maya')).filter((r) => r[0] === 'open')).toEqual([['open', 'review-requested', 1]])
+        // unsubscribed, a watched idea goes quiet
+        await d.setSubscription('u-maya', 'draft', false)
+        expect((await ids(d, 'u-maya')).map((r) => r[0])).not.toContain('draft')
+        // and an outsider watching sees only what they can see
+        await d.setWatch('u-outsider', team, 'all')
+        expect(await ids(d, 'u-outsider')).toEqual([])
+        expect(await d.setWatch('u-maya', 'nope', 'all')).toMatchObject({ ok: false, error: { code: 'not_found' } })
       })
 
       test('what your bots do reaches you unless you turn it off; losing access hides the idea', async () => {

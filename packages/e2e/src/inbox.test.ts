@@ -88,4 +88,28 @@ describe('the inbox', () => {
     expect((await lee.ideaf('inbox', 'settings', '--no-own-bots')).out).toContain('stays out of your inbox')
     expect(await api(h('lee')).getNotificationSettings({})).toEqual({ ownBots: false })
   })
+
+  test('watching a team: its active ideas join your inbox, at the level you pick', async () => {
+    await api(h('kim')).me({})
+    const riley = await repoAs('riley', { 'plan.md': '# Plan\n\nText.\n' })
+    const team = h('watched')
+    expect((await riley.ideaf('team', 'create', team, '--name', 'Watched')).exit).toBe(0)
+    expect((await riley.ideaf('team', 'add', team, h('kim'))).exit).toBe(0)
+    const { idea } = (await riley.ideaf('start', '--title', 'Team plan', '--team', team, '--json')).json()
+    await riley.ideaf('status', 'review')
+
+    const kim = await repoAs('kim')
+    expect((await kim.ideaf('team', 'watch', team)).out).toContain('only the ideas you’re involved in')
+    expect((await kim.ideaf('team', 'watch', team, 'everything')).exit).toBe(2)
+    expect((await kim.ideaf('team', 'watch', team, 'active')).out).toContain('every idea once it’s out of draft')
+    expect((await api(h('kim')).myMemberships({})).teams.find((t) => t.handle === team)?.watch).toBe('active')
+
+    // riley comments: kim hears of it through the team
+    await api(h('riley')).addComment({ idea, version: 1, anchor: { kind: 'file', file: 'f1' }, body: 'Ready?' })
+    const items = await inboxOf('kim', (i) => i.some((n) => n.idea.id === idea))
+    expect(items.find((n) => n.idea.id === idea)).toMatchObject({ reason: 'watching', latest: { kind: 'comment' } })
+    expect((await kim.ideaf('inbox', 'show', '--reason', 'watching')).out).toContain('(watching a team)')
+    expect((await kim.ideaf('inbox', 'read', idea)).out).toContain('1 idea marked read')
+    expect((await api(h('kim')).unreadNotifications({})).count).toBe(0)
+  })
 })

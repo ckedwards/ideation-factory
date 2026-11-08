@@ -39,7 +39,6 @@ export { SegmentedControl, type Segment, type SegmentedControlProps } from './co
 export { ThemeToggle, applyTheme, type Theme, type ThemeToggleProps } from './controls/ThemeToggle.tsx'
 export { SearchInput, type SearchInputProps } from './controls/SearchInput.tsx'
 export { Select, type SelectOption, type SelectProps } from './controls/Select.tsx'
-export { WatchSelect, WATCH_LEVELS, type WatchLevel, type WatchSelectProps } from './controls/WatchSelect.tsx'
 export { Combobox, type ComboboxOption, type ComboboxProps } from './controls/Combobox.tsx'
 export { TextArea, type TextAreaProps } from './controls/TextArea.tsx'
 export { TextField, type TextFieldProps } from './controls/TextField.tsx'

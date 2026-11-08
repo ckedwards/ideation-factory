@@ -9,8 +9,8 @@ export type NavPage = 'home' | 'notifications' | 'ideas' | 'teams' | 'groups' | 
 
 export interface AppNavProps {
   me: Person
-  /** Your teams, by name, linking to their pages. */
-  teams: { handle: string; name: string }[]
+  /** Your teams, by name, linking to their pages, with how much of each you hear about. */
+  teams: { handle: string; name: string; watch?: 'participating' | 'active' | 'all' }[]
   current: NavPage
   /** Ideas in your inbox with news. */
   unread?: number
@@ -46,7 +46,12 @@ export function AppNav({ me, teams, current, unread = 0, theme, onThemeChange, o
         },
         {
           title: 'Your teams',
-          items: teams.map((team) => ({ href: `/${team.handle}`, label: team.name })),
+          items: teams.map((team) => ({
+            href: `/${team.handle}`,
+            label: team.name,
+            // watching more than what you're involved in
+            ...(team.watch === 'all' ? { note: 'All' } : team.watch === 'active' ? { note: 'Active' } : {}),
+          })),
           empty: (
             <Link className="app-nav-link" href="/teams">
               Find a team to join

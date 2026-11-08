@@ -30,6 +30,7 @@ import {
   TeamRequirements,
   TokenInfo,
   User,
+  WatchLevel,
 } from './schemas.ts'
 
 const NewContainer = z.strictObject({
@@ -414,6 +415,28 @@ export const directoryOperations = {
     kind: 'read',
     input: z.strictObject({ q: z.string().max(100).optional(), cursor: Cursor, limit: Limit }),
     output: Page(Team),
+  }),
+  getTeamWatch: defineOperation({
+    name: 'get_team_watch',
+    summary: 'How much of a team you hear about',
+    description:
+      "Your watch level for a team: participating (only ideas you're involved in, the default), active (every idea once it's out of draft, up to and including its close) or all (drafts too).",
+    method: 'GET',
+    path: '/teams/{team}/watch',
+    kind: 'read',
+    input: z.strictObject({ team: Ref }),
+    output: z.object({ level: WatchLevel }),
+  }),
+  setTeamWatch: defineOperation({
+    name: 'set_team_watch',
+    summary: 'Change how much of a team you hear about',
+    description:
+      'Sets your watch level for a team. Above participating, its ideas\' updates join your inbox (as "watching"), for ideas you can see; anyone can watch a team, member or not.',
+    method: 'POST',
+    path: '/teams/{team}/watch',
+    kind: 'write',
+    input: z.strictObject({ team: Ref, level: WatchLevel }),
+    output: z.object({ level: WatchLevel }),
   }),
   updateTeam: defineOperation({
     name: 'update_team_settings',

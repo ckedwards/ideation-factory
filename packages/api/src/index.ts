@@ -37,4 +37,5 @@ export {
   LiveEvent,
   type Review,
   type Verdict,
+  type WatchLevel,
 } from './schemas.ts'

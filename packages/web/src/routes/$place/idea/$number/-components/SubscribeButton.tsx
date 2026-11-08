@@ -3,7 +3,13 @@
 // unless someone asks you to review it.
 import { Button, Tooltip } from '@ideaf/ui'
 
-export type SubscriptionReason = 'author' | 'review-requested' | 'group-review' | 'participating' | 'subscribed'
+export type SubscriptionReason =
+  | 'author'
+  | 'review-requested'
+  | 'group-review'
+  | 'participating'
+  | 'subscribed'
+  | 'watching'
 
 const WHY: Record<SubscriptionReason, string> = {
   author: 'You hear about it because you wrote it.',
@@ -11,6 +17,7 @@ const WHY: Record<SubscriptionReason, string> = {
   'group-review': 'You hear about it because a group you’re in was asked to review it.',
   participating: 'You hear about it because you took part.',
   subscribed: 'You hear about it because you subscribed.',
+  watching: 'You hear about it because you watch its team.',
 }
 
 export interface SubscribeButtonProps {

@@ -8,7 +8,7 @@ function Stateful({ value, label }: { value: WatchLevel; label?: string }) {
 }
 
 const meta = {
-  title: 'Controls/WatchSelect',
+  title: 'App/WatchSelect',
   component: Stateful,
   args: { value: 'participating' },
 } satisfies Meta<typeof Stateful>
