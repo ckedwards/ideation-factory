@@ -733,6 +733,136 @@ describe('status and reviews', () => {
   })
 })
 
+describe('pending reviews', () => {
+  const QUICK = { kind: 'text', file: 'f1', start: 5, end: 10 }
+  const maya = 'u:maya'
+
+  test('pending comments are their author’s alone until the review is submitted, then all go out at once', async () => {
+    const { service, write } = await created()
+    // the owner's comment goes out straight away
+    value(await write({ type: 'comment', version: 1, anchor: { kind: 'file', file: 'f1' }, body: 'Context' }))
+    const pending = await service.write({
+      key: 'p1',
+      caller: REVIEWER,
+      write: { type: 'comment', version: 1, anchor: QUICK, body: 'Which fox?', pending: true },
+    })
+    // no event: nobody else hears of it
+    expect(pending).toEqual({ result: { ok: true, value: { kind: 'comment', comment: 'c2' } }, events: [] })
+    value(await write({ type: 'suggest', version: 1, anchor: QUICK, new: 'slow', body: '', pending: true }, REVIEWER))
+    value(await write({ type: 'reply', parent: 'c1', body: 'Agreed', pending: true }, REVIEWER))
+    // a reply in her own pending thread is pending, asked or not
+    value(await write({ type: 'reply', parent: 'c2', body: 'Or a wolf?' }, REVIEWER))
+
+    expect((await service.comments(undefined, null)).map((t) => [t.id, t.replies.length])).toEqual([['c1', 0]])
+    const hers = await service.comments(undefined, maya)
+    expect(hers.map((t) => [t.id, t.pending, t.replies.map((r) => [r.id, r.pending])])).toEqual([
+      ['c1', false, [['c4', true]]],
+      ['c2', true, [['c5', true]]],
+      ['c3', true, []],
+    ])
+    expect((await service.reviews(maya)).pending).toBe(4)
+    expect(await service.openComments()).toBe(1)
+
+    // nobody else can reply to it, resolve it, or accept the pending suggestion
+    expect(await write({ type: 'reply', parent: 'c2', body: 'x' })).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    })
+    expect(await write({ type: 'resolve', comment: 'c2', resolved: true })).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    })
+    expect(await write({ type: 'accept', suggestions: ['c3'] })).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    })
+
+    // submitted with a verdict: published together, a thread whole and a reply to a thread already out
+    const submitted = await service.write({
+      key: 's1',
+      caller: REVIEWER,
+      write: { type: 'review', version: 1, verdict: 'request-changes', body: 'A few things' },
+    })
+    expect(submitted.result).toMatchObject({
+      ok: true,
+      value: { kind: 'review', review: { verdict: 'request-changes' }, published: ['c2', 'c3', 'c4', 'c5'] },
+    })
+    expect(submitted.events.map((e) => [e.name, e.name === 'comment' ? e.payload.thread.id : ''])).toEqual([
+      ['reply', ''],
+      ['comment', 'c2'],
+      ['comment', 'c3'],
+      ['review', ''],
+    ])
+    expect((await service.comments(undefined, null)).map((t) => t.id)).toEqual(['c1', 'c2', 'c3'])
+    expect((await service.reviews(maya)).pending).toBe(0)
+    expect(await service.openComments()).toBe(3)
+  })
+
+  test('pending comments follow new versions, and can be changed or deleted until they go out', async () => {
+    const { service, write } = await created()
+    value(await write({ type: 'comment', version: 1, anchor: QUICK, body: 'Quick?', pending: true }, REVIEWER))
+    value(
+      await write(
+        { type: 'comment', version: 1, anchor: { kind: 'file', file: 'f1' }, body: 'Too short', pending: true },
+        REVIEWER,
+      ),
+    )
+    value(await write({ type: 'reply', parent: 'c2', body: 'Much too', pending: true }, REVIEWER))
+    value(
+      await write({
+        type: 'edit',
+        batch: { base: 1, steps: [{ command: 'insert', at: { start: 'f1' }, markdown: 'Preface.' }] },
+      }),
+    )
+    // it followed its text, past the new preface
+    const [quick] = await service.comments(undefined, maya)
+    expect(quick).toMatchObject({ id: 'c1', state: 'exact', anchor: { quote: 'The q', start: 14 } })
+
+    value(await write({ type: 'amend', comment: 'c1', body: 'Why quick?' }, REVIEWER))
+    expect(await write({ type: 'amend', comment: 'c1', body: 'mine' })).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    })
+    // a thread goes with its replies
+    expect(value(await write({ type: 'drop', comment: 'c2' }, REVIEWER))).toEqual({
+      kind: 'pending',
+      comments: ['c2', 'c3'],
+    })
+    expect((await service.comments(undefined, maya)).map((t) => [t.id, t.body])).toEqual([['c1', 'Why quick?']])
+
+    // submitting without a verdict needs something pending, and the latest version
+    expect(await write({ type: 'review', version: 1 }, REVIEWER)).toMatchObject({
+      ok: false,
+      error: { code: 'stale_version' },
+    })
+    expect(await write({ type: 'review', version: 2, body: 'Summary' }, REVIEWER)).toMatchObject({
+      ok: false,
+      error: { message: 'a summary goes with a verdict: approve, request changes or reject' },
+    })
+    expect(value(await write({ type: 'review', version: 2 }, REVIEWER))).toEqual({
+      kind: 'review',
+      review: null,
+      published: ['c1'],
+    })
+    expect(await write({ type: 'review', version: 2 }, REVIEWER)).toMatchObject({
+      ok: false,
+      error: { message: 'you have no pending comments to submit, and gave no verdict' },
+    })
+    expect(await write({ type: 'amend', comment: 'c1', body: 'later' }, REVIEWER)).toMatchObject({
+      ok: false,
+      error: { code: 'invalid' },
+    })
+  })
+
+  test('discarding a review deletes every pending comment of yours', async () => {
+    const { service, write } = await created()
+    value(await write({ type: 'comment', version: 1, anchor: QUICK, body: 'a', pending: true }, REVIEWER))
+    value(await write({ type: 'comment', version: 1, anchor: QUICK, body: 'b', pending: true }))
+    expect(value(await write({ type: 'unreview' }, REVIEWER))).toEqual({ kind: 'pending', comments: ['c1'] })
+    expect((await service.comments(undefined, 'u:riley')).map((t) => t.id)).toEqual(['c2'])
+  })
+})
+
 describe('retries', () => {
   test('a write retried with the same key is applied once and returns the same result', async () => {
     const { service } = await created()

@@ -113,3 +113,7 @@
   display: grid;
   gap: var(--space-1);
 }
+.review-panel-pending {
+  margin: 0;
+  color: var(--ink-2);
+}

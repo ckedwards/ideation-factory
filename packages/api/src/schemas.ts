@@ -185,6 +185,8 @@ export const CommentBase = z.object({
   createdAt: z.number(),
   body: z.string(),
   version: z.number().int(),
+  /** Part of your review, not submitted yet: only you see it (review_idea publishes it). */
+  pending: z.boolean(),
 })
 
 /** Whether a suggestion was accepted (in which version) or rejected, by whom and when. */

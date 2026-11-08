@@ -138,3 +138,57 @@ describe("a team's approval requirements", () => {
     expect((await riley.ideaf('close', '--accepted')).exit).toBe(0)
   })
 })
+
+describe('a pending review', () => {
+  test('comments wait, seen only by their author, and go out together with the verdict', async () => {
+    await api(h('ana')).me({})
+    const riley = await repoAs('riley', { 'plan.md': '# Plan\n\nThe quick brown fox.\n\n## Risks\n\nIt might rain.\n' })
+    const { idea } = (await riley.ideaf('start', '--title', 'Pending', '--json')).json()
+    expect((await riley.ideaf('review', 'ask', h('ana'))).exit).toBe(0)
+    const ana = await repoAs('ana')
+
+    const first = await ana.ideaf(
+      'comment',
+      'add',
+      'Which fox?',
+      '--quote',
+      'quick brown fox',
+      '--idea',
+      idea,
+      '--pending',
+      '--json',
+    )
+    expect(first.exit).toBe(0)
+    expect(first.json()).toMatchObject({ pending: true })
+    const suggested = await ana.ideaf(
+      'comment',
+      'suggest',
+      'may pour',
+      '--quote',
+      'might rain',
+      '--idea',
+      idea,
+      '--pending',
+    )
+    expect(suggested.out).toContain('It waits for your review')
+    expect((await ana.ideaf('comment', 'edit', 'c1', 'Which fox, exactly?', '--idea', idea)).exit).toBe(0)
+
+    // riley sees none of it
+    expect(await api(h('riley')).listComments({ idea })).toEqual([])
+    expect((await ana.ideaf('comment', 'list', '--idea', idea)).out).toContain('pending: only you see it')
+    expect((await ana.ideaf('review', 'show', '--idea', idea)).out).toContain('You have 2 pending comments')
+
+    // one deleted; the other goes out with her verdict
+    expect((await ana.ideaf('comment', 'delete', 'c2', '--idea', idea)).out).toContain('Deleted c2.')
+    const approved = await ana.ideaf('review', 'request-changes', '--idea', idea, '-m', 'One question')
+    expect(approved.out).toContain('publishing 1 pending comment')
+    const seen = await api(h('riley')).listComments({ idea })
+    expect(seen.map((t) => [t.id, t.body, t.pending])).toEqual([['c1', 'Which fox, exactly?', false]])
+
+    // nothing left to submit; a discarded review sends nothing
+    expect((await ana.ideaf('review', 'submit', '--idea', idea)).exit).toBe(2)
+    await ana.ideaf('comment', 'add', 'Never mind', '--file', 'plan.md', '--idea', idea, '--pending')
+    expect((await ana.ideaf('review', 'discard', '--idea', idea)).out).toContain('Discarded 1 pending comment.')
+    expect((await api(h('riley')).listComments({ idea })).length).toBe(1)
+  })
+})

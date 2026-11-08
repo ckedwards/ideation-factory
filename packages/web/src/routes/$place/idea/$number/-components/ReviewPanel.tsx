@@ -64,7 +64,12 @@ export interface ReviewPanelProps {
   /** Rejects with the server's message if it can't close (a standing objection). */
   onClose: (reason: ClosedReason, note: string) => Promise<void>
   onReopen: () => void
-  onReview: (verdict: Verdict, body: string) => Promise<void>
+  /** How many comments you have pending: they go out with your review. */
+  pending?: number
+  /** Submits your review: your pending comments, with a verdict, or (null) on their own. */
+  onReview: (verdict: Verdict | null, body: string) => Promise<void>
+  /** Deletes your pending comments: the review isn't sent. */
+  onDiscard?: (() => void) | undefined
   onDismiss: (reviewer: string, reason: string) => Promise<void>
 }
 
@@ -160,7 +165,16 @@ export function ReviewPanel(props: ReviewPanelProps) {
           </p>
         )}
 
-        {props.canReview && !closed && <ReviewForm latest={props.latest} onReview={props.onReview} />}
+        {((props.canReview && !closed) || (props.pending ?? 0) > 0) && (
+          <ReviewForm
+            latest={props.latest}
+            pending={props.pending ?? 0}
+            // a verdict needs someone who may give one, on an open idea
+            verdicts={props.canReview && !closed}
+            onReview={props.onReview}
+            onDiscard={props.onDiscard}
+          />
+        )}
       </div>
     </Section>
   )
@@ -266,8 +280,25 @@ function Row({
   )
 }
 
-function ReviewForm({ latest, onReview }: { latest: number; onReview: ReviewPanelProps['onReview'] }) {
-  const [verdict, setVerdict] = useState<Verdict>('approve')
+function ReviewForm({
+  latest,
+  pending,
+  verdicts,
+  onReview,
+  onDiscard,
+}: {
+  latest: number
+  pending: number
+  verdicts: boolean
+  onReview: ReviewPanelProps['onReview']
+  onDiscard: ReviewPanelProps['onDiscard']
+}) {
+  // 'none': just your pending comments, with no verdict
+  const [verdict, setVerdict] = useState<Verdict | 'none'>(verdicts ? 'approve' : 'none')
+  const choices = [
+    ...(verdicts ? CHOICES : []),
+    ...(pending > 0 ? [{ value: 'none' as const, label: 'Just my comments' }] : []),
+  ]
   const [body, setBody] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -275,7 +306,7 @@ function ReviewForm({ latest, onReview }: { latest: number; onReview: ReviewPane
     setSending(true)
     setError(null)
     try {
-      await onReview(verdict, body.trim())
+      await onReview(verdict === 'none' ? null : verdict, verdict === 'none' ? '' : body.trim())
       setBody('')
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -292,19 +323,34 @@ function ReviewForm({ latest, onReview }: { latest: number; onReview: ReviewPane
       }}
     >
       <span className="review-panel-label">Your review of v{latest}</span>
-      <SegmentedControl label="Your verdict" options={CHOICES} value={verdict} onChange={setVerdict} />
-      <TextArea
-        rows={3}
-        value={body}
-        placeholder="A summary, if it needs one"
-        aria-label="Summary"
-        onChange={setBody}
-        onSubmit={() => void send()}
-      />
+      {pending > 0 && (
+        <p className="review-panel-pending">
+          {pending === 1 ? '1 pending comment goes' : `${pending} pending comments go`} out with it: only you see{' '}
+          {pending === 1 ? 'it' : 'them'} until then.
+        </p>
+      )}
+      {choices.length > 1 && (
+        <SegmentedControl label="Your verdict" options={choices} value={verdict} onChange={setVerdict} />
+      )}
+      {verdict !== 'none' && (
+        <TextArea
+          rows={3}
+          value={body}
+          placeholder="A summary, if it needs one"
+          aria-label="Summary"
+          onChange={setBody}
+          onSubmit={() => void send()}
+        />
+      )}
       {error && <p className="review-panel-error">{error}</p>}
       <div className="review-panel-buttons">
+        {pending > 0 && onDiscard && (
+          <Button variant="ghost" onClick={onDiscard}>
+            Discard pending comments
+          </Button>
+        )}
         <Button variant="primary" type="submit" disabled={sending}>
-          {sending ? 'Sending…' : 'Submit review'}
+          {sending ? 'Sending…' : verdict === 'none' ? 'Publish my comments' : 'Submit review'}
         </Button>
       </div>
     </form>

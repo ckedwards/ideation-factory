@@ -199,7 +199,7 @@ export const operations = {
     name: 'add_comment',
     summary: 'Comment',
     description:
-      "Comments on a file, a section (by its ID) or a range of a file's plain text (from show_blocks), on the latest version. If the idea has moved on, it's refused with stale_version: read it again.",
+      "Comments on a file, a section (by its ID) or a range of a file's plain text (from show_blocks), on the latest version. With `pending`, it's part of your review: only you see it until you submit the review with review_idea, so the author gets one review instead of a stream of comments. If the idea has moved on, it's refused with stale_version: read it again.",
     method: 'POST',
     path: '/ideas/{idea}/comments',
     kind: 'write',
@@ -208,6 +208,8 @@ export const operations = {
       version: z.number().int().positive(),
       anchor: AnchorInput,
       body: z.string().trim().min(1).max(20_000),
+      /** Part of your review: only you see it until you submit the review (review_idea). */
+      pending: z.boolean().optional(),
     }),
     output: z.object({ comment: z.string() }),
   }),
@@ -215,11 +217,18 @@ export const operations = {
   reply: defineOperation({
     name: 'reply',
     summary: 'Reply to a comment',
-    description: 'Adds a reply to a comment thread.',
+    description:
+      'Adds a reply to a comment thread. With `pending`, it waits for your review like a pending comment; a reply in your own pending thread always does.',
     method: 'POST',
     path: '/ideas/{idea}/comments/{comment}/replies',
     kind: 'write',
-    input: z.strictObject({ idea: IdeaId, comment: CommentId, body: z.string().trim().min(1).max(20_000) }),
+    input: z.strictObject({
+      idea: IdeaId,
+      comment: CommentId,
+      body: z.string().trim().min(1).max(20_000),
+      /** Part of your review: only you see it until you submit the review (review_idea). */
+      pending: z.boolean().optional(),
+    }),
     output: z.object({ comment: z.string() }),
   }),
 
@@ -255,6 +264,8 @@ export const operations = {
       new: z.string().max(1_000_000),
       /** Why, if it needs saying. */
       body: z.string().trim().max(20_000).optional(),
+      /** Part of your review: only you see it until you submit the review (review_idea). */
+      pending: z.boolean().optional(),
     }),
     output: z.object({ comment: z.string(), old: z.string() }),
   }),
@@ -386,6 +397,8 @@ export const operations = {
       history: z.array(StatusChange),
       /** The people and groups asked to review it (set_reviewer). */
       reviewers: z.array(GrantSubject),
+      /** How many comments you have pending: your review, not submitted yet. */
+      pending: z.number().int(),
       reviews: z.array(Review),
       /** Its team's approval requirements, checked: closing as accepted needs them met. */
       requirements: RequirementsCheck,
@@ -433,19 +446,54 @@ export const operations = {
 
   reviewIdea: defineOperation({
     name: 'review_idea',
-    summary: 'Review an idea',
+    summary: 'Submit your review',
     description:
-      "Gives your verdict on the latest version: approve, request changes or reject, with an optional summary. `version` is the one you read; if there's a newer one, it's refused with stale_version. Your new verdict replaces your last. Approvals count only on the latest version and only from people (a bot's shows, but never counts); a Request changes or Reject stands through later versions until you change it or it's dismissed. You can't review your own idea, or a closed one. Needs view access.",
+      "Submits your review of the latest version: your pending comments, published at once, and your verdict (approve, request changes or reject) with an optional summary. Without a verdict, it only publishes your pending comments. `version` is the one you read; if there's a newer one, it's refused with stale_version. Your new verdict replaces your last. Approvals count only on the latest version and only from people (a bot's shows, but never counts); a Request changes or Reject stands through later versions until you change it or it's dismissed. You can't give a verdict on your own idea, or a closed one. Needs view access.",
     method: 'POST',
     path: '/ideas/{idea}/reviews',
     kind: 'write',
     input: z.strictObject({
       idea: IdeaId,
       version: z.number().int().positive(),
-      verdict: Verdict,
+      verdict: Verdict.optional(),
       body: z.string().trim().max(20_000).optional(),
     }),
-    output: Review,
+    /** Your verdict as it stands, if you gave one, and the comments published. */
+    output: z.object({ review: Review.nullable(), published: z.array(z.string()) }),
+  }),
+
+  editPendingComment: defineOperation({
+    name: 'edit_pending_comment',
+    summary: 'Change a pending comment',
+    description: "Changes one of your pending comments (or replies): published ones can't be changed.",
+    method: 'POST',
+    path: '/ideas/{idea}/comments/{comment}/edit',
+    kind: 'write',
+    input: z.strictObject({ idea: IdeaId, comment: CommentId, body: z.string().trim().min(1).max(20_000) }),
+    output: z.object({ comment: z.string() }),
+  }),
+
+  deletePendingComment: defineOperation({
+    name: 'delete_pending_comment',
+    summary: 'Delete a pending comment',
+    description:
+      "Deletes one of your pending comments, with its replies, or a pending reply. Published ones can't be deleted.",
+    method: 'POST',
+    path: '/ideas/{idea}/comments/{comment}/delete',
+    kind: 'write',
+    input: z.strictObject({ idea: IdeaId, comment: CommentId }),
+    output: z.object({ deleted: z.array(z.string()) }),
+  }),
+
+  discardReview: defineOperation({
+    name: 'discard_review',
+    summary: 'Discard your pending review',
+    description: 'Deletes every comment you have pending: the review is never sent.',
+    method: 'POST',
+    path: '/ideas/{idea}/reviews/discard',
+    kind: 'write',
+    input: z.strictObject({ idea: IdeaId }),
+    output: z.object({ deleted: z.array(z.string()) }),
   }),
 
   dismissReview: defineOperation({

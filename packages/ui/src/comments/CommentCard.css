@@ -128,3 +128,6 @@
     transition: none;
   }
 }
+.comment-card.is-pending {
+  border-style: dashed;
+}

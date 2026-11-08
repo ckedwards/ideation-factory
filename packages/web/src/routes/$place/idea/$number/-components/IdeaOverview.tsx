@@ -129,7 +129,8 @@ export function IdeaOverview(props: IdeaOverviewProps) {
                           : undefined
                       }
                       onResolve={
-                        canComment && !item.comment.pending && props.onResolve
+                        // one in your pending review goes out before it can be resolved
+                        canComment && !item.comment.pending && !item.comment.info.pending && props.onResolve
                           ? (resolved) => props.onResolve?.(item.comment.info.id, resolved)
                           : undefined
                       }

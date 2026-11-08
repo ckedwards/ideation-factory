@@ -23,7 +23,16 @@ import type { Thread } from './view.ts'
 export type SocketLike = Pick<WebSocket, 'send' | 'close' | 'onopen' | 'onmessage' | 'onclose'>
 
 export interface CommentsDeps {
-  api: Pick<ApiClient, 'listComments' | 'addComment' | 'suggestEdit' | 'reply' | 'resolveComment' | 'rejectSuggestion'>
+  api: Pick<
+    ApiClient,
+    | 'listComments'
+    | 'addComment'
+    | 'suggestEdit'
+    | 'reply'
+    | 'resolveComment'
+    | 'rejectSuggestion'
+    | 'deletePendingComment'
+  >
   /** Opens a WebSocket to a path on this site. */
   open: (path: string) => SocketLike
   token: () => Promise<string>
@@ -42,6 +51,15 @@ export interface CommentsDeps {
 /** The ID for a comment or reply not yet saved: the server gives it its own. */
 export const pendingId = () => `pending-${crypto.randomUUID()}`
 
+// each idea's way to read its threads again, for writes the socket doesn't echo
+const rereads = new Map<string, () => Promise<void>>()
+
+/**
+ * Reads an idea's threads again: after writing part of a review (which only
+ * its author sees, so no event says so), or submitting one.
+ */
+export const rereadComments = (idea: string) => rereads.get(idea)?.() ?? Promise.resolve()
+
 export function commentsCollection(idea: string, deps: CommentsDeps) {
   const { api } = deps
   // what the server has said, by thread: the collection's synced rows, which
@@ -51,6 +69,7 @@ export function commentsCollection(idea: string, deps: CommentsDeps) {
   const seen = new Set<string>()
   const waiting = new Map<string, () => void>()
   let resync: () => Promise<void> = async () => {}
+  rereads.set(idea, () => resync())
 
   const saw = (key: string) => {
     seen.add(key)
@@ -100,9 +119,16 @@ export function commentsCollection(idea: string, deps: CommentsDeps) {
             saw(event.thread.id)
           } else if (event.type === 'reply') {
             const thread = synced.get(event.parent)
-            if (thread && !thread.replies.some((r) => r.id === event.reply.id)) {
+            const known = thread?.replies.find((r) => r.id === event.reply.id)
+            // new, or one of the reader's own pending replies, now published
+            if (thread && (!known || known.pending !== event.reply.pending)) {
               begin()
-              put({ ...thread, replies: [...thread.replies, event.reply] })
+              put({
+                ...thread,
+                replies: known
+                  ? thread.replies.map((r) => (r.id === event.reply.id ? event.reply : r))
+                  : [...thread.replies, event.reply],
+              })
               commit()
             }
             saw(event.reply.id)
@@ -208,8 +234,9 @@ export function commentsCollection(idea: string, deps: CommentsDeps) {
             anchor: { kind: 'text', file: anchor.file, start: anchor.start, end: anchor.end },
             new: thread.suggestion.new,
             ...(thread.body ? { body: thread.body } : {}),
+            ...(thread.pending ? { pending: true } : {}),
           })
-          await echo(comment)
+          await (thread.pending ? resync() : echo(comment))
           continue
         }
         const { comment } = await api.addComment({
@@ -222,16 +249,30 @@ export function commentsCollection(idea: string, deps: CommentsDeps) {
               : anchor?.kind === 'section'
                 ? { kind: 'section', section: anchor.section }
                 : { kind: 'file', file: anchor?.file ?? '' },
+          ...(thread.pending ? { pending: true } : {}),
         })
-        await echo(comment)
+        // a pending comment isn't echoed: only its author sees it
+        await (thread.pending ? resync() : echo(comment))
       }
+    },
+
+    onDelete: async ({ transaction }) => {
+      for (const { original } of transaction.mutations) {
+        await api.deletePendingComment({ idea, comment: original.id })
+      }
+      await resync()
     },
 
     onUpdate: async ({ transaction }) => {
       for (const { original, modified } of transaction.mutations) {
         for (const reply of modified.replies.filter((r) => !original.replies.some((o) => o.id === r.id))) {
-          const { comment } = await api.reply({ idea, comment: modified.id, body: reply.body })
-          await echo(comment)
+          const { comment } = await api.reply({
+            idea,
+            comment: modified.id,
+            body: reply.body,
+            ...(reply.pending ? { pending: true } : {}),
+          })
+          await (reply.pending ? resync() : echo(comment))
         }
         if (modified.suggestion?.decision?.kind === 'rejected' && !original.suggestion?.decision) {
           await api.rejectSuggestion({ idea, comment: modified.id })

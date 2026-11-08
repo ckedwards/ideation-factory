@@ -91,7 +91,7 @@ export async function show(ctx: Context, flags: { idea?: string; version?: strin
 
 export async function add(
   ctx: Context,
-  flags: { idea?: string; file?: string; section?: string; quote?: string; occurrence?: string },
+  flags: { idea?: string; file?: string; section?: string; quote?: string; occurrence?: string; pending?: boolean },
   body: string,
   stdin: () => Promise<string>,
 ): Promise<number> {
@@ -118,12 +118,20 @@ export async function add(
   // comments go on the latest version; if the idea moves on in between, find the anchor again
   for (let attempt = 0; ; attempt++) {
     const latest = await ctx.api.pull({ idea })
-    const { occurrence: _, ...target } = flags
+    const { occurrence: _, pending, ...target } = flags
     const anchor = anchorFor(ctx, latest.files, { ...target, ...(occurrence ? { occurrence } : {}) })
     try {
-      const { comment } = await ctx.api.addComment({ idea, version: latest.version, anchor, body: text })
-      ctx.say(`Added ${comment} on v${latest.version}.`)
-      ctx.result({ idea, comment, version: latest.version, anchor })
+      const { comment } = await ctx.api.addComment({
+        idea,
+        version: latest.version,
+        anchor,
+        body: text,
+        ...(pending ? { pending: true } : {}),
+      })
+      ctx.say(
+        `Added ${comment} on v${latest.version}.${pending ? ' It waits for your review: only you see it until `ideaf review submit` (or a verdict) sends it.' : ''}`,
+      )
+      ctx.result({ idea, comment, version: latest.version, anchor, pending: pending === true })
       return EXIT.ok
     } catch (error) {
       if (!(error instanceof ApiError && error.code === 'stale_version') || attempt >= 2) {
@@ -141,7 +149,15 @@ export async function add(
  */
 export async function suggest(
   ctx: Context,
-  flags: { idea?: string; file?: string; quote?: string; occurrence?: string; replaces?: string; message?: string },
+  flags: {
+    idea?: string
+    file?: string
+    quote?: string
+    occurrence?: string
+    replaces?: string
+    message?: string
+    pending?: boolean
+  },
   replacement: string,
   stdin: () => Promise<string>,
 ): Promise<number> {
@@ -179,11 +195,20 @@ export async function suggest(
         anchor,
         new: text,
         ...(flags.message ? { body: flags.message } : {}),
+        ...(flags.pending ? { pending: true } : {}),
       })
       ctx.say(
-        `Suggested ${made.comment} on v${latest.version}: ${JSON.stringify(truncate(old, 60))} → ${JSON.stringify(truncate(text, 60))}.`,
+        `Suggested ${made.comment} on v${latest.version}: ${JSON.stringify(truncate(old, 60))} → ${JSON.stringify(truncate(text, 60))}.${flags.pending ? ' It waits for your review: only you see it until `ideaf review submit` (or a verdict) sends it.' : ''}`,
       )
-      ctx.result({ idea, comment: made.comment, version: latest.version, anchor, old, new: text })
+      ctx.result({
+        idea,
+        comment: made.comment,
+        version: latest.version,
+        anchor,
+        old,
+        new: text,
+        pending: flags.pending === true,
+      })
       return EXIT.ok
     } catch (error) {
       if (!(error instanceof ApiError && error.code === 'stale_version') || attempt >= 2) {
@@ -320,15 +345,46 @@ function findFile(ctx: Context, files: LatestFile[], ref: string): LatestFile {
 
 export async function reply(
   ctx: Context,
+  flags: { idea?: string; pending?: boolean },
+  comment: string,
+  body: string,
+  stdin: () => Promise<string>,
+): Promise<number> {
+  const idea = await ctx.ideaId(flags.idea)
+  const replied = await ctx.api.reply({
+    idea,
+    comment,
+    body: await bodyOf(body, stdin),
+    ...(flags.pending ? { pending: true } : {}),
+  })
+  ctx.say(
+    `Replied to ${comment}.${flags.pending ? ' It waits for your review: only you see it until `ideaf review submit` (or a verdict) sends it.' : ''}`,
+  )
+  ctx.result({ idea, comment, reply: replied.comment })
+  return EXIT.ok
+}
+
+/** Changes one of your pending comments. */
+export async function editPending(
+  ctx: Context,
   flags: { idea?: string },
   comment: string,
   body: string,
   stdin: () => Promise<string>,
 ): Promise<number> {
   const idea = await ctx.ideaId(flags.idea)
-  const replied = await ctx.api.reply({ idea, comment, body: await bodyOf(body, stdin) })
-  ctx.say(`Replied to ${comment}.`)
-  ctx.result({ idea, comment, reply: replied.comment })
+  await ctx.api.editPendingComment({ idea, comment, body: await bodyOf(body, stdin) })
+  ctx.say(`Changed ${comment}.`)
+  ctx.result({ idea, comment })
+  return EXIT.ok
+}
+
+/** Deletes one of your pending comments, with its replies. */
+export async function deletePending(ctx: Context, flags: { idea?: string }, comment: string): Promise<number> {
+  const idea = await ctx.ideaId(flags.idea)
+  const { deleted } = await ctx.api.deletePendingComment({ idea, comment })
+  ctx.say(`Deleted ${deleted.join(', ')}.`)
+  ctx.result({ idea, deleted })
   return EXIT.ok
 }
 
@@ -385,6 +441,7 @@ async function threadLines(thread: Thread, view: View, names: Names, full: boole
   const text = (body: string, indent = '    ') => (full ? body.replace(/\n/g, `\n${indent}`) : truncate(body, 200))
   const decision = thread.suggestion?.decision
   const status = [
+    ...(thread.pending ? ['pending: only you see it'] : []),
     ...(thread.suggestion ? ['suggestion'] : []),
     ...(decision ? [decision.kind === 'accepted' ? `accepted in v${decision.version}` : 'rejected'] : []),
     ...(thread.suggestion?.inDraft ? ['in the draft'] : []),
@@ -403,7 +460,9 @@ async function threadLines(thread: Thread, view: View, names: Names, full: boole
     ...(thread.body ? [`    ${text(thread.body)}`] : []),
   ]
   for (const r of thread.replies) {
-    lines.push(`    ↳ ${r.id} ${await authorLabel(r.author, names)}: ${text(r.body, '      ')}`)
+    lines.push(
+      `    ↳ ${r.id} ${await authorLabel(r.author, names)}${r.pending && !thread.pending ? ' (pending)' : ''}: ${text(r.body, '      ')}`,
+    )
   }
   return lines
 }

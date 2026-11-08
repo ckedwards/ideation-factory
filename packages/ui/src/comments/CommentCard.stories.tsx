@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { markdownTree } from '@ideaf/core'
 import { expect, fn } from 'storybook/test'
+import { Button } from '../controls/Button.tsx'
 import { CommentCard, type CommentInfo } from './CommentCard.tsx'
 import { MarkdownView } from '../document/MarkdownView.tsx'
 import { actors, devon, maya, NOW, riley } from '../stories/fixtures.ts'
@@ -150,7 +151,39 @@ export const Replying: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Reply' }))
     await userEvent.type(canvas.getByRole('textbox', { name: 'Reply' }), 'Agreed')
     await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
-    await expect(args.onReply).toHaveBeenCalledWith('Agreed')
+    await expect(args.onReply).toHaveBeenCalledWith('Agreed', false)
+  },
+}
+
+// A reply can wait for your review instead of going out now
+export const ReplyingToReview: Story = {
+  args: { addToReview: true },
+  play: async ({ args, canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole('button', { name: 'Reply' }))
+    await userEvent.type(canvas.getByRole('textbox', { name: 'Reply' }), 'Later')
+    await userEvent.click(canvas.getByRole('button', { name: 'Add to review' }))
+    await expect(args.onReply).toHaveBeenCalledWith('Later', true)
+  },
+}
+
+// Part of your review, not submitted: only you see it, and replies in it wait too
+export const Pending: Story = {
+  args: {
+    comment: { ...comments.text, pending: true },
+    addToReview: true,
+    extra: (
+      <Button variant="link" size="sm">
+        Delete
+      </Button>
+    ),
+  },
+  play: async ({ args, canvas, userEvent }) => {
+    await expect(canvas.getByText('Pending')).toBeVisible()
+    await userEvent.click(canvas.getByRole('button', { name: 'Reply' }))
+    await expect(canvas.queryByRole('button', { name: 'Add to review' })).toBeNull()
+    await userEvent.type(canvas.getByRole('textbox', { name: 'Reply' }), 'And this')
+    await userEvent.click(canvas.getByRole('button', { name: 'Add reply' }))
+    await expect(args.onReply).toHaveBeenCalledWith('And this', true)
   },
 }
 

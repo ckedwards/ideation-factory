@@ -67,11 +67,12 @@ export const idea = actor({
     pull: (c, version?: number) => read(() => serviceOf(c).pull(version)),
     file: (c, version: number | undefined, file: string) => read(() => serviceOf(c).file(version, file)),
     outline: (c, version?: number) => read(() => serviceOf(c).outline(version)),
-    comments: (c, version?: number) => read(() => serviceOf(c).comments(version)),
+    /** `viewer`: whose pending comments to include (reviewerOf); nobody's otherwise. */
+    comments: (c, version?: number, viewer?: string | null) => read(() => serviceOf(c).comments(version, viewer)),
     steps: (c, version: number) => read(() => serviceOf(c).steps(version)),
     preview: (c, batch: unknown) => read(() => serviceOf(c).preview(batch)),
     draft: (c) => read(() => serviceOf(c).draft()),
-    reviews: (c) => read(() => serviceOf(c).reviews()),
+    reviews: (c, viewer?: string | null) => read(() => serviceOf(c).reviews(viewer)),
     suggestionSource: (c, file: string, start: number, end: number) =>
       read(() => serviceOf(c).suggestionSource(file, start, end)),
     /** Sends this idea's current index row to the directory, without waiting (scheduled after a write). */

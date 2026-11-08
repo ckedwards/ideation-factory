@@ -152,6 +152,32 @@ export const Closed: Story = {
   },
 }
 
+// Comments waiting in your review go out with it, or on their own
+export const WithPending: Story = {
+  args: { reviews: [approved], pending: 3, onDiscard: fn() },
+  play: async ({ args, canvasElement, userEvent }) => {
+    const page = within(canvasElement)
+    await expect(page.getByText(/3 pending comments go out with it/)).toBeVisible()
+    await userEvent.click(page.getByRole('radio', { name: 'Just my comments' }))
+    await expect(page.queryByLabelText('Summary')).toBeNull()
+    await userEvent.click(page.getByRole('button', { name: 'Publish my comments' }))
+    await expect(args.onReview).toHaveBeenCalledWith(null, '')
+    await userEvent.click(page.getByRole('button', { name: 'Discard pending comments' }))
+    await expect(args.onDiscard).toHaveBeenCalled()
+  },
+}
+
+// The owner can't give a verdict, but can publish what they have pending
+export const OwnerWithPending: Story = {
+  args: { canReview: false, reviews: [], pending: 1 },
+  play: async ({ args, canvasElement, userEvent }) => {
+    const page = within(canvasElement)
+    await expect(page.queryByRole('radio', { name: 'Approve' })).toBeNull()
+    await userEvent.click(page.getByRole('button', { name: 'Publish my comments' }))
+    await expect(args.onReview).toHaveBeenCalledWith(null, '')
+  },
+}
+
 // The owner's own idea: no review form; nobody asked yet
 export const Owner: Story = {
   args: {

@@ -38,6 +38,7 @@ import { byteLength, checkSizes, type Limits, type SizeProblem } from '../limits
 import { type Kysely, sql as raw } from 'kysely'
 import { sqliteKysely } from '../sql/kysely.ts'
 import type { Sql } from '../sql/sql.ts'
+import { reviewerOf } from './reviewer.ts'
 import { type IdeaDB, type IdeaStatus, VERDICTS, type Verdict } from './schema.ts'
 
 import { type Caller, schemas } from '@ideaf/api'
@@ -64,11 +65,15 @@ export const IdeaWrite = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('close'), reason: z.enum(['accepted', 'rejected']), note: Note.optional() }),
   /** Opens a closed idea again, in the open status it had. */
   z.strictObject({ type: z.literal('reopen'), note: Note.optional() }),
-  /** A verdict on the latest version (`version` says which the reviewer read). */
+  /**
+   * Submits your review of the latest version (`version` says which you
+   * read): your pending comments, published at once, and a verdict with an
+   * optional summary. Without a verdict, it only publishes them.
+   */
   z.strictObject({
     type: z.literal('review'),
     version: z.number().int().positive(),
-    verdict: z.enum(VERDICTS),
+    verdict: z.enum(VERDICTS).optional(),
     body: z.string().trim().max(20_000).optional(),
   }),
   /** Dismisses a reviewer's standing Request changes or Reject. */
@@ -83,6 +88,8 @@ export const IdeaWrite = z.discriminatedUnion('type', [
       z.strictObject({ kind: z.literal('text'), file: z.string(), start: z.number().int(), end: z.number().int() }),
     ]),
     body: z.string().trim().min(1).max(20_000),
+    /** Part of your review: only you see it until you submit the review. */
+    pending: z.boolean().optional(),
   }),
   z.strictObject({
     type: z.literal('suggest'),
@@ -98,6 +105,7 @@ export const IdeaWrite = z.discriminatedUnion('type', [
     new: z.string().max(1_000_000),
     /** Why, if anything: a suggestion can speak for itself. */
     body: z.string().trim().max(20_000),
+    pending: z.boolean().optional(),
   }),
   /** Accepts suggestions as one version, or into the draft; those that no longer apply are skipped. */
   z.strictObject({
@@ -114,7 +122,19 @@ export const IdeaWrite = z.discriminatedUnion('type', [
   /** Commits the draft as one version. */
   z.strictObject({ type: z.literal('commit') }),
   z.strictObject({ type: z.literal('reject'), suggestion: z.string() }),
-  z.strictObject({ type: z.literal('reply'), parent: z.string(), body: z.string().trim().min(1).max(20_000) }),
+  z.strictObject({
+    type: z.literal('reply'),
+    parent: z.string(),
+    body: z.string().trim().min(1).max(20_000),
+    /** Part of your review (a reply in your own pending thread always is). */
+    pending: z.boolean().optional(),
+  }),
+  /** Changes one of your pending comments. */
+  z.strictObject({ type: z.literal('amend'), comment: z.string(), body: z.string().trim().min(1).max(20_000) }),
+  /** Deletes one of your pending comments, with its pending replies. */
+  z.strictObject({ type: z.literal('drop'), comment: z.string() }),
+  /** Deletes every pending comment of yours: the review isn't sent. */
+  z.strictObject({ type: z.literal('unreview') }),
   z.strictObject({ type: z.literal('resolve'), comment: z.string(), resolved: z.boolean() }),
   /** `outdateDraft`: make the version even though it makes changes in the draft outdated. */
   z.strictObject({ type: z.literal('edit'), batch: Batch, outdateDraft: z.boolean().optional() }),
@@ -166,7 +186,10 @@ export type WriteValue =
   | { kind: 'drafted'; accepted: string[]; skipped: Skipped[] }
   | { kind: 'resolved'; comment: string; resolved: boolean }
   | { kind: 'status'; status: IdeaStatus; from: IdeaStatus }
-  | { kind: 'review'; review: ReviewShape }
+  /** A review submitted (its verdict, if it had one, and the pending comments it published), or a verdict dismissed. */
+  | { kind: 'review'; review: ReviewShape | null; published: string[] }
+  /** Pending comments changed or deleted. */
+  | { kind: 'pending'; comments: string[] }
   | {
       kind: 'version'
       version: number
@@ -180,7 +203,15 @@ export type WriteValue =
 export type WriteResult = { ok: true; value: WriteValue } | { ok: false; error: WriteError }
 
 /** A comment as list_comments shows it: its thread, or one reply. */
-export type CommentShape = { id: string; author: Caller; createdAt: number; body: string; version: number }
+export type CommentShape = {
+  id: string
+  author: Caller
+  createdAt: number
+  body: string
+  version: number
+  /** Part of its author's review, not submitted yet: only they see it. */
+  pending: boolean
+}
 /** Whether a suggestion was accepted (in which version) or rejected, by whom and when. */
 export type Decision = { kind: 'accepted' | 'rejected'; by: Caller; at: number; version: number | null }
 /** A change of the idea's status, with who made it and why. */
@@ -333,6 +364,12 @@ export class IdeaService {
           return await this.#review(request, write)
         case 'dismiss':
           return await this.#dismiss(request, write)
+        case 'amend':
+          return await this.#amend(request, write)
+        case 'drop':
+          return await this.#drop(request, [write.comment])
+        case 'unreview':
+          return await this.#drop(request, null)
         case 'comment':
         case 'suggest':
           return await this.#comment(request, write)
@@ -492,6 +529,17 @@ export class IdeaService {
   async #review(request: WriteRequest, write: Extract<IdeaWrite, { type: 'review' }>) {
     const meta = await this.#requireMeta()
     const { caller } = request
+    const reviewer = reviewerOf(caller)
+    const pending = await this.#db
+      .selectFrom('comments')
+      .select(['id', 'parent'])
+      .where('pending', '=', reviewer)
+      .orderBy('created_at')
+      .orderBy('id')
+      .execute()
+    if (!write.verdict) {
+      return this.#publish(request, meta, pending, write)
+    }
     if (caller.purpose !== 'bot' && caller.user === meta.owner) {
       refuse(
         'invalid',
@@ -504,15 +552,15 @@ export class IdeaService {
     if (write.version !== meta.latest) {
       refuse('stale_version', `v${meta.latest} is the latest version; read it, then review it`, { latest: meta.latest })
     }
-    const reviewer = reviewerOf(caller)
     const at = this.#now()
     await this.#transaction(async (tx) => {
+      await tx.updateTable('comments').set({ pending: null }).where('pending', '=', reviewer).execute()
       await tx
         .insertInto('reviews')
         .values({
           reviewer,
           by: JSON.stringify(caller),
-          verdict: write.verdict,
+          verdict: write.verdict!,
           version: write.version,
           body: write.body ?? '',
           at,
@@ -521,9 +569,125 @@ export class IdeaService {
         .execute()
     })
     const review = (await this.#latestReviews(meta)).find((r) => r.reviewer === reviewer)!
-    const result: WriteResult = { ok: true, value: { kind: 'review', review } }
+    const published = pending.map((p) => p.id)
+    const result: WriteResult = { ok: true, value: { kind: 'review', review, published } }
     await this.#remember(this.#db, request.key, result)
-    return { result, events: [{ name: 'review', payload: { review, by: caller } }] satisfies IdeaEvent[] }
+    return {
+      result,
+      events: [
+        ...(await this.#publishedEvents(pending, caller)),
+        { name: 'review', payload: { review, by: caller } },
+      ] satisfies IdeaEvent[],
+    }
+  }
+
+  /** Submits a review without a verdict: its pending comments, published. */
+  async #publish(
+    request: WriteRequest,
+    meta: Meta,
+    pending: Array<{ id: string; parent: string | null }>,
+    write: Extract<IdeaWrite, { type: 'review' }>,
+  ) {
+    if (write.body) {
+      refuse('invalid', 'a summary goes with a verdict: approve, request changes or reject')
+    }
+    if (pending.length === 0) {
+      refuse('invalid', 'you have no pending comments to submit, and gave no verdict')
+    }
+    if (write.version !== meta.latest) {
+      refuse('stale_version', `v${meta.latest} is the latest version; read it, then submit your review`, {
+        latest: meta.latest,
+      })
+    }
+    const reviewer = reviewerOf(request.caller)
+    const published = pending.map((p) => p.id)
+    const result: WriteResult = { ok: true, value: { kind: 'review', review: null, published } }
+    await this.#transaction(async (tx) => {
+      await tx.updateTable('comments').set({ pending: null }).where('pending', '=', reviewer).execute()
+      await this.#remember(tx, request.key, result)
+    })
+    return { result, events: await this.#publishedEvents(pending, request.caller) }
+  }
+
+  /** What everyone viewing sees of comments just published: new threads whole, and replies to threads already out. */
+  async #publishedEvents(pending: Array<{ id: string; parent: string | null }>, by: Caller): Promise<IdeaEvent[]> {
+    if (pending.length === 0) {
+      return []
+    }
+    const ids = new Set(pending.map((p) => p.id))
+    const threads = await this.comments(undefined, null)
+    const events: IdeaEvent[] = []
+    for (const thread of threads) {
+      if (ids.has(thread.id)) {
+        events.push({ name: 'comment', payload: { thread, by } })
+        continue
+      }
+      for (const reply of thread.replies) {
+        if (ids.has(reply.id)) {
+          events.push({ name: 'reply', payload: { parent: thread.id, reply, by } })
+        }
+      }
+    }
+    return events
+  }
+
+  /** One of the caller's pending comments, or a refusal: someone else's is as good as not there. */
+  async #ownPending(id: string, caller: Caller) {
+    const row = await this.#db
+      .selectFrom('comments')
+      .select(['id', 'parent', 'pending'])
+      .where('id', '=', id)
+      .executeTakeFirst()
+    if (!row || (row.pending !== null && row.pending !== reviewerOf(caller))) {
+      refuse('not_found', `no comment ${id}`)
+    }
+    if (row!.pending === null) {
+      refuse('invalid', `${id} is published: only pending comments can be changed or deleted`)
+    }
+    return row!
+  }
+
+  async #amend(request: WriteRequest, write: Extract<IdeaWrite, { type: 'amend' }>) {
+    await this.#requireMeta()
+    await this.#ownPending(write.comment, request.caller)
+    const result: WriteResult = { ok: true, value: { kind: 'pending', comments: [write.comment] } }
+    await this.#transaction(async (tx) => {
+      await tx.updateTable('comments').set({ body: write.body }).where('id', '=', write.comment).execute()
+      await this.#remember(tx, request.key, result)
+    })
+    return { result, events: [] }
+  }
+
+  /** Deletes pending comments of the caller's (with their replies): these, or all of them. */
+  async #drop(request: WriteRequest, ids: string[] | null) {
+    await this.#requireMeta()
+    const reviewer = reviewerOf(request.caller)
+    if (ids) {
+      for (const id of ids) {
+        await this.#ownPending(id, request.caller)
+      }
+    }
+    const rows = await this.#db
+      .selectFrom('comments')
+      .select(['id', 'parent'])
+      .where('pending', '=', reviewer)
+      .execute()
+    const chosen = ids ? new Set(ids) : new Set(rows.map((r) => r.id))
+    // a pending thread goes with its replies
+    const gone = rows.filter((r) => chosen.has(r.id) || (r.parent !== null && chosen.has(r.parent))).map((r) => r.id)
+    const result: WriteResult = { ok: true, value: { kind: 'pending', comments: gone } }
+    await this.#transaction(async (tx) => {
+      if (gone.length > 0) {
+        await tx.deleteFrom('anchors').where('comment', 'in', gone).execute()
+        await tx.deleteFrom('comments').where('id', 'in', gone).execute()
+      }
+      await this.#remember(tx, request.key, result)
+    })
+    if (this.#latest) {
+      const dropped = new Set(gone)
+      this.#latest.comments = this.#latest.comments.filter((c) => !dropped.has(c.id))
+    }
+    return { result, events: [] }
   }
 
   async #dismiss(request: WriteRequest, write: Extract<IdeaWrite, { type: 'dismiss' }>) {
@@ -551,7 +715,7 @@ export class IdeaService {
       .where('seq', '=', row!.seq)
       .execute()
     const review = (await this.#latestReviews(meta)).find((r) => r.reviewer === write.reviewer)!
-    const result: WriteResult = { ok: true, value: { kind: 'review', review } }
+    const result: WriteResult = { ok: true, value: { kind: 'review', review, published: [] } }
     await this.#remember(this.#db, request.key, result)
     return { result, events: [{ name: 'review', payload: { review, by: request.caller } }] satisfies IdeaEvent[] }
   }
@@ -611,6 +775,7 @@ export class IdeaService {
     }
     const id = `c${meta.next_comment}`
     const at = this.#now()
+    const pending = write.pending ? reviewerOf(request.caller) : null
     const result: WriteResult = {
       ok: true,
       value: suggestion ? { kind: 'suggestion', comment: id, old: suggestion.old } : { kind: 'comment', comment: id },
@@ -628,6 +793,7 @@ export class IdeaService {
           resolved: 0,
           suggestion: suggestion ? JSON.stringify({ old: suggestion.old, new: suggestion.new }) : null,
           decision: null,
+          pending,
         })
         .execute()
       await tx
@@ -641,6 +807,10 @@ export class IdeaService {
       await this.#remember(tx, request.key, result)
     })
     latest.comments.push({ id, anchor })
+    if (pending) {
+      // only its author sees it, until the review is submitted
+      return { result, events: [] }
+    }
     return {
       result,
       events: [
@@ -659,6 +829,7 @@ export class IdeaService {
               lastVersion: meta.latest,
               addressedIn: [],
               suggestion,
+              pending: false,
               replies: [],
             },
             by: request.caller,
@@ -670,7 +841,10 @@ export class IdeaService {
 
   async #reply(request: WriteRequest, write: Extract<IdeaWrite, { type: 'reply' }>) {
     const meta = await this.#requireMeta()
-    const parent = await this.#rootComment(write.parent)
+    const parent = await this.#rootComment(write.parent, request.caller)
+    const thread = await this.#db.selectFrom('comments').select('pending').where('id', '=', parent).executeTakeFirst()
+    // a reply in your own pending thread is pending too: the thread isn't out yet
+    const pending = write.pending || thread?.pending ? reviewerOf(request.caller) : null
     const id = `c${meta.next_comment}`
     const at = this.#now()
     const result: WriteResult = { ok: true, value: { kind: 'comment', comment: id } }
@@ -687,6 +861,7 @@ export class IdeaService {
           resolved: 0,
           suggestion: null,
           decision: null,
+          pending,
         })
         .execute()
       await tx
@@ -695,6 +870,9 @@ export class IdeaService {
         .execute()
       await this.#remember(tx, request.key, result)
     })
+    if (pending) {
+      return { result, events: [] }
+    }
     return {
       result,
       events: [
@@ -702,7 +880,14 @@ export class IdeaService {
           name: 'reply',
           payload: {
             parent,
-            reply: { id, author: request.caller, createdAt: at, body: write.body, version: meta.latest },
+            reply: {
+              id,
+              author: request.caller,
+              createdAt: at,
+              body: write.body,
+              version: meta.latest,
+              pending: false,
+            },
             by: request.caller,
           },
         },
@@ -712,7 +897,11 @@ export class IdeaService {
 
   async #resolve(request: WriteRequest, write: Extract<IdeaWrite, { type: 'resolve' }>) {
     await this.#requireMeta()
-    const id = await this.#rootComment(write.comment)
+    const id = await this.#rootComment(write.comment, request.caller)
+    const row = await this.#db.selectFrom('comments').select('pending').where('id', '=', id).executeTakeFirst()
+    if (row?.pending) {
+      refuse('invalid', `${id} is pending: submit your review first`)
+    }
     const result: WriteResult = { ok: true, value: { kind: 'resolved', comment: id, resolved: write.resolved } }
     await this.#transaction(async (tx) => {
       await tx
@@ -824,6 +1013,8 @@ export class IdeaService {
       .selectFrom('comments')
       .select(['id', 'parent', 'suggestion', 'decision'])
       .where('id', 'in', ids)
+      // pending ones aren't out yet
+      .where('pending', 'is', null)
       .execute()
     const byId = new Map(rows.map((r) => [r.id, r]))
     return ids.map((id) => {
@@ -1250,6 +1441,7 @@ export class IdeaService {
       .select((eb) => eb.fn.countAll<number>().as('n'))
       .where('parent', 'is', null)
       .where('resolved', '=', 0)
+      .where('pending', 'is', null)
       .executeTakeFirst()
     return Number(row?.n ?? 0)
   }
@@ -1291,8 +1483,8 @@ export class IdeaService {
     }
   }
 
-  /** The idea's status and its history, and each reviewer's latest verdict. */
-  async reviews() {
+  /** The idea's status and its history, each reviewer's latest verdict, and how many comments `viewer` has pending. */
+  async reviews(viewer?: string | null) {
     const meta = await this.#requireMeta()
     const history = await this.#db.selectFrom('status_changes').selectAll().orderBy('seq').execute()
     return {
@@ -1307,6 +1499,17 @@ export class IdeaService {
       reviews: await this.#latestReviews(meta),
       /** Comment threads not resolved, for the "all discussions resolved" requirement. */
       openThreads: await this.openComments(),
+      pending: viewer
+        ? Number(
+            (
+              await this.#db
+                .selectFrom('comments')
+                .select((eb) => eb.fn.countAll<number>().as('n'))
+                .where('pending', '=', viewer)
+                .executeTakeFirst()
+            )?.n ?? 0,
+          )
+        : 0,
     }
   }
 
@@ -1363,12 +1566,27 @@ export class IdeaService {
    * version where it was still attached (for "View in v3"), and the versions
    * whose steps addressed it.
    */
-  async comments(version?: number) {
+  async comments(version?: number, viewer?: string | null) {
     const v = await this.#versionNumber(version)
     const rows = await this.#db
       .selectFrom('comments')
-      .select(['id', 'parent', 'version', 'author', 'created_at', 'body', 'resolved', 'suggestion', 'decision'])
+      .select([
+        'id',
+        'parent',
+        'version',
+        'author',
+        'created_at',
+        'body',
+        'resolved',
+        'suggestion',
+        'decision',
+        'pending',
+      ])
       .where('version', '<=', v)
+      // a pending comment is its author's alone
+      .where((eb) =>
+        viewer ? eb.or([eb('pending', 'is', null), eb('pending', '=', viewer)]) : eb('pending', 'is', null),
+      )
       .orderBy('created_at')
       .orderBy('id')
       .execute()
@@ -1414,6 +1632,7 @@ export class IdeaService {
       createdAt: r.created_at,
       body: r.body,
       version: r.version,
+      pending: r.pending !== null,
     })
     return rows
       .filter((r) => !r.parent)
@@ -1442,6 +1661,9 @@ export class IdeaService {
     const latest = await this.#loadLatest()
     const entries = await this.#draftEntries()
     const built = await this.#buildDraft(latest, entries)
+    const pending = new Set(
+      (await this.#db.selectFrom('comments').select('id').where('pending', 'is not', null).execute()).map((r) => r.id),
+    )
     return {
       version: latest.version,
       changes: entries.map((e) => ({
@@ -1452,7 +1674,8 @@ export class IdeaService {
         problem: built.problems[e.key] ?? null,
       })),
       files: built.files.map((f) => ({ file: f.id, path: f.path, content: f.source, units: f.units })),
-      comments: built.comments,
+      // pending comments are their authors' alone
+      comments: built.comments.filter((c) => !pending.has(c.id)),
       steps: built.commands.length,
     }
   }
@@ -1526,9 +1749,14 @@ export class IdeaService {
     return meta!
   }
 
-  async #rootComment(id: string): Promise<string> {
-    const row = await this.#db.selectFrom('comments').select(['id', 'parent']).where('id', '=', id).executeTakeFirst()
-    if (!row) {
+  /** A comment's thread: its own ID, or its parent's. Someone else's pending comment isn't there. */
+  async #rootComment(id: string, caller: Caller): Promise<string> {
+    const row = await this.#db
+      .selectFrom('comments')
+      .select(['id', 'parent', 'pending'])
+      .where('id', '=', id)
+      .executeTakeFirst()
+    if (!row || (row.pending !== null && row.pending !== reviewerOf(caller))) {
       refuse('not_found', `no comment ${id}`)
     }
     return row!.parent ?? row!.id
@@ -1715,10 +1943,7 @@ export class IdeaService {
 const closed = (status: IdeaStatus) => status === 'closed-accepted' || status === 'closed-rejected'
 const words = (status: IdeaStatus) => status.replace(/-/g, ' ')
 
-/** The account a verdict is from: a person, or a bot (each bot apart from the person it acts for). */
-export function reviewerOf(caller: Caller): string {
-  return caller.purpose === 'me' ? `u:${caller.user}` : `b:${caller.user}:${caller.bot ?? ''}`
-}
+export { reviewerOf }
 
 /**
  * A suggestion as of a version: one accepted after it shows as still open

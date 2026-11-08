@@ -70,17 +70,22 @@ export interface IdeaPageProps {
   canComment: boolean
   /** Accepting and rejecting suggestions: for people with edit access, on the latest version. */
   canDecide?: boolean
-  onComment?: (selection: TextSelection, body: string) => void
+  /** Offer "Add to review": comments, suggestions and replies kept pending until the review is submitted. */
+  addToReview?: boolean
+  /** `pending`: added to the review rather than sent now. */
+  onComment?: (selection: TextSelection, body: string, pending: boolean) => void
   /** What a suggestion on a selection replaces (whole formatting), or null where there can't be one. */
   suggestionOf?: (selection: TextSelection) => string | null
-  onSuggest?: (selection: TextSelection, replacement: string, body: string) => void
+  onSuggest?: (selection: TextSelection, replacement: string, body: string, pending: boolean) => void
   /** Accepts suggestions as one new version. */
   onAccept?: (suggestions: string[]) => void
   /** Accepts suggestions into the idea's draft. */
   onAddToDraft?: (suggestions: string[]) => void
   onReject?: (suggestion: string) => void
-  onSectionComment?: (heading: number, body: string) => void
-  onReply?: (comment: string, body: string) => void
+  onSectionComment?: (heading: number, body: string, pending: boolean) => void
+  onReply?: (comment: string, body: string, pending: boolean) => void
+  /** Deletes one of your pending comments. */
+  onDelete?: (comment: string) => void
   onResolve?: (comment: string, resolved: boolean) => void
   /** An outdated comment's "View in v3". */
   onViewInVersion?: (version: number) => void
@@ -120,14 +125,25 @@ export function IdeaPage(props: IdeaPageProps) {
       showTarget={showTarget}
       onSelect={() => setActive(comment.info.id)}
       onReply={
-        canComment && !comment.pending && props.onReply ? (body) => props.onReply?.(comment.info.id, body) : undefined
+        canComment && !comment.pending && props.onReply
+          ? (body, pending) => props.onReply?.(comment.info.id, body, pending)
+          : undefined
       }
+      addToReview={props.addToReview ?? false}
       onResolve={
-        canComment && !comment.pending && props.onResolve
+        // a comment in your review goes out before it can be resolved
+        canComment && !comment.pending && !comment.info.pending && props.onResolve
           ? (resolved) => props.onResolve?.(comment.info.id, resolved)
           : undefined
       }
-      canDecide={canDecide && !comment.pending}
+      canDecide={canDecide && !comment.pending && !comment.info.pending}
+      extra={
+        comment.info.pending && !comment.pending && props.onDelete ? (
+          <Button variant="link" size="sm" onClick={() => props.onDelete?.(comment.info.id)}>
+            Delete
+          </Button>
+        ) : undefined
+      }
       onAccept={props.onAccept ? () => props.onAccept?.([comment.info.id]) : undefined}
       onAddToDraft={props.onAddToDraft ? () => props.onAddToDraft?.([comment.info.id]) : undefined}
       onReject={props.onReject ? () => props.onReject?.(comment.info.id) : undefined}
@@ -269,11 +285,15 @@ export function IdeaPage(props: IdeaPageProps) {
             documentRef={document}
             source={source}
             enabled={canComment && !base && !props.editing}
+            addToReview={props.addToReview ?? false}
             {...(props.onComment ? { onComment: props.onComment } : {})}
             {...(props.onSuggest ? { onSuggest: props.onSuggest } : {})}
             {...(props.suggestionOf ? { suggestionOf: props.suggestionOf } : {})}
             {...(props.onSectionComment
-              ? { onSectionComment: (section, body) => props.onSectionComment?.(section.heading, body) }
+              ? {
+                  onSectionComment: (section, body, pending) =>
+                    props.onSectionComment?.(section.heading, body, pending),
+                }
               : {})}
           />
         </div>

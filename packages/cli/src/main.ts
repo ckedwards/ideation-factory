@@ -247,6 +247,7 @@ const comment: Family = {
         occurrence: { type: 'string', description: 'which match of --quote, from 1' },
         section: { type: 'string', description: 'the section it’s on, by its heading’s ID' },
         file: { type: 'string', description: 'the file it’s on (ID or path), or where to look for --quote' },
+        pending: { type: 'boolean', description: 'part of your review: only you see it until you submit the review' },
       },
       run: (ctx, f, a) =>
         comments.add(
@@ -257,6 +258,7 @@ const comment: Family = {
             ...(str(f, 'occurrence') ? { occurrence: str(f, 'occurrence')! } : {}),
             ...(str(f, 'section') ? { section: str(f, 'section')! } : {}),
             ...(str(f, 'file') ? { file: str(f, 'file')! } : {}),
+            ...(f.pending === true ? { pending: true } : {}),
           },
           containers.need(a, ['body'], 'ideaf comment add <body> --quote <text>')[0]!,
           stdin,
@@ -264,13 +266,44 @@ const comment: Family = {
     },
     {
       name: 'reply',
-      usage: 'ideaf comment reply <comment> <body | ->',
+      usage: 'ideaf comment reply <comment> <body | -> [--pending]',
       summary: 'Reply to a thread. "-" reads the body from stdin',
-      flags: { idea: IDEA },
+      flags: {
+        idea: IDEA,
+        pending: { type: 'boolean', description: 'part of your review: only you see it until you submit the review' },
+      },
       run: (ctx, f, a) => {
         const [id, body] = containers.need(a, ['comment', 'body'], 'ideaf comment reply <comment> <body>')
-        return comments.reply(ctx, str(f, 'idea') ? { idea: str(f, 'idea')! } : {}, id!, body!, stdin)
+        return comments.reply(
+          ctx,
+          { ...(str(f, 'idea') ? { idea: str(f, 'idea')! } : {}), ...(f.pending === true ? { pending: true } : {}) },
+          id!,
+          body!,
+          stdin,
+        )
       },
+    },
+    {
+      name: 'edit',
+      usage: 'ideaf comment edit <comment> <body | ->',
+      summary: 'Change one of your pending comments (published ones can’t be changed). "-" reads the body from stdin',
+      flags: { idea: IDEA },
+      run: (ctx, f, a) => {
+        const [id, body] = containers.need(a, ['comment', 'body'], 'ideaf comment edit <comment> <body>')
+        return comments.editPending(ctx, str(f, 'idea') ? { idea: str(f, 'idea')! } : {}, id!, body!, stdin)
+      },
+    },
+    {
+      name: 'delete',
+      usage: 'ideaf comment delete <comment>',
+      summary: 'Delete one of your pending comments, with its replies (published ones can’t be deleted)',
+      flags: { idea: IDEA },
+      run: (ctx, f, a) =>
+        comments.deletePending(
+          ctx,
+          str(f, 'idea') ? { idea: str(f, 'idea')! } : {},
+          containers.need(a, ['comment'], 'ideaf comment delete <comment>')[0]!,
+        ),
     },
     {
       name: 'suggest',
@@ -291,6 +324,7 @@ const comment: Family = {
             'the quote’s Markdown source, when it has formatting the quote doesn’t show: confirms the replacement is for that',
         },
         message: { type: 'string', short: 'm', description: 'why, if it needs saying' },
+        pending: { type: 'boolean', description: 'part of your review: only you see it until you submit the review' },
       },
       run: (ctx, f, a) =>
         comments.suggest(
@@ -302,6 +336,7 @@ const comment: Family = {
             ...(str(f, 'file') ? { file: str(f, 'file')! } : {}),
             ...(str(f, 'replaces') !== undefined ? { replaces: str(f, 'replaces')! } : {}),
             ...(str(f, 'message') ? { message: str(f, 'message')! } : {}),
+            ...(f.pending === true ? { pending: true } : {}),
           },
           containers.need(a, ['replacement'], 'ideaf comment suggest <replacement> --quote <text>')[0]!,
           stdin,
@@ -425,6 +460,21 @@ const reviewFamily: Family = {
       'Ask for changes: it stands through new versions, and stops it closing as accepted, until you change it or it’s dismissed',
     ),
     verdictCommand('reject', 'reject', 'Reject it: stops it closing as accepted, like requesting changes'),
+    {
+      name: 'submit',
+      usage: 'ideaf review submit',
+      summary:
+        'Publish your pending comments (added with --pending) without a verdict; approve, request-changes and reject publish them too',
+      flags: { idea: IDEA },
+      run: (ctx, f) => reviews.submit(ctx, ideaFlags(f)),
+    },
+    {
+      name: 'discard',
+      usage: 'ideaf review discard',
+      summary: 'Delete every comment you have pending: the review is never sent',
+      flags: { idea: IDEA },
+      run: (ctx, f) => reviews.discard(ctx, ideaFlags(f)),
+    },
     {
       name: 'dismiss',
       usage: 'ideaf review dismiss <reviewer> -m <reason>',
