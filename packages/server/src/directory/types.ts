@@ -368,8 +368,8 @@ export interface Directory {
    */
   requestRuleGroups(idea: string): Promise<string[]>
   // the inbox: what people hear about the ideas they're involved in
-  /** Writes an idea's events to the inboxes of those who hear about it (from the idea actor, through the queue). */
-  notify(batch: NotifyBatch): Promise<void>
+  /** Writes ideas' events to the inboxes of those who hear about them (from the idea actors, through the queue): a queue's worth at once. */
+  notify(batch: NotifyBatch | NotifyBatch[]): Promise<void>
   /** A person's inbox (or Done list): one row per idea they can still see, newest first. */
   inbox(user: string, filter?: InboxFilter, token?: string | null): Promise<Page<InboxRow>>
   /** How many ideas in the inbox have something new. */
@@ -419,8 +419,8 @@ export interface Directory {
   canCreateIdea(actor: string, team: string | null, token?: string | null): Promise<Result<null>>
   /** Indexes a new idea, numbers it in its place, and gives it its team's default access. Safe to repeat. */
   registerIdea(row: Omit<IdeaRow, 'number' | 'openComments'>): Promise<void>
-  /** Updates an idea's index row (its team and owner don't change here). */
-  updateIdea(row: IndexUpdate): Promise<void>
+  /** Updates ideas' index rows (their team and owner don't change here): a queue's worth at once. */
+  updateIdea(row: IndexUpdate | IndexUpdate[]): Promise<void>
   idea(id: string): Promise<IdeaRow | null>
   /** Where an idea is now. */
   placeOf(id: string): Promise<IdeaPlace | null>
