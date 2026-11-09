@@ -21,9 +21,21 @@ jobs:
         run: bun run typecheck
       - name: Lint and format
         run: bun run lint
+      # an S3-compatible store for the S3 file store's contract tests: SeaweedFS,
+      # as the deployments ship it, with no credentials configured (it takes any)
+      - name: Start SeaweedFS
+        run: |
+          docker run -d --name seaweedfs -p 8333:8333 chrislusf/seaweedfs:4.51 server -s3 -dir=/data
+          for i in $(seq 1 60); do curl -s -o /dev/null http://localhost:8333 && break; sleep 1; done
+          curl -sf -X PUT http://localhost:8333/ideaf-test
       # bun run test starts a fresh test engine and stops it afterwards
       - name: Test
         run: bun run test
+        env:
+          IDEAF_TEST_S3_ENDPOINT: http://localhost:8333
+          IDEAF_TEST_S3_BUCKET: ideaf-test
+          IDEAF_TEST_S3_ACCESS_KEY_ID: test
+          IDEAF_TEST_S3_SECRET_ACCESS_KEY: test-secret
 
   # Whether each package's stories could have changed: the package and those
   # it builds from (ui's: ui and core, whose Markdown the stories render; web's:

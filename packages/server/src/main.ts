@@ -1,7 +1,10 @@
 // @ideaf/server: one app node. Hosts the actors (RivetKit) and serves the HTTP
 // API in front of them. In development RivetKit starts a local Rivet Engine
-// itself, storing data under RIVETKIT_STORAGE_PATH; file contents go under
-// IDEAF_DATA/files (the dev script sets both to .data/ at the repo root).
+// itself, storing data under RIVETKIT_STORAGE_PATH, and file contents go under
+// IDEAF_DATA/files (the dev script sets both to .data/ at the repo root). A
+// deployment runs the engine on its own and names it in RIVET_ENDPOINT
+// (http://default:<admin token>@engine:6420), with files in a bucket
+// (files/settings.ts).
 import { join } from 'node:path'
 import { createClient } from 'rivetkit/client'
 import { DIRECTORY_KEY } from './actors/directory.ts'
@@ -10,7 +13,7 @@ import { authGateway } from './auth/gateway.ts'
 import { authSettingsFromEnv, mailerFromEnv } from './auth/settings.ts'
 import { WorkerPool } from './core-pool/pool.ts'
 import { configureNode } from './deps.ts'
-import { LocalFolderFileStore } from './files/local-folder.ts'
+import { fileStoreFromEnv } from './files/settings.ts'
 import { limitsFromEnv } from './limits.ts'
 import { notificationEmailFromEnv } from './mail/sender.ts'
 import { createLive, type LiveData } from './live.ts'
@@ -23,19 +26,24 @@ const data = process.env.IDEAF_DATA ?? '.data'
 const core = new WorkerPool()
 const auth = authSettingsFromEnv(process.env, mailerFromEnv(process.env))
 configureNode({
-  files: new LocalFolderFileStore(join(data, 'files')),
+  files: fileStoreFromEnv(process.env, data),
   core,
   limits: limitsFromEnv(process.env),
   auth,
   email: notificationEmailFromEnv(process.env),
 })
 
+// A new engine admits its storage only after about a minute (it must outlast
+// its topology lease), and RivetKit stops waiting before then and exits the
+// process (status 1). Run the app under a supervisor that starts it again
+// (Compose's restart policy, systemd's Restart=); the next start finds it ready.
 await registry.startAndWait()
-const { endpoint } = registry.parseConfig()
+// the engine's address, and its namespace and token (taken out of RIVET_ENDPOINT's URL, when it has them)
+const { endpoint, namespace, token } = registry.parseConfig()
 if (!endpoint) {
   throw new Error('RivetKit has no engine endpoint; set RIVET_ENDPOINT or run in development')
 }
-const actors = createClient<Registry>(endpoint)
+const actors = createClient<Registry>({ endpoint, namespace, ...(token ? { token } : {}) })
 
 // the web app: Vite's dev server while working on it (bun run dev sets
 // IDEAF_WEB_DEV_URL), or the built app, from IDEAF_WEB_DIR or the web package
