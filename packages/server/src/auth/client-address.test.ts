@@ -60,6 +60,27 @@ describe('a proxy nobody listed', () => {
   })
 })
 
+test('the gateway’s own signing-key fetch comes from this machine, behind trusted proxies or not', async () => {
+  for (const trustedProxies of [[], PROXIES]) {
+    const seen: string[] = []
+    const gateway = authGateway(
+      {
+        auth: async (wire: WireRequest) => {
+          seen.push(wire.headers.find(([name]) => name === CLIENT_IP_HEADER)?.[1] ?? '')
+          return { status: 200, headers: [], body: Buffer.from('{"keys":[]}').toString('base64') }
+        },
+        verifyToken: async () => null,
+        user: async () => null,
+      },
+      TEST_URL,
+      trustedProxies,
+    )
+    const request = new Request(`${TEST_URL}/api/ideas`, { headers: { authorization: 'Bearer not.a.jwt' } })
+    await gateway.authenticate(request, { kind: 'read', name: 'list_ideas' } as never)
+    expect(seen).toEqual(['127.0.0.1'])
+  }
+})
+
 describe('sign-in’s rate limits', () => {
   /** A gateway in front of a Better Auth of its own, with rate limits on; what Better Auth was told. */
   async function limited(trustedProxies: readonly string[] = []) {
