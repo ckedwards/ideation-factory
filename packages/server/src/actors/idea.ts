@@ -1,13 +1,16 @@
 // One actor per idea: a thin shell around IdeaService. Writes come through the
 // queue and are applied one at a time, in order; reads are actions and run in
 // parallel against the latest committed state. After each write, its events go
-// to everyone connected (live updates).
+// to everyone connected (live updates), and what it tells inboxes, kept in the
+// outbox by the write's own transaction, goes to the directory until it says
+// it has applied it: a committed write's notifications are never lost.
 import { actor, event, queue, UserError } from 'rivetkit'
 import { db } from 'rivetkit/db'
 import { nodeDeps } from '../deps.ts'
-import { inboxEvents } from '../idea/notify.ts'
+import { sendOutbox } from '../idea/outbox.ts'
 import { migrate } from '../idea/schema.ts'
 import { type IdeaEvent, IdeaService, Refused, type WriteRequest, type WriteResult } from '../idea/service.ts'
+import type { Client } from 'rivetkit/client'
 import type { Registry } from '../registry.ts'
 import { callRetrying, retryOverloaded } from '../sql/retry.ts'
 import { DIRECTORY_KEY } from './directory.ts'
@@ -37,7 +40,16 @@ export const idea = actor({
     writes: queue<WriteRequest, WriteResult>(),
   },
   state: { indexDue: false, lastActivity: 0 },
-  createVars: () => ({ service: null as IdeaService | null }),
+  createVars: () => ({
+    service: null as IdeaService | null,
+    flushing: null as Promise<void> | null,
+    again: false,
+    alarmAt: 0,
+  }),
+  // what a stopped actor hadn't sent yet goes now
+  onWake: (c) => {
+    void c.keepAwake(flushOutbox(c))
+  },
   run: async (c) => {
     const service = serviceOf(c)
     for await (const message of c.queue.iter({ completable: true })) {
@@ -56,18 +68,14 @@ export const idea = actor({
       for (const e of events) {
         c.broadcast(e.name, e.payload)
       }
-      // the write stands from here: what follows can't undo it, so its failures are logged, not returned
+      // the write stands from here: what follows can't undo it, so its failures are logged, not returned.
+      // Its notifications are in the outbox already; send them now, with an alarm in case this stops first.
       try {
-        // who hears about it: the directory writes their inboxes, without this waiting. Sent
-        // again while the directory's storage is busy; the ID means it's written once.
-        const told = inboxEvents(events, Date.now())
-        if (told.length > 0) {
-          const batch = { idea: c.key[0]!, events: told, id: crypto.randomUUID() }
-          await callRetrying(() => c.client<Registry>().directory.getOrCreate(DIRECTORY_KEY).send('notify', batch))
-        }
+        await outboxAlarm(c, Date.now() + OUTBOX_SAFETY_MS)
       } catch (error) {
-        c.log.error({ msg: 'notifying the directory failed', error: String(error) })
+        c.log.error({ msg: 'setting the outbox alarm failed', error: String(error) })
       }
+      void c.keepAwake(flushOutbox(c))
       try {
         if (events.length > 0) {
           c.state.lastActivity = Date.now()
@@ -97,6 +105,10 @@ export const idea = actor({
     suggestionSource: (c, file: string, start: number, end: number) =>
       read(() => serviceOf(c).suggestionSource(file, start, end)),
     /** Sends this idea's current index row to the directory, without waiting (scheduled after a write). */
+    /** Sends what the outbox holds (the alarms outboxAlarm sets call it). */
+    flushOutbox: (c) => flushOutbox(c),
+    /** How many of this idea's notifications haven't reached the directory yet. */
+    outboxSize: (c) => serviceOf(c).outboxSize(),
     flushIndex: async (c) => {
       c.state.indexDue = false
       const summary = await serviceOf(c).summary()
@@ -112,8 +124,14 @@ export const idea = actor({
         openComments: await serviceOf(c).openComments(),
         updatedAt: c.state.lastActivity || Date.now(),
       }
-      // an index update is safe to send twice: the newest wins
-      await callRetrying(() => c.client<Registry>().directory.getOrCreate(DIRECTORY_KEY).send('index', update))
+      // an index update is safe to send twice: the newest wins. Should it fail, it's sent again later
+      try {
+        await callRetrying(() => c.client<Registry>().directory.getOrCreate(DIRECTORY_KEY).send('index', update))
+      } catch (error) {
+        c.log.error({ msg: 'updating the index failed; trying again', error: String(error) })
+        c.state.indexDue = true
+        await c.schedule.after(30_000, 'flushIndex')
+      }
     },
   },
 })
@@ -139,4 +157,69 @@ async function read<T>(fn: () => Promise<T>): Promise<T> {
     }
     throw error
   }
+}
+
+/** How long after a write the safety alarm goes, should the actor stop before its outbox is sent. */
+const OUTBOX_SAFETY_MS = 30_000
+
+type OutboxContext = {
+  key: readonly string[]
+  db: Parameters<typeof migrate>[0]
+  vars: { service: IdeaService | null; flushing: Promise<void> | null; again: boolean; alarmAt: number }
+  log: { error: (fields: Record<string, unknown>) => void }
+  schedule: {
+    at(timestamp: number, action: string, ...args: unknown[]): Promise<string>
+    list(): Promise<Array<{ action: string; runAt: number }>>
+  }
+  client: () => unknown
+}
+
+/** An alarm to send the outbox at `at`, unless one is set for then or sooner. */
+async function outboxAlarm(c: OutboxContext, at: number): Promise<void> {
+  if (c.vars.alarmAt > Date.now() && c.vars.alarmAt <= at) {
+    return
+  }
+  const set = (await c.schedule.list()).find((e) => e.action === 'flushOutbox' && e.runAt > Date.now() && e.runAt <= at)
+  if (!set) {
+    await c.schedule.at(at, 'flushOutbox')
+  }
+  c.vars.alarmAt = set?.runAt ?? at
+}
+
+/**
+ * Sends the outbox to the directory (idea/outbox.ts), each notification
+ * waiting until the directory has applied it, with an alarm for when the
+ * next is due should any be left.
+ */
+function flushOutbox(c: OutboxContext): Promise<void> {
+  // one flush at a time; one asked for meanwhile runs after it, so nothing written meanwhile waits for an alarm
+  if (c.vars.flushing) {
+    c.vars.again = true
+    return c.vars.flushing
+  }
+  c.vars.again = false
+  c.vars.flushing = (async () => {
+    try {
+      const directory = (c.client as () => Client<Registry>)().directory.getOrCreate(DIRECTORY_KEY)
+      const next = await sendOutbox(
+        serviceOf(c),
+        async (batch) => {
+          const sent = await directory.send('notify', { idea: c.key[0]!, ...batch }, { wait: true, timeout: 30_000 })
+          return sent.status === 'completed' && (sent.response as { ok?: boolean } | undefined)?.ok === true
+        },
+        (fields) => c.log.error(fields),
+      )
+      if (next !== null) {
+        await outboxAlarm(c, Math.max(next, Date.now() + 100))
+      }
+    } catch (error) {
+      c.log.error({ msg: 'flushing the outbox failed', error: String(error) })
+    } finally {
+      c.vars.flushing = null
+    }
+    if (c.vars.again) {
+      await flushOutbox(c)
+    }
+  })()
+  return c.vars.flushing
 }

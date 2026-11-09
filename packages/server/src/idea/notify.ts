@@ -68,6 +68,28 @@ export function inboxEvents(events: IdeaEvent[], at: number): InboxEvent[] {
   })
 }
 
+/**
+ * What publishing a review's pending comments tells inboxes, from their rows
+ * (read before the transaction that publishes them): each a comment,
+ * suggestion or reply by the reviewer.
+ */
+export function publishedInboxEvents(
+  rows: Array<{ id: string; parent: string | null; body: string; suggestion: string | null; quote: string | null }>,
+  by: InboxEvent['actor'],
+  at: number,
+): InboxEvent[] {
+  return rows.map((r): InboxEvent =>
+    r.parent
+      ? { kind: 'reply', actor: by, at, detail: { comment: r.id, parent: r.parent, body: excerpt(r.body) } }
+      : {
+          kind: r.suggestion ? 'suggestion' : 'comment',
+          actor: by,
+          at,
+          detail: { comment: r.id, ...(r.quote ? { quote: r.quote } : {}), body: excerpt(r.body) },
+        },
+  )
+}
+
 /** The start of what was said, for the inbox row. */
 function excerpt(text: string): string {
   const flat = text.replace(/\s+/g, ' ').trim()

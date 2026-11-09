@@ -1037,6 +1037,17 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         expect(await ids(d, 'u-maya')).toEqual([['i1', 'participating', 2]])
       })
 
+      test('a late update (one retried after a newer) counts, but doesn’t become the latest', async () => {
+        const d = await people()
+        await d.registerIdea(idea('i1'))
+        const newer = { ...event('version', me('u-sam')), at: 5_000 }
+        const older = { ...event('comment', me('u-sam')), at: 4_000 }
+        await d.notify({ idea: 'i1', events: [newer], id: 'late-1' })
+        await d.notify({ idea: 'i1', events: [older], id: 'late-2' })
+        const [row] = (await d.inbox('u-riley')).items
+        expect(row).toMatchObject({ newCount: 2, updatedAt: 5_000, latest: { kind: 'version' } })
+      })
+
       test('a batch sent twice (a retried send that got through after all) is written once', async () => {
         const d = await people()
         await d.registerIdea(idea('i1'))

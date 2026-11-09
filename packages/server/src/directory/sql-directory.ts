@@ -853,10 +853,11 @@ export class SqlDirectory implements Directory {
       .onConflict((oc) =>
         oc.columns(['user', 'idea']).doUpdateSet((eb) => ({
           reason: eb.ref('excluded.reason'),
-          event: eb.ref('excluded.event'),
+          // the newest update by time stays the latest, whatever order they arrive in (a retried one can be late)
+          event: raw<string>`CASE WHEN excluded.updated_at >= inbox.updated_at THEN excluded.event ELSE inbox.event END`,
           new_count: raw<number>`inbox.new_count + 1`,
           done: 0,
-          updated_at: eb.ref('excluded.updated_at'),
+          updated_at: raw<number>`CASE WHEN excluded.updated_at >= inbox.updated_at THEN excluded.updated_at ELSE inbox.updated_at END`,
         })),
       )
       .execute()

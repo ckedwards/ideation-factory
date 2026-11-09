@@ -13,4 +13,5 @@ CREATE INDEX reviews_reviewer ON reviews (reviewer, seq);
 CREATE TABLE draft ( key TEXT PRIMARY KEY, seq INTEGER NOT NULL UNIQUE, change TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL );
 CREATE TABLE writes (key TEXT PRIMARY KEY, result TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE INDEX writes_at ON writes (at);
+CREATE TABLE outbox (id TEXT PRIMARY KEY, events TEXT NOT NULL, at INTEGER NOT NULL, attempts INTEGER NOT NULL, next_at INTEGER NOT NULL);
 INSERT INTO schema_version (version) VALUES (1);
