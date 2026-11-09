@@ -58,6 +58,7 @@ export function createApp({
     if (
       pathname.startsWith('/api/auth/') ||
       pathname === '/.well-known/oauth-authorization-server' ||
+      pathname === '/.well-known/openid-configuration' ||
       pathname.startsWith('/.well-known/oauth-protected-resource')
     ) {
       return gateway.forward(request, peer)

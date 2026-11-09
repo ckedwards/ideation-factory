@@ -49,14 +49,25 @@ function signedQuery(location: string): string {
   return out.toString()
 }
 
+type Tokens = { access_token: string; refresh_token?: string; scope?: string; id_token?: string }
+
 /** An MCP client's sign-in, as the consent page and the client do it: authorize, choose, consent, exchange. */
 async function mcpSignIn(cookie: string, grant: Record<string, unknown>, resource = MCP) {
+  return (await mcpTokens(cookie, grant, { resource })).access_token
+}
+
+/** The same, for all it gets back; `scope` null asks for none, as some clients do. */
+async function mcpTokens(
+  cookie: string,
+  grant: Record<string, unknown>,
+  { resource = MCP, scope = 'offline_access' as string | null } = {},
+): Promise<Tokens> {
   const verifier = randomBytes(32).toString('base64url')
   const query = new URLSearchParams({
     response_type: 'code',
     client_id: TEST_MCP_CLIENT,
     redirect_uri: TEST_MCP_REDIRECT,
-    scope: 'offline_access',
+    ...(scope === null ? {} : { scope }),
     state: 'st4te',
     code_challenge: createHash('sha256').update(verifier).digest('base64url'),
     code_challenge_method: 'S256',
@@ -87,7 +98,24 @@ async function mcpSignIn(cookie: string, grant: Record<string, unknown>, resourc
     }),
   )
   expect(tokens.status).toBe(200)
-  return ((await tokens.json()) as { access_token: string }).access_token
+  return (await tokens.json()) as Tokens
+}
+
+/** A refresh, as an MCP client makes one when its access token runs out. */
+async function refresh(refreshToken: string) {
+  const response = await app(
+    new Request(`${TEST_URL}/api/auth/oauth2/token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        client_id: TEST_MCP_CLIENT,
+        resource: MCP,
+      }),
+    }),
+  )
+  return { status: response.status, body: (await response.json().catch(() => null)) as Tokens | null }
 }
 
 /** The MCP SDK's client, connected to /mcp with this token. */
@@ -199,6 +227,52 @@ describe('the hosted MCP server', () => {
       id: sam.id,
     })
     await withPersonal.close()
+  })
+
+  test('it stays signed in: a client that asks for no scope gets a refresh token, and refreshing keeps who it acts as', async () => {
+    const devon = await signIn(app, h('devon'))
+    const first = await mcpTokens(devon.cookie, { purpose: 'bot-for-me', bot: 'helper' }, { scope: null })
+    expect(first.refresh_token).toBeString()
+    const refreshed = await refresh(first.refresh_token!)
+    expect(refreshed.status).toBe(200)
+    // a refresh token works once: the next refresh uses the new one
+    expect(refreshed.body!.refresh_token).not.toBe(first.refresh_token)
+
+    const agent = await connect(refreshed.body!.access_token)
+    const created = await agent.callTool({
+      name: 'create_idea',
+      arguments: { title: 'After a refresh', files: [{ path: 'plan.md', content: PLAN }] },
+    })
+    const idea = (created.structuredContent as { idea: string }).idea
+    await agent.callTool({
+      name: 'add_comment',
+      arguments: { idea, version: 1, anchor: { kind: 'file', file: 'f1' }, body: 'Still me' },
+    })
+    await agent.close()
+    const comments = await createApiClient({ baseUrl: TEST_URL, token: devon.jwt, fetch: (r) => app(r) }).listComments({
+      idea,
+    })
+    expect(comments[0]!.author).toMatchObject({ user: devon.id, bot: 'helper', purpose: 'bot-for-me' })
+
+    // removing the app in Settings (its consent) ends it: the next refresh is refused
+    const consents = await get('/api/auth/oauth2/get-consents', devon.cookie)
+    const consent = (consents.body as Array<{ id: string; clientId: string }>).find(
+      (c) => c.clientId === TEST_MCP_CLIENT,
+    )!
+    expect((await post('/api/auth/oauth2/delete-consent', { id: consent.id }, devon.cookie)).status).toBe(200)
+    expect((await refresh(refreshed.body!.refresh_token!)).status).toBeGreaterThanOrEqual(400)
+  })
+
+  test('the scopes other clients ask for are accepted; without offline_access there’s nothing to refresh with', async () => {
+    const lee = await signIn(app, h('lee'))
+    const oidc = await mcpTokens(lee.cookie, { purpose: 'me' }, { scope: 'openid profile email' })
+    expect(oidc.refresh_token).toBeUndefined()
+    expect(oidc.id_token).toBeString()
+    const agent = await connect(oidc.access_token)
+    expect((await agent.callTool({ name: 'whoami', arguments: {} })).structuredContent).toMatchObject({ id: lee.id })
+    await agent.close()
+    const all = await mcpTokens(lee.cookie, { purpose: 'me' }, { scope: 'openid profile email offline_access' })
+    expect(all.refresh_token).toBeString()
   })
 
   test('IDEAF_MCP_CLIENT_HOSTS, when set, lets in only clients whose documents are on those hosts', () => {

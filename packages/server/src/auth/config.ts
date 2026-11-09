@@ -170,7 +170,7 @@ export interface UserHooks {
 /** The directory, as Better Auth reaches it from inside the actor. */
 export interface AuthDeps {
   users: UserHooks
-  grants: Pick<Directory, 'createTokenGrant' | 'tokenGrant'>
+  grants: Pick<Directory, 'createTokenGrant' | 'tokenGrant' | 'revokeTokenGrant'>
   /** Until when a handle someone left stays theirs (the directory's handle aliases); null if it's free to `requester`. */
   parkedUntil?: (handle: string, requester: string | null) => Promise<number | null>
 }
@@ -575,6 +575,48 @@ const rules = (settings: AuthSettings, deps?: AuthDeps): BetterAuthPlugin => ({
     ],
     before: [
       {
+        // Removing an app (its consent, from Settings) signs it out: Better Auth
+        // only deletes the consent row, and each refresh token keeps its own
+        // grant, so every grant behind the app's refresh tokens for this person
+        // is revoked (a refresh then gets nothing), and the tokens with them
+        matcher: (ctx) => Boolean(deps) && ctx.path === '/oauth2/delete-consent',
+        handler: createAuthMiddleware(async (ctx) => {
+          const session = await getSessionFromCtx(ctx)
+          const id = (ctx.body as { id?: unknown } | undefined)?.id
+          if (!session || typeof id !== 'string') {
+            return
+          }
+          const adapter = ctx.context.adapter
+          const consent = (await adapter.findOne({ model: 'oauthConsent', where: [{ field: 'id', value: id }] })) as {
+            userId: string | null
+            clientId: string
+            referenceId: string | null
+          } | null
+          if (!consent || consent.userId !== session.user.id) {
+            return
+          }
+          const tokens = (await adapter.findMany({
+            model: 'oauthRefreshToken',
+            where: [
+              { field: 'userId', value: session.user.id },
+              { field: 'clientId', value: consent.clientId },
+            ],
+          })) as Array<{ referenceId: string | null }>
+          const grants = new Set([consent.referenceId, ...tokens.map((t) => t.referenceId)].filter(Boolean) as string[])
+          for (const grant of grants) {
+            await deps!.grants.revokeTokenGrant(session.user.id, grant)
+          }
+          await adapter.updateMany({
+            model: 'oauthRefreshToken',
+            where: [
+              { field: 'userId', value: session.user.id },
+              { field: 'clientId', value: consent.clientId },
+            ],
+            update: { revoked: new Date() },
+          })
+        }),
+      },
+      {
         // A handle someone left is kept for them for a while (HANDLE_PARKED_MS):
         // nobody else can sign up with it, rename to it or be told it's free
         matcher: (ctx) =>
@@ -855,7 +897,9 @@ export function authOptions(database: BetterAuthOptions['database'], settings: A
         resource: `${settings.baseURL}${MCP_PATH}`,
         loginPage: '/login',
         consentPage: '/consent',
-        scopes: ['offline_access'],
+        // offline_access for a refresh token (what a client asking for nothing gets), and the
+        // OpenID scopes some MCP clients ask for, so their sign-in isn't refused
+        scopes: ['offline_access', 'openid', 'profile', 'email'],
         // two resources, each with JWT access tokens for it, checked by signature: the API, and the MCP server
         resources: [settings.baseURL],
         enforcePerClientResources: false,
