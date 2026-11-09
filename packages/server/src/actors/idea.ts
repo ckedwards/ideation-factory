@@ -12,7 +12,7 @@ import { migrate } from '../idea/schema.ts'
 import { type IdeaEvent, IdeaService, Refused, type WriteRequest, type WriteResult } from '../idea/service.ts'
 import type { Client } from 'rivetkit/client'
 import type { Registry } from '../registry.ts'
-import { callRetrying, retryOverloaded } from '../sql/retry.ts'
+import { callRetrying, overloadedRetryMs, retryOverloaded } from '../sql/retry.ts'
 import { DIRECTORY_KEY } from './directory.ts'
 
 /**
@@ -52,42 +52,59 @@ export const idea = actor({
   },
   run: async (c) => {
     const service = serviceOf(c)
-    for await (const message of c.queue.iter({ completable: true })) {
-      let written: Awaited<ReturnType<IdeaService['write']>>
+    // Reading the queue can fail while the actor's storage is busy (RivetKit's own
+    // queue table is in it); the loop waits and goes on rather than ending, which
+    // would leave writes unread until the actor restarted.
+    while (!c.aborted) {
       try {
-        written = await service.write(message.body)
-      } catch (error) {
-        c.log.error({ msg: 'idea write failed', error: String(error) })
-        await message.complete({
-          ok: false,
-          error: { code: 'invalid', message: 'the write failed on the server; retry it with the same key' },
-        })
-        continue
-      }
-      const { result, events } = written
-      for (const e of events) {
-        c.broadcast(e.name, e.payload)
-      }
-      // the write stands from here: what follows can't undo it, so its failures are logged, not returned.
-      // Its notifications are in the outbox already; send them now, with an alarm in case this stops first.
-      try {
-        await outboxAlarm(c, Date.now() + OUTBOX_SAFETY_MS)
-      } catch (error) {
-        c.log.error({ msg: 'setting the outbox alarm failed', error: String(error) })
-      }
-      void c.keepAwake(flushOutbox(c))
-      try {
-        if (events.length > 0) {
-          c.state.lastActivity = Date.now()
-          if (!c.state.indexDue) {
-            c.state.indexDue = true
-            await c.schedule.after(indexDelayMs(), 'flushIndex')
+        for await (const message of c.queue.iter({ completable: true })) {
+          let written: Awaited<ReturnType<IdeaService['write']>>
+          try {
+            written = await service.write(message.body)
+          } catch (error) {
+            c.log.error({ msg: 'idea write failed', error: String(error) })
+            await callRetrying(() =>
+              message.complete({
+                ok: false,
+                error: { code: 'invalid', message: 'the write failed on the server; retry it with the same key' },
+              }),
+            )
+            continue
           }
+          const { result, events } = written
+          for (const e of events) {
+            c.broadcast(e.name, e.payload)
+          }
+          // the write stands from here: what follows can't undo it, so its failures are logged, not returned.
+          // Its notifications are in the outbox already; send them now, with an alarm in case this stops first.
+          try {
+            await outboxAlarm(c, Date.now() + OUTBOX_SAFETY_MS)
+          } catch (error) {
+            c.log.error({ msg: 'setting the outbox alarm failed', error: String(error) })
+          }
+          void c.keepAwake(flushOutbox(c))
+          try {
+            if (events.length > 0) {
+              c.state.lastActivity = Date.now()
+              if (!c.state.indexDue) {
+                c.state.indexDue = true
+                await c.schedule.after(indexDelayMs(), 'flushIndex')
+              }
+            }
+          } catch (error) {
+            c.log.error({ msg: 'scheduling the index update failed', error: String(error) })
+          }
+          // a message not completed keeps the queue from handing over the next
+          await callRetrying(() => message.complete(result))
         }
+        return
       } catch (error) {
-        c.log.error({ msg: 'scheduling the index update failed', error: String(error) })
+        if (c.aborted) {
+          return
+        }
+        c.log.error({ msg: 'reading the write queue failed; trying again', error: String(error) })
+        await Bun.sleep(Math.min(overloadedRetryMs(error) ?? 500, 2_000))
       }
-      await message.complete(result)
     }
   },
   actions: {
