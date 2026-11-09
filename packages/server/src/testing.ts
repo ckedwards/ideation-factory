@@ -23,6 +23,24 @@ export const testMailer = new CapturingMailer()
 export const testEmail = new CapturingSender()
 export const TEST_EMAIL_TIMING = { quietMs: 300, maxWaitMs: 2_000, digestMs: 60_000 }
 export const TEST_ADMIN = 'admin@example.test'
+
+/**
+ * An MCP client, as its metadata document (CIMD) describes it: tests serve it
+ * from here, as the real transport would fetch it from its host.
+ */
+export const TEST_MCP_CLIENT = 'https://agent.example.test/oauth/client.json'
+export const TEST_MCP_REDIRECT = 'http://127.0.0.1:53999/callback'
+const clientDocuments: Record<string, unknown> = {
+  [TEST_MCP_CLIENT]: {
+    client_id: TEST_MCP_CLIENT,
+    client_name: 'Test Agent',
+    client_uri: 'https://agent.example.test',
+    redirect_uris: [TEST_MCP_REDIRECT],
+    grant_types: ['authorization_code', 'refresh_token'],
+    response_types: ['code'],
+    token_endpoint_auth_method: 'none',
+  },
+}
 export const testAuth: AuthSettings = {
   baseURL: TEST_URL,
   secret: 'ideaf-test-secret-0123456789abcdef-0123456789',
@@ -31,6 +49,13 @@ export const testAuth: AuthSettings = {
   // everyone, so tests can make personal tokens; the default is site admins only
   personalTokens: 'on',
   rateLimit: false,
+  mcp: {
+    fetchClientMetadata: async (input) => {
+      const url = String(input instanceof Request ? input.url : input)
+      const document = clientDocuments[url]
+      return document ? Response.json(document) : new Response('not found', { status: 404 })
+    },
+  },
 }
 
 export function startTestActors(deps: Partial<NodeDeps> = {}): Promise<Client<Registry>> {

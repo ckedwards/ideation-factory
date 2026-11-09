@@ -25,6 +25,7 @@ export {
   type HandlerResult,
   type Handlers,
   type RouterOptions,
+  runOperation,
   type TokenScope,
 } from './router.ts'
 export * as schemas from './schemas.ts'

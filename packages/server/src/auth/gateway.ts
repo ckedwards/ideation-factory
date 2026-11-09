@@ -112,8 +112,9 @@ export function authGateway(directory: AuthDirectory, baseURL: string, trustedPr
     return keys.set
   }
 
-  const verify = async (token: string): Promise<Claims | null> => {
-    const options = { issuer: baseURL, audience: baseURL, algorithms: ['EdDSA'] }
+  /** A JWT's claims, if we signed it for `audience`: the API (the deployment's URL), or the MCP server. */
+  const verify = async (token: string, audience: string): Promise<Claims | null> => {
+    const options = { issuer: baseURL, audience, algorithms: ['EdDSA'] }
     try {
       return toClaims((await jwtVerify(token, await signingKeys(), options)).payload)
     } catch (error) {
@@ -139,13 +140,15 @@ export function authGateway(directory: AuthDirectory, baseURL: string, trustedPr
     async authenticate(
       request: Request,
       operation: Operation,
+      /** Whom its JWT must be for: the API unless said (the MCP server's tool calls say theirs). */
+      audience = baseURL,
     ): Promise<{ caller: Caller; token: TokenScope | null } | ApiErrorBody | null> {
       const header = request.headers.get('authorization') ?? ''
       const token = /^Bearer\s+(\S+)$/i.exec(header)?.[1]
       if (!token) {
         return null
       }
-      const claims = PERSONAL_TOKEN.test(token) ? await directory.verifyToken(token) : await verify(token)
+      const claims = PERSONAL_TOKEN.test(token) ? await directory.verifyToken(token) : await verify(token, audience)
       if (!claims) {
         return null
       }

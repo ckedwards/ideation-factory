@@ -196,11 +196,24 @@ describe('generated descriptions', () => {
     })
   })
 
-  test('MCP: one tool per operation, reads marked read-only', () => {
+  test('MCP: a tool for each operation marked for agents, reads marked read-only and only reads idempotent', () => {
     const tools = mcpTools(operations)
-    expect(tools.map((t) => t.name)).toEqual(Object.values(operations).map((o) => o.name))
-    expect(tools.find((t) => t.name === 'show_blocks')!.annotations.readOnlyHint).toBe(true)
-    expect(tools.find((t) => t.name === 'edit')!.annotations.readOnlyHint).toBe(false)
+    expect(tools.map((t) => t.name)).toEqual(
+      Object.values(operations)
+        .filter((o) => o.mcp)
+        .map((o) => o.name),
+    )
+    // what agents work with, and not what's for people
+    expect(tools.map((t) => t.name)).toEqual(
+      expect.arrayContaining(['show_blocks', 'edit', 'add_comment', 'review_idea']),
+    )
+    expect(tools.map((t) => t.name)).not.toEqual(expect.arrayContaining(['set_access']))
+    expect(tools.map((t) => t.name)).not.toContain('update_team_settings')
+    expect(tools.find((t) => t.name === 'show_blocks')!.annotations).toEqual({
+      readOnlyHint: true,
+      idempotentHint: true,
+    })
+    expect(tools.find((t) => t.name === 'edit')!.annotations).toEqual({ readOnlyHint: false, idempotentHint: false })
     expect(tools.find((t) => t.name === 'edit')!.inputSchema).toMatchObject({
       type: 'object',
       required: expect.arrayContaining(['idea', 'batch']),

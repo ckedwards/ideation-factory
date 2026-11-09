@@ -132,6 +132,7 @@ const group = membership('group')
 export const directoryOperations = {
   me: defineOperation({
     name: 'whoami',
+    mcp: true,
     summary: 'Who am I',
     description: 'The signed-in person.',
     method: 'GET',
@@ -209,6 +210,7 @@ export const directoryOperations = {
 
   listIdeas: defineOperation({
     name: 'list_ideas',
+    mcp: true,
     summary: 'List ideas',
     description:
       'Ideas you can see, most recently updated first, 25 at a time, optionally in one team, by one owner, in one status, or open or closed (an idea in an archived team counts as closed, whatever its status).',
@@ -227,6 +229,7 @@ export const directoryOperations = {
   }),
   searchIdeas: defineOperation({
     name: 'search_ideas',
+    mcp: true,
     summary: 'Search ideas',
     description:
       'Ideas you can see whose titles contain the search, closest first. A search needs at least 3 characters; it matches anywhere in a word, and shorter words in it are ignored. `incomplete` means the search matched more ideas than one search checks (20,000), so only the best-ranked of them were: add a word to narrow it.',
@@ -275,6 +278,7 @@ export const directoryOperations = {
   }),
   listNotifications: defineOperation({
     name: 'list_notifications',
+    mcp: true,
     summary: 'Your inbox',
     description:
       "What's happened to the ideas you hear about: one row per idea (newest first, 25 at a time), with why you hear about it (you wrote it, were asked to review it by name or through a group, took part, or subscribed), how many updates are new, and the latest. `done` lists the ones you've cleared instead. Ideas you can no longer see aren't listed.",
@@ -302,6 +306,7 @@ export const directoryOperations = {
   }),
   markNotifications: defineOperation({
     name: 'mark_notifications',
+    mcp: true,
     summary: 'Mark ideas read or done',
     description:
       'Marks ideas in your inbox read (`read: true`), done (`done: true`: cleared until something new happens) or back in the inbox (`done: false`). Without `ideas`, it applies to every idea in the list it moves them out of (or, for `read`, all of them).',

@@ -292,7 +292,25 @@ ${HANDLE_FORM}
 ${SCRIPT_BASE}
   const params = new URLSearchParams(location.search)
   const known = { 'ideaf-cli': 'ideaf, the command line' }
-  $('client').textContent = known[params.get('client_id')] || params.get('client_id') || 'an app'
+  const clientId = params.get('client_id') || ''
+  $('client').textContent = known[clientId] || clientId || 'an app'
+  // an MCP client (its ID is the URL of its metadata): its name, where that came from, and, unless it
+  // asked for something else, a bot for you named after it, so its work reads "🤖 claude-code on behalf of …"
+  const botName = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 39).replace(/-+$/, '')
+  const named = clientId.startsWith('https://')
+    ? fetch('/api/auth/oauth2/public-client?client_id=' + encodeURIComponent(clientId))
+        .then((r) => (r.ok ? r.json() : {}))
+        .then((client) => {
+          const name = client.client_name || new URL(clientId).hostname
+          $('client').textContent = name + ' (from ' + new URL(clientId).hostname + ')'
+          if (!params.get('ideaf_bot') && !params.get('ideaf_purpose')) {
+            choose('purpose', 'bot-for-me')
+            $('bot').value = botName(name) || 'agent'
+            sync()
+          }
+        })
+        .catch(() => {})
+    : Promise.resolve()
   const list = (value) => (value || '').split(',').map((v) => v.trim()).filter(Boolean)
   const choose = (name, value) => { const input = document.querySelector('input[name=' + name + '][value="' + value + '"]'); if (input) input.checked = true }
   const sync = () => {
@@ -311,7 +329,7 @@ ${SCRIPT_BASE}
   document.querySelectorAll('input[type=radio]').forEach((input) => { input.onchange = sync })
   sync()
   // a new account from single sign-on confirms its handle first
-  currentUser().then(confirmHandle).then(() => { $('consent').hidden = false })
+  currentUser().then(confirmHandle).then(() => named).then(() => { $('consent').hidden = false })
   $('consent').onsubmit = run(async () => {
     const purpose = document.querySelector('input[name=purpose]:checked').value
     const some = document.querySelector('input[name=reach]:checked').value === 'some'

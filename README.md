@@ -70,6 +70,8 @@ bun packages/server/src/admin.ts release-handle <@person or team>   # frees a sq
 
 **Email.** Sign-in codes go out over SMTP, so any provider works (Amazon SES, Postmark, Mailgun, Resend, Google Workspace, your own server): set `IDEAF_SMTP_URL` (`smtps://user:password@host:465`, or `smtp://…:587` for STARTTLS) and `IDEAF_EMAIL_FROM` (`Ideation Factory <sign-in@example.com>`). Without them the server writes codes to its log, which production refuses unless `IDEAF_EMAIL=log` says so (say, behind single sign-on, where only site admins use codes). Notification emails go over the same server, from `IDEAF_NOTIFY_FROM` (`Ideation Factory <notifications@example.com>`, so mail rules can tell them from sign-in codes; `IDEAF_EMAIL_FROM` without it); `IDEAF_EMAIL_NOTIFICATIONS=off` turns them off.
 
+**MCP.** Agents connect to the hosted MCP server at `https://<your deployment>/mcp` (for Claude Code: `claude mcp add --transport http ideaf https://<your deployment>/mcp`) and sign in in the browser, choosing on the consent page whether the agent acts as you or as a bot for you. Any MCP client that publishes a Client ID Metadata Document can sign in; `IDEAF_MCP_CLIENT_HOSTS` (comma-separated, like `claude.ai,vscode.dev`) allows only those hosts' clients. A personal token in an `Authorization: Bearer` header works too, for clients set up without a browser.
+
 **Signing keys.** Access tokens are signed with a key kept in the directory, its private half encrypted with `IDEAF_AUTH_SECRET`. It's replaced every 30 days by itself, and a replaced key keeps verifying the tokens it signed for a day. To replace it now, or to withdraw every key if one may have leaked (outstanding access tokens then stop working within a minute, and clients refresh), run on the server:
 
 ```
