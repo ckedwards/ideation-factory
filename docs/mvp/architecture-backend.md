@@ -295,7 +295,7 @@ Only two things are platform-specific, and both sit behind small interfaces:
 
 | Interface | Implementation |
 |---|---|
-| Files | The S3 API (Bun has a built-in S3 client), against whichever bucket the deployment provides |
+| Files | The S3 API (Bun's built-in S3 client), against whichever bucket the deployment provides: `S3FileStore`, chosen when `IDEAF_S3_BUCKET` is set (built in step 9, part 6a; the contract tests run against a fake S3 in process and against SeaweedFS in CI); a local folder otherwise |
 | Email (sign-in codes, notifications) | SMTP, or an email provider's API |
 
 ### The directory actor is the one shared owner
