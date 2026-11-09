@@ -23,6 +23,7 @@ services:
       ACME_CA_FILE: ${ACME_CA_FILE:-internal-ca.pem}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../caddy/tls.caddy:/etc/caddy/tls.caddy:ro
       - ./tls:/tls:ro
       - ./ca:/ca:ro
       # Caddy's certificates, and its local CA

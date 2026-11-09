@@ -1,0 +1,23 @@
+# The load balancer in front of the three app nodes: TLS (TLS_MODE, see
+# ../caddy/tls.caddy), and requests spread round-robin over the nodes in
+# APP_NODES that answer their health check. Any node can serve any request:
+# the engines route each actor call to wherever that actor runs.
+import /etc/caddy/tls.caddy
+
+{$IDEAF_HOST} {
+	import tls-{$TLS_MODE}
+	header Strict-Transport-Security "max-age=31536000"
+	request_body {
+		max_size 64MB
+	}
+	reverse_proxy {$APP_NODES} {
+		lb_policy round_robin
+		# a node that's down, or still waiting for its engine, gets nothing
+		health_uri /health
+		health_interval 5s
+		health_timeout 2s
+		# a request that couldn't reach a node goes to another (safe: writes carry idempotency keys)
+		lb_try_duration 10s
+		fail_duration 30s
+	}
+}
