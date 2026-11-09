@@ -24,7 +24,7 @@ import { notificationEmail } from '../mail/notification.ts'
 import { migrateDirectory } from '../directory/schema.ts'
 import { fts5Search } from '../directory/search.ts'
 import { SqlDirectory } from '../directory/sql-directory.ts'
-import { callRetrying, retryOverloaded } from '../sql/retry.ts'
+import { callRetrying, overloadedRetryMs, retryOverloaded } from '../sql/retry.ts'
 import type {
   ContainerKind,
   CreatePolicy,
@@ -67,9 +67,39 @@ export const directory = actor({
   },
   run: async (c) => {
     const d = directoryOf(c)
-    for (;;) {
-      // completed only once applied: one taken off the queue but not applied is answered by no one, and its idea sends it again
-      const batch = await c.queue.nextBatch({ count: 50, completable: true })
+    // that an email due has a live alarm: after a notification (it may have queued one), and every
+    // EMAIL_CHECK_MS, busy or not, since an alarm can be lost (see scheduleEmails)
+    let emailsCheckedAt = 0
+    const checkEmails = async (now: boolean) => {
+      if (!now && Date.now() - emailsCheckedAt < EMAIL_CHECK_MS) {
+        return
+      }
+      emailsCheckedAt = Date.now()
+      try {
+        await scheduleEmails(c)
+      } catch (error) {
+        c.log.error({ msg: 'scheduling emails failed', error: String(error) })
+      }
+    }
+    while (!c.aborted) {
+      // completed only once applied: one taken off the queue but not applied is answered by no one, and its idea sends it again.
+      // Reading the queue can fail while storage is busy (RivetKit's own queue table is in it): wait and read again,
+      // rather than let the loop end, which left notifications unread until the actor restarted
+      let batch: Awaited<ReturnType<typeof c.queue.nextBatch>>
+      try {
+        batch = await c.queue.nextBatch({ count: 50, completable: true, timeout: EMAIL_CHECK_MS })
+      } catch (error) {
+        if (c.aborted) {
+          return
+        }
+        c.log.error({ msg: 'reading the queue failed; trying again', error: String(error) })
+        await Bun.sleep(Math.min(overloadedRetryMs(error) ?? 500, 2_000))
+        continue
+      }
+      if (batch.length === 0) {
+        await checkEmails(false)
+        continue
+      }
       // a batch's notifications in one transaction, then its index updates in another:
       // each commit writes pages, and the writes are what SQLite can do least of
       const notifying = batch.filter((m) => m.name === 'notify')
@@ -95,12 +125,7 @@ export const directory = actor({
         for (const [i, message] of notifying.entries()) {
           await callRetrying(() => message.complete({ ok: outcomes[i]! }))
         }
-        // a notification may have queued an email: an alarm for when it's due
-        try {
-          await scheduleEmails(c)
-        } catch (error) {
-          c.log.error({ msg: 'scheduling emails failed', error: String(error) })
-        }
+        await checkEmails(true)
       }
       // only the newest update per idea matters
       const latest = new Map<string, IndexUpdate>()
@@ -126,6 +151,7 @@ export const directory = actor({
           await callRetrying(() => message.complete())
         }
       }
+      await checkEmails(false)
     }
   },
   actions: {
@@ -261,9 +287,19 @@ type DirectoryContext = {
 type Scheduling = DirectoryContext & {
   schedule: {
     at(timestamp: number, action: string, ...args: unknown[]): Promise<string>
-    list(): Promise<Array<{ action: string; runAt: number }>>
+    list(): Promise<Array<{ id: string; action: string; runAt: number }>>
+    cancel(id: string): Promise<boolean>
   }
 }
+
+/**
+ * How late an alarm may be before it counts as lost. Alarms fire on time, give
+ * or take a busy moment; setting one again that was only late is harmless, as
+ * sendEmails runs one at a time and sends only what's still due.
+ */
+const LOST_ALARM_MS = 2_000
+/** How often the queue loop makes sure an email due has a live alarm (two reads, when one is due). */
+const EMAIL_CHECK_MS = 2_000
 
 /**
  * Sets an alarm for when the next email is due (no sooner than `wait` from
@@ -278,8 +314,14 @@ async function scheduleEmails(c: Scheduling, wait = 0): Promise<void> {
   if (next === null) {
     return
   }
-  const at = Math.max(next, Date.now() + wait)
-  const set = (await c.schedule.list()).some((e) => e.action === 'sendEmails' && e.runAt <= at)
+  const now = Date.now()
+  const at = Math.max(next, now + wait)
+  const alarms = (await c.schedule.list()).filter((e) => e.action === 'sendEmails')
+  // an alarm well past its time was lost (its storage was busy when it was due): it no longer counts, and goes
+  for (const lost of alarms.filter((e) => e.runAt < now - LOST_ALARM_MS)) {
+    await c.schedule.cancel(lost.id)
+  }
+  const set = alarms.some((e) => e.runAt >= now - LOST_ALARM_MS && e.runAt <= at)
   if (!set) {
     await c.schedule.at(at, 'sendEmails')
   }
