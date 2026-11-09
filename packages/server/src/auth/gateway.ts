@@ -106,7 +106,8 @@ export function authGateway(directory: AuthDirectory, baseURL: string, trustedPr
   let keys: { at: number; set: ReturnType<typeof createLocalJWKSet> } | null = null
   const signingKeys = async (fresh = false) => {
     if (!keys || fresh || Date.now() - keys.at > KEYS_TTL_MS) {
-      const response = await forward(new Request(`${baseURL}/api/auth/jwks`))
+      // from this node itself: without an address, Better Auth's rate limiter would warn that it can't tell clients apart
+      const response = await forward(new Request(`${baseURL}/api/auth/jwks`), '127.0.0.1')
       keys = { at: Date.now(), set: createLocalJWKSet((await response.json()) as JSONWebKeySet) }
     }
     return keys.set
