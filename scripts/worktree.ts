@@ -107,9 +107,19 @@ function processName(pid: number): string {
   return ps.stdout.toString().trim()
 }
 
-/** Stops the engine listening on a port, if it's a Rivet Engine. Returns the process IDs stopped. */
+/** The ports an engine on `port` listens on: its own, + 1 (peers) and + 10. */
+const enginePorts = (port: number) => [port, port + 1, port + 10]
+
+/**
+ * Stops the engine on a port, if it's a Rivet Engine, and waits until all its
+ * ports are free: one shutting down may close its own port before the others,
+ * and a new engine started meanwhile can't bind them. Returns the process IDs
+ * stopped.
+ */
 async function stopEngine(port: number): Promise<number[]> {
-  const engines = [...new Set(listeners(port))].filter((pid) => processName(pid).startsWith('rivet-engine'))
+  const engines = [...new Set(enginePorts(port).flatMap(listeners))].filter((pid) =>
+    processName(pid).startsWith('rivet-engine'),
+  )
   for (const pid of engines) {
     process.kill(pid, 'SIGTERM')
   }
@@ -118,6 +128,9 @@ async function stopEngine(port: number): Promise<number[]> {
   }
   for (const pid of engines.filter(alive)) {
     process.kill(pid, 'SIGKILL')
+  }
+  for (let i = 0; i < 50 && enginePorts(port).some((p) => listeners(p).length > 0); i++) {
+    await Bun.sleep(100)
   }
   return engines
 }
