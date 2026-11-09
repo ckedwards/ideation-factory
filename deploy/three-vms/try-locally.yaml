@@ -1,0 +1,173 @@
+# Three VMs, simulated on one Docker host: three app + engine pairs (as in
+# node.yaml), one SeaweedFS as the bucket, and the load balancer (as in
+# lb.yaml). For trying fail-over and for the load test; NOT a production
+# layout, since the three share one machine, one disk and one bucket store.
+#
+#   docker compose -f try-locally.yaml --env-file local.env up -d --build
+#
+# local.env needs IDEAF_AUTH_SECRET, RIVET_ADMIN_TOKEN and S3_SECRET_ACCESS_KEY
+# (openssl rand -hex 32); it's on https://localhost:${HTTPS_PORT:-8443}.
+name: ideaf-local3
+
+x-app: &app
+  build:
+    context: ../..
+    dockerfile: deploy/app.Dockerfile
+  image: ideaf-app:local3
+  restart: unless-stopped
+  depends_on:
+    pool:
+      condition: service_completed_successfully
+
+x-app-environment: &app-environment
+  IDEAF_URL: https://localhost:${HTTPS_PORT:-8443}
+  IDEAF_AUTH_SECRET: '${IDEAF_AUTH_SECRET:?set IDEAF_AUTH_SECRET}'
+  IDEAF_SITE_ADMINS: ${IDEAF_SITE_ADMINS:-}
+  IDEAF_PERSONAL_TOKENS: ${IDEAF_PERSONAL_TOKENS:-on}
+  IDEAF_TRUSTED_PROXIES: 172.30.81.0/24
+  IDEAF_S3_BUCKET: ideaf-files
+  IDEAF_S3_ENDPOINT: http://seaweedfs:8333
+  IDEAF_S3_ACCESS_KEY_ID: ideaf
+  IDEAF_S3_SECRET_ACCESS_KEY: '${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY}'
+  # sign-in codes go to the apps' logs
+  IDEAF_EMAIL: log
+
+x-engine: &engine
+  build:
+    context: ../..
+    dockerfile: deploy/engine.Dockerfile
+  image: ideaf-engine:local3
+  restart: unless-stopped
+  depends_on:
+    buckets:
+      condition: service_completed_successfully
+  configs:
+    - source: engine
+      target: /etc/rivet/config.yaml
+
+services:
+  lb:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    depends_on: [app1, app2, app3]
+    ports:
+      - ${HTTPS_PORT:-8443}:443
+    environment:
+      IDEAF_HOST: localhost
+      APP_NODES: app1:8080 app2:8080 app3:8080
+      TLS_MODE: internal
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../caddy/tls.caddy:/etc/caddy/tls.caddy:ro
+
+  app1:
+    <<: *app
+    environment:
+      <<: *app-environment
+      RIVET_ENDPOINT: http://default:${RIVET_ADMIN_TOKEN}@engine1:6420
+  app2:
+    <<: *app
+    environment:
+      <<: *app-environment
+      RIVET_ENDPOINT: http://default:${RIVET_ADMIN_TOKEN}@engine2:6420
+  app3:
+    <<: *app
+    environment:
+      <<: *app-environment
+      RIVET_ENDPOINT: http://default:${RIVET_ADMIN_TOKEN}@engine3:6420
+
+  engine1:
+    <<: *engine
+    # by address, as on real VMs: a stopped container's name stops resolving, which the
+    # engine doesn't treat as a lost peer (a VM that's gone just stops answering)
+    environment: { RIVET__API_PEER__ADVERTISE_ADDRESS: '172.30.81.21:6421', RIVET__API_PEER__HOST: 0.0.0.0, AWS_ALLOW_HTTP: 'true' }
+    volumes: [engine1:/var/lib/rivet]
+    networks:
+      default:
+        ipv4_address: 172.30.81.21
+  engine2:
+    <<: *engine
+    # by address, as on real VMs: a stopped container's name stops resolving, which the
+    # engine doesn't treat as a lost peer (a VM that's gone just stops answering)
+    environment: { RIVET__API_PEER__ADVERTISE_ADDRESS: '172.30.81.22:6421', RIVET__API_PEER__HOST: 0.0.0.0, AWS_ALLOW_HTTP: 'true' }
+    volumes: [engine2:/var/lib/rivet]
+    networks:
+      default:
+        ipv4_address: 172.30.81.22
+  engine3:
+    <<: *engine
+    # by address, as on real VMs: a stopped container's name stops resolving, which the
+    # engine doesn't treat as a lost peer (a VM that's gone just stops answering)
+    environment: { RIVET__API_PEER__ADVERTISE_ADDRESS: '172.30.81.23:6421', RIVET__API_PEER__HOST: 0.0.0.0, AWS_ALLOW_HTTP: 'true' }
+    volumes: [engine3:/var/lib/rivet]
+    networks:
+      default:
+        ipv4_address: 172.30.81.23
+
+  pool:
+    image: curlimages/curl:8.16.0
+    depends_on: [engine1]
+    entrypoint: ['sh', '-c']
+    command:
+      - |
+        until curl -sf -X PUT "http://engine1:6420/pools/default?namespace=default" \
+            -H "authorization: Bearer $$RIVET_ADMIN_TOKEN" -H 'content-type: application/json' \
+            -d '{"drain_on_version_upgrade": true}'; do sleep 2; done
+    environment:
+      RIVET_ADMIN_TOKEN: ${RIVET_ADMIN_TOKEN:?set RIVET_ADMIN_TOKEN}
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.51
+    restart: unless-stopped
+    command: server -dir=/data -s3 -s3.config=/etc/seaweedfs/s3.json
+    configs:
+      - source: seaweedfs
+        target: /etc/seaweedfs/s3.json
+    volumes:
+      - seaweedfs:/data
+
+  buckets:
+    image: chrislusf/seaweedfs:4.51
+    depends_on: [seaweedfs]
+    entrypoint: ['sh', '-c']
+    command:
+      - |
+        until echo 's3.bucket.list' | weed shell -master=seaweedfs:9333 -filer=seaweedfs:8888 >/dev/null 2>&1; do sleep 1; done
+        for bucket in ideaf-files ideaf-engine; do
+          echo "s3.bucket.list" | weed shell -master=seaweedfs:9333 -filer=seaweedfs:8888 | grep -qw "$$bucket" \
+            || echo "s3.bucket.create -name $$bucket" | weed shell -master=seaweedfs:9333 -filer=seaweedfs:8888
+        done
+
+configs:
+  engine:
+    content: |
+      auth:
+        admin_token: "${RIVET_ADMIN_TOKEN}"
+      storage:
+        log_directory: /var/lib/rivet/log
+      object_storage:
+        primary:
+          s3:
+            bucket: ideaf-engine
+            endpoint: http://seaweedfs:8333
+            region: us-east-1
+            access_key_id: ideaf
+            secret_access_key: "${S3_SECRET_ACCESS_KEY}"
+      telemetry:
+        enabled: false
+  seaweedfs:
+    content: |
+      {"identities": [{"name": "ideaf", "credentials": [{"accessKey": "ideaf", "secretKey": "${S3_SECRET_ACCESS_KEY}"}],
+        "actions": ["Admin", "Read", "Write", "List", "Tagging"]}]}
+
+volumes:
+  engine1:
+  engine2:
+  engine3:
+  seaweedfs:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.30.81.0/24

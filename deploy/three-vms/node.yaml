@@ -1,0 +1,95 @@
+# One of the three VMs: the app and a Rivet Engine. Run it on each VM, with
+# the same .env everywhere but NODE_ADDRESS (this VM's private address). The
+# engines find each other through the bucket and talk on port 6421, which must
+# stay on the private network. The load balancer (lb.yaml, or your cloud's)
+# reaches each app on port 8080. See deploy/README.md.
+#
+#   docker compose -f node.yaml up -d --build
+name: ideaf
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: deploy/app.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      pool:
+        condition: service_completed_successfully
+    ports:
+      # for the load balancer, on the private network only
+      - ${NODE_ADDRESS:?set NODE_ADDRESS, this VM's private address}:8080:8080
+    environment: &app-environment
+      IDEAF_URL: '${IDEAF_URL:?set IDEAF_URL, the public URL, like https://ideas.example.com}'
+      IDEAF_AUTH_SECRET: '${IDEAF_AUTH_SECRET:?set IDEAF_AUTH_SECRET, the same on every VM (openssl rand -hex 32)}'
+      IDEAF_SITE_ADMINS: ${IDEAF_SITE_ADMINS:-}
+      IDEAF_PERSONAL_TOKENS: ${IDEAF_PERSONAL_TOKENS:-admins}
+      # the load balancer's addresses: only it is believed about who the client is
+      IDEAF_TRUSTED_PROXIES: ${LB_ADDRESSES:?set LB_ADDRESSES, the load balancer's private addresses}
+      RIVET_ENDPOINT: http://default:${RIVET_ADMIN_TOKEN}@engine:6420
+      IDEAF_S3_BUCKET: ${S3_FILES_BUCKET:-ideaf-files}
+      IDEAF_S3_ENDPOINT: ${S3_ENDPOINT:?set S3_ENDPOINT, your bucket store (https://s3.us-east-1.amazonaws.com, say)}
+      IDEAF_S3_REGION: ${S3_REGION:-us-east-1}
+      IDEAF_S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID}
+      IDEAF_S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY}
+      IDEAF_SMTP_URL: ${IDEAF_SMTP_URL:-}
+      IDEAF_EMAIL_FROM: ${IDEAF_EMAIL_FROM:-}
+      IDEAF_NOTIFY_FROM: ${IDEAF_NOTIFY_FROM:-}
+      IDEAF_EMAIL: ${IDEAF_EMAIL:-}
+      IDEAF_MCP_CLIENT_HOSTS: ${IDEAF_MCP_CLIENT_HOSTS:-}
+    volumes:
+      - ./ca:/etc/ideaf/ca:ro
+
+  engine:
+    build:
+      context: ../..
+      dockerfile: deploy/engine.Dockerfile
+    restart: unless-stopped
+    ports:
+      # the engines' peer port: private network only (it's plaintext and unauthenticated)
+      - ${NODE_ADDRESS}:6421:6421
+    configs:
+      - source: engine
+        target: /etc/rivet/config.yaml
+    environment:
+      # how the other engines reach this one
+      RIVET__API_PEER__ADVERTISE_ADDRESS: ${NODE_ADDRESS}:6421
+      RIVET__API_PEER__HOST: 0.0.0.0
+      AWS_ALLOW_HTTP: ${S3_ALLOW_HTTP:-false}
+    volumes:
+      # this instance's write-ahead log: a local disk, not a network one
+      - engine:/var/lib/rivet
+
+  # the node pool the app joins; every VM makes sure of it, which is harmless
+  pool:
+    image: curlimages/curl:8.16.0
+    depends_on: [engine]
+    entrypoint: ['sh', '-c']
+    command:
+      - |
+        until curl -sf -X PUT "http://engine:6420/pools/default?namespace=default" \
+            -H "authorization: Bearer $$RIVET_ADMIN_TOKEN" -H 'content-type: application/json' \
+            -d '{"drain_on_version_upgrade": true}'; do sleep 2; done
+    environment:
+      RIVET_ADMIN_TOKEN: ${RIVET_ADMIN_TOKEN}
+
+configs:
+  engine:
+    content: |
+      auth:
+        admin_token: "${RIVET_ADMIN_TOKEN:?set RIVET_ADMIN_TOKEN, the same on every VM (openssl rand -hex 32)}"
+      storage:
+        log_directory: /var/lib/rivet/log
+      object_storage:
+        primary:
+          s3:
+            bucket: "${S3_ENGINE_BUCKET:-ideaf-engine}"
+            endpoint: "${S3_ENDPOINT}"
+            region: "${S3_REGION:-us-east-1}"
+            access_key_id: "${S3_ACCESS_KEY_ID}"
+            secret_access_key: "${S3_SECRET_ACCESS_KEY}"
+      telemetry:
+        enabled: false
+
+volumes:
+  engine:

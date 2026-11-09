@@ -151,6 +151,22 @@ _To be filled in during the spike._
 
 **From step 2 (2026-10-31):** per-actor SQLite, typed events to connected clients, and per-instance memory (`vars`) all work on Bun. **`onMigrate` already runs inside a savepoint:** opening a transaction inside it waits on the outer one until it times out (30 s), so migrations must not open their own. Ten concurrent batches on one idea were applied in order, each against the latest version, and retried writes with the same idempotency key were applied once.
 
+**From step 9, part 6 (2026-11-08):** the 3.0 engine (3.0.0, RivetKit's pinned binary) runs on its own, with an S3 bucket (SeaweedFS 4.51) or a folder.
+
+- **What an engine on its own needs:**
+  - `AWS_ALLOW_HTTP=true` for a store on plain HTTP. Without it, it times out writing its configuration and restarts.
+  - The app's node pool, made through `PUT /pools/default`. RivetKit only makes it for an engine it starts itself.
+  - About a minute before a new engine serves (`storage.balancing.destination_stability_ms`, more than 35 s).
+- **Three instances on one bucket form a cluster** with nothing more than each one's advertised peer address. One became the coordinator, with all three storage workers admitted.
+- **Fail-over:**
+  - No acknowledged write was lost when an app or a whole node was killed.
+  - An app's actors moved in seconds.
+  - A dead engine's actors moved to the survivors in 100 to 130 s, in 5 of 5 runs on 3.0.6 on a fresh cluster.
+  - They sometimes stay stuck until the engine returns instead: 2 of 3 runs on 3.0.6 on a cluster already through several kills, and 3.0.0 every time. Stuck runs logged stop commands failing with `endpoint_unresolved`, or storage the dead engine held staying unavailable ("no live member can take the grant").
+  - Rivet tracks it as rivet-dev/rivet#5957.
+  - `POST /actors/{id}/reschedule` unsticks an actor.
+  - Counting `endpoint_unresolved` as a lost peer (a one-line change, built from v3.0.6) didn't help: 3 of 5 runs stalled.
+
 ## Sources
 
 - [Introducing Rivet 3.0 Preview](https://rivet.dev/changelog/2026-10-26-introducing-rivet-3-0-preview/)
