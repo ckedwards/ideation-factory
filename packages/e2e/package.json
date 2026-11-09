@@ -10,6 +10,6 @@
     "@ideaf/cli": "workspace:*",
     "@ideaf/core": "workspace:*",
     "@ideaf/server": "workspace:*",
-    "rivetkit": "3.0.0"
+    "rivetkit": "3.0.6"
   }
 }

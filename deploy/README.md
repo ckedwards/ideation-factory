@@ -54,7 +54,7 @@ docker compose -f lb.yaml up -d               # on the load balancer
 **What surviving a lost VM means today.** Writes that were acknowledged are never lost: every test kept them all.
 
 - **If a VM's app fails** (a crash or a redeploy), its actors move to the other VMs in seconds.
-- **If a whole VM fails** (its engine with it), its actors move to the other VMs in about two minutes, on Rivet 3.0.6, in our tests on a fresh cluster. Sometimes they get stuck until the VM returns instead: Rivet is tracking this as rivet-dev/rivet#5957. If it held the directory actor, that means the whole site. To unstick an actor without waiting, send `POST /actors/<actor id>/reschedule?namespace=default`, with the admin token, to a surviving engine on port 6420. The actor's ID is in the surviving engines' logs, on the "actor did not become ready" lines.
+- **If a whole VM fails** (its engine with it), its actors move to the other VMs in about two minutes: on Rivet 3.0.6's own image, they did in 13 of our 15 tests. In the other two they got stuck until the VM returned: Rivet is tracking this as rivet-dev/rivet#5957. If it held the directory actor, that means the whole site. To unstick an actor without waiting, send `POST /actors/<actor id>/reschedule?namespace=default`, with the admin token, to a surviving engine on port 6420. The actor's ID is in the surviving engines' logs, on the "actor did not become ready" lines.
 
 ## TLS
 
