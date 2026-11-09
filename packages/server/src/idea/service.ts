@@ -38,6 +38,8 @@ import { byteLength, checkSizes, type Limits, type SizeProblem } from '../limits
 import { type Kysely, sql as raw } from 'kysely'
 import { sqliteKysely } from '../sql/kysely.ts'
 import type { Sql } from '../sql/sql.ts'
+import type { InboxEvent } from '../directory/types.ts'
+import { inboxEvents, publishedInboxEvents } from './notify.ts'
 import { reviewerOf } from './reviewer.ts'
 import { type IdeaDB, type IdeaStatus, VERDICTS, type Verdict } from './schema.ts'
 
@@ -421,6 +423,7 @@ export class IdeaService {
     const now = this.#now()
     const result: WriteResult = { ok: true, value: { kind: 'created', version: 1 } }
     const stored = await this.#storeContents(idea)
+    const events: IdeaEvent[] = [{ name: 'version', payload: { version: 1, how: 'created', by: request.caller } }]
     await this.#transaction(async (tx) => {
       await tx
         .insertInto('idea')
@@ -451,12 +454,12 @@ export class IdeaService {
         .insertInto('status_changes')
         .values({ status: write.status ?? 'draft', by: JSON.stringify(request.caller), at: now, note: '' })
         .execute()
-      await this.#remember(tx, request.key, result)
+      await this.#remember(tx, request.key, result, events)
     })
     this.#latest = { version: 1, idea, ...stored, comments: [] }
     return {
       result,
-      events: [{ name: 'version', payload: { version: 1, how: 'created', by: request.caller } }] satisfies IdeaEvent[],
+      events,
     }
   }
 
@@ -512,17 +515,18 @@ export class IdeaService {
       return { result, events: [] }
     }
     const change: StatusChange = { status: to, by: request.caller, at: this.#now(), note }
+    const events: IdeaEvent[] = [{ name: 'status', payload: { status: to, change, by: request.caller } }]
     await this.#transaction(async (tx) => {
       await tx.updateTable('idea').set({ status: to }).execute()
       await tx
         .insertInto('status_changes')
         .values({ status: to, by: JSON.stringify(change.by), at: change.at, note })
         .execute()
-      await this.#remember(tx, request.key, result)
+      await this.#remember(tx, request.key, result, events)
     })
     return {
       result,
-      events: [{ name: 'status', payload: { status: to, change, by: request.caller } }] satisfies IdeaEvent[],
+      events,
     }
   }
 
@@ -553,6 +557,11 @@ export class IdeaService {
       refuse('stale_version', `v${meta.latest} is the latest version; read it, then review it`, { latest: meta.latest })
     }
     const at = this.#now()
+    const published = pending.map((p) => p.id)
+    const told = await this.#publishedTold(published, caller, at)
+    let review: ReviewShape
+    let result: WriteResult
+    // the comments published, the verdict and the record of the write, together
     await this.#transaction(async (tx) => {
       await tx.updateTable('comments').set({ pending: null }).where('pending', '=', reviewer).execute()
       await tx
@@ -567,16 +576,17 @@ export class IdeaService {
           dismissed: null,
         })
         .execute()
+      review = (await this.#latestReviews(meta, tx)).find((r) => r.reviewer === reviewer)!
+      result = { ok: true, value: { kind: 'review', review, published } }
+      await this.#remember(tx, request.key, result, {
+        inbox: [...told, ...inboxEvents([{ name: 'review', payload: { review, by: caller } }], at)],
+      })
     })
-    const review = (await this.#latestReviews(meta)).find((r) => r.reviewer === reviewer)!
-    const published = pending.map((p) => p.id)
-    const result: WriteResult = { ok: true, value: { kind: 'review', review, published } }
-    await this.#remember(this.#db, request.key, result)
     return {
-      result,
+      result: result!,
       events: [
         ...(await this.#publishedEvents(pending, caller)),
-        { name: 'review', payload: { review, by: caller } },
+        { name: 'review', payload: { review: review!, by: caller } },
       ] satisfies IdeaEvent[],
     }
   }
@@ -602,14 +612,45 @@ export class IdeaService {
     const reviewer = reviewerOf(request.caller)
     const published = pending.map((p) => p.id)
     const result: WriteResult = { ok: true, value: { kind: 'review', review: null, published } }
+    const told = await this.#publishedTold(published, request.caller, this.#now())
     await this.#transaction(async (tx) => {
       await tx.updateTable('comments').set({ pending: null }).where('pending', '=', reviewer).execute()
-      await this.#remember(tx, request.key, result)
+      await this.#remember(tx, request.key, result, { inbox: told })
     })
     return { result, events: await this.#publishedEvents(pending, request.caller) }
   }
 
   /** What everyone viewing sees of comments just published: new threads whole, and replies to threads already out. */
+  /** What publishing these pending comments tells inboxes, read from their rows (and where they're anchored now). */
+  async #publishedTold(ids: string[], by: Caller, at: number): Promise<InboxEvent[]> {
+    if (ids.length === 0) {
+      return []
+    }
+    const rows = await this.#db
+      .selectFrom('comments')
+      .select(['id', 'parent', 'body', 'suggestion'])
+      .where('id', 'in', ids)
+      .orderBy('created_at')
+      .orderBy('id')
+      .execute()
+    const anchors = await this.#db
+      .selectFrom('anchors')
+      .select(['comment', 'anchor'])
+      .where('comment', 'in', ids)
+      .orderBy('version', 'desc')
+      .execute()
+    const quote = (id: string) => {
+      const anchor = anchors.find((a) => a.comment === id)?.anchor
+      const parsed = anchor ? (JSON.parse(anchor) as { kind?: string; quote?: string }) : null
+      return parsed?.kind === 'text' && parsed.quote ? parsed.quote : null
+    }
+    return publishedInboxEvents(
+      rows.map((r) => ({ ...r, quote: quote(r.id) })),
+      by,
+      at,
+    )
+  }
+
   async #publishedEvents(pending: Array<{ id: string; parent: string | null }>, by: Caller): Promise<IdeaEvent[]> {
     if (pending.length === 0) {
       return []
@@ -709,20 +750,25 @@ export class IdeaService {
       )
     }
     const dismissed: Dismissal = { by: request.caller, at: this.#now(), reason: write.reason }
-    await this.#db
-      .updateTable('reviews')
-      .set({ dismissed: JSON.stringify(dismissed) })
-      .where('seq', '=', row!.seq)
-      .execute()
-    const review = (await this.#latestReviews(meta)).find((r) => r.reviewer === write.reviewer)!
-    const result: WriteResult = { ok: true, value: { kind: 'review', review, published: [] } }
-    await this.#remember(this.#db, request.key, result)
-    return { result, events: [{ name: 'review', payload: { review, by: request.caller } }] satisfies IdeaEvent[] }
+    let result: WriteResult
+    let events: IdeaEvent[] = []
+    await this.#transaction(async (tx) => {
+      await tx
+        .updateTable('reviews')
+        .set({ dismissed: JSON.stringify(dismissed) })
+        .where('seq', '=', row!.seq)
+        .execute()
+      const review = (await this.#latestReviews(meta, tx)).find((r) => r.reviewer === write.reviewer)!
+      result = { ok: true, value: { kind: 'review', review, published: [] } }
+      events = [{ name: 'review', payload: { review, by: request.caller } }]
+      await this.#remember(tx, request.key, result, events)
+    })
+    return { result: result!, events }
   }
 
   /** Each reviewer's latest verdict, oldest first. */
-  async #latestReviews(meta: Meta): Promise<ReviewShape[]> {
-    const rows = await this.#db
+  async #latestReviews(meta: Meta, db: Kysely<IdeaDB> = this.#db): Promise<ReviewShape[]> {
+    const rows = await db
       .selectFrom('reviews as r')
       .selectAll()
       .where('r.seq', 'in', (eb) =>
@@ -780,6 +826,29 @@ export class IdeaService {
       ok: true,
       value: suggestion ? { kind: 'suggestion', comment: id, old: suggestion.old } : { kind: 'comment', comment: id },
     }
+    const events: IdeaEvent[] = [
+      {
+        name: 'comment',
+        payload: {
+          thread: {
+            id,
+            author: request.caller,
+            createdAt: at,
+            body: write.body,
+            version: meta.latest,
+            resolved: false,
+            state: 'exact',
+            anchor,
+            lastVersion: meta.latest,
+            addressedIn: [],
+            suggestion,
+            pending: false,
+            replies: [],
+          },
+          by: request.caller,
+        },
+      },
+    ]
     await this.#transaction(async (tx) => {
       await tx
         .insertInto('comments')
@@ -804,7 +873,8 @@ export class IdeaService {
         .updateTable('idea')
         .set((eb) => ({ next_comment: eb('next_comment', '+', 1) }))
         .execute()
-      await this.#remember(tx, request.key, result)
+      // a pending comment tells no one until its review is submitted
+      await this.#remember(tx, request.key, result, pending ? [] : events)
     })
     latest.comments.push({ id, anchor })
     if (pending) {
@@ -813,29 +883,7 @@ export class IdeaService {
     }
     return {
       result,
-      events: [
-        {
-          name: 'comment',
-          payload: {
-            thread: {
-              id,
-              author: request.caller,
-              createdAt: at,
-              body: write.body,
-              version: meta.latest,
-              resolved: false,
-              state: 'exact',
-              anchor,
-              lastVersion: meta.latest,
-              addressedIn: [],
-              suggestion,
-              pending: false,
-              replies: [],
-            },
-            by: request.caller,
-          },
-        },
-      ] satisfies IdeaEvent[],
+      events,
     }
   }
 
@@ -848,6 +896,23 @@ export class IdeaService {
     const id = `c${meta.next_comment}`
     const at = this.#now()
     const result: WriteResult = { ok: true, value: { kind: 'comment', comment: id } }
+    const events: IdeaEvent[] = [
+      {
+        name: 'reply',
+        payload: {
+          parent,
+          reply: {
+            id,
+            author: request.caller,
+            createdAt: at,
+            body: write.body,
+            version: meta.latest,
+            pending: false,
+          },
+          by: request.caller,
+        },
+      },
+    ]
     await this.#transaction(async (tx) => {
       await tx
         .insertInto('comments')
@@ -868,30 +933,14 @@ export class IdeaService {
         .updateTable('idea')
         .set((eb) => ({ next_comment: eb('next_comment', '+', 1) }))
         .execute()
-      await this.#remember(tx, request.key, result)
+      await this.#remember(tx, request.key, result, pending ? [] : events)
     })
     if (pending) {
       return { result, events: [] }
     }
     return {
       result,
-      events: [
-        {
-          name: 'reply',
-          payload: {
-            parent,
-            reply: {
-              id,
-              author: request.caller,
-              createdAt: at,
-              body: write.body,
-              version: meta.latest,
-              pending: false,
-            },
-            by: request.caller,
-          },
-        },
-      ] satisfies IdeaEvent[],
+      events,
     }
   }
 
@@ -984,6 +1033,10 @@ export class IdeaService {
     const drafted = (await this.#draftEntries()).filter(
       (e) => e.change.kind === 'suggestion' && e.change.comment === row!.id,
     )
+    const events: IdeaEvent[] = [
+      { name: 'decided', payload: { comment: row!.id, decision, by: request.caller } },
+      ...(drafted.length > 0 ? [{ name: 'draft' as const, payload: { by: request.caller } }] : []),
+    ]
     await this.#transaction(async (tx) => {
       await this.#decide(tx, [row!.id], decision)
       if (drafted.length > 0) {
@@ -996,14 +1049,11 @@ export class IdeaService {
           )
           .execute()
       }
-      await this.#remember(tx, request.key, result)
+      await this.#remember(tx, request.key, result, events)
     })
     return {
       result,
-      events: [
-        { name: 'decided', payload: { comment: row!.id, decision, by: request.caller } },
-        ...(drafted.length > 0 ? [{ name: 'draft' as const, payload: { by: request.caller } }] : []),
-      ] satisfies IdeaEvent[],
+      events,
     }
   }
 
@@ -1347,6 +1397,15 @@ export class IdeaService {
       value: { kind: 'version', version: number, comments: outcomes, steps: stepResults, ...more.value },
     }
     const stored = await this.#storeContents(idea)
+    const events: IdeaEvent[] = [
+      { name: 'version', payload: { version: number, how, by: request.caller } },
+      ...(decide?.ids ?? []).map((comment): IdeaEvent => ({
+        name: 'decided',
+        payload: { comment, decision: decide!.decision, by: request.caller },
+      })),
+      // a new version is what the draft is built on: editors read it again
+      { name: 'draft', payload: { by: request.caller } },
+    ]
     await this.#transaction(async (tx) => {
       await this.#insertVersion(tx, {
         number,
@@ -1377,7 +1436,7 @@ export class IdeaService {
           )
           .execute()
       }
-      await this.#remember(tx, request.key, result)
+      await this.#remember(tx, request.key, result, events)
     })
     this.#latest = {
       version: number,
@@ -1389,15 +1448,7 @@ export class IdeaService {
     }
     return {
       result,
-      events: [
-        { name: 'version', payload: { version: number, how, by: request.caller } },
-        ...(decide?.ids ?? []).map((comment): IdeaEvent => ({
-          name: 'decided',
-          payload: { comment, decision: decide!.decision, by: request.caller },
-        })),
-        // a new version is what the draft is built on: editors read it again
-        { name: 'draft', payload: { by: request.caller } },
-      ] satisfies IdeaEvent[],
+      events,
     }
   }
 
@@ -1926,13 +1977,80 @@ export class IdeaService {
     }
   }
 
-  async #remember(db: Kysely<IdeaDB>, key: string, result: WriteResult): Promise<void> {
+  // --- the outbox: what writes tell the directory, until it has them ------------------
+
+  /** Notifications due to be sent (oldest first): each a NotifyBatch's ID and events. */
+  async outboxDue(limit = 20): Promise<Array<{ id: string; events: InboxEvent[]; attempts: number }>> {
+    const rows = await this.#db
+      .selectFrom('outbox')
+      .select(['id', 'events', 'attempts'])
+      .where('next_at', '<=', this.#now())
+      .orderBy('at')
+      .orderBy('id')
+      .limit(limit)
+      .execute()
+    return rows.map((r) => ({ id: r.id, events: JSON.parse(r.events) as InboxEvent[], attempts: r.attempts }))
+  }
+
+  /** The directory has it. */
+  async outboxSent(id: string): Promise<void> {
+    await this.#db.deleteFrom('outbox').where('id', '=', id).execute()
+  }
+
+  /** The directory couldn't take it: try again later, waiting longer each time (up to 5 minutes). */
+  async outboxFailed(id: string, attempts: number): Promise<void> {
+    const wait = Math.min(500 * 2 ** attempts, 5 * 60_000)
+    await this.#db
+      .updateTable('outbox')
+      .set({ attempts: attempts + 1, next_at: this.#now() + wait })
+      .where('id', '=', id)
+      .execute()
+  }
+
+  /** How many notifications haven't reached the directory yet. */
+  async outboxSize(): Promise<number> {
+    const row = await this.#db
+      .selectFrom('outbox')
+      .select((eb) => eb.fn.countAll<number>().as('n'))
+      .executeTakeFirst()
+    return Number(row?.n ?? 0)
+  }
+
+  /** When the next notification is due (null when the outbox is empty). */
+  async outboxNextAt(): Promise<number | null> {
+    const row = await this.#db
+      .selectFrom('outbox')
+      .select((eb) => eb.fn.min<number>('next_at').as('next'))
+      .executeTakeFirst()
+    return row?.next == null ? null : Number(row.next)
+  }
+
+  /**
+   * Keeps a write's result by its idempotency key and, in the same
+   * transaction, what it tells the directory: the outbox holds it until the
+   * directory has it, so a committed write's notifications can't be lost.
+   * `told` is the write's events (made inbox events here) or, where a write
+   * puts them together itself, inbox events already.
+   */
+  async #remember(
+    db: Kysely<IdeaDB>,
+    key: string,
+    result: WriteResult,
+    told: IdeaEvent[] | { inbox: InboxEvent[] } = [],
+  ): Promise<void> {
     const now = this.#now()
     await db
       .insertInto('writes')
       .values({ key, result: JSON.stringify(result), at: now })
       .onConflict((oc) => oc.column('key').doUpdateSet({ result: JSON.stringify(result), at: now }))
       .execute()
+    const events = Array.isArray(told) ? inboxEvents(told, now) : told.inbox
+    if (events.length > 0) {
+      await db
+        .insertInto('outbox')
+        .values({ id: crypto.randomUUID(), events: JSON.stringify(events), at: now, attempts: 0, next_at: now })
+        .execute()
+    }
     await db
       .deleteFrom('writes')
       .where('at', '<', now - KEEP_RESULTS_MS)

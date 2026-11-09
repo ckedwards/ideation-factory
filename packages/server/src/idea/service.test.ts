@@ -897,3 +897,64 @@ describe('retries', () => {
     expect(next.result).toMatchObject({ ok: true, value: { version: 3 } })
   })
 })
+
+describe('the outbox', () => {
+  // what each write tells the directory, written in its own transaction
+  const outbox = async (sql: Awaited<ReturnType<typeof setup>>['sql']) =>
+    (await sql.execute<{ id: string; events: string }>('SELECT id, events FROM outbox ORDER BY at, id')).map((r) =>
+      (JSON.parse(r.events) as Array<{ kind: string; detail: Record<string, unknown> }>).map((e) => e.kind),
+    )
+
+  test('holds what each write tells inboxes; nothing for a refusal, a repeat, or what tells no one', async () => {
+    const { sql, write } = await created()
+    expect(await outbox(sql)).toEqual([['version']])
+    // refused, and the same write again: nothing more
+    expect((await write({ type: 'status', status: 'nonsense' })).ok).toBe(false)
+    value(await write({ type: 'status', status: 'requesting-review' }, OWNER, 'same'))
+    value(await write({ type: 'status', status: 'requesting-review' }, OWNER, 'same'))
+    const c = value(
+      await write({
+        type: 'comment',
+        version: 1,
+        anchor: { kind: 'text', file: 'f1', start: 15, end: 20 },
+        body: 'Which?',
+      }),
+    ) as { comment: string }
+    value(await write({ type: 'reply', parent: c.comment, body: 'The brown one.' }, REVIEWER))
+    // resolving tells no one
+    value(await write({ type: 'resolve', comment: c.comment, resolved: true }))
+    expect(await outbox(sql)).toEqual([['version'], ['status'], ['comment'], ['reply']])
+    const [, , comment] = (await sql.execute<{ events: string }>('SELECT events FROM outbox ORDER BY at, id')).map(
+      (r) => JSON.parse(r.events) as Array<{ detail: Record<string, unknown> }>,
+    )
+    expect(comment![0]!.detail).toMatchObject({ comment: c.comment, quote: 'brown', body: 'Which?' })
+  })
+
+  test('a pending comment tells no one until its review is submitted, then with the verdict', async () => {
+    const { sql, write } = await created()
+    value(
+      await write(
+        { type: 'comment', version: 1, anchor: { kind: 'file', file: 'f1' }, body: 'Later', pending: true },
+        REVIEWER,
+      ),
+    )
+    expect(await outbox(sql)).toEqual([['version']])
+    value(await write({ type: 'review', version: 1, verdict: 'request-changes' }, REVIEWER))
+    expect(await outbox(sql)).toEqual([['version'], ['comment', 'review']])
+  })
+
+  test('is sent oldest first; one the directory couldn’t take waits longer each time', async () => {
+    const { service, write } = await created()
+    value(await write({ type: 'status', status: 'requesting-review' }))
+    const [first, second] = await service.outboxDue()
+    expect(first!.events.map((e) => e.kind)).toEqual(['version'])
+    await service.outboxSent(first!.id)
+    await service.outboxFailed(second!.id, 0)
+    expect(await service.outboxDue()).toEqual([])
+    const next = (await service.outboxNextAt())!
+    await service.outboxFailed(second!.id, 3)
+    expect((await service.outboxNextAt())! - next).toBeGreaterThan(3_000)
+    await service.outboxSent(second!.id)
+    expect(await service.outboxNextAt()).toBeNull()
+  })
+})

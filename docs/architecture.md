@@ -372,6 +372,7 @@ The full list of open performance risks is in `mvp/scale-concerns.md`.
 - **Taking part subscribes you,** commenting, replying or reviewing, and unsubscribing silences an idea except for review requests.
 - **Team watchers are not fanned out per event.** A team with hundreds of watchers would turn every comment into hundreds of writes. Events go to the team's activity log, and a watcher's inbox merges in the teams they watch (at their level) when it's read. Unread counts for watched teams are kept per team, not per event.
 - **Bundling happens at read time** (per idea), so the stored events stay simple.
+- **No notification is lost.** A write's notifications go into its idea's outbox in the write's own transaction, so they exist exactly when the write does. The idea's actor sends them to the directory's queue and waits until the directory says it has applied them; only then are they deleted. One the directory couldn't take (busy, restarting, moving to another node) is sent again later, waiting longer each time, up to 5 minutes. An actor that stopped first sends what's left when it wakes, and a safety alarm wakes it. Each notification has an ID, so one sent twice is written once, and a late one doesn't become an inbox row's latest update, since that's the newest by time. The directory completes a queue message only once it has applied it, in one transaction with the rest of its batch.
 
 ## Permanent deletion
 

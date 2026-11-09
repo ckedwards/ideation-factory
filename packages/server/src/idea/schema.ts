@@ -84,6 +84,13 @@ export interface IdeaDB {
   /** The idea's draft: changes on the latest version, in the order they were made, until it's committed or discarded. */
   draft: { key: string; seq: number; change: string; by: string; at: number }
   writes: { key: string; result: string; at: number }
+  /**
+   * What a write tells the directory (its inbox events, as a NotifyBatch's),
+   * written in the write's own transaction and kept until the directory says
+   * it has applied them: the ID makes a resend harmless. attempts and next_at
+   * space out retries while the directory can't take them.
+   */
+  outbox: { id: string; events: string; at: number; attempts: number; next_at: number }
   schema_version: { version: number }
 }
 
@@ -121,6 +128,7 @@ export const IDEA_COLUMNS = {
   reviews: ['seq', 'reviewer', 'by', 'verdict', 'version', 'body', 'at', 'dismissed'],
   draft: ['key', 'seq', 'change', 'by', 'at'],
   writes: ['key', 'result', 'at'],
+  outbox: ['id', 'events', 'at', 'attempts', 'next_at'],
   schema_version: ['version'],
 } as const satisfies { [T in keyof IdeaDB]: ReadonlyArray<keyof IdeaDB[T]> }
 
@@ -222,6 +230,8 @@ const MIGRATIONS: Migration[] = [
     // results of recent writes by idempotency key, so a retried write isn't applied twice
     `CREATE TABLE writes (key TEXT PRIMARY KEY, result TEXT NOT NULL, at INTEGER NOT NULL)`,
     `CREATE INDEX writes_at ON writes (at)`,
+    // what writes tell the directory, until it has them
+    `CREATE TABLE outbox (id TEXT PRIMARY KEY, events TEXT NOT NULL, at INTEGER NOT NULL, attempts INTEGER NOT NULL, next_at INTEGER NOT NULL)`,
   ],
 ]
 

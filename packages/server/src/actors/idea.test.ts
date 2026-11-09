@@ -102,3 +102,15 @@ test('a retried write is applied once', async () => {
   expect(second.response).toEqual(first.response!)
   expect((await idea.summary())!.latest).toBe(2)
 })
+
+test('what a write tells inboxes leaves the outbox once the directory has applied it', async () => {
+  const idea = actors.idea.getOrCreate([key()])
+  await send(idea, { type: 'create', title: 'Plan', files: [{ path: 'plan.md', content: PLAN }] })
+  await send(idea, { type: 'comment', version: 1, anchor: { kind: 'file', file: 'f1' }, body: 'Told?' })
+  let left = await idea.outboxSize()
+  for (let i = 0; i < 100 && left > 0; i++) {
+    await Bun.sleep(50)
+    left = await idea.outboxSize()
+  }
+  expect(left).toBe(0)
+})

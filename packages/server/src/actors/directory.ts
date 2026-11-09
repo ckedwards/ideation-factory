@@ -24,7 +24,7 @@ import { notificationEmail } from '../mail/notification.ts'
 import { migrateDirectory } from '../directory/schema.ts'
 import { fts5Search } from '../directory/search.ts'
 import { SqlDirectory } from '../directory/sql-directory.ts'
-import { retryOverloaded } from '../sql/retry.ts'
+import { callRetrying, retryOverloaded } from '../sql/retry.ts'
 import type {
   ContainerKind,
   CreatePolicy,
@@ -56,7 +56,8 @@ export const directory = actor({
       await migrateAuth(database, nodeDeps().auth)
     },
   }),
-  queues: { index: queue<IndexUpdate>(), notify: queue<NotifyBatch>() },
+  // a notification is answered once it's applied (or couldn't be), so its idea's outbox knows to keep it or not
+  queues: { index: queue<IndexUpdate>(), notify: queue<NotifyBatch, { ok: boolean }>() },
   createVars: () => ({ directory: null as Directory | null, auth: null as Auth | null, sending: false }),
   onWake: async (c) => {
     // the cli's OAuth client, there before anyone signs in with it
@@ -67,18 +68,39 @@ export const directory = actor({
   run: async (c) => {
     const d = directoryOf(c)
     for (;;) {
-      const batch = await c.queue.nextBatch({ count: 50 })
+      // completed only once applied: one taken off the queue but not applied is answered by no one, and its idea sends it again
+      const batch = await c.queue.nextBatch({ count: 50, completable: true })
       // a batch's notifications in one transaction, then its index updates in another:
       // each commit writes pages, and the writes are what SQLite can do least of
-      const notifications = batch.filter((m) => m.name === 'notify').map((m) => m.body as NotifyBatch)
-      if (notifications.length > 0) {
-        try {
-          await d.notify(notifications)
-        } catch (error) {
-          c.log.error({ msg: 'notifying failed', ideas: notifications.map((n) => n.idea), error: String(error) })
+      const notifying = batch.filter((m) => m.name === 'notify')
+      if (notifying.length > 0) {
+        const notifications = notifying.map((m) => m.body as NotifyBatch)
+        // all at once; should that fail, each on its own, so each is answered for itself (IDs make repeats harmless)
+        const outcomes = await d
+          .notify(notifications)
+          .then(() => notifications.map(() => true))
+          .catch(() =>
+            Promise.all(
+              notifications.map((n) =>
+                d.notify(n).then(
+                  () => true,
+                  (error: unknown) => {
+                    c.log.error({ msg: 'notifying failed', idea: n.idea, id: n.id, error: String(error) })
+                    return false
+                  },
+                ),
+              ),
+            ),
+          )
+        for (const [i, message] of notifying.entries()) {
+          await callRetrying(() => message.complete({ ok: outcomes[i]! }))
         }
         // a notification may have queued an email: an alarm for when it's due
-        await scheduleEmails(c)
+        try {
+          await scheduleEmails(c)
+        } catch (error) {
+          c.log.error({ msg: 'scheduling emails failed', error: String(error) })
+        }
       }
       // only the newest update per idea matters
       const latest = new Map<string, IndexUpdate>()
@@ -97,6 +119,11 @@ export const directory = actor({
           await d.updateIdea([...latest.values()])
         } catch (error) {
           c.log.error({ msg: 'index update failed', ideas: [...latest.keys()], error: String(error) })
+        }
+      }
+      for (const message of batch) {
+        if (message.name === 'index') {
+          await callRetrying(() => message.complete())
         }
       }
     }
