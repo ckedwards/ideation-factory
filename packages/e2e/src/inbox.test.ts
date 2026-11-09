@@ -114,6 +114,7 @@ describe('the inbox', () => {
     expect((await api(h('kim')).unreadNotifications({})).count).toBe(0)
   })
 
+  // its own waits (the inbox, the email's quiet period, the email) can add up to more than the default 5 s
   test('by email: an idea’s updates in one email once it’s quiet, unless read first; one click unsubscribes', async () => {
     await Promise.all([api(h('ash')).me({}), api(h('kai')).me({})])
     const riley = await repoAs('riley', { 'plan.md': '# Plan\n\nText.\n' })
@@ -134,7 +135,8 @@ describe('the inbox', () => {
     // ash gets one email: asked to review, and the comment
     const ash = `${h('ash')}@example.test`
     let mail = testEmail.to(ash)
-    for (let i = 0; i < 100 && mail.length === 0; i++) {
+    // due 300 ms after the comment; a few seconds more should its alarm be lost to busy storage (scheduleEmails)
+    for (let i = 0; i < 300 && mail.length === 0; i++) {
       await Bun.sleep(50)
       mail = testEmail.to(ash)
     }
@@ -153,7 +155,7 @@ describe('the inbox', () => {
     expect(await (await app(new Request(link))).text()).toContain('Unsubscribe from “Mailed plan”?')
     expect((await app(new Request(link, { method: 'POST', body: 'List-Unsubscribe=One-Click' }))).status).toBe(200)
     expect(await api(h('ash')).getSubscription({ idea })).toEqual({ subscribed: false, reason: null })
-  })
+  }, 20_000)
 
   test('email settings, from the cli', async () => {
     const lee = await repoAs('lee')
