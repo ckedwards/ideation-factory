@@ -256,7 +256,7 @@ Sessions and tokens are long-lived, and they live in the directory actor. Readin
 - **App nodes:** our Bun app, as a container.
 - **The Rivet Engine (3.0):** one Rust binary, as a container, with a local disk per instance. Bucket-only storage needs 3.0, which is in preview; see the [Rivet spike](spike-rivet.md) for the fallback.
 - **A bucket:** S3-compatible object storage **with conditional writes** (`If-Match` / `If-None-Match` on PUT), which the Rivet Engine uses for leases and manifests. The major clouds' storage has them (AWS S3, Google Cloud Storage, Azure Blob, Cloudflare R2). On-premises: SeaweedFS or RustFS (both Apache-2.0, both implement them); to be proven in the [Rivet spike](spike-rivet.md). Garage doesn't support them, and MinIO's open-source repository is archived. The bucket holds every actor's durable data and the file contents.
-- **A load balancer** in front of the app nodes, for TLS: nginx, HAProxy, Caddy or the cloud's own.
+- **A load balancer** in front of the app nodes, for TLS: Caddy in our Compose files (it gets and renews certificates itself, from Let's Encrypt, an internal ACME server or your own files), or nginx, HAProxy or the cloud's own.
 - **Email:** SMTP, or an email provider's API.
 
 Rivet's hosted engine (Rivet Cloud) is an option for teams that don't want to run the engine, never a requirement.
@@ -266,16 +266,16 @@ Rivet's hosted engine (Rivet Cloud) is an option for teams that don't want to ru
 **Small: one VM.**
 
 ```
-VM:  nginx (TLS) ──> app (Bun + RivetKit) ──> Rivet Engine (1 instance, local disk)
+VM:  Caddy (TLS) ──> app (Bun + RivetKit) ──> Rivet Engine (1 instance, local disk)
                                                  └──> bucket (outside the VM)
 ```
 
-Simple, with stated trade-offs: no failover (if the VM is down, the app is down), a short window where the latest writes exist only on the VM's disk before reaching the bucket (about a minute with default settings, to be measured), and a brief outage during upgrades.
+**As built** (step 9, part 6b): `deploy/one-vm/`, with SeaweedFS as the bucket unless you bring your cloud's (see `deploy/README.md`). Three things learned running it: the engine's S3 client needs `AWS_ALLOW_HTTP=true` for a store on plain HTTP, or it times out writing its configuration and restarts; RivetKit only makes the engine's node pool for an engine it starts itself, so a setup step makes it (`PUT /pools/default`); and a new engine serves only after about a minute, so the app starts once the pool is made. Simple, with stated trade-offs: no failover (if the VM is down, the app is down), a short window where the latest writes exist only on the VM's disk before reaching the bucket (about a minute with default settings, to be measured), and a brief outage during upgrades.
 
 **Production: three VMs (or Kubernetes), ideally in different zones.**
 
 ```
-                 load balancer (nginx/HAProxy, or the cloud's)
+                 load balancer (Caddy, or the cloud's)
                  /                |                \
 VM 1: app + engine      VM 2: app + engine      VM 3: app + engine
              \________ private network (engines talk on 6421) ________/

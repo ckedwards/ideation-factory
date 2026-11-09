@@ -1,0 +1,34 @@
+# The TLS proxy in front of the app. TLS_MODE picks the certificate:
+#   internal       Caddy's own local CA: for trying it out (browsers warn)
+#   files          ./tls/fullchain.pem and ./tls/privkey.pem: yours, an internal CA's, say
+#   acme           from ACME_SERVER (Let's Encrypt by default), renewed automatically
+#   acme-internal  the same from an internal ACME server (step-ca, say), trusting
+#                  its root, ./ca/$ACME_CA_FILE
+(tls-internal) {
+	tls internal
+}
+(tls-files) {
+	tls /tls/fullchain.pem /tls/privkey.pem
+}
+(tls-acme) {
+	tls {$ACME_EMAIL} {
+		ca {$ACME_SERVER}
+	}
+}
+(tls-acme-internal) {
+	tls {$ACME_EMAIL} {
+		ca {$ACME_SERVER}
+		ca_root /ca/{$ACME_CA_FILE}
+	}
+}
+
+{$IDEAF_HOST} {
+	import tls-{$TLS_MODE}
+	header Strict-Transport-Security "max-age=31536000"
+	# an upload is a whole idea's files; the app checks its own limits
+	request_body {
+		max_size 64MB
+	}
+	# WebSockets (live updates) and X-Forwarded-For pass through as they are
+	reverse_proxy app:8080
+}

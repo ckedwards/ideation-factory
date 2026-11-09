@@ -1,0 +1,162 @@
+# Ideation Factory on one VM: Caddy (TLS), the app, the Rivet Engine and,
+# unless you bring your own bucket, SeaweedFS. See deploy/README.md.
+#
+#   cp .env.example .env     then fill it in
+#   docker compose up -d --build
+name: ideaf
+
+services:
+  # TLS in front of the app, with certificates got and renewed by Caddy itself: see the Caddyfile
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    depends_on: [app]
+    ports:
+      - ${HTTP_PORT:-80}:80
+      - ${HTTPS_PORT:-443}:443
+      - ${HTTPS_PORT:-443}:443/udp
+    environment:
+      IDEAF_HOST: ${IDEAF_HOST:?set IDEAF_HOST, the name people reach this by}
+      TLS_MODE: ${TLS_MODE:-internal}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+      ACME_SERVER: ${ACME_SERVER:-https://acme-v02.api.letsencrypt.org/directory}
+      ACME_CA_FILE: ${ACME_CA_FILE:-internal-ca.pem}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./tls:/tls:ro
+      - ./ca:/ca:ro
+      # Caddy's certificates, and its local CA
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [ideaf]
+
+  app:
+    build:
+      context: ../..
+      dockerfile: deploy/app.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      pool:
+        condition: service_completed_successfully
+    environment:
+      IDEAF_URL: '${IDEAF_URL:?set IDEAF_URL, the public URL, like https://ideas.example.com}'
+      IDEAF_AUTH_SECRET: '${IDEAF_AUTH_SECRET:?set IDEAF_AUTH_SECRET (openssl rand -hex 32)}'
+      IDEAF_SITE_ADMINS: ${IDEAF_SITE_ADMINS:-}
+      IDEAF_PERSONAL_TOKENS: ${IDEAF_PERSONAL_TOKENS:-admins}
+      # only Caddy reaches the app, from this network
+      IDEAF_TRUSTED_PROXIES: 172.30.80.0/24
+      RIVET_ENDPOINT: http://default:${RIVET_ADMIN_TOKEN}@engine:6420
+      IDEAF_S3_BUCKET: ${S3_FILES_BUCKET:-ideaf-files}
+      IDEAF_S3_ENDPOINT: ${S3_ENDPOINT:-http://seaweedfs:8333}
+      IDEAF_S3_REGION: ${S3_REGION:-us-east-1}
+      IDEAF_S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID}
+      IDEAF_S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY}
+      IDEAF_SMTP_URL: ${IDEAF_SMTP_URL:-}
+      IDEAF_EMAIL_FROM: ${IDEAF_EMAIL_FROM:-}
+      IDEAF_NOTIFY_FROM: ${IDEAF_NOTIFY_FROM:-}
+      IDEAF_EMAIL: ${IDEAF_EMAIL:-}
+      IDEAF_MCP_CLIENT_HOSTS: ${IDEAF_MCP_CLIENT_HOSTS:-}
+    volumes:
+      # an internal CA's certificates, trusted for the app's own connections
+      - ./ca:/etc/ideaf/ca:ro
+    networks: [ideaf]
+
+  engine:
+    build:
+      context: ../..
+      dockerfile: deploy/engine.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      buckets:
+        condition: service_completed_successfully
+        required: false
+    configs:
+      - source: engine
+        target: /etc/rivet/config.yaml
+    environment:
+      # SeaweedFS here speaks plain HTTP on the private network; a cloud bucket is HTTPS
+      AWS_ALLOW_HTTP: ${S3_ALLOW_HTTP:-true}
+    volumes:
+      - engine:/var/lib/rivet
+    networks: [ideaf]
+
+  # The engine's node pool the app's nodes join (RivetKit only makes one for an engine it starts
+  # itself). Draining on upgrade moves actors off an older app version once a newer one connects.
+  pool:
+    image: curlimages/curl:8.16.0
+    depends_on: [engine]
+    entrypoint: ['sh', '-c']
+    command:
+      - |
+        until curl -sf -X PUT "http://engine:6420/pools/default?namespace=default" \
+            -H "authorization: Bearer $$RIVET_ADMIN_TOKEN" -H 'content-type: application/json' \
+            -d '{"drain_on_version_upgrade": true}'; do sleep 2; done
+    environment:
+      RIVET_ADMIN_TOKEN: ${RIVET_ADMIN_TOKEN}
+    networks: [ideaf]
+
+  # A bucket store of your own, unless you use your cloud's (then drop seaweedfs from COMPOSE_PROFILES
+  # and set S3_ENDPOINT and the keys).
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.51
+    profiles: [seaweedfs]
+    restart: unless-stopped
+    command: server -dir=/data -s3 -s3.config=/etc/seaweedfs/s3.json
+    configs:
+      - source: seaweedfs
+        target: /etc/seaweedfs/s3.json
+    volumes:
+      - seaweedfs:/data
+    networks: [ideaf]
+
+  # makes the buckets in SeaweedFS (with a cloud bucket, make them yourself)
+  buckets:
+    image: chrislusf/seaweedfs:4.51
+    profiles: [seaweedfs]
+    depends_on: [seaweedfs]
+    entrypoint: ['sh', '-c']
+    command:
+      - |
+        until echo 's3.bucket.list' | weed shell -master=seaweedfs:9333 -filer=seaweedfs:8888 >/dev/null 2>&1; do sleep 1; done
+        for bucket in "$$FILES" "$$ENGINE"; do
+          echo "s3.bucket.list" | weed shell -master=seaweedfs:9333 -filer=seaweedfs:8888 | grep -qw "$$bucket" \
+            || echo "s3.bucket.create -name $$bucket" | weed shell -master=seaweedfs:9333 -filer=seaweedfs:8888
+        done
+    environment:
+      FILES: ${S3_FILES_BUCKET:-ideaf-files}
+      ENGINE: ${S3_ENGINE_BUCKET:-ideaf-engine}
+    networks: [ideaf]
+
+configs:
+  engine:
+    content: |
+      auth:
+        admin_token: "${RIVET_ADMIN_TOKEN:?set RIVET_ADMIN_TOKEN (openssl rand -hex 32)}"
+      storage:
+        log_directory: /var/lib/rivet/log
+      object_storage:
+        primary:
+          s3:
+            bucket: "${S3_ENGINE_BUCKET:-ideaf-engine}"
+            endpoint: "${S3_ENDPOINT:-http://seaweedfs:8333}"
+            region: "${S3_REGION:-us-east-1}"
+            access_key_id: "${S3_ACCESS_KEY_ID}"
+            secret_access_key: "${S3_SECRET_ACCESS_KEY}"
+      telemetry:
+        enabled: false
+  seaweedfs:
+    content: |
+      {"identities": [{"name": "ideaf", "credentials": [{"accessKey": "${S3_ACCESS_KEY_ID}", "secretKey": "${S3_SECRET_ACCESS_KEY}"}],
+        "actions": ["Admin", "Read", "Write", "List", "Tagging"]}]}
+
+volumes:
+  engine:
+  seaweedfs:
+  caddy-data:
+  caddy-config:
+
+networks:
+  ideaf:
+    ipam:
+      config:
+        - subnet: 172.30.80.0/24
