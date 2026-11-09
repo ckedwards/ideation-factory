@@ -113,35 +113,59 @@ export function createRouter<Ops extends Record<string, Operation>>(
       raw[name] = decodeURIComponent(values[i]!)
     })
 
-    const parsed = operation.input.safeParse(raw)
-    if (!parsed.success) {
-      return error('invalid', describeIssues(parsed.error), undefined, z.treeifyError(parsed.error))
-    }
-
-    try {
-      const handler = handlers[key as keyof Ops]
-      const result = await handler(parsed.data as never, {
+    const ran = await runOperation(
+      operation,
+      handlers[key as keyof Ops] as never,
+      raw,
+      {
         caller,
         token,
         key: operation.kind === 'write' ? idempotencyKey : null,
         request,
-      })
-      if (!result.ok) {
-        return error(result.error.code, result.error.message, undefined, result.error.details)
-      }
-      if (options.validateOutput) {
-        const checked = operation.output.safeParse(result.value)
-        if (!checked.success) {
-          throw new Error(
-            `${operation.name} returned output that doesn't match its schema: ${describeIssues(checked.error)}`,
-          )
-        }
-      }
-      return Response.json(result.value)
-    } catch (e) {
-      options.onError?.(e, operation.name)
-      return error('internal', 'something went wrong on the server')
+      },
+      options,
+    )
+    return ran.ok ? Response.json(ran.value) : error(ran.error.code, ran.error.message, undefined, ran.error.details)
+  }
+}
+
+/**
+ * An operation's input checked against its schema, its handler called, and
+ * its output checked (with `validateOutput`): what the HTTP routes and the
+ * hosted MCP server both do with a call. A handler that throws is an
+ * `internal` error, reported to `onError`.
+ */
+export async function runOperation(
+  operation: Operation,
+  handler: (input: never, context: Context) => Promise<HandlerResult<unknown>>,
+  raw: Record<string, unknown>,
+  context: Context,
+  options: Pick<RouterOptions, 'validateOutput' | 'onError'> = {},
+): Promise<{ ok: true; value: unknown } | { ok: false; error: ApiErrorBody }> {
+  const parsed = operation.input.safeParse(raw)
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: { code: 'invalid', message: describeIssues(parsed.error), details: z.treeifyError(parsed.error) },
     }
+  }
+  try {
+    const result = await handler(parsed.data as never, context)
+    if (!result.ok) {
+      return result
+    }
+    if (options.validateOutput) {
+      const checked = operation.output.safeParse(result.value)
+      if (!checked.success) {
+        throw new Error(
+          `${operation.name} returned output that doesn't match its schema: ${describeIssues(checked.error)}`,
+        )
+      }
+    }
+    return result
+  } catch (e) {
+    options.onError?.(e, operation.name)
+    return { ok: false, error: { code: 'internal', message: 'something went wrong on the server' } }
   }
 }
 

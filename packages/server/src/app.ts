@@ -1,14 +1,16 @@
 // The HTTP API: every operation from @ideaf/api under /api, routed and
 // validated by its definition, plus sign-in (forwarded to Better Auth in the
-// directory actor), a bare sign-in page, /health, /api/openapi.json and the
-// unsubscribe links in emails. Every other path is the web app's.
+// directory actor), the hosted MCP server (/mcp) and the OAuth discovery
+// documents MCP clients read, a bare sign-in page, /health, /api/openapi.json
+// and the unsubscribe links in emails. Every other path is the web app's.
 import { API_PATH, createRouter, openApiDocument, operations } from '@ideaf/api'
 import type { Client } from 'rivetkit/client'
 import { DIRECTORY_KEY } from './actors/directory.ts'
 import type { AuthSettings } from './auth/config.ts'
 import { authGateway } from './auth/gateway.ts'
 import { cliCodePage, consentPage, loginPage } from './auth/pages.ts'
-import { CLI_CODE_PATH, SSO_PROVIDER_ID } from './auth/config.ts'
+import { CLI_CODE_PATH, MCP_PATH, SSO_PROVIDER_ID } from './auth/config.ts'
+import { createMcp } from './mcp.ts'
 import { unsubscribePage } from './mail/unsubscribe.ts'
 import { createHandlers } from './operations.ts'
 import type { Registry } from './registry.ts'
@@ -39,18 +41,29 @@ export function createApp({
   const directory = actors.directory.getOrCreate(DIRECTORY_KEY)
   const gateway = authGateway(directory, auth.baseURL, auth.trustedProxies)
 
-  const route = createRouter(operations, createHandlers(actors), {
-    authenticate: gateway.authenticate,
+  const handlers = createHandlers(actors)
+  const onError = (error: unknown, operation: string) => console.error(`${operation} failed:`, error)
+  const route = createRouter(operations, handlers, {
+    authenticate: (request, operation) => gateway.authenticate(request, operation),
     validateOutput,
-    onError: (error, operation) => console.error(`${operation} failed:`, error),
+    onError,
   })
+  const mcp = createMcp({ operations, handlers, gateway, baseURL: auth.baseURL, validateOutput, onError })
   return async (request, peer) => {
     const { pathname } = new URL(request.url)
     if (pathname === '/health') {
       return Response.json({ ok: true })
     }
-    if (pathname.startsWith('/api/auth/')) {
+    // sign-in, and the documents MCP clients find it by (OAuth server and protected resource metadata)
+    if (
+      pathname.startsWith('/api/auth/') ||
+      pathname === '/.well-known/oauth-authorization-server' ||
+      pathname.startsWith('/.well-known/oauth-protected-resource')
+    ) {
       return gateway.forward(request, peer)
+    }
+    if (pathname === MCP_PATH) {
+      return mcp(request)
     }
     if (pathname === '/login') {
       return loginPage(auth.sso ? { name: auth.sso.name, providerId: SSO_PROVIDER_ID } : null)

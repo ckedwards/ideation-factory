@@ -40,6 +40,7 @@ const MarkdownFile = z.strictObject({ path: z.string().min(1).max(512), content:
 export const operations = {
   createIdea: defineOperation({
     name: 'create_idea',
+    mcp: true,
     summary: 'Start an idea',
     description:
       "Creates an idea from one or more Markdown files, as its first version. Outside a team it's private to you; in a team (ID or handle) it starts with the team's defaults for new ideas, and you need permission to create ideas there. Retrying with the same idempotency key returns the same idea instead of creating another.",
@@ -67,6 +68,7 @@ export const operations = {
 
   findIdea: defineOperation({
     name: 'find_idea',
+    mcp: true,
     summary: 'Find an idea by its number',
     description:
       "The idea at a team's handle and number (mobile and 9 for mobile/idea/9), or someone's own at @ and their handle. An idea that moved since is found at its old number too, and the answer says where it is now. Ideas you can't see aren't found.",
@@ -82,6 +84,7 @@ export const operations = {
 
   getIdea: defineOperation({
     name: 'get_idea',
+    mcp: true,
     summary: 'Read an idea',
     description:
       "An idea's title, owner, team, status, latest version and version history (who made each version, and whether with commands or an upload), and what you can do with it.",
@@ -94,6 +97,7 @@ export const operations = {
 
   showBlocks: defineOperation({
     name: 'show_blocks',
+    mcp: true,
     summary: 'Show the structured view',
     description:
       "Each file's sections and blocks with their stable IDs and source text, plus the open comments and what they're attached to. Read this before building an edit batch: commands name their targets by these IDs.",
@@ -106,6 +110,7 @@ export const operations = {
 
   pull: defineOperation({
     name: 'pull',
+    mcp: true,
     summary: 'Get the files',
     description:
       "Every file of a version (the latest by default) with its content and content hash. The hash is the file's base for the next sync: send it back so the server can follow comments through your edits and tell you to pull first if the idea moved on.",
@@ -148,6 +153,7 @@ export const operations = {
 
   previewEdit: defineOperation({
     name: 'preview_edit',
+    mcp: true,
     summary: 'Dry-run an edit batch',
     description:
       'Shows what a batch would do, changing nothing: the new text of each changed file, and what happens to each comment (exact, moved, changed or outdated). A batch that no longer applies returns conflict, naming the steps.',
@@ -168,6 +174,7 @@ export const operations = {
 
   edit: defineOperation({
     name: 'edit',
+    mcp: true,
     summary: 'Apply an edit batch',
     description:
       "If it would make changes in the idea's draft outdated, it's refused with draft_outdated, naming them: send it again with `outdateDraft` to confirm. Applies a batch of edit commands (replace, insert, delete, move, rename-heading, set-section, and file commands) as one new version. All or nothing. If the idea moved on since the batch's base, it's replayed onto the latest version; any step that no longer applies makes it a conflict, with nothing changed. Steps can name the comments they address.",
@@ -185,6 +192,7 @@ export const operations = {
 
   listComments: defineOperation({
     name: 'list_comments',
+    mcp: true,
     summary: 'List comments',
     description:
       'Every comment thread as of a version (the latest by default): where it is anchored there and its state, replies, whether it is resolved, and which versions addressed it.',
@@ -197,6 +205,7 @@ export const operations = {
 
   addComment: defineOperation({
     name: 'add_comment',
+    mcp: true,
     summary: 'Comment',
     description:
       "Comments on a file, a section (by its ID) or a range of a file's plain text (from show_blocks), on the latest version. With `pending`, it's part of your review: only you see it until you submit the review with review_idea, so the author gets one review instead of a stream of comments. If the idea has moved on, it's refused with stale_version: read it again.",
@@ -216,6 +225,7 @@ export const operations = {
 
   reply: defineOperation({
     name: 'reply',
+    mcp: true,
     summary: 'Reply to a comment',
     description:
       'Adds a reply to a comment thread. With `pending`, it waits for your review like a pending comment; a reply in your own pending thread always does.',
@@ -234,6 +244,7 @@ export const operations = {
 
   resolveComment: defineOperation({
     name: 'resolve_comment',
+    mcp: true,
     summary: 'Resolve or reopen a comment',
     description: 'Marks a comment thread resolved, or reopens it.',
     method: 'POST',
@@ -245,6 +256,7 @@ export const operations = {
 
   suggestEdit: defineOperation({
     name: 'suggest_edit',
+    mcp: true,
     summary: 'Suggest an edit',
     description:
       "Suggests a replacement for a range of a file's plain text (from show_blocks), on the latest version: a comment that carries a change. What it replaces is the range's Markdown source, widened to whole formatting where the range cuts through it; the answer says what that is, so send `new` as its replacement. Anyone who can comment can suggest; people with edit access accept or reject. If the idea has moved on, it's refused with stale_version: read it again.",
@@ -289,6 +301,7 @@ export const operations = {
 
   acceptSuggestions: defineOperation({
     name: 'accept_suggestions',
+    mcp: true,
     summary: 'Accept suggested edits',
     description:
       "Accepts suggestions as one new version, a step for each that addresses it, and resolves them; or, with `into: draft`, adds them to the idea's draft, to be committed with the rest of it. One whose text has changed or gone since (in the version, or in the draft), or that overlaps one before it, is skipped and stays open, saying why; if none apply, it's refused with conflict. Needs edit access.",
@@ -313,6 +326,7 @@ export const operations = {
 
   rejectSuggestion: defineOperation({
     name: 'reject_suggestion',
+    mcp: true,
     summary: 'Reject a suggested edit',
     description:
       'Rejects a suggestion, resolving it. One already accepted can’t be: edit the idea instead. Needs edit access.',
@@ -325,6 +339,7 @@ export const operations = {
 
   getDraft: defineOperation({
     name: 'get_draft',
+    mcp: true,
     summary: 'Read the draft',
     description:
       "The idea's draft: one per idea, shared by everyone with edit access, on its latest version. Its changes in the order they were made, each with why it doesn't apply if it's outdated; the files as they'd be, each block with where it came from; and where each comment would be. Empty until someone edits. Needs edit access.",
@@ -337,6 +352,7 @@ export const operations = {
 
   changeDraft: defineOperation({
     name: 'change_draft',
+    mcp: true,
     summary: 'Change the draft',
     description:
       "Adds a change to the idea's draft: a block's (or heading's) new source, a deletion (a heading deletes its section), or new Markdown at a place. Blocks are named by their IDs in the draft (get_draft), and an edit or deletion gives the block as it read (`was`): if it reads differently now, the change is refused with conflict, as outdated. Editing a block again straight after is one change. Needs edit access.",
@@ -372,6 +388,7 @@ export const operations = {
 
   commitDraft: defineOperation({
     name: 'commit_draft',
+    mcp: true,
     summary: 'Commit the draft',
     description:
       "Makes the draft one new version, a step for each command, and resolves the suggestions in it as accepted. Every change must still apply: if any is outdated, it's refused with conflict, naming them, and nothing changes. Needs edit access.",
@@ -384,6 +401,7 @@ export const operations = {
 
   listReviews: defineOperation({
     name: 'list_reviews',
+    mcp: true,
     summary: "Read an idea's status and reviews",
     description:
       "The idea's status and every change of it (who, when, and why), and each reviewer's latest verdict: the version it was on, whether it counts as an approval (a person's, on the latest version) and whether it stands in the way of closing as accepted (a Request changes or Reject not withdrawn or dismissed).",
@@ -407,6 +425,7 @@ export const operations = {
 
   setStatus: defineOperation({
     name: 'set_status',
+    mcp: true,
     summary: "Change an open idea's status",
     description:
       'Moves an open idea to draft, requesting review or changes in progress. A closed idea has to be reopened first. A verdict never moves it: people do. Needs edit access.',
@@ -446,6 +465,7 @@ export const operations = {
 
   reviewIdea: defineOperation({
     name: 'review_idea',
+    mcp: true,
     summary: 'Submit your review',
     description:
       "Submits your review of the latest version: your pending comments, published at once, and your verdict (approve, request changes or reject) with an optional summary. Without a verdict, it only publishes your pending comments. `version` is the one you read; if there's a newer one, it's refused with stale_version. Your new verdict replaces your last. Approvals count only on the latest version and only from people (a bot's shows, but never counts); a Request changes or Reject stands through later versions until you change it or it's dismissed. You can't give a verdict on your own idea, or a closed one. Needs view access.",

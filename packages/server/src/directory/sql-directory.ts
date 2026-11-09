@@ -78,6 +78,7 @@ const RESERVED = new Set([
   'inbox',
   'login',
   'logout',
+  'mcp',
   'me',
   'new',
   'node_modules',

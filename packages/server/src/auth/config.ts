@@ -6,14 +6,18 @@
 // authorization server: the cli signs in with the authorization code flow, and
 // each token's purpose and limits come from the token grant chosen on the
 // consent page. A deployment can hand sign-in to its identity provider (single
-// sign-on, OIDC or SAML) and let it manage people with SCIM. MCP clients
-// (CIMD) come later.
+// sign-on, OIDC or SAML) and let it manage people with SCIM. MCP clients sign
+// in the same way, identified by their Client ID Metadata Documents (CIMD),
+// for tokens whose audience is the hosted MCP server.
 //
 // Worked out in the Better Auth spike: docs/mvp/spike-better-auth.md.
 import { timingSafeEqual } from 'node:crypto'
 import { apiKey } from '@better-auth/api-key'
 import { defineRequestState, queueAfterTransactionHook } from '@better-auth/core/context'
-import { oauthProvider } from '@better-auth/oauth-provider'
+import { cimd } from '@better-auth/cimd'
+import { fetchClientMetadataResource } from '@better-auth/cimd/node'
+import { mcp } from '@better-auth/mcp'
+import type { ClientMetadataResourceFetch } from '@better-auth/oauth-provider'
 import { passkey } from '@better-auth/passkey'
 import { scim } from '@better-auth/scim'
 import { sso } from '@better-auth/sso'
@@ -85,7 +89,37 @@ export interface AuthSettings {
    * and emails in step, and deactivates people removed there. Off without one.
    */
   scimToken?: string | null
+  /** MCP clients: which may sign in, and (for tests) how their metadata documents are fetched. */
+  mcp?: McpSettings
 }
+
+/** The hosted MCP server's sign-in. */
+export interface McpSettings {
+  /**
+   * Only clients whose metadata document (their client ID, a URL) is on one
+   * of these hosts may sign in, like `claude.ai` or `vscode.dev`; any client
+   * with a valid document when unset.
+   */
+  clientHosts?: readonly string[] | null
+  /**
+   * Fetches a client's metadata document. Production always uses Better
+   * Auth's transport: public addresses only, the address pinned, no
+   * redirects. Tests serve documents without a network.
+   */
+  fetchClientMetadata?: ClientMetadataResourceFetch
+}
+
+/** Whether an MCP client's metadata document is on one of these hosts (IDEAF_MCP_CLIENT_HOSTS). */
+export const clientHostAllowed = (hosts: readonly string[]) => (url: string) => {
+  try {
+    return hosts.includes(new URL(url).hostname.toLowerCase())
+  } catch {
+    return false
+  }
+}
+
+/** Where the hosted MCP server is, under the deployment's URL: its tokens' audience. */
+export const MCP_PATH = '/mcp'
 
 /** The deployment's one identity provider: OIDC or SAML 2.0. */
 export interface SsoSettings {
@@ -816,11 +850,13 @@ export function authOptions(database: BetterAuthOptions['database'], settings: A
           rateLimit: { enabled: false },
         },
       ] as never),
-      oauthProvider({
+      // the OAuth provider, with the hosted MCP server as a second resource (and its discovery document)
+      mcp({
+        resource: `${settings.baseURL}${MCP_PATH}`,
         loginPage: '/login',
         consentPage: '/consent',
         scopes: ['offline_access'],
-        // the API is the one resource: its access tokens are JWTs for it, checked by signature
+        // two resources, each with JWT access tokens for it, checked by signature: the API, and the MCP server
         resources: [settings.baseURL],
         enforcePerClientResources: false,
         accessTokenExpiresIn: ACCESS_TOKEN_SECONDS,
@@ -843,6 +879,14 @@ export function authOptions(database: BetterAuthOptions['database'], settings: A
           }
           return grantClaims(grant)
         },
+      }),
+      // MCP clients identify themselves by a URL to their metadata, fetched safely and cached
+      cimd({
+        fetchClientMetadataResource: settings.mcp?.fetchClientMetadata ?? fetchClientMetadataResource,
+        metadataProfile: 'mcp-2026-07-28',
+        ...(settings.mcp?.clientHosts
+          ? { isMetadataDocumentUrlAllowed: clientHostAllowed(settings.mcp.clientHosts) }
+          : {}),
       }),
       sso({
         // the provider comes from the settings, never registered at runtime

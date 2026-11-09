@@ -19,7 +19,9 @@ const DEV_SECRET = 'ideaf-development-secret-not-for-production-0123456789'
  * production; IDEAF_SITE_ADMINS lists the site admins' emails, comma-separated;
  * IDEAF_PERSONAL_TOKENS is on, admins (the default) or off;
  * IDEAF_TRUSTED_PROXIES lists the reverse proxies in front of the app nodes
- * (IPs or CIDR ranges, comma-separated), whose X-Forwarded-For is believed.
+ * (IPs or CIDR ranges, comma-separated), whose X-Forwarded-For is believed;
+ * IDEAF_MCP_CLIENT_HOSTS, if set, the only hosts MCP clients' metadata
+ * documents may be on (comma-separated, like claude.ai,vscode.dev).
  * Single sign-on and SCIM are in ssoFromEnv below.
  */
 export function authSettingsFromEnv(env: Record<string, string | undefined>, mailer: Mailer): AuthSettings {
@@ -48,6 +50,7 @@ export function authSettingsFromEnv(env: Record<string, string | undefined>, mai
     trustedProxies: trustedProxiesFromEnv(env),
     sso: ssoFromEnv(env),
     scimToken: scimTokenFromEnv(env),
+    mcp: { clientHosts: list(env.IDEAF_MCP_CLIENT_HOSTS).length ? list(env.IDEAF_MCP_CLIENT_HOSTS) : null },
   }
 }
 

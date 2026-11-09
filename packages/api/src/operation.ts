@@ -24,6 +24,13 @@ export interface Operation<I extends z.ZodObject = z.ZodObject, O extends z.ZodT
   kind: 'read' | 'write'
   input: I
   output: O
+  /**
+   * Offered as a tool by the hosted MCP server: the operations an agent works
+   * with (reading, commenting, reviewing, editing, its inbox), not those for
+   * people (sharing, teams, tokens, settings), which would only cost agents
+   * context.
+   */
+  mcp?: boolean
 }
 
 /**
