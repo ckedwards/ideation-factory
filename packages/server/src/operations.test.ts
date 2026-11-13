@@ -180,6 +180,31 @@ test('/api/openapi.json and /health need no token', async () => {
   expect(await (await app(new Request(`${TEST_URL}/health`))).json()).toEqual({ ok: true })
 })
 
+/** About `bytes` of Markdown: headings and paragraphs, as proposals are written. */
+function markdown(bytes: number, title: string): string {
+  const paragraph = `A paragraph about ${title}, written the way people write proposals. `.repeat(6) + '\n\n'
+  let text = `# ${title}\n\n`
+  for (let n = 0; text.length + paragraph.length < bytes; n++) {
+    text += (n % 8 === 0 ? `## Part ${n}\n\n` : '') + paragraph
+  }
+  return text
+}
+
+test('ideas as big as the limits allow are created and pulled back, and bigger ones refused', async () => {
+  const api = client()
+  // the files go to the idea's actor in one call, past RivetKit's 64 KB message limits (limits.ts)
+  const files = Array.from({ length: 8 }, (_, i) => ({
+    path: `part${i}.md`,
+    content: markdown(250 * 1024, `part ${i}`),
+  }))
+  const { idea } = await api.createIdea({ title: 'Big', files })
+  const pulled = await api.pull({ idea })
+  expect(pulled.files.map((f) => f.content)).toEqual(files.map((f) => f.content))
+  await expect(
+    api.createIdea({ title: 'Too big', files: [{ path: 'a.md', content: markdown(300 * 1024, 'too big') }] }),
+  ).rejects.toMatchObject({ code: 'too_large' })
+}, 60_000)
+
 test('/health answers as RivetKit does: ok while connected to the engine, its 503 passed on', async () => {
   const connected = createApp({
     actors: await startTestActors(),

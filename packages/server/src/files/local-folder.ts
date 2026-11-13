@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { contentHash } from '@ideaf/core'
-import { assertContentHash, type FileStore } from './store.ts'
+import { assertContentHash, type FileStore, verified } from './store.ts'
 
 /**
  * Keeps files in a local folder, for development: `<root>/<first two hex>/<hash>`.
@@ -32,7 +32,10 @@ export class LocalFolderFileStore implements FileStore {
     assertContentHash(hash)
     try {
       const buffer = await readFile(this.#path(hash))
-      return new Uint8Array(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength))
+      return await verified(
+        hash,
+        new Uint8Array(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)),
+      )
     } catch (error) {
       if (isNotFound(error)) {
         return null

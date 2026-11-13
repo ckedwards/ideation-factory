@@ -5,8 +5,8 @@
 #
 #   docker compose -f try-locally.yaml --env-file local.env up -d --build
 #
-# local.env needs IDEAF_AUTH_SECRET, RIVET_ADMIN_TOKEN and S3_SECRET_ACCESS_KEY
-# (openssl rand -hex 32); it's on https://localhost:${HTTPS_PORT:-8443}.
+# local.env needs IDEAF_AUTH_SECRET, RIVET_ADMIN_TOKEN, S3_ENGINE_SECRET_ACCESS_KEY and
+# S3_FILES_SECRET_ACCESS_KEY (openssl rand -hex 32); it's on https://localhost:${HTTPS_PORT:-8443}.
 name: ideaf-local3
 
 x-app: &app
@@ -33,8 +33,9 @@ x-app-environment: &app-environment
   IDEAF_DIRECTORY_POOL: directory
   IDEAF_S3_BUCKET: ideaf-files
   IDEAF_S3_ENDPOINT: http://seaweedfs:8333
-  IDEAF_S3_ACCESS_KEY_ID: ideaf
-  IDEAF_S3_SECRET_ACCESS_KEY: '${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY}'
+  # the files bucket's own key, as in node.yaml
+  IDEAF_S3_ACCESS_KEY_ID: files
+  IDEAF_S3_SECRET_ACCESS_KEY: '${S3_FILES_SECRET_ACCESS_KEY:?set S3_FILES_SECRET_ACCESS_KEY}'
   # sign-in codes go to the apps' logs
   IDEAF_EMAIL: log
 
@@ -178,14 +179,17 @@ configs:
             bucket: ideaf-engine
             endpoint: http://seaweedfs:8333
             region: us-east-1
-            access_key_id: ideaf
-            secret_access_key: "${S3_SECRET_ACCESS_KEY}"
+            access_key_id: engine
+            secret_access_key: "${S3_ENGINE_SECRET_ACCESS_KEY:?set S3_ENGINE_SECRET_ACCESS_KEY}"
       telemetry:
         enabled: false
   seaweedfs:
     content: |
-      {"identities": [{"name": "ideaf", "credentials": [{"accessKey": "ideaf", "secretKey": "${S3_SECRET_ACCESS_KEY}"}],
-        "actions": ["Admin", "Read", "Write", "List", "Tagging"]}]}
+      {"identities": [
+        {"name": "engine", "credentials": [{"accessKey": "engine", "secretKey": "${S3_ENGINE_SECRET_ACCESS_KEY}"}],
+          "actions": ["Read:ideaf-engine", "Write:ideaf-engine", "List:ideaf-engine", "Tagging:ideaf-engine"]},
+        {"name": "files", "credentials": [{"accessKey": "files", "secretKey": "${S3_FILES_SECRET_ACCESS_KEY}"}],
+          "actions": ["Read:ideaf-files", "Write:ideaf-files"]}]}
 
 volumes:
   engine1:

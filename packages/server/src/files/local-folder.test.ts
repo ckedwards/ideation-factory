@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from 'bun:test'
-import { mkdtemp, readdir, rm } from 'node:fs/promises'
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileStoreContract } from './contract.ts'
@@ -16,6 +16,14 @@ afterAll(async () => {
 })
 
 fileStoreContract('LocalFolderFileStore', async () => new LocalFolderFileStore(await emptyFolder()))
+
+test('LocalFolderFileStore refuses content changed on disk behind its back', async () => {
+  const root = await emptyFolder()
+  const store = new LocalFolderFileStore(root)
+  const hash = await store.put(new TextEncoder().encode('the original'))
+  await writeFile(join(root, hash.slice(0, 2), hash), 'something else')
+  await expect(store.get(hash)).rejects.toThrow("don't match their hash")
+})
 
 test('LocalFolderFileStore leaves no temporary files behind', async () => {
   const root = await emptyFolder()

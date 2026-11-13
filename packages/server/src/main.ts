@@ -15,7 +15,7 @@ import { authSettingsFromEnv, mailerFromEnv } from './auth/settings.ts'
 import { WorkerPool } from './core-pool/pool.ts'
 import { configureNode } from './deps.ts'
 import { fileStoreFromEnv } from './files/settings.ts'
-import { limitsFromEnv } from './limits.ts'
+import { limitsFromEnv, MAX_MESSAGE_BYTES } from './limits.ts'
 import { notificationEmailFromEnv } from './mail/sender.ts'
 import { createLive, type LiveData } from './live.ts'
 import { registry, type Registry } from './registry.ts'
@@ -64,6 +64,8 @@ const live = createLive({
 })
 const server = Bun.serve<LiveData>({
   port,
+  // the largest upload a site may allow, with room for its encoding (limits.ts); Bun answers 413 past it
+  maxRequestBodySize: MAX_MESSAGE_BYTES,
   fetch: (request, server) => {
     const upgraded = live.upgrade(request, server)
     return upgraded === null ? app(request, server.requestIP(request)?.address) : upgraded
