@@ -14,8 +14,12 @@ if [ ! -d "$SRC" ]; then
   git clone -q --depth 1 --branch "v$VERSION" https://github.com/rivet-dev/rivet.git "$SRC"
 fi
 cd "$SRC"
+# applied once; a release the patch no longer fits stops here, rather than building the module without the fix
 if git apply --check "$HERE/rearm-one-waiter.patch" 2>/dev/null; then
   git apply "$HERE/rearm-one-waiter.patch"
+elif ! git apply --reverse --check "$HERE/rearm-one-waiter.patch" 2>/dev/null; then
+  echo "the fix doesn't apply to rivetkit $VERSION: update rearm-one-waiter.patch" >&2
+  exit 1
 fi
 RUSTFLAGS="--cfg tokio_unstable" CARGO_PROFILE_RELEASE_DEBUG=line-tables-only CARGO_PROFILE_RELEASE_STRIP=none \
   cargo build -p rivetkit-napi --release --target x86_64-unknown-linux-gnu
