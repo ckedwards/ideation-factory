@@ -1,4 +1,4 @@
-# The load test from a machine of its own, against a deployment (AWS.md): Mailpit, which the
+# The load test from a machine of its own, against a deployment (DEPLOYMENT.md): Mailpit, which the
 # deployment's SMTP points at so the seeder can read sign-in codes, and k6. remote.sh drives it.
 name: ideaf-load-remote
 

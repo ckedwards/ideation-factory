@@ -12,7 +12,7 @@ packages/load/run.sh down     # stop, keeping the data; `wipe` deletes it and th
 
 `up` writes `.data/load.env` the first time, with new secrets. The site is at https://localhost:18443 (Caddy's local CA), Mailpit at http://localhost:18025. The seeder reaches the app directly at http://localhost:18080.
 
-**Against a deployment** (the three-VM Compose on AWS, say), from a machine of its own: `remote.sh`, with the same commands. [AWS.md](AWS.md) says what to make and how to set it up. Benchmarks are better made that way: one laptop's CPU throttles on battery and when hot, and a day of runs on one drifted more than the changes they measured.
+**Against a deployment** (the three-VM Compose on Hetzner with S3 in Frankfurt for everyday benchmarks, or on AWS in the US to check production), from a machine of its own: `remote.sh`, with the same commands. [DEPLOYMENT.md](DEPLOYMENT.md) says what to make, how to set it up, how to keep the seed, and what it costs. Benchmarks are better made that way: one laptop's CPU throttles on battery and when hot, and a day of runs on one drifted more than the changes they measured.
 
 ## What it does
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# The load test from a machine of its own, against a deployment through its load balancer (AWS.md
+# The load test from a machine of its own, against a deployment through its load balancer (DEPLOYMENT.md
 # says how to set one up). Settings are in .data/remote.env (remote.env.example):
 #
 #   remote.sh up        start Mailpit, which the deployment's SMTP points at
