@@ -10,7 +10,8 @@
 //       every 30 days; this is for doing it sooner.
 //   bun packages/server/src/admin.ts rotate-signing-key --emergency
 //       Every signing key is withdrawn, as when one may have leaked: every
-//       outstanding access token stops working within a minute, and clients
+//       outstanding access token stops working within a minute (90 s at most,
+//       if the directory is slow to answer app nodes then), and clients
 //       refresh (sessions and refresh tokens aren't affected).
 //   bun packages/server/src/admin.ts deactivate <handle or ID>
 //       Someone has left: they're signed out everywhere, can't sign in or get
@@ -49,7 +50,7 @@ export async function admin(argv: string[], env: Record<string, string | undefin
     const { retired } = await directory().rotateSigningKeys(emergency)
     console.log(
       emergency
-        ? `Withdrew ${retired} signing key(s): access tokens stop working within a minute, and clients refresh.`
+        ? `Withdrew ${retired} signing key(s): access tokens stop working within a minute (90 s at most), and clients refresh.`
         : `Retired ${retired} signing key(s): new tokens get a new key, and tokens already out keep working until they expire.`,
     )
     return 0
