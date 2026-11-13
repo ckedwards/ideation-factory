@@ -1,13 +1,13 @@
 // Files in an S3-compatible bucket, for deployments: AWS S3, Google Cloud
-// Storage, Azure (through an S3 gateway), Cloudflare R2, or SeaweedFS on your
-// own machines. Keys are `<prefix><first two hex>/<hash>`, so the bucket can be
+// Storage, Cloudflare R2, or SeaweedFS on your own machines (Azure Blob Storage
+// has no S3 API). Keys are `<prefix><first two hex>/<hash>`, so the bucket can be
 // shared with other things (the Rivet Engine's data, say) under other
 // prefixes. A stored file never changes, so a put of content already there
 // writes nothing, and two app nodes storing the same content at once write
 // the same bytes.
 import { S3Client } from 'bun'
 import { contentHash } from '@ideaf/core'
-import { assertContentHash, type FileStore } from './store.ts'
+import { assertContentHash, type FileStore, verified } from './store.ts'
 
 export interface S3Settings {
   bucket: string
@@ -54,6 +54,11 @@ export class S3FileStore implements FileStore {
 
   async get(hash: string): Promise<Uint8Array<ArrayBuffer> | null> {
     assertContentHash(hash)
+    const bytes = await this.#read(hash)
+    return bytes && verified(hash, bytes)
+  }
+
+  async #read(hash: string): Promise<Uint8Array<ArrayBuffer> | null> {
     try {
       return new Uint8Array(await this.#client.file(this.#key(hash)).arrayBuffer())
     } catch (error) {

@@ -14,6 +14,15 @@ export const LIMIT_RANGES = {
   maxIdeaBytes: { min: 256 * 1024, max: 4 * 1024 * 1024 },
 } as const
 
+/**
+ * The most a request, or a call to an actor and its answer, may carry: four
+ * times the largest idea a site may allow, room for its encoding (JSON, CBOR)
+ * and what comes with the files. An upload carries its files to the idea's
+ * actor and a pull carries them back, so RivetKit's message limits (64 KB in
+ * and 1 MB out by default) must allow it too, or bigger ideas fail.
+ */
+export const MAX_MESSAGE_BYTES = 4 * LIMIT_RANGES.maxIdeaBytes.max
+
 export function limitsFromEnv(env: Record<string, string | undefined>): Limits {
   const read = (name: string, key: keyof Limits): number => {
     const raw = env[name]

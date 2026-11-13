@@ -5,9 +5,9 @@ import /etc/caddy/tls.caddy
 {$IDEAF_HOST} {
 	import tls-{$TLS_MODE}
 	header Strict-Transport-Security "max-age=31536000"
-	# an upload is a whole idea's files; the app checks its own limits
+	# an upload is a whole idea's files: the app's own cap (MAX_MESSAGE_BYTES, server/src/limits.ts)
 	request_body {
-		max_size 64MB
+		max_size 16MB
 	}
 	# WebSockets (live updates) and X-Forwarded-For pass through as they are
 	reverse_proxy app:8080

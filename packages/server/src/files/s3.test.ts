@@ -65,6 +65,13 @@ describe('S3FileStore', () => {
     expect([...fake.objects.keys()]).toContain(`/ideaf/files/${hash.slice(0, 2)}/${hash}`)
     expect(fake.requests.filter((r) => r === `PUT /ideaf/files/${hash.slice(0, 2)}/${hash}`)).toHaveLength(1)
   })
+
+  test('refuses content changed in the bucket behind its back', async () => {
+    const store = new S3FileStore({ bucket: 'ideaf', endpoint: fake.endpoint, prefix: 'tampered/', ...credentials })
+    const hash = await store.put(new TextEncoder().encode('the original'))
+    fake.objects.set(`/ideaf/tampered/${hash.slice(0, 2)}/${hash}`, new TextEncoder().encode('something else'))
+    await expect(store.get(hash)).rejects.toThrow("don't match their hash")
+  })
 })
 
 // a real S3-compatible store, when the environment names one

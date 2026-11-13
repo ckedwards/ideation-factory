@@ -7,6 +7,7 @@
 import { actor, event, queue, UserError } from 'rivetkit'
 import { db } from 'rivetkit/db'
 import { nodeDeps } from '../deps.ts'
+import { MAX_MESSAGE_BYTES } from '../limits.ts'
 import { sendOutbox } from '../idea/outbox.ts'
 import { migrate } from '../idea/schema.ts'
 import { type IdeaEvent, IdeaService, Refused, type WriteRequest, type WriteResult } from '../idea/service.ts'
@@ -36,6 +37,8 @@ export const idea = actor({
     status: event<Payload<'status'>>(),
     review: event<Payload<'review'>>(),
   },
+  // a write carries the files it uploads, up to the largest idea a site may allow (limits.ts)
+  options: { maxQueueMessageSize: MAX_MESSAGE_BYTES },
   queues: {
     writes: queue<WriteRequest, WriteResult>(),
   },

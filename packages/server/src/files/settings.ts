@@ -4,7 +4,9 @@
 //
 // - IDEAF_S3_BUCKET: the bucket;
 // - IDEAF_S3_ENDPOINT: the store's URL, for anything but AWS (http://seaweedfs:8333);
-// - IDEAF_S3_REGION (default us-east-1), IDEAF_S3_ACCESS_KEY_ID and IDEAF_S3_SECRET_ACCESS_KEY;
+// - IDEAF_S3_REGION (default us-east-1), IDEAF_S3_ACCESS_KEY_ID and IDEAF_S3_SECRET_ACCESS_KEY,
+//   or neither, for Bun's S3_* or AWS_* variables (its client doesn't fetch an
+//   instance's or a pod's role itself);
 // - IDEAF_S3_PREFIX: where files go in it (default files/);
 // - IDEAF_S3_VIRTUAL_HOSTED=on: the bucket in the hostname, as AWS prefers; the path otherwise.
 import { join } from 'node:path'
@@ -23,7 +25,7 @@ export function fileStoreFromEnv(env: Record<string, string | undefined>, data: 
   }
   if (Boolean(env.IDEAF_S3_ACCESS_KEY_ID) !== Boolean(env.IDEAF_S3_SECRET_ACCESS_KEY)) {
     throw new Error(
-      'set both IDEAF_S3_ACCESS_KEY_ID and IDEAF_S3_SECRET_ACCESS_KEY, or neither (to use the machine’s own credentials)',
+      'set both IDEAF_S3_ACCESS_KEY_ID and IDEAF_S3_SECRET_ACCESS_KEY, or neither (to use the S3_* or AWS_* variables)',
     )
   }
   const prefix = env.IDEAF_S3_PREFIX ?? 'files/'
