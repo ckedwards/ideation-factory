@@ -17,6 +17,8 @@ export const ERROR_STATUS = {
   blocked: 409,
   too_large: 413,
   internal: 500,
+  /** The server can't do it right now (say, it can't check tokens for a moment): try again shortly. */
+  unavailable: 503,
   timed_out: 504,
 } as const
 

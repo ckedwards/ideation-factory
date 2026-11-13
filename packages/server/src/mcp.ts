@@ -78,7 +78,11 @@ export function createMcp(options: {
       return unauthorized('sign in to use Ideation Factory')
     }
     if ('code' in who) {
-      return Response.json({ error: 'forbidden', error_description: who.message }, { status: 403 })
+      const status = who.code === 'unavailable' ? 503 : 403
+      return Response.json(
+        { error: status === 503 ? 'temporarily_unavailable' : 'forbidden', error_description: who.message },
+        { status },
+      )
     }
 
     const server = new Server(
