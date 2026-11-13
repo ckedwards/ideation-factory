@@ -17,10 +17,22 @@ export interface AuthDirectory {
 }
 
 /**
- * Public signing keys are fetched again this often (and at once for a key not
- * seen before): an emergency key rotation stops old tokens within this long.
+ * How long the public signing keys are used before they're fetched again (and
+ * at once for a key not seen before): an emergency key rotation stops old
+ * tokens within this long. They're fetched again in the background from
+ * REFRESH_AFTER_MS, so requests don't wait for it.
  */
 const KEYS_TTL_MS = 60_000
+const REFRESH_AFTER_MS = 50_000
+/**
+ * How much longer the keys are still used while a refresh hasn't come back
+ * (the directory is slow, or failing): a rotation then stops old tokens within
+ * KEYS_TTL_MS + STALE_MAX_MS at most. Past it, requests wait for the keys, and
+ * get unavailable if they can't be had.
+ */
+const STALE_MAX_MS = 30_000
+/** After a refresh in the background fails, the next waits this long. */
+const RETRY_MS = 1_000
 
 /** The signing keys couldn't be fetched: tokens can't be checked for now, which isn't the token's fault. */
 class KeysUnavailable extends Error {}
@@ -131,8 +143,25 @@ export function authGateway(directory: AuthDirectory, baseURL: string, trustedPr
     })()
     return fetching
   }
-  const signingKeys = async (fresh = false) =>
-    !keys || fresh || Date.now() - keys.at > KEYS_TTL_MS ? fetchKeys() : keys.set
+  let failedAt = 0
+  const signingKeys = async (fresh = false) => {
+    const age = keys ? Date.now() - keys.at : Infinity
+    // none yet, too old even to stand in, or a key this node hasn't seen: wait for them
+    if (!keys || fresh || age > KEYS_TTL_MS + STALE_MAX_MS) {
+      return fetchKeys()
+    }
+    // due soon, or overdue while a refresh hasn't come back: fetched in the background, these meanwhile
+    if (age > REFRESH_AFTER_MS && !fetching && Date.now() - failedAt > RETRY_MS) {
+      fetchKeys().catch((error: unknown) => {
+        failedAt = Date.now()
+        console.warn(
+          `refreshing the token signing keys failed; using the ones from ${Math.round(age / 1000)} s ago`,
+          error,
+        )
+      })
+    }
+    return keys.set
+  }
 
   /** A JWT's claims, if we signed it for `audience`: the API (the deployment's URL), or the MCP server. */
   const verify = async (token: string, audience: string): Promise<Claims | null> => {

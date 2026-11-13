@@ -67,11 +67,65 @@ test('requests that find the keys missing or stale together share one fetch', as
     expect(who).toMatchObject({ caller: { user: 'u1' } })
   }
   expect(fetched.count).toBe(1)
+})
 
-  // a minute on, they're stale: fetched again, once for everyone
-  setSystemTime(new Date(Date.now() + 61_000))
-  await Promise.all(Array.from({ length: 50 }, () => gateway.authenticate(asking(t), operations.me)))
-  expect(fetched.count).toBe(2)
+/** A gateway whose directory serves the keys once, then answers as `next` says (held until released, or failing). */
+async function aging() {
+  const { jwks, token } = await signer()
+  let next: 'serve' | 'hold' | 'fail' = 'serve'
+  let release = () => {}
+  const { d, fetched } = directory(async () => {
+    if (next === 'fail') {
+      return json({ message: 'Too many requests' }, 429)
+    }
+    if (next === 'hold') {
+      await new Promise<void>((r) => (release = r))
+    }
+    return json(jwks)
+  })
+  const gateway = authGateway(d, BASE)
+  const t = await token('u1')
+  const start = Date.now()
+  const at = (seconds: number) => setSystemTime(new Date(start + seconds * 1000))
+  const ask = () => gateway.authenticate(asking(t), operations.me)
+  expect(await ask()).toMatchObject({ caller: { user: 'u1' } })
+  return {
+    ask,
+    at,
+    fetched,
+    answer: (n: typeof next) => (next = n),
+    release: () => release(),
+  }
+}
+
+test('from 50 s the keys are fetched again in the background: requests don’t wait for it', async () => {
+  const g = await aging()
+  g.answer('hold')
+  g.at(51)
+  // answered with the keys in hand while the refresh is held
+  const answers = await Promise.all(Array.from({ length: 20 }, () => g.ask()))
+  for (const who of answers) {
+    expect(who).toMatchObject({ caller: { user: 'u1' } })
+  }
+  expect(g.fetched.count).toBe(2)
+  g.release()
+})
+
+test('while a refresh hasn’t come back, the keys stand in for up to 30 s past the minute, then requests wait for them', async () => {
+  const g = await aging()
+  g.answer('fail')
+  // past the minute, the refresh failing: the keys in hand still answer
+  for (const seconds of [61, 75, 89]) {
+    g.at(seconds)
+    expect(await g.ask()).toMatchObject({ caller: { user: 'u1' } })
+  }
+  // past 90 s they no longer may: without keys, a token can't be checked
+  g.at(91)
+  expect(await g.ask()).toMatchObject({ code: 'unavailable' })
+  // and once the directory answers again, all's well
+  g.answer('serve')
+  g.at(92)
+  expect(await g.ask()).toMatchObject({ caller: { user: 'u1' } })
 })
 
 test('keys that can’t be fetched make a token unavailable to check, not unauthorized', async () => {
