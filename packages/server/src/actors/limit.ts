@@ -8,11 +8,23 @@ import type { Client } from 'rivetkit/client'
 import type { Registry } from '../registry.ts'
 
 /**
- * Handle members used as they are: not calls, or (send) a queue message, which
- * waits on the actor's run loop rather than on a call it serves, and would only
- * shrink the batches the loop takes if it held a place here.
+ * Handle members used as they are: not calls; a queue message (send), which
+ * waits on an actor's run loop rather than on a call it serves; or a call the
+ * directory batches (actors/batch.ts), which would only shrink its batches if
+ * it held a place here.
  */
-const NOT_LIMITED = new Set<PropertyKey>(['connect', 'resolve', 'getGatewayUrl', 'webSocket', 'fetch', 'send'])
+const NOT_LIMITED = new Set<PropertyKey>([
+  'connect',
+  'resolve',
+  'getGatewayUrl',
+  'webSocket',
+  'fetch',
+  'send',
+  // batched in the directory (actors/batch.ts): held back here, they couldn't share a commit
+  'register',
+  'notify',
+  'index',
+])
 
 /** At most `limit` of `work` running at once; the rest wait their turn, in order. */
 export function limiter(limit: number) {

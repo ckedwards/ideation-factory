@@ -52,9 +52,9 @@ test('teams, ideas, access, lists and search through the actor', async () => {
   expect((await d.listIdeas('u-maya')).items.map((i) => i.id)).toEqual(['i1'])
   expect(await found(d, 'u-maya', 'line', ['i1'])).toEqual(['i1'])
 
-  // index updates arrive through the queue, without waiting, and are applied in batches
+  // index updates are applied in batches, the newest of each idea's kept
   for (let n = 2; n <= 5; n++) {
-    await d.send('index', {
+    await d.index({
       id: 'i1',
       title: `Offline sync rev${n}`,
       description: '',

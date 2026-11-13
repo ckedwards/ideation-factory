@@ -1,11 +1,11 @@
 // The directory actor: one for the deployment, a thin shell around
 // SqlDirectory. Reads and writes are actions; writes stay correct when they run
 // at once because the tables' keys and transactions make them so, not the
-// actor's queue. Index updates and notifications from idea actors come through
-// the queue instead, sent without waiting, and are applied in batches.
-// Notification emails go on an alarm: when the next is due, the actor sends
-// what's due and sets the next.
-import { actor, queue, UserError } from 'rivetkit'
+// actor's queue. New ideas, and index updates and notifications from idea
+// actors, are applied in batches, many to a commit (actors/batch.ts), since a
+// commit is what the directory can do least of. Notification emails go on an
+// alarm: when the next is due, the actor sends what's due and sets the next.
+import { actor, UserError } from 'rivetkit'
 import { db } from 'rivetkit/db'
 import type { Auth } from '../auth/config.ts'
 import {
@@ -22,12 +22,13 @@ import {
 import { nodeDeps } from '../deps.ts'
 import type { Client } from 'rivetkit/client'
 import type { Registry } from '../registry.ts'
+import { batcher } from './batch.ts'
 import { searchOf as searchActor } from './pools.ts'
 import { notificationEmail } from '../mail/notification.ts'
 import { migrateDirectory } from '../directory/schema.ts'
 import type { IdeaSearch } from '../directory/search.ts'
 import { SqlDirectory } from '../directory/sql-directory.ts'
-import { callRetrying, overloadedRetryMs, retryOverloaded } from '../sql/retry.ts'
+import { callRetrying, retryOverloaded } from '../sql/retry.ts'
 import type {
   ContainerKind,
   CreatePolicy,
@@ -61,14 +62,13 @@ export const directory = actor({
       await migrateAuth(database, nodeDeps().auth)
     },
   }),
-  // a notification is answered once it's applied (or couldn't be), so its idea's outbox knows to keep it or not
-  // and a new idea's registration with where it is, so creating it can answer; many are registered in one commit
-  queues: {
-    index: queue<IndexUpdate>(),
-    notify: queue<NotifyBatch, { ok: boolean }>(),
-    register: queue<NewIdea, { ok: true; place: IdeaPlace } | { ok: false }>(),
-  },
-  createVars: () => ({ directory: null as Directory | null, auth: null as Auth | null, sending: false }),
+  createVars: () => ({
+    directory: null as Directory | null,
+    auth: null as Auth | null,
+    sending: false,
+    batches: null as DirectoryBatches | null,
+    emailCheck: null as ReturnType<typeof setInterval> | null,
+  }),
   onWake: async (c) => {
     // the whole database in memory: a page that isn't is fetched from the engine's storage, and SQLite's default
     // here (8 MB) held a sixth of the directory at 25,000 ideas (47 MB) when packages/load measured it
@@ -77,116 +77,23 @@ export const directory = actor({
     await ensureCliClient(authOf(c), nodeDeps().auth)
     // emails left waiting (say, the node stopped before their alarm) get one
     await scheduleEmails(c)
+    // and while it's awake, that an email due has a live alarm, busy or not, since an alarm can be lost
+    c.vars.emailCheck = setInterval(() => void checkEmails(c), EMAIL_CHECK_MS)
   },
-  run: async (c) => {
-    const d = directoryOf(c)
-    // that an email due has a live alarm: after a notification (it may have queued one), and every
-    // EMAIL_CHECK_MS, busy or not, since an alarm can be lost (see scheduleEmails)
-    let emailsCheckedAt = 0
-    const checkEmails = async (now: boolean) => {
-      if (!now && Date.now() - emailsCheckedAt < EMAIL_CHECK_MS) {
-        return
-      }
-      emailsCheckedAt = Date.now()
-      try {
-        await scheduleEmails(c)
-      } catch (error) {
-        c.log.error({ msg: 'scheduling emails failed', error: String(error) })
-      }
-    }
-    while (!c.aborted) {
-      // completed only once applied: one taken off the queue but not applied is answered by no one, and its idea sends it again.
-      // Reading the queue can fail while storage is busy (RivetKit's own queue table is in it): wait and read again,
-      // rather than let the loop end, which left notifications unread until the actor restarted
-      let batch: Awaited<ReturnType<typeof c.queue.nextBatch>>
-      try {
-        batch = await c.queue.nextBatch({ count: 50, completable: true, timeout: EMAIL_CHECK_MS })
-      } catch (error) {
-        if (c.aborted) {
-          return
-        }
-        c.log.error({ msg: 'reading the queue failed; trying again', error: String(error) })
-        await Bun.sleep(Math.min(overloadedRetryMs(error) ?? 500, 2_000))
-        continue
-      }
-      if (batch.length === 0) {
-        await checkEmails(false)
-        continue
-      }
-      // new ideas first, as someone is waiting on each: all in one transaction, or each on its own should that fail
-      const registering = batch.filter((m) => m.name === 'register')
-      if (registering.length > 0) {
-        const rows = registering.map((m) => m.body as NewIdea)
-        const places = await d.registerIdeas(rows).catch(() =>
-          Promise.all(
-            rows.map((row) =>
-              d.registerIdea(row).catch((error: unknown) => {
-                c.log.error({ msg: 'registering an idea failed', idea: row.id, error: String(error) })
-                return null
-              }),
-            ),
-          ),
-        )
-        for (const [i, message] of registering.entries()) {
-          const place = places[i]
-          await callRetrying(() => message.complete(place ? { ok: true, place } : { ok: false }))
-        }
-      }
-      // a batch's notifications in one transaction, then its index updates in another:
-      // each commit writes pages, and the writes are what SQLite can do least of
-      const notifying = batch.filter((m) => m.name === 'notify')
-      if (notifying.length > 0) {
-        const notifications = notifying.map((m) => m.body as NotifyBatch)
-        // all at once; should that fail, each on its own, so each is answered for itself (IDs make repeats harmless)
-        const outcomes = await d
-          .notify(notifications)
-          .then(() => notifications.map(() => true))
-          .catch(() =>
-            Promise.all(
-              notifications.map((n) =>
-                d.notify(n).then(
-                  () => true,
-                  (error: unknown) => {
-                    c.log.error({ msg: 'notifying failed', idea: n.idea, id: n.id, error: String(error) })
-                    return false
-                  },
-                ),
-              ),
-            ),
-          )
-        for (const [i, message] of notifying.entries()) {
-          await callRetrying(() => message.complete({ ok: outcomes[i]! }))
-        }
-        await checkEmails(true)
-      }
-      // only the newest update per idea matters
-      const latest = new Map<string, IndexUpdate>()
-      for (const message of batch) {
-        if (message.name !== 'index') {
-          continue
-        }
-        const u = message.body as IndexUpdate
-        const seen = latest.get(u.id)
-        if (!seen || seen.updatedAt <= u.updatedAt) {
-          latest.set(u.id, u)
-        }
-      }
-      if (latest.size > 0) {
-        try {
-          await d.updateIdea([...latest.values()])
-        } catch (error) {
-          c.log.error({ msg: 'index update failed', ideas: [...latest.keys()], error: String(error) })
-        }
-      }
-      for (const message of batch) {
-        if (message.name === 'index') {
-          await callRetrying(() => message.complete())
-        }
-      }
-      await checkEmails(false)
+  onSleep: (c) => {
+    if (c.vars.emailCheck) {
+      clearInterval(c.vars.emailCheck)
     }
   },
   actions: {
+    // a new idea's registration, with where it is, so creating it can answer; registering again finds the same place
+    register: (c, row: NewIdea) => batchesOf(c).register(row),
+    // an idea's notifications, answered once applied (or not), so its outbox knows to keep them or not; IDs make
+    // repeats harmless
+    notify: (c, batch: NotifyBatch) => batchesOf(c).notify(batch),
+    // an idea's row in the index; safe to send again or out of order, as an older one never replaces a newer
+    index: (c, update: IndexUpdate) => batchesOf(c).index(update),
+
     // sign-in: forwarded requests, personal tokens, and status
     auth: (c, request: WireRequest) => handleAuthRequest(authOf(c), request),
     /** Replaces the token signing key (see rotateSigningKeys); `bun packages/server/src/admin.ts` calls it. */
@@ -317,7 +224,14 @@ export const directory = actor({
 type DirectoryContext = {
   db: Parameters<typeof migrateDirectory>[0]
   client: () => unknown
-  vars: { directory: Directory | null; auth: Auth | null; sending: boolean }
+  log: { error(fields: Record<string, unknown>): void }
+  vars: {
+    directory: Directory | null
+    auth: Auth | null
+    sending: boolean
+    batches: DirectoryBatches | null
+    emailCheck: ReturnType<typeof setInterval> | null
+  }
 }
 
 type Scheduling = DirectoryContext & {
@@ -337,8 +251,83 @@ const DIRECTORY_CACHE_MB = 256
  * sendEmails runs one at a time and sends only what's still due.
  */
 const LOST_ALARM_MS = 2_000
-/** How often the queue loop makes sure an email due has a live alarm (two reads, when one is due). */
+/** How often the awake directory makes sure an email due has a live alarm (two reads, when one is due). */
 const EMAIL_CHECK_MS = 2_000
+
+/** That an email due has a live alarm: after notifications (they may have queued one), and every EMAIL_CHECK_MS. */
+async function checkEmails(c: Scheduling): Promise<void> {
+  try {
+    await scheduleEmails(c)
+  } catch (error) {
+    c.log.error({ msg: 'scheduling emails failed', error: String(error) })
+  }
+}
+
+type DirectoryBatches = {
+  register: (row: NewIdea) => Promise<{ ok: true; place: IdeaPlace } | { ok: false }>
+  notify: (batch: NotifyBatch) => Promise<{ ok: boolean }>
+  index: (update: IndexUpdate) => Promise<void>
+}
+
+/** How many calls a batch applies at once, and the most that may wait (as the queues allowed). */
+const BATCHES = { max: 50, waiting: 1_000 }
+
+/** The directory's batched writes, for this wake-up (actors/batch.ts). */
+function batchesOf(c: Scheduling): DirectoryBatches {
+  if (!c.vars.batches) {
+    const d = directoryOf(c)
+    c.vars.batches = {
+      // all in one transaction, or each on its own should that fail
+      register: batcher(async (rows: NewIdea[]) => {
+        const places = await d.registerIdeas(rows).catch(() =>
+          Promise.all(
+            rows.map((row) =>
+              d.registerIdea(row).catch((error: unknown) => {
+                c.log.error({ msg: 'registering an idea failed', idea: row.id, error: String(error) })
+                return null
+              }),
+            ),
+          ),
+        )
+        return places.map((place) => (place ? { ok: true as const, place } : { ok: false as const }))
+      }, BATCHES),
+      // all in one transaction; should that fail, each on its own, so each is answered for itself
+      notify: batcher(async (notifications: NotifyBatch[]) => {
+        const outcomes = await d
+          .notify(notifications)
+          .then(() => notifications.map(() => true))
+          .catch(() =>
+            Promise.all(
+              notifications.map((n) =>
+                d.notify(n).then(
+                  () => true,
+                  (error: unknown) => {
+                    c.log.error({ msg: 'notifying failed', idea: n.idea, id: n.id, error: String(error) })
+                    return false
+                  },
+                ),
+              ),
+            ),
+          )
+        await checkEmails(c)
+        return outcomes.map((ok) => ({ ok }))
+      }, BATCHES),
+      // only the newest update per idea matters; a batch that fails fails its calls, which their ideas send again
+      index: batcher(async (updates: IndexUpdate[]) => {
+        const latest = new Map<string, IndexUpdate>()
+        for (const u of updates) {
+          const seen = latest.get(u.id)
+          if (!seen || seen.updatedAt <= u.updatedAt) {
+            latest.set(u.id, u)
+          }
+        }
+        await d.updateIdea([...latest.values()])
+        return updates.map(() => undefined)
+      }, BATCHES),
+    }
+  }
+  return c.vars.batches
+}
 
 /**
  * Sets an alarm for when the next email is due (no sooner than `wait` from
@@ -392,7 +381,7 @@ function searchOf(c: DirectoryContext): IdeaSearch {
     index: async (entries) => {
       if (entries.length > 0) {
         // safe to send again: the newest title wins
-        await callRetrying(() => index().send('index', entries))
+        await callRetrying(() => index().index(entries))
       }
     },
     matches: (terms, cap) => index().matches(terms, cap),

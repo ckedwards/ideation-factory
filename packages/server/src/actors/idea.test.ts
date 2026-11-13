@@ -2,7 +2,7 @@
 // shared with `bun run dev`), so each test uses its own idea key.
 import { beforeAll, expect, test } from 'bun:test'
 import type { Client } from 'rivetkit/client'
-import type { Caller } from '../idea/service.ts'
+import type { Caller, WriteRequest } from '../idea/service.ts'
 import type { Registry } from '../registry.ts'
 import { startTestActors } from '../testing.ts'
 
@@ -19,7 +19,8 @@ const send = (
   idea: ReturnType<Client<Registry>['idea']['getOrCreate']>,
   write: unknown,
   k: string = crypto.randomUUID(),
-) => idea.send('writes', { key: k, caller: OWNER, write }, { wait: true, timeout: 20_000 })
+) =>
+  idea.write({ key: k, caller: OWNER, write } as WriteRequest).then((response) => ({ status: 'completed', response }))
 
 test('create, edit and read through the actor, with live updates to a connected viewer', async () => {
   const idea = actors.idea.getOrCreate([key()])
