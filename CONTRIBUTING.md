@@ -52,7 +52,7 @@ There's no `chore`: pick the type that says what changed.
 
 ### Scope
 
-The package the commit changes: `core`, `api`, `server`, `cli`, `ui`, `web` or `e2e`, or `dev-infra` for `scripts/` and other developer tooling. Leave the scope out when a change spans several packages, and for `docs` commits.
+The package the commit changes: `core`, `api`, `server`, `cli`, `ui`, `web`, `e2e` or `load`, or `dev-infra` for `scripts/` and other developer tooling. Leave the scope out when a change spans several packages, and for `docs` commits.
 
 ### Summary
 

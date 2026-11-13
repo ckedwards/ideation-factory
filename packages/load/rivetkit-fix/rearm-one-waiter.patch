@@ -1,0 +1,64 @@
+diff --git i/rivetkit-rust/packages/rivetkit-core/src/actor/sleep.rs w/rivetkit-rust/packages/rivetkit-core/src/actor/sleep.rs
+index 08cafde6..cb9e2294 100644
+--- i/rivetkit-rust/packages/rivetkit-core/src/actor/sleep.rs
++++ w/rivetkit-rust/packages/rivetkit-core/src/actor/sleep.rs
+@@ -46,6 +46,9 @@ pub(crate) struct SleepState {
+ 	// than a destroy.
+ 	pub(super) stop_error: Mutex<Option<String>>,
+ 	pub(super) lifecycle_started: AtomicBool,
++	// Whether a task is already waiting for HTTP requests to go idle to re-arm the sleep timer: one is
++	// enough, and one per request piles up under steady load, each woken by every idle notification.
++	pub(super) http_idle_rearm_pending: AtomicBool,
+ 	pub(super) run_handler_active_count: AtomicUsize,
+ 	// Forced-sync: the compatibility sleep timer is aborted from sync paths.
+ 	pub(super) sleep_timer: Mutex<Option<JoinHandle<()>>>,
+@@ -75,6 +78,7 @@ impl SleepState {
+ 			http_request_counter: Mutex::new(None),
+ 			stop_error: Mutex::new(None),
+ 			lifecycle_started: AtomicBool::new(false),
++			http_idle_rearm_pending: AtomicBool::new(false),
+ 			run_handler_active_count: AtomicUsize::new(0),
+ 			sleep_timer: Mutex::new(None),
+ 			work: WorkRegistry::new(),
+@@ -385,6 +389,22 @@ impl ActorContext {
+ 		counter.wait_zero(deadline).await
+ 	}
+ 
++	/// Claims the one task that re-arms the sleep timer once HTTP requests go idle: false if one is waiting.
++	pub(crate) fn claim_http_idle_rearm(&self) -> bool {
++		!self
++			.0
++			.sleep
++			.http_idle_rearm_pending
++			.swap(true, Ordering::AcqRel)
++	}
++
++	pub(crate) fn release_http_idle_rearm(&self) {
++		self.0
++			.sleep
++			.http_idle_rearm_pending
++			.store(false, Ordering::Release);
++	}
++
+ 	pub(crate) async fn wait_for_http_requests_idle(&self) {
+ 		loop {
+ 			let idle = self.0.sleep.work.idle_notify.notified();
+diff --git i/rivetkit-rust/packages/rivetkit-core/src/registry/http.rs w/rivetkit-rust/packages/rivetkit-core/src/registry/http.rs
+index 97db3817..66d187ea 100644
+--- i/rivetkit-rust/packages/rivetkit-core/src/registry/http.rs
++++ w/rivetkit-rust/packages/rivetkit-core/src/registry/http.rs
+@@ -603,9 +603,14 @@ fn method_not_allowed_response(
+ }
+ 
+ fn rearm_sleep_after_request(ctx: ActorContext) {
++	// one waiter per actor, not one per request: under steady load the count rarely reaches zero
++	if !ctx.claim_http_idle_rearm() {
++		return;
++	}
+ 	let sleep_ctx = ctx.clone();
+ 	ctx.wait_until(async move {
+ 		sleep_ctx.wait_for_http_requests_idle().await;
++		sleep_ctx.release_http_idle_rearm();
+ 		sleep_ctx.reset_sleep_timer();
+ 	});
+ }

@@ -57,6 +57,15 @@
         "rivetkit": "3.0.6",
       },
     },
+    "packages/load": {
+      "name": "@ideaf/load",
+      "dependencies": {
+        "@ideaf/api": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/k6": "2.3.1",
+      },
+    },
     "packages/server": {
       "name": "@ideaf/server",
       "dependencies": {
@@ -335,6 +344,8 @@
     "@ideaf/core": ["@ideaf/core@workspace:packages/core"],
 
     "@ideaf/e2e": ["@ideaf/e2e@workspace:packages/e2e"],
+
+    "@ideaf/load": ["@ideaf/load@workspace:packages/load"],
 
     "@ideaf/server": ["@ideaf/server@workspace:packages/server"],
 
@@ -775,6 +786,8 @@
     "@types/doctrine": ["@types/doctrine@0.0.9", "", {}, "sha512-eOIHzCUSH7SMfonMG1LsC2f8vxBFtho6NGBznK41R84YzPuvSBzrhEps33IsQiOW9+VL6NQ9DbjQJznk/S4uRA=="],
 
     "@types/estree": ["@types/estree@1.0.10", "", {}, "sha512-lTyOMnOcmRBzdCv6/4zUZCrEhV0xrqQiUZBZtVcbmLHBXKLnN8q89v/wKRF/Q0HbwVsqbIG3o5HDoFl9sduM+g=="],
+
+    "@types/k6": ["@types/k6@2.3.1", "", {}, "sha512-3zbIAfQXvSDsA3ZaKC7+eczsvx1hGtL8o68iYEssOmTEmg0MuoCwZ45aAI3jDm0JtlhJZaQAszrie+M1xaqK7g=="],
 
     "@types/mdast": ["@types/mdast@4.0.4", "", { "dependencies": { "@types/unist": "*" } }, "sha512-kGaNbPh1k7AFzgpud/gMdvIm5xuECykRR+JnWKQno9TAXVa6WIVCGTPvYGekIDL4uwCZQSYbUxNBSb1aUo79oA=="],
 

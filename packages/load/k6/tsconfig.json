@@ -1,0 +1,5 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": { "types": ["k6"], "lib": ["ES2023"] },
+  "include": ["."]
+}

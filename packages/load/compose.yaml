@@ -1,0 +1,49 @@
+# The load test's additions to the one-VM Compose (deploy/one-vm/compose.yaml):
+# Mailpit catches the emails (sign-in codes, which the seeder reads, and the
+# notifications the load sends); the app is also reached directly, from this
+# machine, by the seeder; and k6 runs on the Docker network. See README.md:
+# run.sh drives it.
+services:
+  app:
+    ports:
+      - 127.0.0.1:${LOAD_APP_PORT:-18080}:8080
+    depends_on:
+      mailpit:
+        condition: service_started
+    environment: &app-environment
+      IDEAF_SMTP_URL: smtp://mailpit:1025
+      IDEAF_EMAIL_FROM: Ideation Factory <sign-in@load.test>
+      IDEAF_NOTIFY_FROM: Ideation Factory <notifications@load.test>
+      IDEAF_PERSONAL_TOKENS: 'on'
+      # how many calls each app node sends the directory at once (server/src/actors/limit.ts)
+      IDEAF_DIRECTORY_CALLS: ${IDEAF_DIRECTORY_CALLS:-4}
+
+  # the directory's node: the app's settings too (extends takes the one-VM file's), but no port
+  directory:
+    depends_on:
+      mailpit:
+        condition: service_started
+    environment: *app-environment
+
+  mailpit:
+    image: axllent/mailpit:v1.33.1
+    restart: unless-stopped
+    environment:
+      # enough for the seeder's sign-ins in flight; older messages go first
+      MP_MAX_MESSAGES: 20000
+    ports:
+      - 127.0.0.1:${LOAD_MAILPIT_PORT:-18025}:8025
+    networks: [ideaf]
+
+  k6:
+    image: grafana/k6:2.4.0
+    profiles: [k6]
+    user: ${LOAD_USER:-12345}
+    volumes:
+      - ../../packages/load:/load:ro
+      - ../../packages/load/.data:/data
+    environment:
+      LOAD_URL: http://app:8080
+      LOAD_ORIGIN: ${IDEAF_URL}
+      LOAD_SEED: /data/seed.json
+    networks: [ideaf]
