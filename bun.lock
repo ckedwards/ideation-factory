@@ -54,7 +54,7 @@
         "@ideaf/cli": "workspace:*",
         "@ideaf/core": "workspace:*",
         "@ideaf/server": "workspace:*",
-        "rivetkit": "3.0.6",
+        "rivetkit": "3.1.1",
       },
     },
     "packages/load": {
@@ -84,7 +84,7 @@
         "jose": "6.2.14",
         "kysely": "^0.29.7",
         "nodemailer": "10.3.1",
-        "rivetkit": "3.0.6",
+        "rivetkit": "3.1.1",
         "zod": "^4.6.7",
       },
       "devDependencies": {
@@ -587,43 +587,43 @@
 
     "@rivetkit/bare-ts": ["@rivetkit/bare-ts@0.6.2", "", {}, "sha512-3qndQUQXLdwafMEqfhz24hUtDPcsf1Bu3q52Kb8MqeH8JUh3h6R4HYW3ZJXiQsLcyYyFM68PuIwlLRlg1xDEpg=="],
 
-    "@rivetkit/engine-api-full": ["@rivetkit/engine-api-full@3.0.6", "", { "dependencies": { "form-data": "^4.0.4", "js-base64": "^3.7.8", "node-fetch": "^2.7.0", "qs": "^6.14.0", "readable-stream": "^4.7.0", "url-join": "^5.0.0" } }, "sha512-Mgjm+ggCEmV3d6k3PpGJ8WZp7EPM+AtFfGM8Abswgmgp89pr1vPe/cp9gFPVhzbtHCnTOm+hf+OeiOY+de6JFQ=="],
+    "@rivetkit/engine-api-full": ["@rivetkit/engine-api-full@3.1.1", "", { "dependencies": { "form-data": "^4.0.4", "js-base64": "^3.7.8", "node-fetch": "^2.7.0", "qs": "^6.14.0", "readable-stream": "^4.7.0", "url-join": "^5.0.0" } }, "sha512-y1wklOGVamEC8pLjFSL51urMno1LJPwD6p236XyGadka3f7FcKBCunCgQN6ureZyI502Q5qQ48KsFhFFD7Buzw=="],
 
-    "@rivetkit/engine-cli": ["@rivetkit/engine-cli@3.0.6", "", { "optionalDependencies": { "@rivetkit/engine-cli-darwin-arm64": "3.0.6", "@rivetkit/engine-cli-darwin-x64": "3.0.6", "@rivetkit/engine-cli-linux-arm64-musl": "3.0.6", "@rivetkit/engine-cli-linux-x64-musl": "3.0.6" } }, "sha512-qZe24qlYqUMOGa54UV9olHViHdqStI7EVbl1YkTDgtAEFYpSELC2pQJ11lxydd/1ukbuC5ay9ZkNDc/UvPn+vA=="],
+    "@rivetkit/engine-cli": ["@rivetkit/engine-cli@3.1.1", "", { "optionalDependencies": { "@rivetkit/engine-cli-darwin-arm64": "3.1.1", "@rivetkit/engine-cli-darwin-x64": "3.1.1", "@rivetkit/engine-cli-linux-arm64-musl": "3.1.1", "@rivetkit/engine-cli-linux-x64-musl": "3.1.1" } }, "sha512-GEit/mPb3yxo9LpXV5h7trmNST3wLodYX/opKAhj9h26iw+ltqfTJoMgptAiiYGU4F9OI0G7bbpO9n/evTN2KQ=="],
 
-    "@rivetkit/engine-cli-darwin-arm64": ["@rivetkit/engine-cli-darwin-arm64@3.0.6", "", { "os": "darwin", "cpu": "arm64", "bin": { "rivet-engine": "rivet-engine" } }, "sha512-17LXWmr/f9R/PCLkLQuaSKZ4P7Myp7xwB0LzZbCo5PWWUw1/MpGG/sQrtqximXCDR/NiCgUwk9BzaO2vmzMVtg=="],
+    "@rivetkit/engine-cli-darwin-arm64": ["@rivetkit/engine-cli-darwin-arm64@3.1.1", "", { "os": "darwin", "cpu": "arm64", "bin": { "rivet-engine": "rivet-engine" } }, "sha512-F+RsEReO6Lnh3W3CRFcCX9EJogcxEMcRtOtVHSRt6W0apP4gj+WL25KJf/Xs7Oq473ToX3mASt2DB/u2FMDibw=="],
 
-    "@rivetkit/engine-cli-darwin-x64": ["@rivetkit/engine-cli-darwin-x64@3.0.6", "", { "os": "darwin", "cpu": "x64", "bin": { "rivet-engine": "rivet-engine" } }, "sha512-QFT33N84pCeDhGfa1+3ozqpW0VjZfPEpCuYSipgEefXN1Ec9EGir6/7iWFKN2snu1dNrxlyeN3D0kqkrrE1/EQ=="],
+    "@rivetkit/engine-cli-darwin-x64": ["@rivetkit/engine-cli-darwin-x64@3.1.1", "", { "os": "darwin", "cpu": "x64", "bin": { "rivet-engine": "rivet-engine" } }, "sha512-X0tjdggFEAvzZq9UPYkPx4OCmL44veTCRcN7FDlo1SurLIg2F5DAYGwqzFeIDX7R+EDLSJ080aPQ3nhjbLJEVA=="],
 
-    "@rivetkit/engine-cli-linux-arm64-musl": ["@rivetkit/engine-cli-linux-arm64-musl@3.0.6", "", { "os": "linux", "cpu": "arm64", "bin": { "rivet-engine": "rivet-engine" } }, "sha512-m5jjE+5Ielvy+EQ5FE+Ry42Yyc0XLR4sn9Yig9M+mRIfPG7GTZVL3206mKugS94OhYafPfiCc+d+P8XYAL9E+Q=="],
+    "@rivetkit/engine-cli-linux-arm64-musl": ["@rivetkit/engine-cli-linux-arm64-musl@3.1.1", "", { "os": "linux", "cpu": "arm64", "bin": { "rivet-engine": "rivet-engine" } }, "sha512-ZN8NNQtSrN+4dCmQd4CYFdHTKa67LIq0k37AFQvA0XDDJnX0vr5q8v+AGO9DLuzASQXRMqZ8JOTML9vzCJRodQ=="],
 
-    "@rivetkit/engine-cli-linux-x64-musl": ["@rivetkit/engine-cli-linux-x64-musl@3.0.6", "", { "os": "linux", "cpu": "x64", "bin": { "rivet-engine": "rivet-engine" } }, "sha512-falMFCWA1YWzOKmywR+rdL5J+PxxfjrJ8um6ggiuUeBIZnyClzX0Zq/CD2GZFy6ZIG+VAcWaCzRoxnncXaRq/g=="],
+    "@rivetkit/engine-cli-linux-x64-musl": ["@rivetkit/engine-cli-linux-x64-musl@3.1.1", "", { "os": "linux", "cpu": "x64", "bin": { "rivet-engine": "rivet-engine" } }, "sha512-/It+SssM2e8D7t6Qqqt2uID96cEUY2gIAvbTGVFg3vNMLeQ7Bm2TSObcBm1HBQ74Ux18uJQfVfZ7JZFJvOsvbQ=="],
 
-    "@rivetkit/engine-envoy-protocol": ["@rivetkit/engine-envoy-protocol@3.0.6", "", { "dependencies": { "@rivetkit/bare-ts": "^0.6.2" } }, "sha512-8rQHarvqBpiTz5PihzBvvterc7K6dZtoHscmZXyQ6FVAJ4KZJ2N/NxIUjE3LalzAoxxnrcVBi6BBObYPNcLwCQ=="],
+    "@rivetkit/engine-envoy-protocol": ["@rivetkit/engine-envoy-protocol@3.1.1", "", { "dependencies": { "@rivetkit/bare-ts": "^0.6.2" } }, "sha512-DsWyEaVodZ3Lj04JgzRoghOBPm4cJpoVyszSzRt7jbLw07TNWGP5nijLU2Uwf6E3FjEEXrEDMiEO551b2TpSBw=="],
 
     "@rivetkit/on-change": ["@rivetkit/on-change@6.0.1", "", {}, "sha512-QBN/KRBXLJdCgN4gBTL3XAc/zKm58atSnieXWMOyFSPmo6F1/yIVV/LTRdvAktfCttrGx7W6c32i/lwqCHWnsQ=="],
 
-    "@rivetkit/rivetkit-napi": ["@rivetkit/rivetkit-napi@3.0.6", "", { "dependencies": { "@rivetkit/engine-envoy-protocol": "3.0.6" }, "optionalDependencies": { "@rivetkit/rivetkit-napi-darwin-arm64": "3.0.6", "@rivetkit/rivetkit-napi-darwin-x64": "3.0.6", "@rivetkit/rivetkit-napi-linux-arm64-gnu": "3.0.6", "@rivetkit/rivetkit-napi-linux-arm64-musl": "3.0.6", "@rivetkit/rivetkit-napi-linux-x64-gnu": "3.0.6", "@rivetkit/rivetkit-napi-linux-x64-musl": "3.0.6" } }, "sha512-G0q88uPFzZvm7fkRBR9NxfUgD8z/NaLEbc2B7nwQceXXEZSMxfa24G6U5S9XPSCNeupacoPre1BRrB2yYQXmbg=="],
+    "@rivetkit/rivetkit-napi": ["@rivetkit/rivetkit-napi@3.1.1", "", { "dependencies": { "@rivetkit/engine-envoy-protocol": "3.1.1" }, "optionalDependencies": { "@rivetkit/rivetkit-napi-darwin-arm64": "3.1.1", "@rivetkit/rivetkit-napi-darwin-x64": "3.1.1", "@rivetkit/rivetkit-napi-linux-arm64-gnu": "3.1.1", "@rivetkit/rivetkit-napi-linux-arm64-musl": "3.1.1", "@rivetkit/rivetkit-napi-linux-x64-gnu": "3.1.1", "@rivetkit/rivetkit-napi-linux-x64-musl": "3.1.1" } }, "sha512-5ZEO77oT4F1eqfOxGLlqDsJjWQWDIPbA854dDiGLF67JZMrzQ4GXNiGRkmjiIA/f7PIi0r6ByuEpJR+HiP1S3g=="],
 
-    "@rivetkit/rivetkit-napi-darwin-arm64": ["@rivetkit/rivetkit-napi-darwin-arm64@3.0.6", "", { "os": "darwin", "cpu": "arm64" }, "sha512-jh9LyiJLq1VfkW4bps6CdVgFGSD+nF8Y+IUvtPzvwV0u1eS3F6V/WxFLrj45MV63zJk15Vv5xQiqbKsaEA33Yw=="],
+    "@rivetkit/rivetkit-napi-darwin-arm64": ["@rivetkit/rivetkit-napi-darwin-arm64@3.1.1", "", { "os": "darwin", "cpu": "arm64" }, "sha512-Np0j45oa0A5ZW8g08G/zc2F7o0gSU5HZACTjCNP1HBkA3BiaCe9BBjJaCGyOkNivETB1oqDrlUveAjN46udn0A=="],
 
-    "@rivetkit/rivetkit-napi-darwin-x64": ["@rivetkit/rivetkit-napi-darwin-x64@3.0.6", "", { "os": "darwin", "cpu": "x64" }, "sha512-P97VhpN5mJ4jhVr9KDrC/kWdc8Ftf/QHPj9HGiv/Rki+WQheaVjN8L7T1vrNkjTRizMBiTHv/0ZvGhzmRZNlUg=="],
+    "@rivetkit/rivetkit-napi-darwin-x64": ["@rivetkit/rivetkit-napi-darwin-x64@3.1.1", "", { "os": "darwin", "cpu": "x64" }, "sha512-+TyJaNsaN0J/geq41vMk2p1qQceTh4sObhs/llxdNnAzevC/fDgdYeHpXussUAZrykoi4Y5KVaKNDBnBBq5xyA=="],
 
-    "@rivetkit/rivetkit-napi-linux-arm64-gnu": ["@rivetkit/rivetkit-napi-linux-arm64-gnu@3.0.6", "", { "os": "linux", "cpu": "arm64" }, "sha512-7KSrieSQrcz2Yccb9H4cJ5kpGA4XRbvjgk0GFjSexUJCW6Gd7p+yCBC9He+dhVZEITOg4Gsd0ZFXXWLGrsKLZA=="],
+    "@rivetkit/rivetkit-napi-linux-arm64-gnu": ["@rivetkit/rivetkit-napi-linux-arm64-gnu@3.1.1", "", { "os": "linux", "cpu": "arm64" }, "sha512-h16t1VTgfyZYFVXJIdonH8myQD91PVnAkxDYkA18Qe2U06LD9MAuxdjL3LPnv6gb2IvMe4w6bTKl/kvq+vDfUg=="],
 
-    "@rivetkit/rivetkit-napi-linux-arm64-musl": ["@rivetkit/rivetkit-napi-linux-arm64-musl@3.0.6", "", { "os": "linux", "cpu": "arm64" }, "sha512-4mer3gAoFQCiz3YyyYSn8uUotzGcQao7Q4j5GgDXXMz+GbAVoIpRPdquPnen3sK9rTNbyfLB98seMLsAneGpqA=="],
+    "@rivetkit/rivetkit-napi-linux-arm64-musl": ["@rivetkit/rivetkit-napi-linux-arm64-musl@3.1.1", "", { "os": "linux", "cpu": "arm64" }, "sha512-kjSkxEmp9f1OL0F7u/uisP/9e165/3wKbYij+J+xG7M2pWzqqvtXg3NKTEKn/MKXGoFOSB3SB0a4a7sw1LBtuw=="],
 
-    "@rivetkit/rivetkit-napi-linux-x64-gnu": ["@rivetkit/rivetkit-napi-linux-x64-gnu@3.0.6", "", { "os": "linux", "cpu": "x64" }, "sha512-DhRbZg8LLxPXSf8EMXShkJ7gvxQzsG0QzQ01/tlDZ2hwc5K9RP9PPvcLPf01RHZAK3/f+xyEMNH5G+Op9qRi3Q=="],
+    "@rivetkit/rivetkit-napi-linux-x64-gnu": ["@rivetkit/rivetkit-napi-linux-x64-gnu@3.1.1", "", { "os": "linux", "cpu": "x64" }, "sha512-AcSQdzoiqioRKeKpsi2F+uM6tI62HCJczlOTEMF/acK4PILjT1F49rbxMqGLYH8bD9jsVY55Fxg2Pbd0G7pa1A=="],
 
-    "@rivetkit/rivetkit-napi-linux-x64-musl": ["@rivetkit/rivetkit-napi-linux-x64-musl@3.0.6", "", { "os": "linux", "cpu": "x64" }, "sha512-+Hh2fUJhLwdoCt1VVxlpuYZBV4Q3O6LaUO+YNs+qHzMhpadva+FFGVFQsgEu/cbhwwDgBFTQZOLQL0nZUyDWiQ=="],
+    "@rivetkit/rivetkit-napi-linux-x64-musl": ["@rivetkit/rivetkit-napi-linux-x64-musl@3.1.1", "", { "os": "linux", "cpu": "x64" }, "sha512-66+232yqUwmyUrU6snTIUCOq45ztFdNg7GZXrVDN10shI+A7HZDZFmk2QMFwTg+sb3jHd7CKdu/50t5UxkMgkw=="],
 
-    "@rivetkit/rivetkit-wasm": ["@rivetkit/rivetkit-wasm@3.0.6", "", {}, "sha512-UBTx9mlaJ+pLvLPgyU5m6GSut7RwgXjYQKTr3zj5a6ZSkaT0LHHGO4nzo9XbadTH8NQXay4ATT/tSIohVn3xLQ=="],
+    "@rivetkit/rivetkit-wasm": ["@rivetkit/rivetkit-wasm@3.1.1", "", {}, "sha512-V2ZoXoElFNV86dZhTPx1GbV1+tNMnwQTVksE8+ERG5YopE9rrqki3YIrQjZykkyEujTYFdj3UJAXnuKx5CkXxA=="],
 
-    "@rivetkit/traces": ["@rivetkit/traces@3.0.6", "", { "dependencies": { "@rivetkit/bare-ts": "^0.6.2", "cbor-x": "^1.6.0", "fdb-tuple": "^1.0.0", "vbare": "^0.0.4" } }, "sha512-GdjMzsqJoNMUl03s4qWBgFaGwelroCI+eUdURtbKK7o85NZPP1VHi8DmEysOA3dV8XYw7hsHOlYkevzfcjRiZA=="],
+    "@rivetkit/traces": ["@rivetkit/traces@3.1.1", "", { "dependencies": { "@rivetkit/bare-ts": "^0.6.2", "cbor-x": "^1.6.0", "fdb-tuple": "^1.0.0", "vbare": "^0.0.4" } }, "sha512-aiqUcUozepm8iAk0WlPXb9FClOgRdjhNue8QrxuWGKcsQZ08paXZgveNLYToXgJCtVVRFEzSHgsS/DIa8nv4HA=="],
 
-    "@rivetkit/virtual-websocket": ["@rivetkit/virtual-websocket@3.0.6", "", {}, "sha512-ybBYe1ZQfJrVdaJH5ns/vlvll6iyCfRzT+t0X8/iSXHbDtAeAb+6lqldrl4vAe5dm1drSio2X02szU3SFz5h0w=="],
+    "@rivetkit/virtual-websocket": ["@rivetkit/virtual-websocket@3.1.1", "", {}, "sha512-88ye0KZurys1I1N6vhaoye5uA6rpHk8jOUbyZFbQFJGmhrDJIWQHwEKUNlrWvUwkJdJkUumVXloQyT8andrS2w=="],
 
-    "@rivetkit/workflow-engine": ["@rivetkit/workflow-engine@3.0.6", "", { "dependencies": { "@rivetkit/bare-ts": "^0.6.2", "cbor-x": "^1.6.0", "fdb-tuple": "^1.0.0", "pino": "^9.6.0", "vbare": "^0.0.4" } }, "sha512-viKlV5J1kgLfFXjsBEdxw5VEPEdMwi6EhQ0Se0mOCbIQpGPINv1jVhq3y6cfAO7hwpQOsbFjjtuq0IeFi0s4BQ=="],
+    "@rivetkit/workflow-engine": ["@rivetkit/workflow-engine@3.1.1", "", { "dependencies": { "@rivetkit/bare-ts": "^0.6.2", "cbor-x": "^1.6.0", "fdb-tuple": "^1.0.0", "pino": "^9.6.0", "vbare": "^0.0.4" } }, "sha512-OV5DUWKs4LCdL8YvB9XVbkQFlYXCtGAmMJ/5Q9fWKsBsBAfTw9qlUkwfIzJuY7Yi/eRSmT8CsYG68B9DnXb28A=="],
 
     "@rolldown/binding-android-arm-eabi": ["@rolldown/binding-android-arm-eabi@1.2.16", "", { "os": "android", "cpu": "arm" }, "sha512-ia3DwAs0OsMGS7+IConptSiyk9pEXkOx/AbJ2n/lAGxH3QkWQus1t8d7gnAT38FCU2sQu8lUbeR6AiZFv4JxaA=="],
 
@@ -1411,7 +1411,7 @@
 
     "retry": ["retry@0.13.1", "", {}, "sha512-XQBQ3I8W1Cge0Seh+6gjj03LbmRFWuoszgK9ooCpwYIrhhoO80pfq4cUkU5DkknwfOfFteRwlZ56PYOGYyFWdg=="],
 
-    "rivetkit": ["rivetkit@3.0.6", "", { "dependencies": { "@hono/zod-openapi": "^1.1.5", "@opentelemetry/api": "^1.1.0", "@rivetkit/bare-ts": "^0.6.2", "@rivetkit/engine-api-full": "3.0.6", "@rivetkit/engine-cli": "3.0.6", "@rivetkit/engine-envoy-protocol": "3.0.6", "@rivetkit/on-change": "6.0.1", "@rivetkit/rivetkit-napi": "3.0.6", "@rivetkit/rivetkit-wasm": "3.0.6", "@rivetkit/traces": "3.0.6", "@rivetkit/virtual-websocket": "3.0.6", "@rivetkit/workflow-engine": "3.0.6", "cbor-x": "^1.6.0", "drizzle-orm": "0.45.2", "hono": "^4.7.0", "invariant": "^2.2.4", "p-retry": "^6.2.1", "pino": "^9.5.0", "uuid": "^12.0.0", "vbare": "^0.0.4", "zod": "^4.1.0" }, "optionalDependencies": { "@rivet-dev/services": "^0.2.5" }, "peerDependencies": { "drizzle-kit": "^0.31.2", "eventsource": "^4.0.0", "ws": "^8.0.0" }, "optionalPeers": ["drizzle-kit", "eventsource", "ws"] }, "sha512-WdP1x0dDf5WU/TK3GZuiypE6f4uIzz9616TrsMtfPIRawgBrJRvCx84e81emgkTzm4jflFFtyEms5Np8zUaaXw=="],
+    "rivetkit": ["rivetkit@3.1.1", "", { "dependencies": { "@hono/zod-openapi": "^1.1.5", "@opentelemetry/api": "^1.1.0", "@rivetkit/bare-ts": "^0.6.2", "@rivetkit/engine-api-full": "3.1.1", "@rivetkit/engine-cli": "3.1.1", "@rivetkit/engine-envoy-protocol": "3.1.1", "@rivetkit/on-change": "6.0.1", "@rivetkit/rivetkit-napi": "3.1.1", "@rivetkit/rivetkit-wasm": "3.1.1", "@rivetkit/traces": "3.1.1", "@rivetkit/virtual-websocket": "3.1.1", "@rivetkit/workflow-engine": "3.1.1", "cbor-x": "^1.6.0", "drizzle-orm": "0.45.2", "hono": "^4.7.0", "invariant": "^2.2.4", "p-retry": "^6.2.1", "pino": "^9.5.0", "uuid": "^12.0.0", "vbare": "^0.0.4", "zod": "^4.1.0" }, "optionalDependencies": { "@rivet-dev/services": "^0.2.5" }, "peerDependencies": { "drizzle-kit": "^0.31.2", "eventsource": "^4.0.0", "ws": "^8.0.0" }, "optionalPeers": ["drizzle-kit", "eventsource", "ws"] }, "sha512-2geGGxqcmzHyUYtkijRRJzSHqxyDowZLlitT1AAtoD1RL+ZEUt5gapsIXDNyhsQxtKcnR1HB6EegNn5Uoso9ow=="],
 
     "rolldown": ["rolldown@1.2.16", "", { "dependencies": { "@oxc-project/types": "=0.156.0", "@rolldown/pluginutils": "^1.0.0" }, "optionalDependencies": { "@rolldown/binding-android-arm-eabi": "1.2.16", "@rolldown/binding-android-arm64": "1.2.16", "@rolldown/binding-darwin-arm64": "1.2.16", "@rolldown/binding-darwin-x64": "1.2.16", "@rolldown/binding-freebsd-x64": "1.2.16", "@rolldown/binding-linux-arm-gnueabihf": "1.2.16", "@rolldown/binding-linux-arm64-gnu": "1.2.16", "@rolldown/binding-linux-arm64-musl": "1.2.16", "@rolldown/binding-linux-ppc64-gnu": "1.2.16", "@rolldown/binding-linux-s390x-gnu": "1.2.16", "@rolldown/binding-linux-x64-gnu": "1.2.16", "@rolldown/binding-linux-x64-musl": "1.2.16", "@rolldown/binding-openharmony-arm64": "1.2.16", "@rolldown/binding-win32-arm64-msvc": "1.2.16", "@rolldown/binding-win32-x64-msvc": "1.2.16" }, "bin": { "rolldown": "./bin/cli.mjs" } }, "sha512-bWvlMpFKiTfDKfnK7FC2MPgPeWCf/Kpwsq49ApdW+FQaBZb6O6dZ4MAPbPUjp7hYQrw/RobqCzn64BRrQecGHw=="],
 

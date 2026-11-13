@@ -5,7 +5,7 @@
 # repository's root:
 #
 #   docker build -f deploy/engine.Dockerfile -t ideaf-engine .
-FROM rivetdev/engine:3.0.6@sha256:868535b3a3249c17111cf2ac77c98300800a2b9fc99dcb0410c4d62febc530f4
+FROM rivetdev/engine:3.1.1@sha256:55cdfe9a92c0ee2f7d3ce5f388dab2ef8e0be1bab8e3f1adb7ba972f862e25d4
 # its write-ahead log, on this machine's disk; everything durable goes on to the bucket
 RUN mkdir -p /var/lib/rivet/log
 VOLUME /var/lib/rivet
