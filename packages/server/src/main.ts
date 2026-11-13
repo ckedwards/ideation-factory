@@ -15,6 +15,7 @@ import { authSettingsFromEnv, mailerFromEnv } from './auth/settings.ts'
 import { WorkerPool } from './core-pool/pool.ts'
 import { configureNode } from './deps.ts'
 import { fileStoreFromEnv } from './files/settings.ts'
+import { timedFileStore } from './files/timed.ts'
 import { limitsFromEnv, MAX_MESSAGE_BYTES } from './limits.ts'
 import { notificationEmailFromEnv } from './mail/sender.ts'
 import { createLive, type LiveData } from './live.ts'
@@ -27,7 +28,8 @@ const data = process.env.IDEAF_DATA ?? '.data'
 const core = new WorkerPool()
 const auth = authSettingsFromEnv(process.env, mailerFromEnv(process.env))
 configureNode({
-  files: fileStoreFromEnv(process.env, data),
+  // timed: a summary of its reads and writes in the log once a minute (files/timed.ts)
+  files: timedFileStore(fileStoreFromEnv(process.env, data)),
   core,
   limits: limitsFromEnv(process.env),
   auth,
