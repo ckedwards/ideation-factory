@@ -1,6 +1,6 @@
 # Performance and sizing
 
-For people running Ideation Factory: which settings matter as a deployment grows, what the warnings in the logs mean, and how much machine it needs. The numbers come from the load test in `packages/load`. Its README has the method and every finding. They were measured on one 22-core machine running the [one-VM Compose](../../deploy/one-vm), on RivetKit 3.0.6 and `rivetdev/engine:3.0.6`.
+For people running Ideation Factory: which settings matter as a deployment grows, what the warnings in the logs mean, and how much machine it needs. The numbers come from the load test in `packages/load`. Its README has the method and every finding. They were measured on one 22-core machine running the [one-VM Compose](../../deploy/one-vm), on RivetKit 3.0.6 and 3.1.1, each with Rivet's engine image of the same version.
 
 **Status:** first version, from seeding the design scale (10,000 people, 1,000 teams, 2,000 groups, 100,000 ideas). Steady-state and burst numbers, and the engine sizing below, are still being measured.
 
