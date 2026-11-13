@@ -2,9 +2,17 @@
 // what a Postgres implementation would mostly share. Writes are correct when
 // they run concurrently: unique keys, upserts and transactions, never the order
 // a queue applies them in.
-import { type Expression, type ExpressionBuilder, type Kysely, type SqlBool, sql as raw } from 'kysely'
+import {
+  type Expression,
+  type ExpressionBuilder,
+  type Kysely,
+  type QueryCreator,
+  type SqlBool,
+  sql as raw,
+} from 'kysely'
 import type { Sql } from '../sql/sql.ts'
 import { sqliteKysely } from '../sql/kysely.ts'
+import { prepared } from '../sql/prepared.ts'
 import type { ContainerKind, DB, Role } from './schema.ts'
 import { type IdeaSearch, SEARCH_WORK_CAP, searchTerms } from './search.ts'
 import {
@@ -34,6 +42,7 @@ import {
   WATCH_LEVELS,
   type WatchLevel,
   type IdeaFilter,
+  type IdeaPage,
   type IdeaPlace,
   type IdeaAccess,
   type IdeaListing,
@@ -198,9 +207,6 @@ async function nextNumber(db: Kysely<DB>, place: string): Promise<number> {
     .executeTakeFirstOrThrow()
   return Number(row.next) - 1
 }
-
-/** A person's queued email updates about one idea. */
-type EmailQueued = { user: string; idea: string; first: number; last: number; daily: boolean; digestAt: number | null }
 
 export interface SqlDirectoryOptions {
   sql: Sql
@@ -433,35 +439,18 @@ export class SqlDirectory implements Directory {
   }
 
   async #container(kind: ContainerKind, idOrHandle: string): Promise<Container | null> {
-    const members = (id: string) =>
-      this.#db
-        .selectFrom('memberships')
-        .select((eb) => eb.fn.countAll<number>().as('n'))
-        .where('kind', '=', kind)
-        .where('container', '=', id)
-        .executeTakeFirstOrThrow()
-        .then((r) => Number(r.n))
+    const members = (id: string) => Q.memberCount(this.#db, { kind, container: id }).then((r) => Number(r[0]?.n ?? 0))
     const handle = idOrHandle.toLowerCase().replace(/^@/, '')
     if (kind === 'team') {
       const find = (id: string, byHandle: string | null) =>
-        this.#db
-          .selectFrom('teams')
-          .selectAll()
-          .where((eb) =>
-            byHandle === null ? eb('id', '=', id) : eb.or([eb('id', '=', id), eb('handle', '=', byHandle)]),
-          )
-          .executeTakeFirst()
+        Q.team(this.#db, { id, ...(byHandle === null ? {} : { handle: byHandle }) }).then((r) => r[0])
       // by ID or handle, or by a handle it had before
       const row =
         (await find(idOrHandle, handle)) ??
         (await this.#aliased('team', handle).then((id) => (id ? find(id, null) : undefined)))
       return row ? this.#toTeam(row, await members(row.id)) : null
     }
-    const row = await this.#db
-      .selectFrom('groups')
-      .selectAll()
-      .where((eb) => eb.or([eb('id', '=', idOrHandle), eb('handle', '=', handle)]))
-      .executeTakeFirst()
+    const row = (await Q.group(this.#db, { id: idOrHandle, handle }))[0]
     return row ? this.#toGroup(row, await members(row.id)) : null
   }
 
@@ -896,6 +885,7 @@ export class SqlDirectory implements Directory {
         .values(rows)
         .onConflict((oc) => oc.columns(['user', 'event']).doNothing())
         .execute()
+      await this.#syncEmailQueue(db, [...new Set(rows.map((r) => r.user))], [idea])
     }
   }
 
@@ -966,6 +956,7 @@ export class SqlDirectory implements Directory {
         .values(rows)
         .onConflict((oc) => oc.columns(['user', 'event']).doNothing())
         .execute()
+      await this.#syncEmailQueue(db, [...new Set(rows.map((r) => r.user))], [idea.id])
     }
   }
 
@@ -1125,36 +1116,16 @@ export class SqlDirectory implements Directory {
     after: [number, string] | null,
     limit: number | null,
   ) {
-    let query = this.#db
-      .selectFrom('inbox')
-      .innerJoin('ideas', 'ideas.id', 'inbox.idea')
-      .select(['inbox.idea', 'inbox.reason', 'inbox.new_count', 'inbox.done', 'inbox.updated_at', 'inbox.event'])
-      .where('inbox.user', '=', user)
-      .where('inbox.done', '=', filter.done ? 1 : 0)
-      // only ideas they can still see: losing access hides what they'd heard
-      .where((eb) => visibleTo(eb as unknown as ExpressionBuilder<DB, 'ideas'>, user))
-      // a limited token sees only what it reaches
-      .where((eb) =>
-        token ? tokenReaches(eb as unknown as ExpressionBuilder<DB, 'ideas'>, user, token) : eb.lit(true),
-      )
-      .orderBy('inbox.updated_at', 'desc')
-      .orderBy('inbox.idea', 'desc')
-    if (filter.reason) {
-      query = query.where('inbox.reason', '=', filter.reason)
-    }
-    if (filter.unread) {
-      query = query.where('inbox.new_count', '>', 0)
-    }
-    if (after) {
-      const [at, id] = after
-      query = query.where((eb) =>
-        eb.or([eb('inbox.updated_at', '<', at), eb.and([eb('inbox.updated_at', '=', at), eb('inbox.idea', '<', id)])]),
-      )
-    }
-    if (limit !== null) {
-      query = query.limit(limit)
-    }
-    return (await query.execute()).map((r) => ({
+    const rows = await Q.direct(this.#db, {
+      user,
+      done: filter.done ? 1 : 0,
+      ...(filter.reason ? { reason: filter.reason } : {}),
+      ...(filter.unread ? { unread: true as const } : {}),
+      ...(after ? { afterAt: after[0], afterId: after[1] } : {}),
+      ...(limit !== null ? { limit } : {}),
+      ...(token ? { token } : {}),
+    })
+    return rows.map((r) => ({
       idea: r.idea,
       reason: r.reason as InboxReason,
       newCount: r.new_count,
@@ -1172,68 +1143,11 @@ export class SqlDirectory implements Directory {
    * events are new since they read it and whether they've marked it done.
    */
   async #watched(user: string, token: string | null) {
-    const closed = ['closed-accepted', 'closed-rejected']
-    const rows = await this.#db
-      .selectFrom('watches as w')
-      .innerJoin('ideas', 'ideas.team', 'w.team')
-      .innerJoin('teams as t', 't.id', 'ideas.team')
-      .innerJoin('inbox_events as e', 'e.idea', 'ideas.id')
-      .leftJoin('watch_marks as m', (j) => j.onRef('m.idea', '=', 'ideas.id').on('m.user', '=', user))
-      .select((eb) => [
-        'ideas.id as idea',
-        eb.fn.max('e.at').as('updated_at'),
-        eb.fn
-          .sum<number>(
-            eb
-              .case()
-              .when('e.at', '>', eb.fn.coalesce('m.read_at', eb.lit(0)))
-              .then(1)
-              .else(0)
-              .end(),
-          )
-          .as('new_count'),
-        eb.fn.max('m.done_at').as('done_at'),
-      ])
-      .where('w.user', '=', user)
-      .where('w.level', 'in', ['active', 'all'])
-      // an archived team's ideas count as closed for every purpose, watching too
-      .where('t.archived', '=', 0)
-      .where('e.at', '>', this.#now() - WATCH_HORIZON_MS)
-      // not what they did themselves
-      .where((eb) => eb.or([eb('e.by_user', 'is', null), eb('e.by_user', '!=', user)]))
-      // active: out of draft, up to and including the close
-      .where((eb) =>
-        eb.or([
-          eb('w.level', '=', 'all'),
-          eb('ideas.status', 'not in', ['draft', ...closed]),
-          eb.and([eb('ideas.status', 'in', closed), eb('e.kind', '=', 'status'), eb('e.detail', 'like', '%"closed-%')]),
-        ]),
-      )
-      .where((eb) =>
-        eb.not(
-          eb.exists(
-            eb.selectFrom('inbox as i').select('i.idea').whereRef('i.idea', '=', 'ideas.id').where('i.user', '=', user),
-          ),
-        ),
-      )
-      .where((eb) =>
-        eb.not(
-          eb.exists(
-            eb
-              .selectFrom('subscriptions as s')
-              .select('s.idea')
-              .whereRef('s.idea', '=', 'ideas.id')
-              .where('s.user', '=', user)
-              .where('s.state', '=', 'unsubscribed'),
-          ),
-        ),
-      )
-      .where((eb) => visibleTo(eb as unknown as ExpressionBuilder<DB, 'ideas'>, user))
-      .where((eb) =>
-        token ? tokenReaches(eb as unknown as ExpressionBuilder<DB, 'ideas'>, user, token) : eb.lit(true),
-      )
-      .groupBy('ideas.id')
-      .execute()
+    const rows = await Q.watched(this.#db, {
+      user,
+      horizon: this.#now() - WATCH_HORIZON_MS,
+      ...(token ? { token } : {}),
+    })
     return rows.map((r) => {
       const updatedAt = Number(r.updated_at)
       return {
@@ -1340,18 +1254,7 @@ export class SqlDirectory implements Directory {
   }
 
   async unreadCount(user: string, token?: string | null): Promise<number> {
-    const row = await this.#db
-      .selectFrom('inbox')
-      .innerJoin('ideas', 'ideas.id', 'inbox.idea')
-      .select((eb) => eb.fn.countAll<number>().as('n'))
-      .where('inbox.user', '=', user)
-      .where('inbox.done', '=', 0)
-      .where('inbox.new_count', '>', 0)
-      .where((eb) => visibleTo(eb as unknown as ExpressionBuilder<DB, 'ideas'>, user))
-      .where((eb) =>
-        token ? tokenReaches(eb as unknown as ExpressionBuilder<DB, 'ideas'>, user, token) : eb.lit(true),
-      )
-      .executeTakeFirst()
+    const row = (await Q.unread(this.#db, { user, ...(token ? { token } : {}) }))[0]
     const watched = (await this.#watched(user, token ?? null)).filter((r) => !r.done && r.newCount > 0).length
     return Number(row?.n ?? 0) + watched
   }
@@ -1407,6 +1310,7 @@ export class SqlDirectory implements Directory {
         pending = pending.where('idea', 'in', ideas)
       }
       await pending.execute()
+      await this.#syncEmailQueue(this.#db, [user], ideas ?? undefined)
     }
     return chosen.length + watched.length
   }
@@ -1519,14 +1423,33 @@ export class SqlDirectory implements Directory {
       .values({ user, ...values, digest_at: null })
       .onConflict((oc) => oc.column('user').doUpdateSet(values))
       .execute()
+    if (changes.cadence !== undefined) {
+      await this.#db
+        .updateTable('email_queue')
+        .set({ daily: next.cadence === 'daily' ? 1 : 0 })
+        .where('user', '=', user)
+        .execute()
+    }
     return ok(next)
   }
 
   // --- email ---------------------------------------------------------------------
 
   /** Each person's queued updates per idea: when the first and last were queued, and how they want email. */
-  async #emailQueue(): Promise<EmailQueued[]> {
-    const rows = await this.#db
+  /**
+   * Rebuilds email_queue's rows for these people (and only these ideas, if
+   * given) from email_pending: after email is queued, sent or dropped.
+   */
+  async #syncEmailQueue(db: Kysely<DB>, users: string[], ideas?: string[]): Promise<void> {
+    if (users.length === 0 || ideas?.length === 0) {
+      return
+    }
+    let cleared = db.deleteFrom('email_queue').where('user', 'in', users)
+    if (ideas) {
+      cleared = cleared.where('idea', 'in', ideas)
+    }
+    await cleared.execute()
+    let pending = db
       .selectFrom('email_pending as p')
       .leftJoin('notification_settings as s', 's.user', 'p.user')
       .select((eb) => [
@@ -1534,56 +1457,96 @@ export class SqlDirectory implements Directory {
         'p.idea',
         eb.fn.min('p.queued_at').as('first'),
         eb.fn.max('p.queued_at').as('last'),
-        's.cadence',
-        's.digest_at',
+        eb.case().when('s.cadence', '=', 'daily').then(1).else(0).end().as('daily'),
       ])
-      .groupBy(['p.user', 'p.idea', 's.cadence', 's.digest_at'])
+      .where('p.user', 'in', users)
+    if (ideas) {
+      pending = pending.where('p.idea', 'in', ideas)
+    }
+    await db
+      .insertInto('email_queue')
+      .columns(['user', 'idea', 'first', 'last', 'daily'])
+      .expression(pending.groupBy(['p.user', 'p.idea', 's.cadence']))
+      .execute()
+  }
+
+  /** People with a daily digest pending: its ideas' earliest email, and when their last digest went. */
+  async #pendingDigests(): Promise<Array<{ user: string; first: number; digestAt: number | null }>> {
+    const rows = await this.#db
+      .selectFrom('email_queue as q')
+      .leftJoin('notification_settings as s', 's.user', 'q.user')
+      .select((eb) => ['q.user', eb.fn.min('q.first').as('first'), 's.digest_at'])
+      .where('q.daily', '=', 1)
+      .groupBy(['q.user', 's.digest_at'])
       .execute()
     return rows.map((r) => ({
       user: r.user,
-      idea: r.idea,
       first: Number(r.first),
-      last: Number(r.last),
-      daily: r.cadence === 'daily',
       digestAt: r.digest_at === null ? null : Number(r.digest_at),
     }))
   }
 
-  /** When each person's email is due: per idea (bundled), or one time for all their ideas (a digest). */
-  #emailDue(queue: EmailQueued[], timing: EmailTiming) {
-    const bundled = (q: EmailQueued) => Math.min(q.last + timing.quietMs, q.first + timing.maxWaitMs)
-    const due: Array<{ user: string; ideas: string[]; at: number; digest: boolean }> = []
-    const digests = new Map<string, { ideas: string[]; first: number; digestAt: number | null }>()
-    for (const q of queue) {
-      if (!q.daily) {
-        due.push({ user: q.user, ideas: [q.idea], at: bundled(q), digest: false })
-        continue
-      }
-      const d = digests.get(q.user) ?? { ideas: [], first: q.first, digestAt: q.digestAt }
-      d.ideas.push(q.idea)
-      d.first = Math.min(d.first, q.first)
-      digests.set(q.user, d)
-    }
-    for (const [user, d] of digests) {
-      const at = Math.max(d.first + timing.quietMs, d.digestAt === null ? 0 : d.digestAt + timing.digestMs)
-      due.push({ user, ideas: d.ideas, at, digest: true })
-    }
-    return due
+  /** When a digest is due: once the first email has been quiet for a while, and a day after the last one. */
+  #digestAt(d: { first: number; digestAt: number | null }, timing: EmailTiming): number {
+    return Math.max(d.first + timing.quietMs, d.digestAt === null ? 0 : d.digestAt + timing.digestMs)
   }
 
   async nextEmailAt(timing: EmailTiming): Promise<number | null> {
-    const due = this.#emailDue(await this.#emailQueue(), timing)
-    return due.length === 0 ? null : Math.min(...due.map((d) => d.at))
+    // bundled: the earliest of each idea's quiet time after its last email and longest wait after its first,
+    // each the minimum of one index (one query apiece, so SQLite reads it off the index)
+    const last = await this.#db
+      .selectFrom('email_queue')
+      .select((eb) => eb.fn.min('last').as('at'))
+      .where('daily', '=', 0)
+      .executeTakeFirst()
+    const first = await this.#db
+      .selectFrom('email_queue')
+      .select((eb) => eb.fn.min('first').as('at'))
+      .where('daily', '=', 0)
+      .executeTakeFirst()
+    const times: number[] = []
+    if (last?.at !== null && last?.at !== undefined) {
+      times.push(Number(last.at) + timing.quietMs)
+    }
+    if (first?.at !== null && first?.at !== undefined) {
+      times.push(Number(first.at) + timing.maxWaitMs)
+    }
+    for (const d of await this.#pendingDigests()) {
+      times.push(this.#digestAt(d, timing))
+    }
+    return times.length === 0 ? null : Math.min(...times)
   }
 
   async dueEmails(timing: EmailTiming, limit = 50): Promise<DueEmail[]> {
     const now = this.#now()
-    const due = this.#emailDue(await this.#emailQueue(), timing)
-      .filter((d) => d.at <= now)
-      .sort((a, b) => a.at - b.at)
-      .slice(0, limit)
+    // bundled emails due: quiet long enough, or waiting long enough, read through the indexes
+    const bundled = await this.#db
+      .selectFrom('email_queue')
+      .select(['user', 'idea', 'first', 'last'])
+      .where('daily', '=', 0)
+      .where((eb) => eb.or([eb('last', '<=', now - timing.quietMs), eb('first', '<=', now - timing.maxWaitMs)]))
+      .execute()
+    const due: Array<{ user: string; ideas: string[]; at: number; digest: boolean }> = bundled.map((q) => ({
+      user: q.user,
+      ideas: [q.idea],
+      at: Math.min(Number(q.last) + timing.quietMs, Number(q.first) + timing.maxWaitMs),
+      digest: false,
+    }))
+    for (const d of await this.#pendingDigests()) {
+      const at = this.#digestAt(d, timing)
+      if (at <= now) {
+        const ideas = await this.#db
+          .selectFrom('email_queue')
+          .select('idea')
+          .where('user', '=', d.user)
+          .where('daily', '=', 1)
+          .execute()
+        due.push({ user: d.user, ideas: ideas.map((r) => r.idea), at, digest: true })
+      }
+    }
+    due.sort((a, b) => a.at - b.at)
     const emails: DueEmail[] = []
-    for (const d of due) {
+    for (const d of due.slice(0, limit)) {
       const email = await this.#composeEmail(d.user, d.ideas, d.digest)
       if (email) {
         emails.push(email)
@@ -1623,6 +1586,7 @@ export class SqlDirectory implements Directory {
     const settings = await this.notificationSettings(user)
     const drop = async () => {
       await this.#db.deleteFrom('email_pending').where('user', '=', user).where('event', 'in', allEvents).execute()
+      await this.#syncEmailQueue(this.#db, [user], ideaIds)
       return null
     }
     if (!person?.email || person.inactive === 1 || settings.email === 'off') {
@@ -1692,6 +1656,7 @@ export class SqlDirectory implements Directory {
     await this.#transaction(async (db) => {
       if (events.length > 0) {
         await db.deleteFrom('email_pending').where('user', '=', user).where('event', 'in', events).execute()
+        await this.#syncEmailQueue(db, [user])
       }
       if (email.digest) {
         await db.updateTable('notification_settings').set({ digest_at: this.#now() }).where('user', '=', user).execute()
@@ -1808,14 +1773,8 @@ export class SqlDirectory implements Directory {
   }
 
   async #role(kind: ContainerKind, container: string, user: string): Promise<Role | null> {
-    const row = await this.#db
-      .selectFrom('memberships')
-      .select('role')
-      .where('kind', '=', kind)
-      .where('container', '=', container)
-      .where('user', '=', user)
-      .executeTakeFirst()
-    return row?.role ?? null
+    const row = (await Q.role(this.#db, { kind, container, user }))[0]
+    return (row?.role as Role | undefined) ?? null
   }
 
   async #resolve(kind: ContainerKind, id: string): Promise<Container | null> {
@@ -1985,7 +1944,11 @@ export class SqlDirectory implements Directory {
 
   // --- ideas: the index, access and lists -------------------------------------------------
 
-  async canCreateIdea(actor: string, teamId: string | null, token?: string | null): Promise<Result<null>> {
+  async canCreateIdea(
+    actor: string,
+    teamId: string | null,
+    token?: string | null,
+  ): Promise<Result<{ team: string | null }>> {
     const user = await this.user(actor)
     if (!user) {
       return fail('forbidden', 'unknown user')
@@ -2003,7 +1966,7 @@ export class SqlDirectory implements Directory {
     if (teamId === null) {
       return grant?.limits && !grant.limits.noTeam
         ? fail('forbidden', 'this token can only create ideas in the teams it was given')
-        : ok(null)
+        : ok({ team: null })
     }
     const team = await this.team(teamId)
     if (!team) {
@@ -2016,14 +1979,14 @@ export class SqlDirectory implements Directory {
       return fail('forbidden', `${team.handle} is archived`)
     }
     if (team.createPolicy === 'anyone') {
-      return ok(null)
+      return ok({ team: team.id })
     }
     const role = await this.#role('team', team.id, actor)
     if (team.createPolicy === 'members' && role) {
-      return ok(null)
+      return ok({ team: team.id })
     }
     if (role === 'admin' || role === 'maintainer') {
-      return ok(null)
+      return ok({ team: team.id })
     }
     return fail(
       'forbidden',
@@ -2033,50 +1996,103 @@ export class SqlDirectory implements Directory {
     )
   }
 
-  async registerIdea(row: Omit<IdeaRow, 'number' | 'openComments'>): Promise<void> {
-    const team = row.team ? await this.team(row.team) : null
-    await this.#transaction(async (db) => {
-      if (await db.selectFrom('ideas').select('id').where('id', '=', row.id).executeTakeFirst()) {
-        return // already registered: a retry
+  async registerIdea(row: Omit<IdeaRow, 'number' | 'openComments'>): Promise<IdeaPlace> {
+    return (await this.registerIdeas([row]))[0]!
+  }
+
+  async registerIdeas(rows: Array<Omit<IdeaRow, 'number' | 'openComments'>>): Promise<IdeaPlace[]> {
+    // what places are called, read once for the batch: a team's ideas are found under its handle, someone's own under theirs
+    const teams = new Map<string, Awaited<ReturnType<SqlDirectory['team']>>>()
+    const owners = new Map<string, string>()
+    for (const row of rows) {
+      if (row.team && !teams.has(row.team)) {
+        teams.set(row.team, await this.team(row.team))
       }
-      const place = placeKey(team?.id ?? null, row.owner)
-      const inserted = await db
-        .insertInto('ideas')
-        .values({
-          id: row.id,
-          title: row.title,
-          team: team?.id ?? null,
-          owner: row.owner,
-          status: row.status,
-          latest: row.latest,
-          created_at: row.createdAt,
-          updated_at: row.updatedAt,
-          place,
-          number: await nextNumber(db, place),
-          description: row.description,
-          open_comments: 0,
-        })
-        // two registrations at once: the second leaves the first alone
-        .onConflict((oc) => oc.column('id').doNothing())
-        .returning('id')
-        .execute()
-      if (inserted.length === 0) {
-        return
+      if (!row.team && !owners.has(row.owner)) {
+        owners.set(row.owner, `@${(await this.user(row.owner))?.handle ?? row.owner}`)
       }
-      await this.#search.index(db, row.id, row.title)
-      if (team) {
-        for (const grant of grantsFromDefaults(team)) {
-          await insertGrant(db, row.id, grant, this.#now())
+    }
+    const added: Array<{ id: string; title: string }> = []
+    const places = await this.#transaction(async (db) => {
+      added.length = 0
+      const places: IdeaPlace[] = []
+      for (const row of rows) {
+        const team = row.team ? (teams.get(row.team) ?? null) : null
+        const placeName = team ? team.handle : owners.get(row.owner)!
+        const registered = await db.selectFrom('ideas').select('number').where('id', '=', row.id).executeTakeFirst()
+        if (registered) {
+          places.push({ id: row.id, place: placeName, number: Number(registered.number) }) // a retry
+          continue
         }
+        const place = placeKey(team?.id ?? null, row.owner)
+        const number = await nextNumber(db, place)
+        await db
+          .insertInto('ideas')
+          .values({
+            id: row.id,
+            title: row.title,
+            team: team?.id ?? null,
+            owner: row.owner,
+            status: row.status,
+            latest: row.latest,
+            created_at: row.createdAt,
+            updated_at: row.updatedAt,
+            place,
+            number,
+            description: row.description,
+            open_comments: 0,
+          })
+          .execute()
+        added.push({ id: row.id, title: row.title })
+        if (team) {
+          for (const grant of grantsFromDefaults(team)) {
+            await insertGrant(db, row.id, grant, this.#now())
+          }
+        }
+        places.push({ id: row.id, place: placeName, number })
       }
+      return places
     })
+    // the search index is another actor's: told once these are in
+    await this.#search.index(added)
+    return places
+  }
+
+  async reindexSearch(): Promise<number> {
+    // the least recently updated first, so the most recently updated end up the newest in the index, as they were
+    let sent = 0
+    let after: { at: number; id: string } | null = null
+    for (;;) {
+      let page = this.#db
+        .selectFrom('ideas')
+        .select(['id', 'title', 'updated_at'])
+        .orderBy('updated_at')
+        .orderBy('id')
+        .limit(500)
+      if (after) {
+        const { at, id } = after
+        page = page.where((eb) =>
+          eb.or([eb('updated_at', '>', at), eb.and([eb('updated_at', '=', at), eb('id', '>', id)])]),
+        )
+      }
+      const rows = await page.execute()
+      if (rows.length === 0) {
+        return sent
+      }
+      await this.#search.index(rows.map((r) => ({ id: r.id, title: r.title })))
+      sent += rows.length
+      const last = rows.at(-1)!
+      after = { at: Number(last.updated_at), id: last.id }
+    }
   }
 
   /** Applies index updates: several (a queue's worth) in one transaction, each on its own should that fail. */
   async updateIdea(input: IndexUpdate | IndexUpdate[]): Promise<void> {
     const rows = Array.isArray(input) ? input : [input]
-    const apply = (some: IndexUpdate[]) =>
-      this.#transaction(async (db) => {
+    const apply = async (some: IndexUpdate[]) => {
+      const changed: Array<{ id: string; title: string }> = []
+      await this.#transaction(async (db) => {
+        changed.length = 0
         for (const row of some) {
           // never move updated_at backwards: coalesced updates can arrive out of order
           const updated = await db
@@ -2094,10 +2110,13 @@ export class SqlDirectory implements Directory {
             .returning('id')
             .execute()
           if (updated.length > 0) {
-            await this.#search.index(db, row.id, row.title)
+            changed.push({ id: row.id, title: row.title })
           }
         }
       })
+      // the search index is another actor's: told once these are in, so its newest are the most recently updated
+      await this.#search.index(changed)
+    }
     if (rows.length === 0) {
       return
     }
@@ -2118,7 +2137,7 @@ export class SqlDirectory implements Directory {
   }
 
   async idea(id: string): Promise<IdeaRow | null> {
-    const row = await this.#db.selectFrom('ideas').selectAll().where('id', '=', id).executeTakeFirst()
+    const row = (await Q.idea(this.#db, { id }))[0]
     return row ? toIdea(row) : null
   }
 
@@ -2129,6 +2148,22 @@ export class SqlDirectory implements Directory {
     }
     const place = row.team ? (await this.team(row.team))?.handle : `@${(await this.user(row.owner))?.handle}`
     return place ? { id: row.id, place, number: row.number } : null
+  }
+
+  async ideaPage(id: string, user: string, token?: string | null): Promise<IdeaPage | null> {
+    const access = await this.ideaFor(id, user, token)
+    if (!access) {
+      return null
+    }
+    if (!access.permission.view) {
+      return { access, grants: [], team: null, subscription: { subscribed: false, reason: null } }
+    }
+    const [grants, team, subscription] = await Promise.all([
+      this.grants(id),
+      access.team ? this.team(access.team) : null,
+      this.subscription(user, id),
+    ])
+    return { access, grants, team, subscription }
   }
 
   async ideaFor(id: string, user: string, token?: string | null): Promise<IdeaAccess | null> {
@@ -2279,11 +2314,7 @@ export class SqlDirectory implements Directory {
 
   async permission(ideaId: string, user: string, token?: string | null): Promise<Permission> {
     const none: Permission = { view: false, edit: false, share: false, owner: false }
-    const idea = await this.#db
-      .selectFrom('ideas')
-      .select(['owner', 'team'])
-      .where('id', '=', ideaId)
-      .executeTakeFirst()
+    const idea = (await Q.ideaOwner(this.#db, { id: ideaId }))[0]
     if (!idea) {
       return none
     }
@@ -2320,12 +2351,7 @@ export class SqlDirectory implements Directory {
     if (idea.owner === user) {
       return { view: true, edit: true, share: true, owner: true }
     }
-    const rows = await this.#db
-      .selectFrom('grants')
-      .select(['can_edit', 'can_share'])
-      .where('idea', '=', ideaId)
-      .where((eb) => grantAppliesTo(eb, user))
-      .execute()
+    const rows = await Q.grantsFor(this.#db, { idea: ideaId, user })
     const teamAdmin = idea.team !== null && (await this.#role('team', idea.team, user)) === 'admin'
     return {
       view: rows.length > 0 || teamAdmin,
@@ -2337,13 +2363,7 @@ export class SqlDirectory implements Directory {
   }
 
   async grants(ideaId: string): Promise<Grant[]> {
-    const rows = await this.#db
-      .selectFrom('grants')
-      .selectAll()
-      .where('idea', '=', ideaId)
-      .orderBy('kind')
-      .orderBy('subject')
-      .execute()
+    const rows = await Q.grants(this.#db, { idea: ideaId })
     return rows.map((r) => ({
       subject: toSubject(r.kind, r.subject),
       edit: r.can_edit === 1,
@@ -2634,41 +2654,17 @@ export class SqlDirectory implements Directory {
   async listIdeas(actor: string, filter: IdeaFilter = {}, token?: string | null): Promise<Page<IdeaListing>> {
     const limit = pageSize(filter.limit)
     const after = decodeCursor(filter.cursor)
-    let query = this.#db
-      .selectFrom('ideas')
-      .selectAll()
-      .where((eb) => visibleTo(eb, actor))
-      .where((eb) => (token ? tokenReaches(eb, actor, token) : eb.lit(true)))
-      .orderBy('updated_at', 'desc')
-      .orderBy('id', 'desc')
-      .limit(limit + 1)
-    if (filter.team) {
-      query = query.where('team', '=', filter.team)
-    }
-    if (filter.owner) {
-      query = query.where('owner', '=', filter.owner)
-    }
-    if (filter.status) {
-      query = query.where('status', '=', filter.status)
-    }
-    if (filter.state) {
-      const closed = ['closed-accepted', 'closed-rejected']
-      const archived = (eb: ExpressionBuilder<DB, 'ideas'>) =>
-        eb('team', 'in', eb.selectFrom('teams').select('id').where('archived', '=', 1))
-      query =
-        filter.state === 'closed'
-          ? query.where((eb) => eb.or([eb('status', 'in', closed), archived(eb)]))
-          : query.where((eb) =>
-              eb.and([eb('status', 'not in', closed), eb.or([eb('team', 'is', null), eb.not(archived(eb))])]),
-            )
-    }
-    if (after) {
-      const [updated, id] = [Number(after[0]), String(after[1])]
-      query = query.where((eb) =>
-        eb.or([eb('updated_at', '<', updated), eb.and([eb('updated_at', '=', updated), eb('id', '<', id)])]),
-      )
-    }
-    const rows = await query.execute()
+    const rows = await Q.list(this.#db, {
+      actor,
+      limit: limit + 1,
+      ...(token ? { token } : {}),
+      ...(filter.team ? { team: filter.team } : {}),
+      ...(filter.owner ? { owner: filter.owner } : {}),
+      ...(filter.status ? { status: filter.status } : {}),
+      ...(filter.state === 'open' ? { open: true as const } : {}),
+      ...(filter.state === 'closed' ? { closed: true as const } : {}),
+      ...(after ? { afterAt: Number(after[0]), afterId: String(after[1]) } : {}),
+    })
     const page = rows.slice(0, limit).map(toIdea)
     return {
       items: await this.#listings(page),
@@ -2707,9 +2703,12 @@ export class SqlDirectory implements Directory {
 
   async searchIdeas(actor: string, query: string, limit = 25, token?: string | null): Promise<SearchResult> {
     const terms = searchTerms(query)
-    const matching = this.#search.matching(terms, this.#searchCap)
-    if (!matching) {
+    if (terms.length === 0) {
       return { items: [], incomplete: false }
+    }
+    const { ids, incomplete } = await this.#search.matches(terms, this.#searchCap)
+    if (ids.length === 0) {
+      return { items: [], incomplete }
     }
     // access is filtered and ranking applied in the same query, before the limit,
     // so ideas you can't see never crowd out yours
@@ -2718,10 +2717,11 @@ export class SqlDirectory implements Directory {
       .toLowerCase()
       .replace(/[%_\\]/g, '')
     const rows = await this.#db
-      .selectFrom(matching)
-      .innerJoin('ideas', 'ideas.id', 'm.id')
+      .with('visible', (db) => visibleIdeas(db, actor))
+      .selectFrom('ideas')
+      .innerJoin('visible', 'visible.id', 'ideas.id')
       .selectAll('ideas')
-      .where((eb) => visibleTo(eb as unknown as ExpressionBuilder<DB, 'ideas'>, actor))
+      .where('ideas.id', 'in', ids)
       .where((eb) =>
         token ? tokenReaches(eb as unknown as ExpressionBuilder<DB, 'ideas'>, actor, token) : eb.lit(true),
       )
@@ -2731,7 +2731,7 @@ export class SqlDirectory implements Directory {
       .limit(Math.min(limit, MAX_PAGE))
       .execute()
     const items = await this.#listings(rows.map(toIdea))
-    return { items, incomplete: await this.#search.exceeds(this.#db, terms, this.#searchCap) }
+    return { items, incomplete }
   }
 }
 
@@ -2755,6 +2755,45 @@ function grantAppliesTo(eb: ExpressionBuilder<DB, 'grants'>, user: string): Expr
       ),
     ]),
   ])
+}
+
+/**
+ * The ideas `user` can see, as a set of IDs: theirs, those granted to them, to
+ * everyone, or to a team or group they're in, and their teams' ideas when they
+ * administer them. Each part is read off an index (what visibleTo checks idea
+ * by idea). A deployment with most ideas shared with everyone makes this set
+ * large: then walking ideas newest first would be the quicker plan.
+ */
+function visibleIdeas(db: QueryCreator<DB>, user: string) {
+  return db
+    .selectFrom('ideas')
+    .select('ideas.id as id')
+    .where('ideas.owner', '=', user)
+    .union(
+      db
+        .selectFrom('grants')
+        .select('grants.idea as id')
+        .where('grants.kind', '=', 'user')
+        .where('grants.subject', '=', user),
+    )
+    .union(db.selectFrom('grants').select('grants.idea as id').where('grants.kind', '=', 'everyone'))
+    .union(
+      db
+        .selectFrom('memberships as m')
+        .innerJoin('grants as g', (join) => join.onRef('g.kind', '=', 'm.kind').onRef('g.subject', '=', 'm.container'))
+        .select('g.idea as id')
+        .where('m.user', '=', user)
+        .where('m.kind', 'in', ['team', 'group']),
+    )
+    .union(
+      db
+        .selectFrom('memberships as m')
+        .innerJoin('ideas as i', 'i.team', 'm.container')
+        .select('i.id as id')
+        .where('m.user', '=', user)
+        .where('m.kind', '=', 'team')
+        .where('m.role', '=', 'admin'),
+    )
 }
 
 /** The visibility filter, as part of the list's own indexed query (scale concern 2). */
@@ -2913,4 +2952,252 @@ function likeEscape(text: string): string {
 function isUniqueViolation(error: unknown): boolean {
   const message = String((error as { message?: unknown })?.message ?? error)
   return /UNIQUE constraint failed|SQLITE_CONSTRAINT_UNIQUE|duplicate key value/i.test(message)
+}
+
+// --- prepared queries ---------------------------------------------------------------
+
+// The hottest queries, built once per shape and run with each call's values
+// (sql/prepared.ts): building them each time took a fifth of the server's main
+// thread at the design load. Each is the query it replaced, its values as slots.
+const Q = {
+  memberCount: prepared<{ kind: ContainerKind; container: string }>()((db: Kysely<DB>, s) =>
+    db
+      .selectFrom('memberships')
+      .select((eb) => eb.fn.countAll<number>().as('n'))
+      .where('kind', '=', s.kind)
+      .where('container', '=', s.container),
+  ),
+  team: prepared<{ id: string; handle?: string }>()((db: Kysely<DB>, s) =>
+    db
+      .selectFrom('teams')
+      .selectAll()
+      .where((eb) =>
+        s.handle === undefined ? eb('id', '=', s.id) : eb.or([eb('id', '=', s.id), eb('handle', '=', s.handle)]),
+      ),
+  ),
+  group: prepared<{ id: string; handle: string }>()((db: Kysely<DB>, s) =>
+    db
+      .selectFrom('groups')
+      .selectAll()
+      .where((eb) => eb.or([eb('id', '=', s.id), eb('handle', '=', s.handle)])),
+  ),
+  role: prepared<{ kind: ContainerKind; container: string; user: string }>()((db: Kysely<DB>, s) =>
+    db
+      .selectFrom('memberships')
+      .select('role')
+      .where('kind', '=', s.kind)
+      .where('container', '=', s.container)
+      .where('user', '=', s.user),
+  ),
+  idea: prepared<{ id: string }>()((db: Kysely<DB>, s) => db.selectFrom('ideas').selectAll().where('id', '=', s.id)),
+  ideaOwner: prepared<{ id: string }>()((db: Kysely<DB>, s) =>
+    db.selectFrom('ideas').select(['owner', 'team']).where('id', '=', s.id),
+  ),
+  grantsFor: prepared<{ idea: string; user: string }>()((db: Kysely<DB>, s) =>
+    db
+      .selectFrom('grants')
+      .select(['can_edit', 'can_share'])
+      .where('idea', '=', s.idea)
+      .where((eb) => grantAppliesTo(eb, s.user)),
+  ),
+  grants: prepared<{ idea: string }>()((db: Kysely<DB>, s) =>
+    db.selectFrom('grants').selectAll().where('idea', '=', s.idea).orderBy('kind').orderBy('subject'),
+  ),
+  unread: prepared<{ user: string; token?: string }>()((db: Kysely<DB>, s) =>
+    db
+      .selectFrom('inbox')
+      .innerJoin('ideas', 'ideas.id', 'inbox.idea')
+      .select((eb) => eb.fn.countAll<number>().as('n'))
+      .where('inbox.user', '=', s.user)
+      .where('inbox.done', '=', 0)
+      .where('inbox.new_count', '>', 0)
+      .where((eb) => visibleTo(eb as unknown as ExpressionBuilder<DB, 'ideas'>, s.user))
+      .where((eb) =>
+        s.token !== undefined
+          ? tokenReaches(eb as unknown as ExpressionBuilder<DB, 'ideas'>, s.user, s.token)
+          : eb.lit(true),
+      ),
+  ),
+  direct: prepared<{
+    user: string
+    done: number
+    reason?: string
+    unread?: true
+    afterAt?: number
+    afterId?: string
+    limit?: number
+    token?: string
+  }>()((db: Kysely<DB>, s) => {
+    let query = db
+      .selectFrom('inbox')
+      .innerJoin('ideas', 'ideas.id', 'inbox.idea')
+      .select(['inbox.idea', 'inbox.reason', 'inbox.new_count', 'inbox.done', 'inbox.updated_at', 'inbox.event'])
+      .where('inbox.user', '=', s.user)
+      .where('inbox.done', '=', s.done)
+      // only ideas they can still see: losing access hides what they'd heard
+      .where((eb) => visibleTo(eb as unknown as ExpressionBuilder<DB, 'ideas'>, s.user))
+      // a limited token sees only what it reaches
+      .where((eb) =>
+        s.token !== undefined
+          ? tokenReaches(eb as unknown as ExpressionBuilder<DB, 'ideas'>, s.user, s.token)
+          : eb.lit(true),
+      )
+      .orderBy('inbox.updated_at', 'desc')
+      .orderBy('inbox.idea', 'desc')
+    if (s.reason !== undefined) {
+      query = query.where('inbox.reason', '=', s.reason)
+    }
+    if (s.unread !== undefined) {
+      query = query.where('inbox.new_count', '>', 0)
+    }
+    const { afterAt, afterId } = s
+    if (afterAt !== undefined && afterId !== undefined) {
+      query = query.where((eb) =>
+        eb.or([
+          eb('inbox.updated_at', '<', afterAt),
+          eb.and([eb('inbox.updated_at', '=', afterAt), eb('inbox.idea', '<', afterId)]),
+        ]),
+      )
+    }
+    if (s.limit !== undefined) {
+      query = query.limit(s.limit)
+    }
+    return query
+  }),
+  watched: prepared<{ user: string; horizon: number; token?: string }>()((db: Kysely<DB>, p) => {
+    const closed = ['closed-accepted', 'closed-rejected']
+    return (
+      db
+        .selectFrom('watches as w')
+        .innerJoin('ideas', 'ideas.team', 'w.team')
+        .innerJoin('teams as t', 't.id', 'ideas.team')
+        .innerJoin('inbox_events as e', 'e.idea', 'ideas.id')
+        .leftJoin('watch_marks as m', (j) => j.onRef('m.idea', '=', 'ideas.id').on('m.user', '=', p.user))
+        .select((eb) => [
+          'ideas.id as idea',
+          eb.fn.max('e.at').as('updated_at'),
+          eb.fn
+            .sum<number>(
+              eb
+                .case()
+                .when('e.at', '>', eb.fn.coalesce('m.read_at', eb.lit(0)))
+                .then(1)
+                .else(0)
+                .end(),
+            )
+            .as('new_count'),
+          eb.fn.max('m.done_at').as('done_at'),
+        ])
+        .where('w.user', '=', p.user)
+        .where('w.level', 'in', ['active', 'all'])
+        // an archived team's ideas count as closed for every purpose, watching too
+        .where('t.archived', '=', 0)
+        .where('e.at', '>', p.horizon)
+        // not what they did themselves
+        .where((eb) => eb.or([eb('e.by_user', 'is', null), eb('e.by_user', '!=', p.user)]))
+        // active: out of draft, up to and including the close
+        .where((eb) =>
+          eb.or([
+            eb('w.level', '=', 'all'),
+            eb('ideas.status', 'not in', ['draft', ...closed]),
+            eb.and([
+              eb('ideas.status', 'in', closed),
+              eb('e.kind', '=', 'status'),
+              eb('e.detail', 'like', '%"closed-%'),
+            ]),
+          ]),
+        )
+        .where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom('inbox as i')
+                .select('i.idea')
+                .whereRef('i.idea', '=', 'ideas.id')
+                .where('i.user', '=', p.user),
+            ),
+          ),
+        )
+        .where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom('subscriptions as s')
+                .select('s.idea')
+                .whereRef('s.idea', '=', 'ideas.id')
+                .where('s.user', '=', p.user)
+                .where('s.state', '=', 'unsubscribed'),
+            ),
+          ),
+        )
+        .where((eb) => visibleTo(eb as unknown as ExpressionBuilder<DB, 'ideas'>, p.user))
+        .where((eb) =>
+          p.token !== undefined
+            ? tokenReaches(eb as unknown as ExpressionBuilder<DB, 'ideas'>, p.user, p.token)
+            : eb.lit(true),
+        )
+        .groupBy('ideas.id')
+    )
+  }),
+  list: prepared<{
+    actor: string
+    limit: number
+    token?: string
+    team?: string
+    owner?: string
+    status?: string
+    open?: true
+    closed?: true
+    afterAt?: number
+    afterId?: string
+  }>()((db: Kysely<DB>, s) => {
+    // From what the caller can see, not newest first through everything: walking all ideas by date and checking
+    // each read thousands for a page at 100,000 ideas (48 ms); the ideas someone can see are a few hundred,
+    // each source of them read off an index (3 ms). packages/load measured both.
+    let query = db
+      .with('visible', (d) => visibleIdeas(d, s.actor))
+      .selectFrom('visible')
+      .innerJoin('ideas', 'ideas.id', 'visible.id')
+      .selectAll('ideas')
+      .where((eb) =>
+        s.token !== undefined
+          ? tokenReaches(eb as unknown as ExpressionBuilder<DB, 'ideas'>, s.actor, s.token)
+          : eb.lit(true),
+      )
+      .orderBy('ideas.updated_at', 'desc')
+      .orderBy('ideas.id', 'desc')
+      .limit(s.limit)
+    if (s.team !== undefined) {
+      query = query.where('ideas.team', '=', s.team)
+    }
+    if (s.owner !== undefined) {
+      query = query.where('ideas.owner', '=', s.owner)
+    }
+    if (s.status !== undefined) {
+      query = query.where('ideas.status', '=', s.status)
+    }
+    const closed = ['closed-accepted', 'closed-rejected']
+    const archived = db.selectFrom('teams').select('id').where('archived', '=', 1)
+    if (s.closed !== undefined) {
+      query = query.where((eb) => eb.or([eb('ideas.status', 'in', closed), eb('ideas.team', 'in', archived)]))
+    }
+    if (s.open !== undefined) {
+      query = query.where((eb) =>
+        eb.and([
+          eb('ideas.status', 'not in', closed),
+          eb.or([eb('ideas.team', 'is', null), eb.not(eb('ideas.team', 'in', archived))]),
+        ]),
+      )
+    }
+    const { afterAt, afterId } = s
+    if (afterAt !== undefined && afterId !== undefined) {
+      query = query.where((eb) =>
+        eb.or([
+          eb('ideas.updated_at', '<', afterAt),
+          eb.and([eb('ideas.updated_at', '=', afterAt), eb('ideas.id', '<', afterId)]),
+        ]),
+      )
+    }
+    return query
+  }),
 }

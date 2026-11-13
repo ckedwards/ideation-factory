@@ -18,7 +18,15 @@ import {
 import type { Client } from 'rivetkit/client'
 import { DIRECTORY_KEY } from './actors/directory.ts'
 import { nodeDeps } from './deps.ts'
-import type { ContainerKind, IdeaListing, Permission, RequirementCheck, Result } from './directory/types.ts'
+import type {
+  ContainerKind,
+  Grant,
+  IdeaListing,
+  IdeaPlace,
+  Permission,
+  RequirementCheck,
+  Result,
+} from './directory/types.ts'
 import { reviewerOf } from './idea/reviewer.ts'
 import type { IdeaWrite, WriteResult, WriteValue } from './idea/service.ts'
 import type { Registry } from './registry.ts'
@@ -120,6 +128,15 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
     const approvers = reviews.reviews.filter((r) => r.counts).map((r) => r.by.user)
     return { reviews, check: await directory().checkRequirements(idea, approvers, reviews.openThreads) }
   }
+  /** An idea's reviews as list_reviews gives them, its grants already read. */
+  const reviewsWith = async (idea: string, viewer: string | null, grants: Grant[]) => {
+    const { reviews, check } = await requirementsOf(idea, viewer)
+    const { openThreads: _open, ...rest } = reviews
+    return { ...rest, reviewers: grants.filter((g) => g.reviewer).map((g) => g.subject), requirements: check }
+  }
+  /** A version's comments as show_blocks lists them: the open ones. */
+  const openThreads = <C extends { resolved: boolean; state: string }>(comments: C[]) =>
+    comments.filter((c) => !c.resolved && c.state !== 'outdated')
   const review = (value: WriteValue) => {
     if (value.kind !== 'review') {
       throw new Error(`expected a review, got ${value.kind}`)
@@ -221,7 +238,9 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
       if (!allowed.ok) {
         return allowed
       }
-      const teamId = input.team ? ((await directory().team(input.team))?.id ?? null) : null
+      // two directory calls in all, each reusing what it read: every statement in the directory counts against
+      // everyone's requests (packages/load measured creating ideas at about 15 statements each over four calls)
+      const teamId = allowed.value.team
       // the ID comes from the caller and the idempotency key, so a retried create finds the same idea
       const key = context.key ?? crypto.randomUUID()
       const id = await ideaIdFor(context.caller, key)
@@ -246,25 +265,32 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
       if (!created.ok) {
         return created
       }
-      // registering is safe to repeat, so a retry after a failure here fixes it
       const now = Date.now()
-      await directory().registerIdea({
-        id,
-        title: input.title,
-        description: input.description ?? '',
-        team: teamId,
-        owner: context.caller.user,
-        status: input.status ?? 'draft',
-        latest: 1,
-        createdAt: now,
-        updatedAt: now,
-      })
+      // through the directory's queue, so ideas created at once share a commit: one each held the directory
+      // for everyone else's reads (packages/load). Registering is safe to repeat: a retry finds the same place.
+      const registered = await directory().send(
+        'register',
+        {
+          id,
+          title: input.title,
+          description: input.description ?? '',
+          team: teamId,
+          owner: context.caller.user,
+          status: input.status ?? 'draft',
+          latest: 1,
+          createdAt: now,
+          updatedAt: now,
+        },
+        { wait: true, timeout: 30_000 },
+      )
+      const answer =
+        registered.status === 'completed' ? (registered.response as { ok: boolean; place?: IdeaPlace }) : null
+      if (!answer?.ok || !answer.place) {
+        throw new Error(`registering idea ${id} didn't finish; retry with the same idempotency key`)
+      }
+      const place = answer.place
       if (input.status === 'requesting-review') {
         await directory().requestRuleGroups(id)
-      }
-      const place = await directory().placeOf(id)
-      if (!place) {
-        throw new Error(`idea ${id} was registered but isn't in the directory`)
       }
       return { ok: true, value: { ...created.value, place: place.place, number: place.number } }
     },
@@ -290,6 +316,46 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
           : notFound("this idea doesn't exist")
       }),
 
+    // an idea's page in one read: one directory call for access, grants, team and subscription where the
+    // separate reads made eight or ten, each waiting its turn (packages/load measured the directory saturating)
+    openIdea: (input, { caller, token }) =>
+      read(async () => {
+        const idea = ideaOf(input.idea)
+        const [page, summary] = await Promise.all([
+          directory().ideaPage(input.idea, caller.user, token?.id ?? null),
+          idea.summary(),
+        ])
+        if (!page?.access.permission.view) {
+          return notFound("this idea doesn't exist, or you can't see it")
+        }
+        if (!summary) {
+          return notFound("this idea doesn't exist")
+        }
+        const version = input.version ?? summary.latest
+        const viewer = reviewerOf(caller)
+        const [files, outline, comments, reviews] = await Promise.all([
+          idea.pull(version),
+          idea.outline(version),
+          idea.comments(version, viewer),
+          reviewsWith(input.idea, viewer, page.grants),
+        ])
+        return {
+          idea: {
+            ...summary,
+            team: page.access.team,
+            place: page.access.place.place,
+            number: page.access.place.number,
+            you: page.access.permission,
+          },
+          files,
+          outline: { version, files: outline, comments: openThreads(comments) },
+          comments,
+          reviews,
+          subscription: page.subscription,
+          team: page.team,
+        }
+      }),
+
     findIdea: (input, { caller, token }) =>
       read(
         async () =>
@@ -299,18 +365,7 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
 
     listReviews: (input, { caller, token }) =>
       withAccess(input.idea, { caller, token }, 'view', () =>
-        read(async () => {
-          const [{ reviews, check }, grants] = await Promise.all([
-            requirementsOf(input.idea, reviewerOf(caller)),
-            directory().grants(input.idea),
-          ])
-          const { openThreads: _open, ...rest } = reviews
-          return {
-            ...rest,
-            reviewers: grants.filter((g) => g.reviewer).map((g) => g.subject),
-            requirements: check,
-          }
-        }),
+        read(async () => reviewsWith(input.idea, reviewerOf(caller), await directory().grants(input.idea))),
       ),
 
     setStatus: (input, context) =>
@@ -415,7 +470,7 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
           const idea = ideaOf(input.idea)
           const v = input.version ?? (await idea.summary())?.latest ?? notFound("this idea doesn't exist")
           const [files, comments] = await Promise.all([idea.outline(v), idea.comments(v, reviewerOf(caller))])
-          return { version: v, files, comments: comments.filter((c) => !c.resolved && c.state !== 'outdated') }
+          return { version: v, files, comments: openThreads(comments) }
         }),
       ),
 

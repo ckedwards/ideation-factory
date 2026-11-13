@@ -16,7 +16,7 @@ import { contentHash } from '@ideaf/core'
 import { inProcessCore } from '../core-pool/runner.ts'
 import { COLUMNS } from '../directory/schema.ts'
 import { IDEA_COLUMNS } from '../idea/schema.ts'
-import { fts5Search } from '../directory/search.ts'
+import { fts5Search, migrateSearch } from '../directory/search.ts'
 import { SqlDirectory } from '../directory/sql-directory.ts'
 import { MemoryFileStore } from '../files/memory.ts'
 import { IdeaService } from '../idea/service.ts'
@@ -147,10 +147,14 @@ describe('data survives migration', () => {
     )
     await sql.execute("INSERT INTO numbering VALUES ('t1', 2)")
     await sql.execute("INSERT INTO grants VALUES ('i1', 'team', 't1', 0, 0, 0, 1)")
-    await sql.execute("INSERT INTO idea_search (id, title) VALUES ('i1', 'Offline sync')")
 
     await directory.migrate(sql)
-    const d = new SqlDirectory({ sql, search: fts5Search() })
+    // the search index is in a database of its own (the search actor's)
+    const searchSql = emptyDatabase().sql
+    await migrateSearch(searchSql)
+    const search = fts5Search(searchSql)
+    await search.index([{ id: 'i1', title: 'Offline sync' }])
+    const d = new SqlDirectory({ sql, search })
     expect(await d.permission('i1', 'u-maya')).toEqual({ view: true, edit: false, share: false, owner: false })
     expect((await d.listIdeas('u-maya')).items.map((i) => i.id)).toEqual(['i1'])
     expect((await d.searchIdeas('u-maya', 'offline')).items.map((i) => i.id)).toEqual(['i1'])

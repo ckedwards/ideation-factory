@@ -2,8 +2,8 @@
 // outline (each unit's ID, in the order core parses them). A version never
 // changes, so its files and outline are kept for good. The latest version's
 // comments are live, in comments.ts; an older one's are read here.
-import { queryOptions } from '@tanstack/react-query'
-import { api } from '../../../../../api.ts'
+import { type QueryClient, queryOptions } from '@tanstack/react-query'
+import { api, teamQuery } from '../../../../../api.ts'
 
 /** The idea at an address (mobile and 9), and where it is now, if it moved. */
 export const ideaRefQuery = (place: string, number: number) =>
@@ -52,3 +52,25 @@ export const draftQuery = (idea: string) =>
 /** Who has access to an idea, and what you can do with it. */
 export const accessQuery = (idea: string) =>
   queryOptions({ queryKey: ['idea', idea, 'access'], queryFn: () => api.getAccess({ idea }) })
+
+/**
+ * Loads an idea's page in one read (open_idea) and fills the queries above
+ * from it: the idea, its latest files and outline, its reviews, your
+ * subscription and its team. One access check in the directory instead of one
+ * per query. Nothing if the idea is loaded already: moving between its pages
+ * reads only what changed.
+ */
+export async function loadIdeaPage(queryClient: QueryClient, idea: string): Promise<void> {
+  if (queryClient.getQueryData(ideaQuery(idea).queryKey)) {
+    return
+  }
+  const page = await api.openIdea({ idea })
+  queryClient.setQueryData(ideaQuery(idea).queryKey, page.idea)
+  queryClient.setQueryData(filesQuery(idea, page.files.version).queryKey, page.files)
+  queryClient.setQueryData(outlineQuery(idea, page.outline.version).queryKey, page.outline.files)
+  queryClient.setQueryData(reviewsQuery(idea).queryKey, page.reviews)
+  queryClient.setQueryData(subscriptionQuery(idea).queryKey, page.subscription)
+  if (page.team) {
+    queryClient.setQueryData(teamQuery(page.team.id).queryKey, page.team)
+  }
+}

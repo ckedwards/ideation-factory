@@ -209,13 +209,40 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
 
       test('who can create ideas in a team follows its policy', async () => {
         const { d, team } = await withTeam()
-        expect(await d.canCreateIdea('u-outsider', null)).toEqual({ ok: true, value: null })
-        expect(await d.canCreateIdea('u-maya', team)).toEqual({ ok: true, value: null })
+        expect(await d.canCreateIdea('u-outsider', null)).toEqual({ ok: true, value: { team: null } })
+        expect(await d.canCreateIdea('u-maya', team)).toEqual({ ok: true, value: { team } })
+        // by its handle, the answer names its ID: creating an idea needs no other lookup
+        expect(await d.canCreateIdea('u-maya', 'core')).toEqual({ ok: true, value: { team } })
         expect(await d.canCreateIdea('u-outsider', team)).toMatchObject({ ok: false, error: { code: 'forbidden' } })
         await d.updateTeam('u-riley', team, { createPolicy: 'maintainers' })
         expect(await d.canCreateIdea('u-maya', team)).toMatchObject({ ok: false, error: { code: 'forbidden' } })
         await d.updateTeam('u-riley', team, { createPolicy: 'anyone' })
-        expect(await d.canCreateIdea('u-outsider', team)).toEqual({ ok: true, value: null })
+        expect(await d.canCreateIdea('u-outsider', team)).toEqual({ ok: true, value: { team } })
+      })
+
+      test('registering an idea says where it is: its team, or its owner, and its number there', async () => {
+        const { d, team } = await withTeam()
+        expect(await d.registerIdea(idea('i1', { team }))).toEqual({ id: 'i1', place: 'core', number: 1 })
+        expect(await d.registerIdea(idea('i2', { team }))).toEqual({ id: 'i2', place: 'core', number: 2 })
+        expect(await d.registerIdea(idea('i3', { owner: 'u-maya' }))).toEqual({ id: 'i3', place: '@maya', number: 1 })
+        // again (a retry): the same place and number
+        expect(await d.registerIdea(idea('i1', { team }))).toEqual({ id: 'i1', place: 'core', number: 1 })
+        expect(await d.placeOf('i2')).toEqual({ id: 'i2', place: 'core', number: 2 })
+      })
+
+      test('several ideas registered at once are numbered in turn, each in its place, and again is a retry', async () => {
+        const { d, team } = await withTeam()
+        const rows = [idea('i1', { team }), idea('i2', { owner: 'u-maya' }), idea('i3', { team }), idea('i1', { team })]
+        expect(await d.registerIdeas(rows)).toEqual([
+          { id: 'i1', place: 'core', number: 1 },
+          { id: 'i2', place: '@maya', number: 1 },
+          { id: 'i3', place: 'core', number: 2 },
+          { id: 'i1', place: 'core', number: 1 },
+        ])
+        expect(await d.grants('i3')).toEqual([
+          { subject: { kind: 'team', id: team }, edit: false, share: false, reviewer: false },
+        ])
+        expect((await d.searchIdeas('u-riley', 'idea')).items.map((i) => i.id).sort()).toEqual(['i1', 'i3'])
       })
 
       test('an idea outside a team is private to its owner', async () => {
@@ -544,7 +571,7 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         expect((await d.listIdeas('u-riley', {}, grant.id)).items.map((i) => i.id)).toEqual(['i1'])
         expect((await d.searchIdeas('u-riley', 'idea', 25, grant.id)).items.map((i) => i.id)).toEqual(['i1'])
 
-        expect(await d.canCreateIdea('u-riley', core, grant.id)).toEqual({ ok: true, value: null })
+        expect(await d.canCreateIdea('u-riley', core, grant.id)).toEqual({ ok: true, value: { team: core } })
         expect(await d.canCreateIdea('u-riley', web, grant.id)).toMatchObject({
           ok: false,
           error: { code: 'forbidden' },

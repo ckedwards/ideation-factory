@@ -20,9 +20,12 @@ import {
   type WireRequest,
 } from '../auth/in-directory.ts'
 import { nodeDeps } from '../deps.ts'
+import type { Client } from 'rivetkit/client'
+import type { Registry } from '../registry.ts'
+import { SEARCH_KEY } from './search.ts'
 import { notificationEmail } from '../mail/notification.ts'
 import { migrateDirectory } from '../directory/schema.ts'
-import { fts5Search } from '../directory/search.ts'
+import type { IdeaSearch } from '../directory/search.ts'
 import { SqlDirectory } from '../directory/sql-directory.ts'
 import { callRetrying, overloadedRetryMs, retryOverloaded } from '../sql/retry.ts'
 import type {
@@ -31,6 +34,7 @@ import type {
   Directory,
   GrantSubject,
   IdeaFilter,
+  IdeaPlace,
   IdeaRow,
   IndexUpdate,
   MoveAdjustments,
@@ -44,22 +48,31 @@ import type {
   WatchLevel,
 } from '../directory/types.ts'
 
-const search = fts5Search()
+/** A new idea's row for the directory's index, before it's numbered. */
+export type NewIdea = Omit<IdeaRow, 'number' | 'openComments'>
 
 export type { IndexUpdate }
 
 export const directory = actor({
   db: db({
     onMigrate: async (database) => {
-      await migrateDirectory(database, [search.migrate])
+      await migrateDirectory(database)
       // Better Auth's own tables, by its own migrations (see auth/in-directory.ts)
       await migrateAuth(database, nodeDeps().auth)
     },
   }),
   // a notification is answered once it's applied (or couldn't be), so its idea's outbox knows to keep it or not
-  queues: { index: queue<IndexUpdate>(), notify: queue<NotifyBatch, { ok: boolean }>() },
+  // and a new idea's registration with where it is, so creating it can answer; many are registered in one commit
+  queues: {
+    index: queue<IndexUpdate>(),
+    notify: queue<NotifyBatch, { ok: boolean }>(),
+    register: queue<NewIdea, { ok: true; place: IdeaPlace } | { ok: false }>(),
+  },
   createVars: () => ({ directory: null as Directory | null, auth: null as Auth | null, sending: false }),
   onWake: async (c) => {
+    // the whole database in memory: a page that isn't is fetched from the engine's storage, and SQLite's default
+    // here (8 MB) held a sixth of the directory at 25,000 ideas (47 MB) when packages/load measured it
+    await c.db.execute(`PRAGMA cache_size = -${DIRECTORY_CACHE_MB * 1024}`)
     // the cli's OAuth client, there before anyone signs in with it
     await ensureCliClient(authOf(c), nodeDeps().auth)
     // emails left waiting (say, the node stopped before their alarm) get one
@@ -99,6 +112,25 @@ export const directory = actor({
       if (batch.length === 0) {
         await checkEmails(false)
         continue
+      }
+      // new ideas first, as someone is waiting on each: all in one transaction, or each on its own should that fail
+      const registering = batch.filter((m) => m.name === 'register')
+      if (registering.length > 0) {
+        const rows = registering.map((m) => m.body as NewIdea)
+        const places = await d.registerIdeas(rows).catch(() =>
+          Promise.all(
+            rows.map((row) =>
+              d.registerIdea(row).catch((error: unknown) => {
+                c.log.error({ msg: 'registering an idea failed', idea: row.id, error: String(error) })
+                return null
+              }),
+            ),
+          ),
+        )
+        for (const [i, message] of registering.entries()) {
+          const place = places[i]
+          await callRetrying(() => message.complete(place ? { ok: true, place } : { ok: false }))
+        }
       }
       // a batch's notifications in one transaction, then its index updates in another:
       // each commit writes pages, and the writes are what SQLite can do least of
@@ -254,10 +286,13 @@ export const directory = actor({
     tokenGrant: (c, id: string) => directoryOf(c).tokenGrant(id),
     revokeTokenGrant: (c, by: string, id: string) => directoryOf(c).revokeTokenGrant(by, id),
     registerIdea: (c, row: Omit<IdeaRow, 'number' | 'openComments'>) => directoryOf(c).registerIdea(row),
+    /** Sends every idea's title to the search actor again (admin.ts reindex-search): for a lost search index. */
+    reindexSearch: (c) => directoryOf(c).reindexSearch(),
     updateIdea: (c, row: IndexUpdate) => directoryOf(c).updateIdea(row),
     idea: (c, id: string) => directoryOf(c).idea(id),
     placeOf: (c, id: string) => directoryOf(c).placeOf(id),
     ideaFor: (c, id: string, user: string, token?: string | null) => directoryOf(c).ideaFor(id, user, token),
+    ideaPage: (c, id: string, user: string, token?: string | null) => directoryOf(c).ideaPage(id, user, token),
     findIdeaFor: (c, place: string, number: number, user: string, token?: string | null) =>
       directoryOf(c).findIdeaFor(place, number, user, token),
     users: (c, ids: string[]) => directoryOf(c).users(ids),
@@ -281,6 +316,7 @@ export const directory = actor({
 
 type DirectoryContext = {
   db: Parameters<typeof migrateDirectory>[0]
+  client: () => unknown
   vars: { directory: Directory | null; auth: Auth | null; sending: boolean }
 }
 
@@ -291,6 +327,9 @@ type Scheduling = DirectoryContext & {
     cancel(id: string): Promise<boolean>
   }
 }
+
+/** The directory's page cache, in MB: all of it at the design scale, with room to grow. */
+const DIRECTORY_CACHE_MB = 256
 
 /**
  * How late an alarm may be before it counts as lost. Alarms fire on time, give
@@ -337,9 +376,27 @@ function authOf(c: DirectoryContext): Auth {
 function directoryOf(c: DirectoryContext): Directory {
   if (!c.vars.directory) {
     // the engine refuses writes for a moment when storage is busy: wait and retry
-    c.vars.directory = new SqlDirectory({ sql: retryOverloaded(c.db), search, email: nodeDeps().email !== null })
+    c.vars.directory = new SqlDirectory({
+      sql: retryOverloaded(c.db),
+      search: searchOf(c),
+      email: nodeDeps().email !== null,
+    })
   }
   return c.vars.directory
+}
+
+/** The search index, in the search actor (directory/search.ts says why). */
+function searchOf(c: DirectoryContext): IdeaSearch {
+  const index = () => (c.client as () => Client<Registry>)().search.getOrCreate(SEARCH_KEY)
+  return {
+    index: async (entries) => {
+      if (entries.length > 0) {
+        // safe to send again: the newest title wins
+        await callRetrying(() => index().send('index', entries))
+      }
+    },
+    matches: (terms, cap) => index().matches(terms, cap),
+  }
 }
 
 /** For callers that want a Result's failure as an error. */
