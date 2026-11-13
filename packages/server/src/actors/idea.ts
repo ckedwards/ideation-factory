@@ -13,7 +13,7 @@ import { type IdeaEvent, IdeaService, Refused, type WriteRequest, type WriteResu
 import type { Client } from 'rivetkit/client'
 import type { Registry } from '../registry.ts'
 import { callRetrying, overloadedRetryMs, retryOverloaded } from '../sql/retry.ts'
-import { DIRECTORY_KEY } from './directory.ts'
+import { directoryOf } from './pools.ts'
 
 /**
  * How long an idea waits before updating its row in the directory's index, so a
@@ -143,7 +143,7 @@ export const idea = actor({
       }
       // an index update is safe to send twice: the newest wins. Should it fail, it's sent again later
       try {
-        await callRetrying(() => c.client<Registry>().directory.getOrCreate(DIRECTORY_KEY).send('index', update))
+        await callRetrying(() => directoryOf(c.client<Registry>()).send('index', update))
       } catch (error) {
         c.log.error({ msg: 'updating the index failed; trying again', error: String(error) })
         c.state.indexDue = true
@@ -217,7 +217,7 @@ function flushOutbox(c: OutboxContext): Promise<void> {
   c.vars.again = false
   c.vars.flushing = (async () => {
     try {
-      const directory = (c.client as () => Client<Registry>)().directory.getOrCreate(DIRECTORY_KEY)
+      const directory = directoryOf((c.client as () => Client<Registry>)())
       const next = await sendOutbox(
         serviceOf(c),
         async (batch) => {

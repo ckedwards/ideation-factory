@@ -16,7 +16,7 @@ import {
   type TokenScope,
 } from '@ideaf/api'
 import type { Client } from 'rivetkit/client'
-import { DIRECTORY_KEY } from './actors/directory.ts'
+import { directoryOf, ideaOf as ideaActor } from './actors/pools.ts'
 import { nodeDeps } from './deps.ts'
 import type {
   ContainerKind,
@@ -39,8 +39,8 @@ const WRITE_TIMEOUT_MS = 60_000
 type Need = 'view' | 'edit' | 'share'
 
 export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
-  const ideaOf = (id: string) => actors.idea.getOrCreate([id])
-  const directory = () => actors.directory.getOrCreate(DIRECTORY_KEY)
+  const ideaOf = (id: string) => ideaActor(actors, id)
+  const directory = () => directoryOf(actors)
 
   /** The caller's permission on an idea, or the error to return if it isn't enough. */
   /** The caller, and their token's grant if it has one (which narrows what they can do). */

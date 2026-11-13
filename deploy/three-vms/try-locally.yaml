@@ -15,6 +15,10 @@ x-app: &app
     dockerfile: deploy/app.Dockerfile
   image: ideaf-app:local3
   restart: unless-stopped
+  # SIGTERM hands its actors to another node at once, each given up to 15 s to save its state;
+  # Rivet asks for at least 60 s before SIGKILL, and Docker's default is 10 s. Cut short, they're
+  # left for the engine's 40 s lost threshold (docs/admin/performance.md)
+  stop_grace_period: 60s
   depends_on:
     pool:
       condition: service_completed_successfully
@@ -25,6 +29,8 @@ x-app-environment: &app-environment
   IDEAF_SITE_ADMINS: ${IDEAF_SITE_ADMINS:-}
   IDEAF_PERSONAL_TOKENS: ${IDEAF_PERSONAL_TOKENS:-on}
   IDEAF_TRUSTED_PROXIES: 172.30.81.0/24
+  # the directory runs on the directory nodes, in a pool of their own (actors/pools.ts)
+  IDEAF_DIRECTORY_POOL: directory
   IDEAF_S3_BUCKET: ideaf-files
   IDEAF_S3_ENDPOINT: http://seaweedfs:8333
   IDEAF_S3_ACCESS_KEY_ID: ideaf
@@ -75,6 +81,25 @@ services:
     environment:
       <<: *app-environment
       RIVET_ENDPOINT: http://default:${RIVET_ADMIN_TOKEN}@engine3:6420
+  # each VM's directory node: the directory runs on one, the others stand by
+  directory1:
+    <<: *app
+    environment:
+      <<: *app-environment
+      RIVET_ENDPOINT: http://default:${RIVET_ADMIN_TOKEN}@engine1:6420
+      RIVET_POOL: directory
+  directory2:
+    <<: *app
+    environment:
+      <<: *app-environment
+      RIVET_ENDPOINT: http://default:${RIVET_ADMIN_TOKEN}@engine2:6420
+      RIVET_POOL: directory
+  directory3:
+    <<: *app
+    environment:
+      <<: *app-environment
+      RIVET_ENDPOINT: http://default:${RIVET_ADMIN_TOKEN}@engine3:6420
+      RIVET_POOL: directory
 
   engine1:
     <<: *engine
@@ -110,9 +135,11 @@ services:
     entrypoint: ['sh', '-c']
     command:
       - |
-        until curl -sf -X PUT "http://engine1:6420/pools/default?namespace=default" \
-            -H "authorization: Bearer $$RIVET_ADMIN_TOKEN" -H 'content-type: application/json' \
-            -d '{"drain_on_version_upgrade": true}'; do sleep 2; done
+        for pool in default directory; do
+          until curl -sf -X PUT "http://engine1:6420/pools/$$pool?namespace=default" \
+              -H "authorization: Bearer $$RIVET_ADMIN_TOKEN" -H 'content-type: application/json' \
+              -d '{"drain_on_version_upgrade": true}'; do sleep 2; done
+        done
     environment:
       RIVET_ADMIN_TOKEN: ${RIVET_ADMIN_TOKEN:?set RIVET_ADMIN_TOKEN}
 

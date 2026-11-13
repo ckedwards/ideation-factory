@@ -1,4 +1,4 @@
-# One of the three VMs: the app and a Rivet Engine. Run it on each VM, with
+# One of the three VMs: the app, a directory node and a Rivet Engine. Run it on each VM, with
 # the same .env everywhere but NODE_ADDRESS (this VM's private address). The
 # engines find each other through the bucket and talk on port 6421, which must
 # stay on the private network. The load balancer (lb.yaml, or your cloud's)
@@ -13,6 +13,10 @@ services:
       context: ../..
       dockerfile: deploy/app.Dockerfile
     restart: unless-stopped
+    # SIGTERM hands its actors to another node at once, each given up to 15 s to save its state;
+    # Rivet asks for at least 60 s before SIGKILL, and Docker's default is 10 s. Cut short, they're
+    # left for the engine's 40 s lost threshold (docs/admin/performance.md)
+    stop_grace_period: 60s
     depends_on:
       pool:
         condition: service_completed_successfully
@@ -37,8 +41,20 @@ services:
       IDEAF_NOTIFY_FROM: ${IDEAF_NOTIFY_FROM:-}
       IDEAF_EMAIL: ${IDEAF_EMAIL:-}
       IDEAF_MCP_CLIENT_HOSTS: ${IDEAF_MCP_CLIENT_HOSTS:-}
+      # the directory runs on the directory service's node, in a pool of its own (actors/pools.ts)
+      IDEAF_DIRECTORY_POOL: directory
     volumes:
       - ./ca:/etc/ideaf/ca:ro
+
+  # The directory: the same app in a process of its own, in the engine's directory pool, so the
+  # directory's work has a JS thread to itself (docs/admin/performance.md). It runs on one VM's
+  # directory node; the other two stand by (about 100 MB each), and take over if that VM is lost.
+  # The load balancer doesn't send it requests.
+  directory:
+    extends: app
+    ports: !reset []
+    environment:
+      RIVET_POOL: directory
 
   engine:
     build:
@@ -60,16 +76,18 @@ services:
       # this instance's write-ahead log: a local disk, not a network one
       - engine:/var/lib/rivet
 
-  # the node pool the app joins; every VM makes sure of it, which is harmless
+  # the node pools the app and the directory join; every VM makes sure of them, which is harmless
   pool:
     image: curlimages/curl:8.16.0
     depends_on: [engine]
     entrypoint: ['sh', '-c']
     command:
       - |
-        until curl -sf -X PUT "http://engine:6420/pools/default?namespace=default" \
-            -H "authorization: Bearer $$RIVET_ADMIN_TOKEN" -H 'content-type: application/json' \
-            -d '{"drain_on_version_upgrade": true}'; do sleep 2; done
+        for pool in default directory; do
+          until curl -sf -X PUT "http://engine:6420/pools/$$pool?namespace=default" \
+              -H "authorization: Bearer $$RIVET_ADMIN_TOKEN" -H 'content-type: application/json' \
+              -d '{"drain_on_version_upgrade": true}'; do sleep 2; done
+        done
     environment:
       RIVET_ADMIN_TOKEN: ${RIVET_ADMIN_TOKEN}
 

@@ -7,8 +7,8 @@
 // (files/settings.ts).
 import { join } from 'node:path'
 import { createClient } from 'rivetkit/client'
-import { DIRECTORY_KEY } from './actors/directory.ts'
 import { limitDirectoryCalls } from './actors/limit.ts'
+import { directoryOf } from './actors/pools.ts'
 import { createApp } from './app.ts'
 import { authGateway } from './auth/gateway.ts'
 import { authSettingsFromEnv, mailerFromEnv } from './auth/settings.ts'
@@ -56,11 +56,11 @@ const actors = limitDirectoryCalls(
 const web = process.env.IDEAF_WEB_DEV_URL
   ? devWebApp(process.env.IDEAF_WEB_DEV_URL)
   : staticWebApp(process.env.IDEAF_WEB_DIR ?? join(import.meta.dir, '../../web/dist'))
-const app = createApp({ actors, auth, web })
+const app = createApp({ actors, auth, web, health: () => registry.routes.health() })
 // each idea's live updates, over a WebSocket beside the API
 const live = createLive({
   actors,
-  gateway: authGateway(actors.directory.getOrCreate(DIRECTORY_KEY), auth.baseURL, auth.trustedProxies),
+  gateway: authGateway(directoryOf(actors), auth.baseURL, auth.trustedProxies),
 })
 const server = Bun.serve<LiveData>({
   port,

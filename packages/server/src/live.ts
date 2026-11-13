@@ -10,7 +10,7 @@
 import { type Caller, LIVE_CLOSE, LiveClientMessage, type LiveEvent, operations, type TokenScope } from '@ideaf/api'
 import type { Server, ServerWebSocket, WebSocketHandler } from 'bun'
 import type { Client } from 'rivetkit/client'
-import { DIRECTORY_KEY } from './actors/directory.ts'
+import { directoryOf, ideaOf } from './actors/pools.ts'
 import type { authGateway } from './auth/gateway.ts'
 import type { Registry } from './registry.ts'
 
@@ -31,7 +31,7 @@ type Socket = ServerWebSocket<LiveData>
 type Gateway = Pick<ReturnType<typeof authGateway>, 'authenticate'>
 
 export function createLive({ actors, gateway }: { actors: Client<Registry>; gateway: Gateway }) {
-  const directory = () => actors.directory.getOrCreate(DIRECTORY_KEY)
+  const directory = () => directoryOf(actors)
   const send = (ws: Socket, event: LiveEvent) => ws.send(JSON.stringify(event))
   const close = (ws: Socket, code: number, reason: string) => ws.close(code, reason)
 
@@ -78,7 +78,7 @@ export function createLive({ actors, gateway }: { actors: Client<Registry>; gate
       }
       ws.data.user = who.caller.user
       expireAt(ws, who.until)
-      const conn = actors.idea.getOrCreate([ws.data.idea]).connect()
+      const conn = ideaOf(actors, ws.data.idea).connect()
       ws.data.conn = conn
       conn.on('comment', (e) => send(ws, { type: 'comment', ...e }))
       conn.on('reply', (e) => send(ws, { type: 'reply', ...e }))

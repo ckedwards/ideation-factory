@@ -36,6 +36,10 @@ services:
       context: ../..
       dockerfile: deploy/app.Dockerfile
     restart: unless-stopped
+    # SIGTERM hands its actors to another node at once, each given up to 15 s to save its state;
+    # Rivet asks for at least 60 s before SIGKILL, and Docker's default is 10 s. Cut short, they're
+    # left for the engine's 40 s lost threshold (docs/admin/performance.md)
+    stop_grace_period: 60s
     depends_on:
       pool:
         condition: service_completed_successfully
@@ -57,10 +61,20 @@ services:
       IDEAF_NOTIFY_FROM: ${IDEAF_NOTIFY_FROM:-}
       IDEAF_EMAIL: ${IDEAF_EMAIL:-}
       IDEAF_MCP_CLIENT_HOSTS: ${IDEAF_MCP_CLIENT_HOSTS:-}
+      # the directory runs on the directory service's node, in a pool of its own (actors/pools.ts)
+      IDEAF_DIRECTORY_POOL: directory
     volumes:
       # an internal CA's certificates, trusted for the app's own connections
       - ./ca:/etc/ideaf/ca:ro
     networks: [ideaf]
+
+  # The directory: the same app in a process of its own, in the engine's directory pool, so the
+  # directory's work has a JS thread to itself (docs/admin/performance.md). Caddy doesn't send it
+  # requests; it only hosts the directory.
+  directory:
+    extends: app
+    environment:
+      RIVET_POOL: directory
 
   engine:
     build:
@@ -81,17 +95,19 @@ services:
       - engine:/var/lib/rivet
     networks: [ideaf]
 
-  # The engine's node pool the app's nodes join (RivetKit only makes one for an engine it starts
-  # itself). Draining on upgrade moves actors off an older app version once a newer one connects.
+  # The engine's node pools: the app's nodes' and the directory's (RivetKit only makes one for an
+  # engine it starts itself). Draining on upgrade moves actors off an older app version once a newer one connects.
   pool:
     image: curlimages/curl:8.16.0
     depends_on: [engine]
     entrypoint: ['sh', '-c']
     command:
       - |
-        until curl -sf -X PUT "http://engine:6420/pools/default?namespace=default" \
-            -H "authorization: Bearer $$RIVET_ADMIN_TOKEN" -H 'content-type: application/json' \
-            -d '{"drain_on_version_upgrade": true}'; do sleep 2; done
+        for pool in default directory; do
+          until curl -sf -X PUT "http://engine:6420/pools/$$pool?namespace=default" \
+              -H "authorization: Bearer $$RIVET_ADMIN_TOKEN" -H 'content-type: application/json' \
+              -d '{"drain_on_version_upgrade": true}'; do sleep 2; done
+        done
     environment:
       RIVET_ADMIN_TOKEN: ${RIVET_ADMIN_TOKEN}
     networks: [ideaf]
