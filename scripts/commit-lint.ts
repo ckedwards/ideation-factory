@@ -11,7 +11,7 @@
 //                                                   the first line of its squash merge
 
 export const TYPES = ['build', 'ci', 'docs', 'feat', 'fix', 'perf', 'refactor', 'test', 'revert'] as const
-export const SCOPES = ['core', 'api', 'server', 'cli', 'ui', 'web', 'e2e', 'dev-infra'] as const
+export const SCOPES = ['core', 'api', 'server', 'cli', 'ui', 'web', 'e2e', 'load', 'dev-infra'] as const
 
 const HEADER = /^(?<type>[a-z]+)(?:\((?<scope>[^()]*)\))?(?<bang>!)?: (?<summary>.*)$/
 const MAX_HEADER = 100

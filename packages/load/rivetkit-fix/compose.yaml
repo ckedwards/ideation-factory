@@ -1,0 +1,8 @@
+# The app with RivetKit's native module built with the fix for rivet-dev/rivet#5991 (build.sh),
+# in place of the published one. Load tests only: run.sh adds this with LOAD_RIVETKIT_FIX=1.
+services:
+  app:
+    volumes: &fixed
+      - ../../packages/load/.data/rivetkit-napi-fixed.node:/app/node_modules/.bun/@rivetkit+rivetkit-napi-linux-x64-gnu@${LOAD_RIVETKIT_VERSION:-3.0.6}/node_modules/@rivetkit/rivetkit-napi-linux-x64-gnu/rivetkit-napi.linux-x64-gnu.node:ro
+  directory:
+    volumes: *fixed

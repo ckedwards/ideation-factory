@@ -16,7 +16,7 @@ Every commit message follows `CONTRIBUTING.md`; a hook and CI check it, and `bun
 
 - Title: `<type>(<scope>): <summary>`, summary in the imperative, lowercase start, no full stop.
 - Types: `build`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `test`, `revert`. Tooling in `scripts/` is `build(dev-infra)`; test infrastructure is `test`.
-- Scope: the package changed (`core`, `api`, `server`, `cli`, `ui`, `web`, `e2e`, `dev-infra`); none for changes across packages or for `docs`.
+- Scope: the package changed (`core`, `api`, `server`, `cli`, `ui`, `web`, `e2e`, `load`, `dev-infra`); none for changes across packages or for `docs`.
 - Body: why the change was made, at least 20 characters (all types but `docs`).
 - Breaking changes: `!` in the title (`feat(api)!: …`) and a `BREAKING CHANGE:` footer with what breaks and how to migrate.
 

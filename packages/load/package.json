@@ -1,0 +1,14 @@
+{
+  "name": "@ideaf/load",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "bun check && bun check -p k6"
+  },
+  "dependencies": {
+    "@ideaf/api": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/k6": "2.3.1"
+  }
+}
