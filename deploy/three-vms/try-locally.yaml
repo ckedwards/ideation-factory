@@ -62,6 +62,7 @@ services:
     environment:
       IDEAF_HOST: localhost
       APP_NODES: app1:8080 app2:8080 app3:8080
+      LB_TRUSTED_PROXIES: 127.0.0.1/32
       TLS_MODE: internal
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro

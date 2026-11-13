@@ -2,6 +2,15 @@
 # ../caddy/tls.caddy), and requests spread round-robin over the nodes in
 # APP_NODES that answer their health check. Any node can serve any request:
 # the engines route each actor call to wherever that actor runs.
+
+{
+	servers {
+		# proxies in front of this one (a CDN, say, or a load test's machine) whose X-Forwarded-For is
+		# believed and passed on; nobody else's (LB_TRUSTED_PROXIES, by default only this machine)
+		trusted_proxies static {$LB_TRUSTED_PROXIES}
+	}
+}
+
 import /etc/caddy/tls.caddy
 
 {$IDEAF_HOST} {
