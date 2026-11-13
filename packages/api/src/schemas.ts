@@ -253,7 +253,8 @@ export const LiveEvent = z.discriminatedUnion('type', [
 export type LiveEvent = z.infer<typeof LiveEvent>
 
 /** Close codes: no valid token (or it expired), and no such idea (or not one you can see). */
-export const LIVE_CLOSE = { unauthorized: 4401, notFound: 4404 } as const
+/** A live socket's close codes: 1013 is WebSocket's own "try again later". */
+export const LIVE_CLOSE = { unauthorized: 4401, notFound: 4404, unavailable: 1013 } as const
 
 /** A unit of the draft: a block that was in the latest version (changed in the draft or not), or new text and the change that added it. */
 export const DraftUnit = z.object({

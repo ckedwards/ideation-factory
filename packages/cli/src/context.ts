@@ -128,7 +128,7 @@ export function fromApiError(error: unknown): CliError {
                   ? EXIT.unauthorized
                   : error.code === 'invalid' || error.code === 'too_large'
                     ? EXIT.usage
-                    : error.code === 'timed_out'
+                    : error.code === 'timed_out' || error.code === 'unavailable'
                       ? EXIT.unreachable
                       : EXIT.error
     return new CliError(error.message, exit, error.code, error.details)

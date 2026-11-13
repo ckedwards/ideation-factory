@@ -35,10 +35,15 @@ export function createLive({ actors, gateway }: { actors: Client<Registry>; gate
   const send = (ws: Socket, event: LiveEvent) => ws.send(JSON.stringify(event))
   const close = (ws: Socket, code: number, reason: string) => ws.close(code, reason)
 
-  /** Who a token is for, and until when it counts here; null if it isn't valid. */
-  const check = async (token: string): Promise<{ caller: Caller; scope: TokenScope | null; until: number } | null> => {
+  /** Who a token is for, and until when it counts here; null if it isn't valid, `unavailable` if it can't be checked now. */
+  const check = async (
+    token: string,
+  ): Promise<{ caller: Caller; scope: TokenScope | null; until: number } | 'unavailable' | null> => {
     const request = new Request('http://live/', { headers: { authorization: `Bearer ${token}` } })
     const who = await gateway.authenticate(request, operations.getIdea)
+    if (who && 'code' in who && who.code === 'unavailable') {
+      return 'unavailable'
+    }
     if (!who || !('caller' in who)) {
       return null
     }
@@ -65,6 +70,9 @@ export function createLive({ actors, gateway }: { actors: Client<Registry>; gate
         return close(ws, LIVE_CLOSE.unauthorized, 'expected {"type":"token","token":…}')
       }
       const who = await check(message.token)
+      if (who === 'unavailable') {
+        return close(ws, LIVE_CLOSE.unavailable, "tokens can't be checked right now; try again shortly")
+      }
       if (!who || (ws.data.user !== null && who.caller.user !== ws.data.user)) {
         return close(ws, LIVE_CLOSE.unauthorized, 'not a valid token for this socket')
       }

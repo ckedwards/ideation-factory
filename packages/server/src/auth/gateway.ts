@@ -21,6 +21,9 @@ export interface AuthDirectory {
  * seen before): an emergency key rotation stops old tokens within this long.
  */
 const KEYS_TTL_MS = 60_000
+
+/** The signing keys couldn't be fetched: tokens can't be checked for now, which isn't the token's fault. */
+class KeysUnavailable extends Error {}
 const PERSONAL_TOKEN = /^ideaf_/
 /** What a token limited to some teams or ideas may still write: those ideas' content. */
 const CONTENT_WRITES = new Set(['create_idea', 'sync', 'edit', 'add_comment', 'reply', 'resolve_comment'])
@@ -104,14 +107,32 @@ export function authGateway(directory: AuthDirectory, baseURL: string, trustedPr
   }
 
   let keys: { at: number; set: ReturnType<typeof createLocalJWKSet> } | null = null
-  const signingKeys = async (fresh = false) => {
-    if (!keys || fresh || Date.now() - keys.at > KEYS_TTL_MS) {
-      // from this node itself: without an address, Better Auth's rate limiter would warn that it can't tell clients apart
-      const response = await forward(new Request(`${baseURL}/api/auth/jwks`), '127.0.0.1')
-      keys = { at: Date.now(), set: createLocalJWKSet((await response.json()) as JSONWebKeySet) }
-    }
-    return keys.set
+  // one fetch at a time: requests that find the keys stale wait for it, rather than each fetching them through
+  // the directory at once (under load that was hundreds at once, and their failures became 401s)
+  let fetching: Promise<ReturnType<typeof createLocalJWKSet>> | null = null
+  const fetchKeys = () => {
+    fetching ??= (async () => {
+      try {
+        // from this node itself: without an address, Better Auth's rate limiter would warn that it can't tell clients apart
+        const response = await forward(new Request(`${baseURL}/api/auth/jwks`), '127.0.0.1')
+        if (!response.ok) {
+          throw new KeysUnavailable(`fetching the signing keys answered ${response.status}`)
+        }
+        const set = createLocalJWKSet((await response.json()) as JSONWebKeySet)
+        keys = { at: Date.now(), set }
+        return set
+      } catch (error) {
+        throw error instanceof KeysUnavailable
+          ? error
+          : new KeysUnavailable(`fetching the signing keys failed: ${error}`)
+      } finally {
+        fetching = null
+      }
+    })()
+    return fetching
   }
+  const signingKeys = async (fresh = false) =>
+    !keys || fresh || Date.now() - keys.at > KEYS_TTL_MS ? fetchKeys() : keys.set
 
   /** A JWT's claims, if we signed it for `audience`: the API (the deployment's URL), or the MCP server. */
   const verify = async (token: string, audience: string): Promise<Claims | null> => {
@@ -123,9 +144,15 @@ export function authGateway(directory: AuthDirectory, baseURL: string, trustedPr
         // signed with a key this node hasn't seen yet: the keys rotated
         try {
           return toClaims((await jwtVerify(token, await signingKeys(true), options)).payload)
-        } catch {
+        } catch (again) {
+          if (again instanceof KeysUnavailable) {
+            throw again
+          }
           return null
         }
+      }
+      if (error instanceof KeysUnavailable) {
+        throw error
       }
       return null
     }
@@ -149,7 +176,15 @@ export function authGateway(directory: AuthDirectory, baseURL: string, trustedPr
       if (!token) {
         return null
       }
-      const claims = PERSONAL_TOKEN.test(token) ? await directory.verifyToken(token) : await verify(token, audience)
+      let claims: Claims | null
+      try {
+        claims = PERSONAL_TOKEN.test(token) ? await directory.verifyToken(token) : await verify(token, audience)
+      } catch (error) {
+        if (error instanceof KeysUnavailable) {
+          return { code: 'unavailable', message: "tokens can't be checked right now; try again shortly" }
+        }
+        throw error
+      }
       if (!claims) {
         return null
       }
