@@ -18,6 +18,9 @@ services:
     image: grafana/k6:2.4.0
     profiles: [k6]
     user: ${LOAD_USER:-12345}
+    # the deployment's name, to its load balancer: k6 in a container doesn't see this machine's /etc/hosts
+    extra_hosts:
+      - ${LOAD_HOST:?set LOAD_URLS}:${LOAD_LB_ADDRESS:?set LOAD_LB_ADDRESS, the load balancer's private address}
     volumes:
       - .:/load:ro
       - ./.data:/data

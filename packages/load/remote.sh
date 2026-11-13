@@ -23,6 +23,10 @@ set -a
 . "$ENV_FILE"
 set +a
 export LOAD_USER="$(id -u):$(id -g)"
+# the name in the deployment's URL, which k6's container resolves to LOAD_LB_ADDRESS (remote.yaml)
+LOAD_HOST=${LOAD_URLS%%,*}
+LOAD_HOST=${LOAD_HOST#*://}
+export LOAD_HOST=${LOAD_HOST%%[/:]*}
 # the seeder and the token minter: through the load balancer, as people's browsers are
 export LOAD_APP_URL=${LOAD_APP_URL:-$LOAD_URLS}
 export LOAD_MAILPIT_URL=${LOAD_MAILPIT_URL:-http://127.0.0.1:8025}
