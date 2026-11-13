@@ -12,6 +12,8 @@ packages/load/run.sh down     # stop, keeping the data; `wipe` deletes it and th
 
 `up` writes `.data/load.env` the first time, with new secrets. The site is at https://localhost:18443 (Caddy's local CA), Mailpit at http://localhost:18025. The seeder reaches the app directly at http://localhost:18080.
 
+**Against a deployment** (the three-VM Compose on AWS, say), from a machine of its own: `remote.sh`, with the same commands. [AWS.md](AWS.md) says what to make and how to set it up. Benchmarks are better made that way: one laptop's CPU throttles on battery and when hot, and a day of runs on one drifted more than the changes they measured.
+
 ## What it does
 
 **Seeding** (`src/seed.ts`) signs each person up the way people do: it asks for a code, reads the email from Mailpit and signs in. It then gets each person a personal token. After that, the people make teams and groups, add members, and create ideas, share some with groups and comment on some. Who's in which team, and which ideas each team has, is worked out from indexes in `src/model.ts`, so the k6 script doesn't need tables to find them:
