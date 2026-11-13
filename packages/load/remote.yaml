@@ -1,0 +1,28 @@
+# The load test from a machine of its own, against a deployment (AWS.md): Mailpit, which the
+# deployment's SMTP points at so the seeder can read sign-in codes, and k6. remote.sh drives it.
+name: ideaf-load-remote
+
+services:
+  mailpit:
+    image: axllent/mailpit:v1.33.1
+    restart: unless-stopped
+    environment:
+      # enough for the seeder's sign-ins in flight; older messages go first
+      MP_MAX_MESSAGES: 20000
+    ports:
+      # SMTP for the deployment's nodes, on the private network; the API for the seeder, here only
+      - ${LOAD_PRIVATE_ADDRESS:?set LOAD_PRIVATE_ADDRESS, this machine's private address}:1025:1025
+      - 127.0.0.1:8025:8025
+
+  k6:
+    image: grafana/k6:2.4.0
+    profiles: [k6]
+    user: ${LOAD_USER:-12345}
+    volumes:
+      - .:/load:ro
+      - ./.data:/data
+    environment:
+      LOAD_URLS: ${LOAD_URLS:?set LOAD_URLS, the deployment's public URL}
+      LOAD_ORIGIN: ${LOAD_ORIGIN:?set LOAD_ORIGIN, the deployment's public URL}
+      LOAD_SEED: /data/seed.json
+      LOAD_INSECURE_TLS: ${LOAD_INSECURE_TLS:-0}

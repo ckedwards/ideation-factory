@@ -132,6 +132,8 @@ export const options = {
       : {}),
   },
   summaryTrendStats: ['avg', 'p(50)', 'p(95)', 'p(99)', 'max', 'count'],
+  // LOAD_INSECURE_TLS=1: a deployment whose certificate comes from Caddy's internal CA, which k6 doesn't trust
+  insecureSkipTLSVerify: env.LOAD_INSECURE_TLS === '1',
   thresholds: { op_failed: ['rate<0.01'] },
 }
 
