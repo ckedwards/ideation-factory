@@ -18,23 +18,17 @@ import {
 import type { Client } from 'rivetkit/client'
 import { directoryOf, ideaOf as ideaActor } from './actors/pools.ts'
 import { nodeDeps } from './deps.ts'
-import type {
-  ContainerKind,
-  Grant,
-  IdeaListing,
-  IdeaPlace,
-  Permission,
-  RequirementCheck,
-  Result,
-} from './directory/types.ts'
+import type { ContainerKind, Grant, IdeaListing, Permission, RequirementCheck, Result } from './directory/types.ts'
 import { reviewerOf } from './idea/reviewer.ts'
 import type { IdeaWrite, WriteResult, WriteValue } from './idea/service.ts'
 import type { Registry } from './registry.ts'
 
+/** Whether an actor call failed with this code: RivetKit's own (an action that ran too long is timed_out), or an action's. */
+const isRivetCode = (error: unknown, code: string) =>
+  typeof error === 'object' && error !== null && (error as { code?: unknown }).code === code
+
 /** Whether this deployment sends notification emails (otherwise nobody sees email settings). */
 const emailAvailable = () => nodeDeps().email !== null
-
-const WRITE_TIMEOUT_MS = 60_000
 
 type Need = 'view' | 'edit' | 'share'
 
@@ -83,7 +77,7 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
     return checked.ok ? fn() : { ok: false, error: checked.error }
   }
 
-  /** Sends a write through the idea's queue, keyed per caller so two callers' keys can't collide. */
+  /** Sends a write to the idea's actor, keyed per caller so two callers' keys can't collide. */
   const write = async <T>(
     id: string,
     context: Context,
@@ -91,18 +85,19 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
     pick: (value: WriteValue) => T,
   ): Promise<HandlerResult<T>> => {
     const key = `${context.caller.user}:${context.key ?? crypto.randomUUID()}`
-    const sent = await ideaOf(id).send(
-      'writes',
-      { key, caller: context.caller, write: body },
-      { wait: true, timeout: WRITE_TIMEOUT_MS },
-    )
-    if (sent.status !== 'completed' || !sent.response) {
-      return {
-        ok: false,
-        error: { code: 'timed_out', message: 'the write timed out; retry it with the same idempotency key' },
+    let result: WriteResult
+    try {
+      result = await ideaOf(id).write({ key, caller: context.caller, write: body })
+    } catch (error) {
+      // the idea's actor took too long, or is busy with writes waiting: the same key returns the same answer
+      if (isRivetCode(error, 'timed_out') || isRivetCode(error, 'busy')) {
+        return {
+          ok: false,
+          error: { code: 'timed_out', message: 'the write timed out; retry it with the same idempotency key' },
+        }
       }
+      throw error
     }
-    const result: WriteResult = sent.response
     if (!result.ok) {
       return { ok: false, error: result.error }
     }
@@ -266,26 +261,20 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         return created
       }
       const now = Date.now()
-      // through the directory's queue, so ideas created at once share a commit: one each held the directory
+      // batched in the directory, so ideas created at once share a commit: one each held the directory
       // for everyone else's reads (packages/load). Registering is safe to repeat: a retry finds the same place.
-      const registered = await directory().send(
-        'register',
-        {
-          id,
-          title: input.title,
-          description: input.description ?? '',
-          team: teamId,
-          owner: context.caller.user,
-          status: input.status ?? 'draft',
-          latest: 1,
-          createdAt: now,
-          updatedAt: now,
-        },
-        { wait: true, timeout: 30_000 },
-      )
-      const answer =
-        registered.status === 'completed' ? (registered.response as { ok: boolean; place?: IdeaPlace }) : null
-      if (!answer?.ok || !answer.place) {
+      const answer = await directory().register({
+        id,
+        title: input.title,
+        description: input.description ?? '',
+        team: teamId,
+        owner: context.caller.user,
+        status: input.status ?? 'draft',
+        latest: 1,
+        createdAt: now,
+        updatedAt: now,
+      })
+      if (!answer.ok) {
         throw new Error(`registering idea ${id} didn't finish; retry with the same idempotency key`)
       }
       const place = answer.place

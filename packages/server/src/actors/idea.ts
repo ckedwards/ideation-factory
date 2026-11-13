@@ -4,16 +4,16 @@
 // to everyone connected (live updates), and what it tells inboxes, kept in the
 // outbox by the write's own transaction, goes to the directory until it says
 // it has applied it: a committed write's notifications are never lost.
-import { actor, event, queue, UserError } from 'rivetkit'
+import { actor, event, UserError } from 'rivetkit'
 import { db } from 'rivetkit/db'
 import { nodeDeps } from '../deps.ts'
-import { MAX_MESSAGE_BYTES } from '../limits.ts'
 import { sendOutbox } from '../idea/outbox.ts'
 import { migrate } from '../idea/schema.ts'
 import { type IdeaEvent, IdeaService, Refused, type WriteRequest, type WriteResult } from '../idea/service.ts'
 import type { Client } from 'rivetkit/client'
 import type { Registry } from '../registry.ts'
-import { callRetrying, overloadedRetryMs, retryOverloaded } from '../sql/retry.ts'
+import { callRetrying, retryOverloaded } from '../sql/retry.ts'
+import { batcher } from './batch.ts'
 import { directoryOf } from './pools.ts'
 
 /**
@@ -37,80 +37,26 @@ export const idea = actor({
     status: event<Payload<'status'>>(),
     review: event<Payload<'review'>>(),
   },
-  // a write carries the files it uploads, up to the largest idea a site may allow (limits.ts)
-  options: { maxQueueMessageSize: MAX_MESSAGE_BYTES },
-  queues: {
-    writes: queue<WriteRequest, WriteResult>(),
-  },
   state: { indexDue: false, lastActivity: 0 },
   createVars: () => ({
     service: null as IdeaService | null,
     flushing: null as Promise<void> | null,
     again: false,
     alarmAt: 0,
+    writes: null as ((request: WriteRequest) => Promise<WriteResult>) | null,
   }),
-  // what a stopped actor hadn't sent yet goes now
   onWake: (c) => {
+    // one write at a time, in the order they came (actors/batch.ts), with this wake-up's context
+    c.vars.writes = writerOf(c)
+    // what a stopped actor hadn't sent yet goes now
     void c.keepAwake(flushOutbox(c))
   },
-  run: async (c) => {
-    const service = serviceOf(c)
-    // Reading the queue can fail while the actor's storage is busy (RivetKit's own
-    // queue table is in it); the loop waits and goes on rather than ending, which
-    // would leave writes unread until the actor restarted.
-    while (!c.aborted) {
-      try {
-        for await (const message of c.queue.iter({ completable: true })) {
-          let written: Awaited<ReturnType<IdeaService['write']>>
-          try {
-            written = await service.write(message.body)
-          } catch (error) {
-            c.log.error({ msg: 'idea write failed', error: String(error) })
-            await callRetrying(() =>
-              message.complete({
-                ok: false,
-                error: { code: 'invalid', message: 'the write failed on the server; retry it with the same key' },
-              }),
-            )
-            continue
-          }
-          const { result, events } = written
-          for (const e of events) {
-            c.broadcast(e.name, e.payload)
-          }
-          // the write stands from here: what follows can't undo it, so its failures are logged, not returned.
-          // Its notifications are in the outbox already; send them now, with an alarm in case this stops first.
-          try {
-            await outboxAlarm(c, Date.now() + OUTBOX_SAFETY_MS)
-          } catch (error) {
-            c.log.error({ msg: 'setting the outbox alarm failed', error: String(error) })
-          }
-          void c.keepAwake(flushOutbox(c))
-          try {
-            if (events.length > 0) {
-              c.state.lastActivity = Date.now()
-              if (!c.state.indexDue) {
-                c.state.indexDue = true
-                await c.schedule.after(indexDelayMs(), 'flushIndex')
-              }
-            }
-          } catch (error) {
-            c.log.error({ msg: 'scheduling the index update failed', error: String(error) })
-          }
-          // a message not completed keeps the queue from handing over the next
-          await callRetrying(() => message.complete(result))
-        }
-        return
-      } catch (error) {
-        if (c.aborted) {
-          return
-        }
-        c.log.error({ msg: 'reading the write queue failed; trying again', error: String(error) })
-        await Bun.sleep(Math.min(overloadedRetryMs(error) ?? 500, 2_000))
-      }
-    }
-  },
   actions: {
+    /**
+     * A write (idea/service.ts), answered once it stands; one at a time, as each builds on the version before.
+     * Its key makes a retry return the same answer.
+     */
+    write: (c, request: WriteRequest) => (c.vars.writes ??= writerOf(c))(request),
     summary: (c) => read(() => serviceOf(c).summary()),
     files: (c, version?: number) => read(() => serviceOf(c).files(version)),
     pull: (c, version?: number) => read(() => serviceOf(c).pull(version)),
@@ -146,7 +92,7 @@ export const idea = actor({
       }
       // an index update is safe to send twice: the newest wins. Should it fail, it's sent again later
       try {
-        await callRetrying(() => directoryOf(c.client<Registry>()).send('index', update))
+        await callRetrying(() => directoryOf(c.client<Registry>()).index(update))
       } catch (error) {
         c.log.error({ msg: 'updating the index failed; trying again', error: String(error) })
         c.state.indexDue = true
@@ -177,6 +123,61 @@ async function read<T>(fn: () => Promise<T>): Promise<T> {
     }
     throw error
   }
+}
+
+/** The most writes that may wait for the one before them (what the write queue allowed). */
+const WAITING_WRITES = 1_000
+
+type WriteContext = OutboxContext & {
+  state: { indexDue: boolean; lastActivity: number }
+  broadcast(name: string, payload: unknown): void
+  keepAwake<T>(promise: Promise<T>): Promise<T>
+  schedule: OutboxContext['schedule'] & { after(duration: number, action: string, ...args: unknown[]): Promise<string> }
+}
+
+/** Writes applied one at a time: each is checked against the version before it, so none may run beside another. */
+function writerOf(c: WriteContext): (request: WriteRequest) => Promise<WriteResult> {
+  return batcher(async ([request]: WriteRequest[]) => [await applyWrite(c, request!)], {
+    max: 1,
+    waiting: WAITING_WRITES,
+  })
+}
+
+async function applyWrite(c: WriteContext, request: WriteRequest): Promise<WriteResult> {
+  let written: Awaited<ReturnType<IdeaService['write']>>
+  try {
+    written = await serviceOf(c).write(request)
+  } catch (error) {
+    c.log.error({ msg: 'idea write failed', error: String(error) })
+    return {
+      ok: false,
+      error: { code: 'invalid', message: 'the write failed on the server; retry it with the same key' },
+    }
+  }
+  const { result, events } = written
+  for (const e of events) {
+    c.broadcast(e.name, e.payload)
+  }
+  // the write stands from here: what follows can't undo it, so its failures are logged, not returned.
+  // Its notifications are in the outbox already; send them now, with an alarm in case this stops first.
+  try {
+    await outboxAlarm(c, Date.now() + OUTBOX_SAFETY_MS)
+  } catch (error) {
+    c.log.error({ msg: 'setting the outbox alarm failed', error: String(error) })
+  }
+  void c.keepAwake(flushOutbox(c))
+  try {
+    if (events.length > 0) {
+      c.state.lastActivity = Date.now()
+      if (!c.state.indexDue) {
+        c.state.indexDue = true
+        await c.schedule.after(indexDelayMs(), 'flushIndex')
+      }
+    }
+  } catch (error) {
+    c.log.error({ msg: 'scheduling the index update failed', error: String(error) })
+  }
+  return result
 }
 
 /** How long after a write the safety alarm goes, should the actor stop before its outbox is sent. */
@@ -224,8 +225,8 @@ function flushOutbox(c: OutboxContext): Promise<void> {
       const next = await sendOutbox(
         serviceOf(c),
         async (batch) => {
-          const sent = await directory.send('notify', { idea: c.key[0]!, ...batch }, { wait: true, timeout: 30_000 })
-          return sent.status === 'completed' && (sent.response as { ok?: boolean } | undefined)?.ok === true
+          const sent = await directory.notify({ idea: c.key[0]!, ...batch })
+          return sent.ok
         },
         (fields) => c.log.error(fields),
       )
