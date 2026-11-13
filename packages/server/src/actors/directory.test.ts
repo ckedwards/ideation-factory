@@ -11,6 +11,21 @@ beforeAll(async () => {
   actors = await startTestActors()
 }, 60_000)
 
+type Directory = ReturnType<Client<Registry>['directory']['getOrCreate']>
+
+/** What a search finds once the search actor has caught up: it indexes from its queue, after the directory commits. */
+async function found(d: Directory, user: string, q: string, expected: string[]): Promise<string[]> {
+  let ids: string[] = []
+  for (let i = 0; i < 50; i++) {
+    ids = (await d.searchIdeas(user, q)).items.map((idea) => idea.id)
+    if (JSON.stringify(ids) === JSON.stringify(expected)) {
+      break
+    }
+    await new Promise((r) => setTimeout(r, 50))
+  }
+  return ids
+}
+
 test('teams, ideas, access, lists and search through the actor', async () => {
   // a fresh directory per test run, so earlier runs' rows don't interfere
   const d = actors.directory.getOrCreate([`test-${crypto.randomUUID()}`])
@@ -35,7 +50,7 @@ test('teams, ideas, access, lists and search through the actor', async () => {
 
   expect(await d.permission('i1', 'u-maya')).toEqual({ view: true, edit: false, share: false, owner: false })
   expect((await d.listIdeas('u-maya')).items.map((i) => i.id)).toEqual(['i1'])
-  expect((await d.searchIdeas('u-maya', 'line')).items.map((i) => i.id)).toEqual(['i1'])
+  expect(await found(d, 'u-maya', 'line', ['i1'])).toEqual(['i1'])
 
   // index updates arrive through the queue, without waiting, and are applied in batches
   for (let n = 2; n <= 5; n++) {
@@ -53,5 +68,5 @@ test('teams, ideas, access, lists and search through the actor', async () => {
     await new Promise((r) => setTimeout(r, 50))
   }
   expect(await d.idea('i1')).toMatchObject({ title: 'Offline sync rev5', latest: 5, openComments: 5 })
-  expect((await d.searchIdeas('u-maya', 'rev5')).items.map((i) => i.id)).toEqual(['i1'])
+  expect(await found(d, 'u-maya', 'rev5', ['i1'])).toEqual(['i1'])
 })

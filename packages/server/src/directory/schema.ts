@@ -161,6 +161,13 @@ export interface DB {
    * directory's clock (the event's own time is the idea actor's).
    */
   email_pending: { user: string; idea: string; event: string; reason: string; queued_at: number }
+  /**
+   * One row per person and idea with email pending: when the first and last
+   * were queued, and whether the person takes a daily digest. Kept with
+   * email_pending, so when an email is due is found through indexes, never by
+   * reading the whole queue (which once held the directory 31 s at a time).
+   */
+  email_queue: { user: string; idea: string; first: number; last: number; daily: number }
   schema_version: { version: number }
 }
 
@@ -215,6 +222,7 @@ export const COLUMNS = {
   watch_marks: ['user', 'idea', 'read_at', 'done_at'],
   notification_settings: ['user', 'own_bots', 'email', 'email_watching', 'cadence', 'digest_at'],
   email_pending: ['user', 'idea', 'event', 'reason', 'queued_at'],
+  email_queue: ['user', 'idea', 'first', 'last', 'daily'],
   schema_version: ['version'],
 } as const satisfies { [T in keyof DB]: ReadonlyArray<keyof DB[T]> }
 
@@ -409,6 +417,17 @@ const MIGRATIONS: Migration[] = [
       .addPrimaryKeyConstraint('email_pending_pk', ['user', 'event'])
       .execute()
     await db.schema.createIndex('email_pending_user').on('email_pending').columns(['user', 'idea']).execute()
+    await db.schema
+      .createTable('email_queue')
+      .addColumn('user', 'text', (c) => c.notNull())
+      .addColumn('idea', 'text', (c) => c.notNull())
+      .addColumn('first', 'bigint', (c) => c.notNull())
+      .addColumn('last', 'bigint', (c) => c.notNull())
+      .addColumn('daily', 'integer', (c) => c.notNull())
+      .addPrimaryKeyConstraint('email_queue_pk', ['user', 'idea'])
+      .execute()
+    await db.schema.createIndex('email_queue_last').on('email_queue').columns(['daily', 'last']).execute()
+    await db.schema.createIndex('email_queue_first').on('email_queue').columns(['daily', 'first']).execute()
   },
 ]
 
@@ -419,12 +438,8 @@ const MIGRATIONS: Migration[] = [
 /** The directory schema's current version: the number of migrations. */
 export const DIRECTORY_SCHEMA_VERSION = MIGRATIONS.length
 
-/** `extra` adds what lives outside these tables (the search index); `to` stops at an earlier version, for migration tests. */
-export async function migrateDirectory(
-  sql: Sql,
-  extra: Array<(sql: Sql) => Promise<void>> = [],
-  to = DIRECTORY_SCHEMA_VERSION,
-): Promise<void> {
+/** `to` stops at an earlier version, for migration tests. The search index has a database of its own (search.ts). */
+export async function migrateDirectory(sql: Sql, to = DIRECTORY_SCHEMA_VERSION): Promise<void> {
   const db = sqliteKysely<DB>(sql)
   await db.schema
     .createTable('schema_version')
@@ -441,9 +456,6 @@ export async function migrateDirectory(
       .updateTable('schema_version')
       .set({ version: current + 1 })
       .execute()
-  }
-  for (const migrate of extra) {
-    await migrate(sql)
   }
 }
 

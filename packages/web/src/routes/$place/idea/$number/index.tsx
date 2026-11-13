@@ -12,7 +12,14 @@ import { IdeaTabs } from './-components/IdeaTabs.tsx'
 import { ideaLinks } from './-components/links.ts'
 import { rereadComments } from './-components/comments.ts'
 import { commentsOf } from './-components/live.ts'
-import { filesQuery, ideaQuery, outlineQuery, reviewsQuery, subscriptionQuery } from './-components/queries.ts'
+import {
+  filesQuery,
+  ideaQuery,
+  loadIdeaPage,
+  outlineQuery,
+  reviewsQuery,
+  subscriptionQuery,
+} from './-components/queries.ts'
 import { SubscribeButton } from './-components/SubscribeButton.tsx'
 import { ReviewPanel, type ReviewRow } from './-components/ReviewPanel.tsx'
 import { type Subject, subjectKey, useSubjectNames } from './-components/subjects.ts'
@@ -21,12 +28,13 @@ import { actorOf, statusOf } from './-components/view.ts'
 
 export const Route = createFileRoute('/$place/idea/$number/')({
   loader: async ({ context: { queryClient, idea } }) => {
+    // the page in one read, then anything it didn't fill (an idea loaded already)
+    await Promise.all([loadIdeaPage(queryClient, idea), commentsOf(idea, queryClient).preload()])
     const summary = await queryClient.query({ ...ideaQuery(idea), staleTime: 'static' })
     await Promise.all([
       queryClient.query({ ...filesQuery(idea, summary.latest), staleTime: 'static' }),
       queryClient.query({ ...outlineQuery(idea, summary.latest), staleTime: 'static' }),
-      commentsOf(idea, queryClient).preload(),
-      queryClient.query(reviewsQuery(idea)),
+      queryClient.query({ ...reviewsQuery(idea), staleTime: 5_000 }),
     ])
   },
   component: Overview,

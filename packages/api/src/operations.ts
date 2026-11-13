@@ -33,9 +33,33 @@ import {
   StepResult,
   VersionParam,
   VersionResult,
+  InboxReason,
+  Team,
 } from './schemas.ts'
 
 const MarkdownFile = z.strictObject({ path: z.string().min(1).max(512), content: z.string() })
+
+/** An idea's files at a version, as pull gives them. */
+const PulledFiles = z.object({ version: z.number().int(), files: z.array(FileContent) })
+/** An idea's blocks at a version, with their open comments, as show_blocks gives them. */
+const BlockOutline = z.object({
+  version: z.number().int(),
+  files: z.array(FileOutline),
+  comments: z.array(CommentThread),
+})
+/** An idea's status, history, reviewers, reviews and requirements, as list_reviews gives them. */
+const IdeaReviews = z.object({
+  status: IdeaStatus,
+  latest: z.number().int(),
+  history: z.array(StatusChange),
+  /** The people and groups asked to review it (set_reviewer). */
+  reviewers: z.array(GrantSubject),
+  /** How many comments you have pending: your review, not submitted yet. */
+  pending: z.number().int(),
+  reviews: z.array(Review),
+  /** Its team's approval requirements, checked: closing as accepted needs them met. */
+  requirements: RequirementsCheck,
+})
 
 export const operations = {
   createIdea: defineOperation({
@@ -95,6 +119,27 @@ export const operations = {
     output: IdeaSummary,
   }),
 
+  openIdea: defineOperation({
+    name: 'open_idea',
+    summary: "Read what an idea's page shows, at once",
+    description:
+      "An idea's summary, its files and blocks at a version (the latest unless given), its comments there, its reviews, your subscription and its team: what get_idea, pull, show_blocks, list_comments, list_reviews, get_subscription and get_team give, checking access once instead of once each.",
+    method: 'GET',
+    path: '/ideas/{idea}/page',
+    kind: 'read',
+    input: z.strictObject({ idea: IdeaId, version: VersionParam }),
+    output: z.object({
+      idea: IdeaSummary,
+      files: PulledFiles,
+      outline: BlockOutline,
+      /** Every comment thread at that version, as list_comments gives them. */
+      comments: z.array(CommentThread),
+      reviews: IdeaReviews,
+      subscription: z.object({ subscribed: z.boolean(), reason: InboxReason.nullable() }),
+      team: Team.nullable(),
+    }),
+  }),
+
   showBlocks: defineOperation({
     name: 'show_blocks',
     mcp: true,
@@ -105,7 +150,7 @@ export const operations = {
     path: '/ideas/{idea}/blocks',
     kind: 'read',
     input: z.strictObject({ idea: IdeaId, version: VersionParam }),
-    output: z.object({ version: z.number().int(), files: z.array(FileOutline), comments: z.array(CommentThread) }),
+    output: BlockOutline,
   }),
 
   pull: defineOperation({
@@ -118,7 +163,7 @@ export const operations = {
     path: '/ideas/{idea}/files',
     kind: 'read',
     input: z.strictObject({ idea: IdeaId, version: VersionParam }),
-    output: z.object({ version: z.number().int(), files: z.array(FileContent) }),
+    output: PulledFiles,
   }),
 
   sync: defineOperation({
@@ -409,18 +454,7 @@ export const operations = {
     path: '/ideas/{idea}/reviews',
     kind: 'read',
     input: z.strictObject({ idea: IdeaId }),
-    output: z.object({
-      status: IdeaStatus,
-      latest: z.number().int(),
-      history: z.array(StatusChange),
-      /** The people and groups asked to review it (set_reviewer). */
-      reviewers: z.array(GrantSubject),
-      /** How many comments you have pending: your review, not submitted yet. */
-      pending: z.number().int(),
-      reviews: z.array(Review),
-      /** Its team's approval requirements, checked: closing as accepted needs them met. */
-      requirements: RequirementsCheck,
-    }),
+    output: IdeaReviews,
   }),
 
   setStatus: defineOperation({

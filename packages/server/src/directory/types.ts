@@ -294,6 +294,15 @@ export interface IdeaAccess {
   place: IdeaPlace
 }
 
+/** What an idea's page needs from the directory, in one call (Directory.ideaPage). */
+export interface IdeaPage {
+  access: IdeaAccess
+  /** The rest only when the caller can see the idea. */
+  grants: Grant[]
+  team: Team | null
+  subscription: { subscribed: boolean; reason: InboxReason | null }
+}
+
 /** Where an idea is found: its team's handle, or @ and its owner's handle, and its number there. */
 export interface IdeaPlace {
   id: string
@@ -510,9 +519,18 @@ export interface Directory {
 
   // ideas: the index, access and lists. `token` is the caller's token grant,
   // if their token has one: it narrows what they can do.
-  canCreateIdea(actor: string, team: string | null, token?: string | null): Promise<Result<null>>
-  /** Indexes a new idea, numbers it in its place, and gives it its team's default access. Safe to repeat. */
-  registerIdea(row: Omit<IdeaRow, 'number' | 'openComments'>): Promise<void>
+  /** Whether `actor` may create an idea there; if so, the team's ID (`team` may be its handle), or null for their own. */
+  canCreateIdea(actor: string, team: string | null, token?: string | null): Promise<Result<{ team: string | null }>>
+  /**
+   * Indexes a new idea, numbers it in its place, and gives it its team's
+   * default access. Safe to repeat. Where it is, so creating an idea needs no
+   * further call.
+   */
+  registerIdea(row: Omit<IdeaRow, 'number' | 'openComments'>): Promise<IdeaPlace>
+  /** registerIdea for several at once, in one transaction: each commit costs far more than what's in it. */
+  registerIdeas(rows: Array<Omit<IdeaRow, 'number' | 'openComments'>>): Promise<IdeaPlace[]>
+  /** Sends every idea's title to the search index again, the least recently updated first; how many. */
+  reindexSearch(): Promise<number>
   /** Updates ideas' index rows (their team and owner don't change here): a queue's worth at once. */
   updateIdea(row: IndexUpdate | IndexUpdate[]): Promise<void>
   idea(id: string): Promise<IdeaRow | null>
@@ -524,6 +542,13 @@ export interface Directory {
    * address. Null if there's no such idea.
    */
   ideaFor(id: string, user: string, token?: string | null): Promise<IdeaAccess | null>
+  /**
+   * What an idea's page needs from the directory in one call: the caller's
+   * access (ideaFor) and, if they can see it, its grants, its team and their
+   * subscription. One call instead of one per part: each call to the directory
+   * waits its turn, and an idea's page made eight or ten.
+   */
+  ideaPage(id: string, user: string, token?: string | null): Promise<IdeaPage | null>
   /** findIdea, only if `user` can see the idea: otherwise null, as if there were none. */
   findIdeaFor(place: string, number: number, user: string, token?: string | null): Promise<IdeaPlace | null>
   /**

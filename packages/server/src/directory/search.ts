@@ -1,12 +1,14 @@
-// Searching ideas, behind its own interface because it's what differs most
-// between databases: FTS5 with the trigram tokenizer here, pg_trgm for the
-// Postgres escape hatch. The search gives a subquery of matching IDs, and the
-// directory joins its access filter and its ranking onto it, so the limit
-// applies to ideas you can see (never to all matches, which could hide yours)
-// and ranking is the same everywhere.
-import { type AliasedRawBuilder, type Kysely, sql as raw } from 'kysely'
+// Searching ideas' titles, behind its own interface and in its own database:
+// the search actor's (actors/search.ts), so a search runs beside the
+// directory instead of taking turns on its one connection. A full-text match
+// of a common word costs about 25 ms at 100,000 ideas, and searches are about
+// a tenth of page views: half the directory's time, when it was inside it
+// (packages/load). FTS5 with the trigram tokenizer here, pg_trgm for the
+// Postgres escape hatch. The search gives matching IDs; the directory applies
+// access and ranking to them, so the limit applies to ideas you can see
+// (never to all matches, which could hide yours) and ranking is the same
+// everywhere.
 import type { Sql } from '../sql/sql.ts'
-import type { DB } from './schema.ts'
 
 /** Searches need at least this many characters: a trigram index can't match less, and there's no full scan. */
 export const MIN_SEARCH = 3
@@ -21,13 +23,10 @@ export const MIN_SEARCH = 3
 export const SEARCH_WORK_CAP = 20_000
 
 export interface IdeaSearch {
-  migrate(sql: Sql): Promise<void>
-  /** Keeps an idea's searchable text current; called in the same transaction as its index row. */
-  index(db: Kysely<DB>, id: string, title: string): Promise<void>
-  /** A subquery `m(id)` of the `cap` most recently updated ideas matching `terms`, or null if nothing can match. */
-  matching(terms: string[], cap: number): AliasedRawBuilder<{ id: string }, 'm'> | null
-  /** Whether more than `cap` ideas match (counting stops at cap + 1). */
-  exceeds(db: Kysely<DB>, terms: string[], cap: number): Promise<boolean>
+  /** Keeps ideas' titles current, in order: each one becomes the most recently updated. */
+  index(entries: Array<{ id: string; title: string }>): Promise<void>
+  /** Up to `cap` ideas matching `terms`, the most recently updated first, and whether more matched. */
+  matches(terms: string[], cap: number): Promise<{ ids: string[]; incomplete: boolean }>
 }
 
 /** The query's terms that can be searched: whitespace-separated, at least MIN_SEARCH characters each. */
@@ -38,39 +37,65 @@ export function searchTerms(query: string): string[] {
     .filter((t) => [...t].length >= MIN_SEARCH)
 }
 
-export function fts5Search(): IdeaSearch {
+const MIGRATIONS: Array<(sql: Sql) => Promise<void>> = [
+  async (sql) => {
+    // rows are re-inserted when an idea changes, so the newest rowids are the most recently updated ideas,
+    // and FTS5 reads them in that order without sorting
+    await sql.execute("CREATE VIRTUAL TABLE idea_search USING fts5(id UNINDEXED, title, tokenize = 'trigram')")
+    // each idea's row in idea_search: FTS5 can't index its id column, so finding a row by id read every row
+    // (6.6 ms a time at 100,000 ideas when packages/load measured it)
+    await sql.execute('CREATE TABLE search_rows (idea TEXT PRIMARY KEY, row INTEGER NOT NULL)')
+  },
+]
+
+/** The search schema's current version: the number of migrations. */
+export const SEARCH_SCHEMA_VERSION = MIGRATIONS.length
+
+/** Migrates a search database; `to` stops at an earlier version, for migration tests. */
+export async function migrateSearch(sql: Sql, to = SEARCH_SCHEMA_VERSION): Promise<void> {
+  await sql.execute('CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)')
+  const rows = await sql.execute<{ version: number }>('SELECT version FROM schema_version')
+  if (rows.length === 0) {
+    await sql.execute('INSERT INTO schema_version (version) VALUES (0)')
+  }
+  for (let current = Number(rows[0]?.version ?? 0); current < to; current++) {
+    await MIGRATIONS[current]!(sql)
+    await sql.execute('UPDATE schema_version SET version = ?', current + 1)
+  }
+}
+
+/** The search index in a SQLite database of its own (migrateSearch): the search actor's, or a test's. */
+export function fts5Search(sql: Sql): IdeaSearch {
   return {
-    async migrate(sql) {
-      await sql.execute(
-        "CREATE VIRTUAL TABLE IF NOT EXISTS idea_search USING fts5(id UNINDEXED, title, tokenize = 'trigram')",
-      )
-    },
-    async index(db, id, title) {
-      await raw`DELETE FROM idea_search WHERE id = ${id}`.execute(db)
-      await raw`INSERT INTO idea_search (id, title) VALUES (${id}, ${title})`.execute(db)
-    },
-    matching(terms, cap) {
-      if (terms.length === 0) {
-        return null
+    async index(entries) {
+      if (entries.length === 0) {
+        return
       }
-      // rows are re-inserted when a title changes, so the newest rowids are the most recently updated ideas,
-      // and FTS5 reads them in that order without sorting
-      return raw<{
-        id: string
-      }>`(SELECT id FROM idea_search WHERE idea_search MATCH ${ftsMatch(terms)} ORDER BY rowid DESC LIMIT ${cap})`.as(
-        'm',
-      )
+      await sql.transaction(async (tx) => {
+        for (const { id, title } of entries) {
+          const held = await tx.execute<{ row: number }>('SELECT row FROM search_rows WHERE idea = ?', id)
+          if (held[0]) {
+            await tx.execute('DELETE FROM idea_search WHERE rowid = ?', held[0].row)
+          }
+          await tx.execute('INSERT INTO idea_search (id, title) VALUES (?, ?)', id, title)
+          await tx.execute(
+            'INSERT INTO search_rows (idea, row) VALUES (?, last_insert_rowid()) ON CONFLICT (idea) DO UPDATE SET row = excluded.row',
+            id,
+          )
+        }
+      })
     },
-    async exceeds(db, terms, cap) {
+    async matches(terms, cap) {
       if (terms.length === 0) {
-        return false
+        return { ids: [], incomplete: false }
       }
-      const rows = await raw<{
-        n: number
-      }>`SELECT count(*) AS n FROM (SELECT 1 FROM idea_search WHERE idea_search MATCH ${ftsMatch(terms)} LIMIT ${cap + 1})`.execute(
-        db,
+      // one past the cap says whether there were more, in the same read
+      const rows = await sql.execute<{ id: string }>(
+        'SELECT id FROM idea_search WHERE idea_search MATCH ? ORDER BY rowid DESC LIMIT ?',
+        ftsMatch(terms),
+        cap + 1,
       )
-      return Number(rows.rows[0]?.n ?? 0) > cap
+      return { ids: rows.slice(0, cap).map((r) => r.id), incomplete: rows.length > cap }
     },
   }
 }

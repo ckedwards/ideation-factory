@@ -8,6 +8,7 @@
 import { join } from 'node:path'
 import { createClient } from 'rivetkit/client'
 import { DIRECTORY_KEY } from './actors/directory.ts'
+import { limitDirectoryCalls } from './actors/limit.ts'
 import { createApp } from './app.ts'
 import { authGateway } from './auth/gateway.ts'
 import { authSettingsFromEnv, mailerFromEnv } from './auth/settings.ts'
@@ -43,7 +44,12 @@ const { endpoint, namespace, token } = registry.parseConfig()
 if (!endpoint) {
   throw new Error('RivetKit has no engine endpoint; set RIVET_ENDPOINT or run in development')
 }
-const actors = createClient<Registry>({ endpoint, namespace, ...(token ? { token } : {}) })
+// the directory gets at most DIRECTORY_CALLS of this node's calls at once (actors/limit.ts)
+const DIRECTORY_CALLS = Number(process.env.IDEAF_DIRECTORY_CALLS ?? 4)
+const actors = limitDirectoryCalls(
+  createClient<Registry>({ endpoint, namespace, ...(token ? { token } : {}) }),
+  DIRECTORY_CALLS,
+)
 
 // the web app: Vite's dev server while working on it (bun run dev sets
 // IDEAF_WEB_DEV_URL), or the built app, from IDEAF_WEB_DIR or the web package

@@ -4,7 +4,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { IdeaView, versionsOf } from './-components/IdeaView.tsx'
 import { ideaLinks } from './-components/links.ts'
 import { commentsOf } from './-components/live.ts'
-import { commentsQuery, filesQuery, ideaQuery, outlineQuery } from './-components/queries.ts'
+import { commentsQuery, filesQuery, ideaQuery, loadIdeaPage, outlineQuery } from './-components/queries.ts'
 
 interface Search {
   file?: string
@@ -21,6 +21,8 @@ export const Route = createFileRoute('/$place/idea/$number/files')({
   },
   loaderDeps: ({ search }) => ({ v: search.v }),
   loader: async ({ context: { queryClient, idea }, deps }) => {
+    // the page in one read, then anything it didn't fill (an older version, an idea loaded already)
+    await loadIdeaPage(queryClient, idea)
     const summary = await queryClient.query({ ...ideaQuery(idea), staleTime: 'static' })
     const { version } = versionsOf(deps, summary.latest)
     await Promise.all([

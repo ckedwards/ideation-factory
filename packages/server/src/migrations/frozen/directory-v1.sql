@@ -29,5 +29,7 @@ CREATE TABLE "watch_marks" ("user" text not null, "idea" text not null, "read_at
 CREATE TABLE "notification_settings" ("user" text primary key, "own_bots" integer not null, "email" text not null, "email_watching" integer not null, "cadence" text not null, "digest_at" bigint);
 CREATE TABLE "email_pending" ("user" text not null, "idea" text not null, "event" text not null, "reason" text not null, "queued_at" bigint not null, constraint "email_pending_pk" primary key ("user", "event"));
 CREATE INDEX "email_pending_user" on "email_pending" ("user", "idea");
-CREATE VIRTUAL TABLE idea_search USING fts5(id UNINDEXED, title, tokenize = 'trigram');
+CREATE TABLE "email_queue" ("user" text not null, "idea" text not null, "first" bigint not null, "last" bigint not null, "daily" integer not null, constraint "email_queue_pk" primary key ("user", "idea"));
+CREATE INDEX "email_queue_last" on "email_queue" ("daily", "last");
+CREATE INDEX "email_queue_first" on "email_queue" ("daily", "first");
 INSERT INTO schema_version (version) VALUES (1);

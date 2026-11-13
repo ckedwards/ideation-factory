@@ -22,6 +22,9 @@
 //       Frees a squatted handle: whoever holds it gets a generated one, and no
 //       old handle leads anywhere, so links through it stop working. That's
 //       why it's an admin's decision.
+//   bun packages/server/src/admin.ts reindex-search
+//       Rebuilds the search index (the search actor's) from the directory's
+//       ideas, should it be lost or out of step.
 //
 // In development, run it through the worktree's settings:
 //   bun scripts/worktree.ts exec -- bun packages/server/src/admin.ts rotate-signing-key
@@ -33,7 +36,8 @@ const USAGE = `usage: bun packages/server/src/admin.ts <command>
   rotate-signing-key [--emergency]
   deactivate <handle or ID>
   reactivate <handle or ID>
-  release-handle <@person or team>`
+  release-handle <@person or team>
+  reindex-search`
 
 export async function admin(argv: string[], env: Record<string, string | undefined>): Promise<number> {
   const [command, ...rest] = argv
@@ -65,6 +69,12 @@ export async function admin(argv: string[], env: Record<string, string | undefin
         ? `Deactivated ${who}: signed out everywhere, no new sign-ins or tokens, and their writes are refused. Their reads stop when their access tokens expire, within 15 minutes.`
         : `Reactivated ${who}: they can sign in again.`,
     )
+    return 0
+  }
+
+  if (command === 'reindex-search' && rest.length === 0) {
+    const sent = await directory().reindexSearch()
+    console.log(`Sent ${sent} ideas' titles to the search index; it catches up in a moment.`)
     return 0
   }
 

@@ -37,6 +37,7 @@ import type { FileStore } from '../files/store.ts'
 import { byteLength, checkSizes, type Limits, type SizeProblem } from '../limits.ts'
 import { type Kysely, sql as raw } from 'kysely'
 import { sqliteKysely } from '../sql/kysely.ts'
+import { prepared } from '../sql/prepared.ts'
 import type { Sql } from '../sql/sql.ts'
 import type { InboxEvent } from '../directory/types.ts'
 import { inboxEvents, publishedInboxEvents } from './notify.ts'
@@ -1502,18 +1503,7 @@ export class IdeaService {
     if (!meta) {
       return null
     }
-    const versions = await this.#db
-      .selectFrom('versions as v')
-      .select(['v.number', 'v.parent', 'v.created_at', 'v.created_by', 'v.how'])
-      .select((eb) =>
-        eb
-          .selectFrom('steps as s')
-          .select((e) => e.fn.countAll<number>().as('n'))
-          .whereRef('s.version', '=', 'v.number')
-          .as('steps'),
-      )
-      .orderBy('v.number')
-      .execute()
+    const versions = await Q.versions(this.#db, {})
     return {
       id: meta.id,
       title: meta.title,
@@ -1619,33 +1609,8 @@ export class IdeaService {
    */
   async comments(version?: number, viewer?: string | null) {
     const v = await this.#versionNumber(version)
-    const rows = await this.#db
-      .selectFrom('comments')
-      .select([
-        'id',
-        'parent',
-        'version',
-        'author',
-        'created_at',
-        'body',
-        'resolved',
-        'suggestion',
-        'decision',
-        'pending',
-      ])
-      .where('version', '<=', v)
-      // a pending comment is its author's alone
-      .where((eb) =>
-        viewer ? eb.or([eb('pending', 'is', null), eb('pending', '=', viewer)]) : eb('pending', 'is', null),
-      )
-      .orderBy('created_at')
-      .orderBy('id')
-      .execute()
-    const anchors = new Map(
-      (
-        await this.#db.selectFrom('anchors').select(['comment', 'state', 'anchor']).where('version', '=', v).execute()
-      ).map((a) => [a.comment, a]),
-    )
+    const rows = await Q.comments(this.#db, { version: v, ...(viewer ? { viewer } : {}) })
+    const anchors = new Map((await Q.anchors(this.#db, { version: v })).map((a) => [a.comment, a]))
     const last = new Map(
       (
         await this.#db
@@ -1789,7 +1754,7 @@ export class IdeaService {
   // --- storage ------------------------------------------------------------------
 
   async #meta(): Promise<Meta | null> {
-    return (await this.#db.selectFrom('idea').selectAll().limit(1).executeTakeFirst()) ?? null
+    return (await Q.meta(this.#db, {}))[0] ?? null
   }
 
   async #requireMeta(): Promise<Meta> {
@@ -1838,12 +1803,7 @@ export class IdeaService {
 
   async #manifest(version: number) {
     // in the order the files were written (idea actors are SQLite only, so rowid is fine)
-    return this.#db
-      .selectFrom('version_files')
-      .select(['file', 'path', 'hash', 'bytes', 'unit_ids'])
-      .where('version', '=', version)
-      .orderBy(raw`rowid`)
-      .execute()
+    return Q.manifest(this.#db, { version })
   }
 
   async #content(hash: string): Promise<string> {
@@ -1981,14 +1941,7 @@ export class IdeaService {
 
   /** Notifications due to be sent (oldest first): each a NotifyBatch's ID and events. */
   async outboxDue(limit = 20): Promise<Array<{ id: string; events: InboxEvent[]; attempts: number }>> {
-    const rows = await this.#db
-      .selectFrom('outbox')
-      .select(['id', 'events', 'attempts'])
-      .where('next_at', '<=', this.#now())
-      .orderBy('at')
-      .orderBy('id')
-      .limit(limit)
-      .execute()
+    const rows = await Q.outboxDue(this.#db, { now: this.#now(), limit })
     return rows.map((r) => ({ id: r.id, events: JSON.parse(r.events) as InboxEvent[], attempts: r.attempts }))
   }
 
@@ -2018,10 +1971,7 @@ export class IdeaService {
 
   /** When the next notification is due (null when the outbox is empty). */
   async outboxNextAt(): Promise<number | null> {
-    const row = await this.#db
-      .selectFrom('outbox')
-      .select((eb) => eb.fn.min<number>('next_at').as('next'))
-      .executeTakeFirst()
+    const row = (await Q.outboxNextAt(this.#db, {}))[0]
     return row?.next == null ? null : Number(row.next)
   }
 
@@ -2083,4 +2033,72 @@ function suggestionOf(
 
 function kb(bytes: number): string {
   return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.ceil(bytes / 1024)} KB`
+}
+
+// The idea actor's hottest queries, built once per shape and run with each
+// call's values (sql/prepared.ts): building them each time took a fifth of the
+// server's main thread at the design load. Each is the query it replaced.
+const Q = {
+  meta: prepared<Record<string, never>>()((db: Kysely<IdeaDB>) => db.selectFrom('idea').selectAll().limit(1)),
+  versions: prepared<Record<string, never>>()((db: Kysely<IdeaDB>) =>
+    db
+      .selectFrom('versions as v')
+      .select(['v.number', 'v.parent', 'v.created_at', 'v.created_by', 'v.how'])
+      .select((eb) =>
+        eb
+          .selectFrom('steps as s')
+          .select((e) => e.fn.countAll<number>().as('n'))
+          .whereRef('s.version', '=', 'v.number')
+          .as('steps'),
+      )
+      .orderBy('v.number'),
+  ),
+  comments: prepared<{ version: number; viewer?: string }>()((db: Kysely<IdeaDB>, s) =>
+    db
+      .selectFrom('comments')
+      .select([
+        'id',
+        'parent',
+        'version',
+        'author',
+        'created_at',
+        'body',
+        'resolved',
+        'suggestion',
+        'decision',
+        'pending',
+      ])
+      .where('version', '<=', s.version)
+      // a pending comment is its author's alone
+      .where((eb) =>
+        s.viewer !== undefined
+          ? eb.or([eb('pending', 'is', null), eb('pending', '=', s.viewer)])
+          : eb('pending', 'is', null),
+      )
+      .orderBy('created_at')
+      .orderBy('id'),
+  ),
+  anchors: prepared<{ version: number }>()((db: Kysely<IdeaDB>, s) =>
+    db.selectFrom('anchors').select(['comment', 'state', 'anchor']).where('version', '=', s.version),
+  ),
+  manifest: prepared<{ version: number }>()((db: Kysely<IdeaDB>, s) =>
+    // in the order the files were written (idea actors are SQLite only, so rowid is fine)
+    db
+      .selectFrom('version_files')
+      .select(['file', 'path', 'hash', 'bytes', 'unit_ids'])
+      .where('version', '=', s.version)
+      .orderBy(raw`rowid`),
+  ),
+  outboxDue: prepared<{ now: number; limit: number }>()((db: Kysely<IdeaDB>, s) =>
+    db
+      .selectFrom('outbox')
+      .select(['id', 'events', 'attempts'])
+      .where('next_at', '<=', s.now)
+      .orderBy('at')
+      .orderBy('id')
+      .limit(s.limit),
+  ),
+  outboxNextAt: prepared<Record<string, never>>()((db: Kysely<IdeaDB>) =>
+    db.selectFrom('outbox').select((eb) => eb.fn.min<number>('next_at').as('next')),
+  ),
 }
