@@ -22,7 +22,7 @@ import {
 import { nodeDeps } from '../deps.ts'
 import type { Client } from 'rivetkit/client'
 import type { Registry } from '../registry.ts'
-import { SEARCH_KEY } from './search.ts'
+import { searchOf as searchActor } from './pools.ts'
 import { notificationEmail } from '../mail/notification.ts'
 import { migrateDirectory } from '../directory/schema.ts'
 import type { IdeaSearch } from '../directory/search.ts'
@@ -387,7 +387,7 @@ function directoryOf(c: DirectoryContext): Directory {
 
 /** The search index, in the search actor (directory/search.ts says why). */
 function searchOf(c: DirectoryContext): IdeaSearch {
-  const index = () => (c.client as () => Client<Registry>)().search.getOrCreate(SEARCH_KEY)
+  const index = () => searchActor((c.client as () => Client<Registry>)())
   return {
     index: async (entries) => {
       if (entries.length > 0) {
@@ -407,4 +407,4 @@ export function unwrap<T>(result: Result<T>): T {
   return result.value
 }
 
-export const DIRECTORY_KEY = ['main']
+export { DIRECTORY_KEY } from './pools.ts'

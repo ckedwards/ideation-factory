@@ -29,7 +29,7 @@
 // In development, run it through the worktree's settings:
 //   bun scripts/worktree.ts exec -- bun packages/server/src/admin.ts rotate-signing-key
 import { createClient } from 'rivetkit/client'
-import { DIRECTORY_KEY } from './actors/directory.ts'
+import { directoryOf } from './actors/pools.ts'
 import type { Registry } from './registry.ts'
 
 const USAGE = `usage: bun packages/server/src/admin.ts <command>
@@ -42,7 +42,7 @@ const USAGE = `usage: bun packages/server/src/admin.ts <command>
 export async function admin(argv: string[], env: Record<string, string | undefined>): Promise<number> {
   const [command, ...rest] = argv
   const endpoint = env.RIVET_ENDPOINT ?? `http://127.0.0.1:${env.RIVET_RUN_ENGINE_PORT ?? 6420}`
-  const directory = () => createClient<Registry>(endpoint).directory.getOrCreate(DIRECTORY_KEY)
+  const directory = () => directoryOf(createClient<Registry>(endpoint))
 
   if (command === 'rotate-signing-key' && rest.every((f) => f === '--emergency')) {
     const emergency = rest.includes('--emergency')

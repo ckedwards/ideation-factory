@@ -5,7 +5,7 @@
 // and the unsubscribe links in emails. Every other path is the web app's.
 import { API_PATH, createRouter, openApiDocument, operations } from '@ideaf/api'
 import type { Client } from 'rivetkit/client'
-import { DIRECTORY_KEY } from './actors/directory.ts'
+import { directoryOf } from './actors/pools.ts'
 import type { AuthSettings } from './auth/config.ts'
 import { authGateway } from './auth/gateway.ts'
 import { cliCodePage, consentPage, loginPage } from './auth/pages.ts'
@@ -28,6 +28,12 @@ export type AppDeps = {
   validateOutput?: boolean
   /** The web app's pages (web.ts); without it, a page's path is not found. */
   web?: WebApp
+  /**
+   * /health's answer: RivetKit's (registry.routes.health()), which is 503 while
+   * the node's connection to the engine is unhealthy, so the load balancer and
+   * Docker stop counting on a node cut off from it. Without it, always ok.
+   */
+  health?: () => Promise<Response>
 }
 
 /** The app: a request, and the address it came from (Bun's server.requestIP), which sign-in's rate limits count by. */
@@ -36,9 +42,10 @@ export function createApp({
   auth,
   validateOutput = false,
   web,
+  health = async () => Response.json({ ok: true }),
 }: AppDeps): (request: Request, peer?: string) => Promise<Response> {
   const openapi = openApiDocument(operations, { title: 'Ideation Factory', version: '0.0.0' })
-  const directory = actors.directory.getOrCreate(DIRECTORY_KEY)
+  const directory = directoryOf(actors)
   const gateway = authGateway(directory, auth.baseURL, auth.trustedProxies)
 
   const handlers = createHandlers(actors)
@@ -52,7 +59,7 @@ export function createApp({
   return async (request, peer) => {
     const { pathname } = new URL(request.url)
     if (pathname === '/health') {
-      return Response.json({ ok: true })
+      return health()
     }
     // sign-in, and the documents MCP clients find it by (OAuth server and protected resource metadata)
     if (

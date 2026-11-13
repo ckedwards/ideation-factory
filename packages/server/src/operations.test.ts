@@ -7,6 +7,7 @@ import { ApiError, createApiClient } from '@ideaf/api'
 import { contentHash } from '@ideaf/core'
 import { createApp } from './app.ts'
 import { ideaIdFor } from './operations.ts'
+import { registry } from './registry.ts'
 import { signIn, startTestActors, TEST_URL, testAuth } from './testing.ts'
 
 let app: (request: Request) => Promise<Response>
@@ -177,4 +178,19 @@ test('/api/openapi.json and /health need no token', async () => {
     paths: { '/ideas/{idea}/edits': { post: { operationId: 'edit' } } },
   })
   expect(await (await app(new Request(`${TEST_URL}/health`))).json()).toEqual({ ok: true })
+})
+
+test('/health answers as RivetKit does: ok while connected to the engine, its 503 passed on', async () => {
+  const connected = createApp({
+    actors: await startTestActors(),
+    auth: testAuth,
+    health: () => registry.routes.health(),
+  })
+  expect((await connected(new Request(`${TEST_URL}/health`))).status).toBe(200)
+  const cutOff = createApp({
+    actors: await startTestActors(),
+    auth: testAuth,
+    health: async () => Response.json({ status: 'unhealthy' }, { status: 503 }),
+  })
+  expect((await cutOff(new Request(`${TEST_URL}/health`))).status).toBe(503)
 })

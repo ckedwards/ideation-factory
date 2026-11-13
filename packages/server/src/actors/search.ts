@@ -7,7 +7,7 @@ import { db } from 'rivetkit/db'
 import { fts5Search, type IdeaSearch, migrateSearch } from '../directory/search.ts'
 import { callRetrying, overloadedRetryMs, retryOverloaded } from '../sql/retry.ts'
 
-export const SEARCH_KEY = ['main']
+export { SEARCH_KEY } from './pools.ts'
 
 type Entries = Array<{ id: string; title: string }>
 
