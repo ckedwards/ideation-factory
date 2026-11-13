@@ -74,9 +74,29 @@ From seeding, on one machine (22 cores), RivetKit 3.0.6 and `rivetdev/engine:3.0
   - **The search index:** replacing an idea's row searched every row (FTS5 can't index its id column), 6.6 ms inside the transaction that registers a new idea. Rows are now found by an indexed table (`idea_search_rows`).
   - **The page cache:** 256 MB instead of SQLite's 8 MB. The directory was 47 MB at 25,000 ideas, and every page missing from the cache is fetched from the engine's storage.
   - **`create_idea`:** two directory calls instead of four. It read the team four times.
-  - **Registration is batched:** new ideas are registered through the directory's queue, many in one commit, as notifications and index updates already were.
+  - **Registration is batched:** new ideas are registered many in one commit, as notifications and index updates are (`server/src/actors/batch.ts`).
 - **The engine's storage limits making many actors at once.** Bare new actors, each answering one read: about 80 a second with 8 at once (108 with `storage.max_background_cold_reads` raised from its default of 4 to 32), and about 50 with 32 at once, with a p99 of 15.3 s. The engine logged `QuorumUnavailable` on new actors' SQLite writes, and storage commands that failed; those retry until a timeout. That's for Rivet. At the design scale it matters only for bulk creation: 100,000 ideas accumulate over months.
 - **Creating an idea is cheap alone.** With nothing else running, a whole `create_idea` takes 51 to 57 ms on the fixed build (105 to 134 ms on the published one); a comment afterwards 12 to 17 ms, an edit 19 to 24 ms. In bulk, seeding topped out at about 29 a second on the fixed build, whatever the concurrency: the actor-making limit above.
+
+From the steady state on the same machine, with the directory on a node of its own (the deploy files' layout), all on mains power:
+
+- **Measure on mains power.** On battery the laptop's CPU is throttled, and the same build did half the work: about 230 requests a second where it did 465 plugged in.
+- **A page view is about 3.3 requests,** from the web app's own loaders: two lists on the home page, four reads on a team's page, the idea page's read and its comments and the people they name, and the inbox badge, which each open tab reads once a minute (0.9 a page view by itself).
+- **Queues against actions** (RivetKit 3.0.6, the same data): below the limit the two are the same, in latency, CPU and the engine's SQLite commits (0.46 to 0.50 a request). At the limit, actions did about a fifth more (470 requests a second at 160 page views against 376), and under heavy overload they slowed where queues collapsed: at 190 page views, 3.9% failed against 26%.
+- **RivetKit 3.1.1 against 3.0.6** (actions both, the engine on the same version as RivetKit):
+
+  |                                                   | 3.0.6                          | 3.1.1                    |
+  | ------------------------------------------------- | ------------------------------ | ------------------------ |
+  | One VM, p95 at 90 / 110 / 130 page views a second | 2.3 s / 2.6–3.5 s / 3.6–6.3 s  | 196 ms / 501 ms / 1.34 s |
+  | One VM, most requests a second                    | 350–370                        | 426                      |
+  | Three app processes, at 130                       | 0.7–3.8% failed, p95 1.5–2.4 s | none failed, p95 152 ms  |
+  | Three app processes, most requests a second       | 470                            | 507                      |
+  | At 190 page views (heavy overload)                | 3.9% failed                    | 11.1% failed             |
+  | The engine's SQLite commits a request             | 0.46–0.50                      | 0.47–0.68                |
+
+  More app processes add little: one VM peaks at 426 requests a second and three at 507, as the directory's node (over 100% CPU at the peak) and the engine (about 250 to 300%) are the limit.
+
+- **Fail-over** (the three-VM Compose on one machine, RivetKit 3.1.1): a crashed app node's actors are unavailable for about 45 s, the engine's lost threshold, even if Docker restarts it at once; one stopped with SIGTERM hands them over in about 0.3 s. Killing the directory's whole VM (its app, directory node and engine), everything answered again after 100 to 136 s, in 5 of 5 runs.
 
 ## Settings
 
