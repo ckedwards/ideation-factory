@@ -48,12 +48,13 @@ Run either only while measuring: stop or snapshot between sessions, and tear it 
 
 ## Setting it up
 
-1. **Every machine:** Docker with Compose. The load machine also needs Bun, git, and SSH keys to the nodes (for `docker stats`). Give each machine a fixed private address: the seed's snapshots (below) depend on them staying the same.
-2. **The nodes:** clone the repository at the commit being measured, and fill in `deploy/three-vms/.env` from its example:
+1. **Every machine:** `MY_IP=<your address> ./ec2.sh up` makes them in Frankfurt: the network, the security groups, and the five instances on Ubuntu with Docker, at the addresses `10.0.0.10` (the load balancer), `.11`–`.13` (the nodes) and `.20` (the load machine). By hand, elsewhere: Docker with Compose. The load machine also needs Bun, git, and SSH keys to the nodes (for `docker stats`). Give each machine a fixed private address: the seed's snapshots (below) depend on them staying the same.
+2. **The nodes:** the repository at the commit being measured (cloned, or pushed from your machine: `git init` there with `receive.denyCurrentBranch updateInstead`, then `git push ubuntu@<address>:ideation-factory <commit>:refs/heads/master`), and fill in `deploy/three-vms/.env` from its example:
    - `NODE_ADDRESS`: each node's own private address;
    - `LB_ADDRESSES`: the load balancer's private address **and the load machine's**, so the app believes the addresses k6 sends for each person (otherwise every person is one address, and sign-in's rate limits throttle the seeder);
    - `S3_ENDPOINT`, `S3_REGION`, the buckets, and the two keys;
    - `IDEAF_SMTP_URL=smtp://<load machine's private address>:1025`, so sign-in codes reach Mailpit;
+   - `IDEAF_PERSONAL_TOKENS=on`, as the seeder gets each person a token (otherwise only admins may);
    - `TLS_MODE=internal` (no DNS needed; set `LOAD_INSECURE_TLS=1` on the load machine), or a real name with `acme`.
 
    Then `docker compose -f node.yaml up -d --build` on each, and wait until the app and directory show healthy.
