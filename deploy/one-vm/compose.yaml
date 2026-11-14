@@ -82,6 +82,10 @@ services:
       context: ../..
       dockerfile: deploy/engine.Dockerfile
     restart: unless-stopped
+    # the engine keeps files open for its log and storage, more than Docker's soft limit of 1024 on
+    # many hosts (Ubuntu's, say): past it, the engine stops itself ("Too many open files")
+    ulimits:
+      nofile: 524288
     depends_on:
       buckets:
         condition: service_completed_successfully

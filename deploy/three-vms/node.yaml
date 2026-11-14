@@ -62,6 +62,10 @@ services:
       context: ../..
       dockerfile: deploy/engine.Dockerfile
     restart: unless-stopped
+    # the engine keeps files open for its log and storage, more than Docker's soft limit of 1024 on
+    # many hosts (Ubuntu's, say): past it, the engine stops itself ("Too many open files")
+    ulimits:
+      nofile: 524288
     ports:
       # the engines' peer port: private network only (it's plaintext and unauthenticated)
       - ${NODE_ADDRESS}:6421:6421
