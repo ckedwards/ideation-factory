@@ -135,6 +135,24 @@ It can't be made on another machine and copied in: the engine's storage records 
 - **Reading files:** each app node logs a summary of its file store once a minute (`file store, the last 60 s: … reads, p50 …, p95 …, … ms in all`). Compare the reads' time with the time spent on idea pages (`op_open_idea` and `op_list_comments` in k6's results) to see how much of a page goes on S3.
 - **Fail-over:** a node stopped with SIGTERM, a node's app killed, and a whole node (app, directory node and engine) killed, each while a steady run goes on. Note when everything answers again.
 - **Deferred commits** (RivetKit 3.1.2-rc.1 or later, the directory only, behind a setting that's off by default): the same steps, with them on and off.
+- **What the engines ask of the buckets,** at rest and under load: requests by kind, and bytes read back, which a deployment outside the bucket's cloud pays for (`s3-requests.sh`). Each engine renews its lease every 3 s and lists the bucket every 10 s, about 1,200 PUTs and 360 LISTs an hour, whether anyone uses the app or not.
+
+## A session
+
+From a seeded deployment that's stopped (`./ec2.sh stop`), the three-node tier and the buckets' requests. Times are rough.
+
+1. **Start (5 min),** from your machine, in `packages/load`: `./ec2.sh start`, which prints the new public addresses (they change with each start; the private ones don't). The containers start with their machines. Then `./s3-requests.sh on` (request metrics, about 15 minutes before they show).
+2. **The load machine's code:** if `master` has moved since it was set up, `git push ubuntu@<its address>:ideation-factory master` from your checkout (the nodes keep theirs: they run the published image).
+3. **On the load machine,** in a `tmux` session so nothing stops if your connection drops (`ssh -t ubuntu@<its address> tmux new -A -s bench`), in `ideation-factory/packages/load`: `./remote.sh up` (Mailpit).
+4. **Check the seed (20 min):** `./remote.sh check`. It should end with `0 failed`; if not, restore the seed (above) before measuring on it.
+5. **At rest (30 min):** nothing at all. Note the start and end, in UTC (`date -u`).
+6. **The tier on the fixed RivetKit (2 × 20 min):** `./remote.sh steps`, twice. Each ends with a table (`steps.tsv`): the last step under 1% failed with a p95 under a second is what three nodes hold. The two should agree within a step.
+7. **The tier on the published RivetKit (25 min):** on each node, in `.env`, `IDEAF_APP_IMAGE=ghcr.io/ckedwards/ideation-factory/app:sha-<commit>` (the same commit), then `docker compose -f node.yaml pull app` and `docker compose -f node.yaml up -d --no-build`. Then `./remote.sh steps` once. Switch back to `app-bench` afterwards the same way.
+8. **The numbers (10 min),** from your machine:
+   - `./s3-requests.sh read <start> <end>` for the time at rest, then for the steps;
+   - files: `docker logs ideaf-app-1 2>&1 | grep "file store"` on each node, over the steps;
+   - each node's CPU and memory over each step: the `-stats.csv` beside each step's results.
+9. **Stop:** copy `.data/results` from the load machine, then `./s3-requests.sh off` and `./ec2.sh stop`.
 
 ## Costs
 
