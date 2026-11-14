@@ -1,0 +1,54 @@
+name: Images
+
+# The app's image, built once for each commit on master and each release tag, so every node of a
+# deployment runs the same build (deploy/README.md): ghcr.io/<owner>/<repo>/app, tagged
+# sha-<commit>, and master or the release's tag.
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  app:
+    # Pinned, so a new Ubuntu image is a change we choose, not one that arrives
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Tags
+        id: tags
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/app"
+          tags="$image:sha-${GITHUB_SHA::7}"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            tags="$tags,$image:$GITHUB_REF_NAME"
+          elif [ "$GITHUB_REF_NAME" = master ]; then
+            tags="$tags,$image:master"
+          fi
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+          # the node version: the commit's time, the same for every node running this build, and
+          # higher for a later commit
+          echo "version=$(git log -1 --format=%ct)" >> "$GITHUB_OUTPUT"
+      - name: Sign in to the registry
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        run: |
+          args=()
+          for tag in ${TAGS//,/ }; do
+            args+=(--tag "$tag")
+          done
+          docker buildx build --file deploy/app.Dockerfile \
+            --build-arg "BUILD_VERSION=$VERSION" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            "${args[@]}" --push .
+        env:
+          TAGS: ${{ steps.tags.outputs.tags }}
+          VERSION: ${{ steps.tags.outputs.version }}

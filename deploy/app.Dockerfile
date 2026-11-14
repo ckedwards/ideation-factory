@@ -41,8 +41,10 @@ COPY --from=build /app/packages/server packages/server
 COPY --from=build /app/packages/web/dist packages/web/dist
 COPY tsconfig*.json ./
 COPY deploy/app-entrypoint.sh /usr/local/bin/app-entrypoint
-# when this image was built: the node version, which rises with each build
-RUN date +%s > /app/build-version
+# the node version, which rises with each build: the commit's time when CI builds it (the same for
+# every node running it), otherwise when this image was built
+ARG BUILD_VERSION
+RUN echo "${BUILD_VERSION:-$(date +%s)}" > /app/build-version
 ENV NODE_ENV=production \
     PORT=8080 \
     IDEAF_DATA=/data \
