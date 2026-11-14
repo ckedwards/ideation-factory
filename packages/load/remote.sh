@@ -115,7 +115,7 @@ load() {
   if [ "${LOAD_AUTH:-jwt}" = jwt ]; then
     bun "$HERE/src/tokens.ts"
   fi
-  dc --profile k6 run --rm "$@" k6 run --summary-export "/data/results/$(basename "$out").json" /load/k6/load.ts \
+  dc --profile k6 run --rm "$@" k6 run --summary-export "/data/results/${out#"$DATA/results/"}.json" /load/k6/load.ts \
     | tee "$out.txt" || true
   kill "${SAMPLERS[@]}" 2>/dev/null || true
   echo "results: $out.txt, $out.json, $out-stats.csv"
