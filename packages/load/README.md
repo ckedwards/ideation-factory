@@ -101,6 +101,40 @@ From the steady state on the same machine, with the directory on a node of its o
 
 - **Fail-over** (the three-VM Compose on one machine, RivetKit 3.1.1): a crashed app node's actors are unavailable for about 45 s, the engine's lost threshold, even if Docker restarts it at once; one stopped with SIGTERM hands them over in about 0.3 s. Killing the directory's whole VM (its app, directory node and engine), everything answered again after 100 to 136 s, in 5 of 5 runs.
 
+From the Frankfurt deployment ([DEPLOYMENT.md](DEPLOYMENT.md): three `m7i.xlarge` nodes of 4 vCPU and 16 GB, S3 in the same region, RivetKit and the engine 3.1.1, the app at `e6f8638` from the published images), its first session, 14 November 2026:
+
+- **The three-node tier: about 120 page views a second, 130 at the edge** (about 400 to 430 requests a second; at the design scale's page a minute each, about 7,200 people all active at once). On RivetKit with the fix for rivet-dev/rivet#5991 (`app-bench`), two runs of `remote.sh steps`:
+
+  | Page views a second | 100   | 110   | 120    | 130    | 140                  |
+  | ------------------- | ----- | ----- | ------ | ------ | -------------------- |
+  | First run, p95      | 85 ms |       | 94 ms  |        | 2.9 s, 371 dropped   |
+  | Second run, p95     | 86 ms | 96 ms | 102 ms | 487 ms | 6.3 s, 1,093 dropped |
+
+  Nothing failed in either. Below 100 the p95 hardly moves (77 ms at 40). **The limit is the directory's one thread:** its process at 100% of a core at 120 and 111% at 140, while each engine used 1 to 1.4 cores of 4, each app half of one, and the load machine 8% (so the page views k6 dropped past the knee were VUs waiting on slow answers, not k6 short of CPU). The node hosting the directory was at about 2.8 cores of 4.
+
+- **On RivetKit as published** (`app`, the same build), one step less: 120 page views a second held with a p95 of 272 ms (93 ms at 100, 123 ms at 110), and 130 didn't (6.7 s, 0.09% failed, 2,577 dropped). The directory used about a tenth more CPU for the same work (103 to 112% against 92 to 101%). That understates the bug: these steps are 90 s and mostly reads, and seeding on it, sustained writes, slowed the directory from about 40 writes a second to 5 within half an hour.
+- **Reading files from S3:** p50 about 26 ms and p95 50 to 57 ms, the same on all three nodes and at every rate. A page reads a version's files at once (`Promise.all`), beside the directory's access check, so it waits for about one read: about a quarter of opening an idea at the median (98 ms at 120 page views a second) and a third at the 95th percentile (160 ms). About two reads per idea opened.
+- **What the engines ask of the buckets** (S3's request metrics, three engines):
+
+  | An hour                 | At rest (30 min, just after `check` had woken every idea) | Under load (the three runs, about 100 page views a second) |
+  | ----------------------- | --------------------------------------------------------- | ---------------------------------------------------------- |
+  | Engine bucket: PUT      | 4,600                                                     | 34,400                                                     |
+  | GET                     | 82,000                                                    | 170,000                                                    |
+  | LIST                    | 1,770                                                     | 1,850                                                      |
+  | DELETE                  | 19,000 (in bursts)                                        | 28,700                                                     |
+  | Bytes read / written    | 72 MB / 16 MB                                             | 2.9 GB / 3.0 GB                                            |
+  | Files bucket: GET, read | none                                                      | 108,000, 173 MB                                            |
+
+  LISTs barely change with load: discovery runs on a timer (every 10 s per engine; leases are renewed every 3 s). The rest scales with use. At rest is probably high, so soon after waking every idea; a window long after any activity would give the floor.
+
+- **Seeding the design scale: 37 minutes, nothing failed,** where the laptop took two hours: people 204 s, team members 130 s, ideas 23 minutes (1,382 s, 84 a second at first), comments 346 s (6.7 times the laptop's speed, as waking ideas spread over all three nodes). That was the second attempt. The first found five problems, each fixed but the last:
+  - the files key was refused every new file: without `s3:ListBucket`, S3 answers 403, not 404, for an object that isn't there (#46);
+  - every actor ran on one node: each node's image took its node version from its build time, and the engine gives actors only to the highest version (#47);
+  - an engine stopped itself on "Too many open files": Docker on Ubuntu allows a container 1024 (#47);
+  - on RivetKit as published, the directory slowed to an eighth of its pace (above);
+  - 20 new ideas were left with databases that never open ("database disk image is malformed", "file is not a database"), created just after an engine restarted: once after it stopped itself, once from a graceful restart. None had been acknowledged. Rivet's, and not reported; `remote.sh check` found no damage on the second seed.
+- **Restoring the seed works** (snapshots of the nodes' disks, copies of the buckets): the data answered with nothing failed. But `aws s3 sync` between buckets missed 54 of the engine bucket's 7,376 objects, its cluster records, rewritten at the same size; and a disk made from a snapshot is slow until read through (an idea's page took 7.4 s at the 95th percentile). [DEPLOYMENT.md](DEPLOYMENT.md) now checks every object and reads the disks first.
+
 ## Settings
 
 | Variable                                                 | Default                       |                                                                   |
