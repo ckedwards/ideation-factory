@@ -1,0 +1,19 @@
+# A machine of the dedicated directory tier (deploy/README.md): a directory process and nothing
+# else, so the directory's work has a machine to itself, not a JS thread beside the app's. It
+# connects to the engine on one of the three VMs (DIRECTORY_ENGINE), as there are still three
+# engines; give each directory machine a different one. Run it on two machines: one hosts the
+# directory, the other stands by. The VMs then run their apps and engines without theirs:
+#
+#   docker compose -f directory.yaml up -d                        on each directory machine
+#   docker compose -f node.yaml up -d --scale directory=0         on each of the three VMs
+name: ideaf
+
+services:
+  directory:
+    extends:
+      file: node.yaml
+      service: directory
+    # the engine is on another machine, and makes the pools itself
+    depends_on: !reset {}
+    environment:
+      RIVET_ENDPOINT: http://default:${RIVET_ADMIN_TOKEN}@${DIRECTORY_ENGINE:?set DIRECTORY_ENGINE, one VM's private address with its engine's port, like 10.0.0.11:6420}

@@ -75,6 +75,9 @@ services:
     ports:
       # the engines' peer port: private network only (it's plaintext and unauthenticated)
       - ${NODE_ADDRESS}:6421:6421
+      # its API, for directory processes on machines of their own (directory.yaml): private network
+      # only, and only from those machines (it's plaintext, behind the admin token)
+      - ${NODE_ADDRESS}:6420:6420
     configs:
       - source: engine
         target: /etc/rivet/config.yaml
