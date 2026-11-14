@@ -21,11 +21,13 @@ MACHINES=(
   "ideaf-node3 m7i.xlarge  10.0.0.13 100 node"
   "ideaf-load  c7i.xlarge  10.0.0.20 30  load"
 )
-# the dedicated directory tier: a directory process on each, connected to a node's engine
+# the dedicated directory tier: a directory process on each, connected to a node's engine. The
+# directory is limited by one thread, so these want fast cores: c8a's are 4.5 GHz, one thread a core
+# (the nodes' m7i: 3.2 GHz, two threads a core)
 if [ "${DIRECTORY_MACHINES:-0}" = 1 ]; then
   MACHINES+=(
-    "ideaf-dir1  m7i.xlarge  10.0.0.21 30  directory"
-    "ideaf-dir2  m7i.xlarge  10.0.0.22 30  directory"
+    "ideaf-dir1  ${DIRECTORY_TYPE:-c8a.xlarge}  10.0.0.21 30  directory"
+    "ideaf-dir2  ${DIRECTORY_TYPE:-c8a.xlarge}  10.0.0.22 30  directory"
   )
 fi
 
