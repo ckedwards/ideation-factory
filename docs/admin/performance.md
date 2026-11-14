@@ -16,7 +16,7 @@ Three parts do the work, and they scale differently:
 
 | Setting | Default | When to change it |
 |---|---|---|
-| `IDEAF_DIRECTORY_CALLS` | 4 | How many calls each app node sends the directory at once. Keep it at 4 on RivetKit releases without the fix for rivet-dev/rivet#5991 (3.0.6 and 3.1.1 have the bug). There, more calls at once make the directory slower, not faster: at 64 in flight, a write cost 372 ms of CPU instead of 6 ms. Once RivetKit includes the fix, 16 lets reads wait less (10 ms instead of 43 ms during bulk writes). |
+| `IDEAF_DIRECTORY_CALLS` | 4 | How many calls each app node sends the directory at once. Keep it at 4 on RivetKit releases without the fix for rivet-dev/rivet#5991 (3.0.6 and 3.1.1 have the bug). There, more calls at once make the directory slower, not faster: at 64 in flight, a write cost 372 ms of CPU instead of 6 ms. Once RivetKit includes the fix, 16 lets reads wait less (10 ms instead of 43 ms during bulk writes). The limit is per app node, so it holds back less with each node added: on three nodes, under steady writes (a bulk import, say), the directory still slowed from about 40 writes a second to 5 within half an hour. Sustained load on the directory needs a RivetKit with the fix. |
 
 The directory keeps its whole database in memory, up to 256 MB, in the process that hosts it. It was 47 MB at 25,000 ideas.
 

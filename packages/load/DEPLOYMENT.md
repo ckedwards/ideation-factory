@@ -69,7 +69,13 @@ Run either only while measuring: stop or snapshot between sessions, and tear it 
    LOAD_RATE=100 LOAD_DURATION=5m ./remote.sh steady
    ```
 
-The deployment runs the published RivetKit, which has rivet-dev/rivet#5991, with its workaround (`IDEAF_DIRECTORY_CALLS=4`), as people will run it.
+**RivetKit with the fix for rivet-dev/rivet#5991.** Benchmarks run the app on RivetKit's native module with the fix (rivet-dev/rivet#5992), so they measure the app rather than the bug. On the published 3.1.1, even with its workaround (`IDEAF_DIRECTORY_CALLS=4`), the seed's directory writes fell from about 40 a second to 5 within half an hour (the README's findings). Build the module with `rivetkit-fix/build.sh` on any Linux machine with Rust, copy it to each node's `packages/load/.data/rivetkit-napi-fixed.node`, and start the app and directory with the overlay:
+
+```sh
+LOAD_RIVETKIT_VERSION=3.1.1 docker compose -f node.yaml -f ../../packages/load/rivetkit-fix/compose.yaml up -d app directory
+```
+
+It changes only the code running, not the data, so it can be switched either way on a seeded deployment; anything that recreates the containers without the overlay goes back to the published module. Another RivetKit version (3.1.2 for the deferred commits) needs the module built at that version.
 
 ## The seed: once, then restored
 
@@ -95,9 +101,12 @@ To restore it: stop the nodes, restore their disks from the snapshots with the s
 
 ## What to measure
 
-- **The tiers:** the page-view rate each layout holds with under 1% failures and a p95 under a second, stepping up in 90 s steps after a warm-up:
+- **The tiers:** the page-view rate each layout holds with under 1% failures and a p95 under a second, stepping up in 90 s steps after a warm-up, on RivetKit with the fix:
   - three nodes;
   - three nodes, with the directory's nodes on two machines of their own (move the `directory` services there).
+
+  Then the three nodes once more on the published RivetKit, at the same steps: what a deployment on today's release gets.
+
 - **Reading files:** each app node logs a summary of its file store once a minute (`file store, the last 60 s: … reads, p50 …, p95 …, … ms in all`). Compare the reads' time with the time spent on idea pages (`op_open_idea` and `op_list_comments` in k6's results) to see how much of a page goes on S3.
 - **Fail-over:** a node stopped with SIGTERM, a node's app killed, and a whole node (app, directory node and engine) killed, each while a steady run goes on. Note when everything answers again.
 - **Deferred commits** (RivetKit 3.1.2-rc.1 or later, the directory only, behind a setting that's off by default): the same steps, with them on and off.
