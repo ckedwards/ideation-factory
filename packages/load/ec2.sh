@@ -3,7 +3,8 @@
 # otherwise. Everything it makes is tagged Project=ideaf-bench, and found again by that tag, so each
 # command is safe to run again. It uses the AWS CLI's own sign-in (aws login).
 #
-#   MY_IP=1.2.3.4 ./ec2.sh up   the network, security groups and the five instances (billing starts)
+#   MY_IP=1.2.3.4 ./ec2.sh up   the network, security groups and the five instances (billing starts);
+#                             with DIRECTORY_MACHINES=1, the dedicated directory tier's two as well
 #   ec2.sh ls                 the instances and their addresses
 #   ec2.sh stop | start       stop (the disks keep the data, about $1 a day) or start them again
 #   ec2.sh down               terminate the instances and their disks (the network stays: it's free)
@@ -20,6 +21,13 @@ MACHINES=(
   "ideaf-node3 m7i.xlarge  10.0.0.13 100 node"
   "ideaf-load  c7i.xlarge  10.0.0.20 30  load"
 )
+# the dedicated directory tier: a directory process on each, connected to a node's engine
+if [ "${DIRECTORY_MACHINES:-0}" = 1 ]; then
+  MACHINES+=(
+    "ideaf-dir1  m7i.xlarge  10.0.0.21 30  directory"
+    "ideaf-dir2  m7i.xlarge  10.0.0.22 30  directory"
+  )
+fi
 
 tags() { echo "ResourceType=$1,Tags=[{Key=Name,Value=$2},{Key=Project,Value=$TAG}]"; }
 none() { [ -z "$1" ] || [ "$1" = None ]; }
@@ -69,7 +77,7 @@ up() {
 
   # 3. the security groups: SSH from you on each, and between the machines only what DEPLOYMENT.md lists
   declare -A sg
-  for role in node lb load; do
+  for role in node lb load directory; do
     sg[$role]=$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=$vpc" "Name=group-name,Values=ideaf-$role" \
       --query 'SecurityGroups[0].GroupId' --output text)
     if none "${sg[$role]}"; then
@@ -81,7 +89,7 @@ up() {
   allow() {
     aws ec2 authorize-security-group-ingress --group-id "$1" --ip-permissions "$2" >/dev/null 2>&1 || true
   }
-  for role in node lb load; do
+  for role in node lb load directory; do
     allow "${sg[$role]}" "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=$MY_IP/32,Description=you}]"
     allow "${sg[$role]}" "IpProtocol=icmp,FromPort=-1,ToPort=-1,IpRanges=[{CidrIp=10.0.0.0/16,Description=ping}]"
   done
@@ -90,7 +98,11 @@ up() {
   allow "${sg[node]}" "IpProtocol=tcp,FromPort=22,ToPort=22,UserIdGroupPairs=[{GroupId=${sg[load]}}]"
   allow "${sg[lb]}" "IpProtocol=tcp,FromPort=443,ToPort=443,UserIdGroupPairs=[{GroupId=${sg[load]}}]"
   allow "${sg[load]}" "IpProtocol=tcp,FromPort=1025,ToPort=1025,UserIdGroupPairs=[{GroupId=${sg[node]}}]"
-  echo "security groups: node ${sg[node]}, lb ${sg[lb]}, load ${sg[load]}"
+  # the directory machines: the nodes' engines' API, sign-in emails to Mailpit, docker stats from the load machine
+  allow "${sg[node]}" "IpProtocol=tcp,FromPort=6420,ToPort=6420,UserIdGroupPairs=[{GroupId=${sg[directory]}}]"
+  allow "${sg[load]}" "IpProtocol=tcp,FromPort=1025,ToPort=1025,UserIdGroupPairs=[{GroupId=${sg[directory]}}]"
+  allow "${sg[directory]}" "IpProtocol=tcp,FromPort=22,ToPort=22,UserIdGroupPairs=[{GroupId=${sg[load]}}]"
+  echo "security groups: node ${sg[node]}, lb ${sg[lb]}, load ${sg[load]}, directory ${sg[directory]}"
 
   # 4. the instances, Ubuntu 24.04 with Docker (billing starts here)
   ami=$(aws ssm get-parameter --name /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id \
@@ -144,7 +156,7 @@ case "${1:-}" in
     aws ec2 terminate-instances --instance-ids $(ids) --query 'TerminatingInstances[].InstanceId' --output text
     ;;
   *)
-    sed -n '2,8p' "$0"
+    sed -n '2,9p' "$0"
     exit 2
     ;;
 esac

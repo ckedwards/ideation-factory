@@ -8,6 +8,7 @@
 #   remote.sh burst     the same, with LOAD_BOTS bots (50 unless set) commenting and editing
 #   remote.sh steps     a warm-up, then page views rising in steps until the deployment can't keep up
 #   remote.sh check     open every seeded idea once, and list any that don't open
+#   remote.sh probe     twice a second, a directory read and an idea's page, until Ctrl-C: when each failed
 #   remote.sh down      stop Mailpit
 #
 # steps: LOAD_WARMUP_RATE page views a second (30) for LOAD_WARMUP (5m), then each rate in
@@ -130,11 +131,14 @@ case "${1:-}" in
   check)
     bun "$HERE/src/check.ts"
     ;;
+  probe)
+    bun "$HERE/src/probe.ts"
+    ;;
   down)
     dc down
     ;;
   *)
-    sed -n '2,19p' "$0"
+    sed -n '2,20p' "$0"
     exit 2
     ;;
 esac

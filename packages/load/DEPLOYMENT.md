@@ -126,14 +126,14 @@ It can't be made on another machine and copied in: the engine's storage records 
 
 ## What to measure
 
-- **The tiers:** the page-view rate each layout holds with under 1% failures and a p95 under a second, stepping up in 90 s steps after a warm-up, on RivetKit with the fix:
+- **The tiers:** the page-view rate each layout holds with under 1% failures and a p95 under a second, stepping up in 90 s steps after a warm-up (`remote.sh steps`), on RivetKit with the fix:
   - three nodes;
-  - three nodes, with the directory's nodes on two machines of their own (move the `directory` services there).
+  - three nodes, with the directory on two machines of its own (`deploy/three-vms/directory.yaml`).
 
   Then the three nodes once more on the published RivetKit, at the same steps: what a deployment on today's release gets.
 
 - **Reading files:** each app node logs a summary of its file store once a minute (`file store, the last 60 s: … reads, p50 …, p95 …, … ms in all`). Compare the reads' time with the time spent on idea pages (`op_open_idea` and `op_list_comments` in k6's results) to see how much of a page goes on S3.
-- **Fail-over:** a node stopped with SIGTERM, a node's app killed, and a whole node (app, directory node and engine) killed, each while a steady run goes on. Note when everything answers again.
+- **Fail-over:** a node stopped with SIGTERM, a node's app killed, and a whole node (app, directory node and engine) killed, each while a steady run goes on, with `remote.sh probe` beside it saying when each kind of request answers again.
 - **Deferred commits** (RivetKit 3.1.2-rc.1 or later, the directory only, behind a setting that's off by default): the same steps, with them on and off.
 - **What the engines ask of the buckets,** at rest and under load: requests by kind, and bytes read back, which a deployment outside the bucket's cloud pays for (`s3-requests.sh`). Each engine renews its lease every 3 s and lists the bucket every 10 s, about 1,200 PUTs and 360 LISTs an hour, whether anyone uses the app or not.
 
@@ -153,6 +153,26 @@ From a seeded deployment that's stopped (`./ec2.sh stop`), the three-node tier a
    - files: `docker logs ideaf-app-1 2>&1 | grep "file store"` on each node, over the steps;
    - each node's CPU and memory over each step: the `-stats.csv` beside each step's results.
 9. **Stop:** copy `.data/results` from the load machine, then `./s3-requests.sh off` and `./ec2.sh stop`.
+
+## The second session: the directory's own machines, and fail-over
+
+From the same seeded deployment, after the first session.
+
+1. **Start (5 min):** `./ec2.sh start`, then the two directory machines: `DIRECTORY_MACHINES=1 MY_IP=<your address> ./ec2.sh up`, which makes only what's missing (about $0.48 an hour more while they run).
+2. **The nodes' code (10 min):** push `master` to each node and the load machine as in setting up. A node whose `node.yaml` changed (its engine's API now published for the directory machines) recreates its engine on `docker compose -f node.yaml up -d --no-build`: do that one node at a time with the deployment at rest, each healthy before the next, as an engine restarting under load has left ideas that never opened again.
+3. **The directory machines (15 min),** each with the repository at `master` and `deploy/three-vms/.env` as the nodes', with its own `NODE_ADDRESS` and `DIRECTORY_ENGINE` (`10.0.0.11:6420` for the first, `10.0.0.12:6420` for the second): `docker compose -f directory.yaml pull` and `up -d --no-build`. Add the load machine's key to both (`~/.ssh/authorized_keys`), and both to `NODES` in the load machine's `remote.env`, so the runs' samples include them.
+4. **Move the directory (2 min):** on each node, `docker compose -f node.yaml up -d --no-build --scale directory=0`. The nodes' directory processes stop gracefully and the directory starts on a directory machine; its CPU there, under load, shows which.
+5. **The tier (2 × 20 min):** `./remote.sh steps`, twice.
+6. **Back to three nodes (5 min):** on each node, `docker compose -f node.yaml up -d --no-build` (their directory processes return), then `docker compose -f directory.yaml stop` on the directory machines, and `./ec2.sh` can leave them stopped from here on.
+7. **Fail-over (about 50 min):** a steady run at about two thirds of what three nodes held (`LOAD_RATE=<rate> LOAD_DURATION=10m ./remote.sh steady`), with `./remote.sh probe` beside it in a second `tmux` window; stop the probe a minute or two after each event and start a new one for the next. Each of these twice, on a node that isn't the directory's, then on the directory's:
+   - **an app stopped gracefully:** `docker compose -f node.yaml stop app`, then `start app`;
+   - **an app killed:** `sudo kill -9 $(docker inspect -f '{{.State.Pid}}' ideaf-app-1)` (Docker restarts it, as after a crash);
+   - **a whole node lost:** `aws ec2 stop-instances --force --instance-ids <the node>` from your machine, then start it again once everything answers.
+
+   The probe's stretches of failures are how long each kind of request couldn't be served.
+
+8. **Check the seed (20 min):** `./remote.sh check`. Kills under load are what damaged ideas before; any that fail, note their IDs from `check-failed.txt`, then restore the seed before the next session.
+9. **Stop:** copy `.data/results`, then `./ec2.sh stop`.
 
 ## Costs
 
