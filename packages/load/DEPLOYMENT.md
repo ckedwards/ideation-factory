@@ -70,13 +70,20 @@ Run either only while measuring: stop or snapshot between sessions, and tear it 
    LOAD_RATE=100 LOAD_DURATION=5m ./remote.sh steady
    ```
 
-**RivetKit with the fix for rivet-dev/rivet#5991.** Benchmarks run the app on RivetKit's native module with the fix (rivet-dev/rivet#5992), so they measure the app rather than the bug. On the published 3.1.1, even with its workaround (`IDEAF_DIRECTORY_CALLS=4`), the seed's directory writes fell from about 40 a second to 5 within half an hour (the README's findings). Build the module with `rivetkit-fix/build.sh` on any Linux machine with Rust, copy it to each node's `packages/load/.data/rivetkit-napi-fixed.node`, and start the app and directory with the overlay:
+**RivetKit with the fix for rivet-dev/rivet#5991.** Benchmarks run the app on RivetKit's native module with the fix (rivet-dev/rivet#5992), so they measure the app rather than the bug. On the published 3.1.1, even with its workaround (`IDEAF_DIRECTORY_CALLS=4`), the seed's directory writes fell from about 40 a second to 5 within half an hour (the README's findings). The published `app-bench` image has it: the app's image for the same commit with the module swapped, so its node version is the same. On each node, set `IDEAF_APP_IMAGE=ghcr.io/ckedwards/ideation-factory/app-bench:sha-<commit>` in `.env`, then:
+
+```sh
+docker compose -f node.yaml pull app
+docker compose -f node.yaml up -d --no-build
+```
+
+and `app` in place of `app-bench` for the comparison run on the published RivetKit. The module comes from the RivetKit fix workflow (`.github/workflows/rivetkit-fix.yml`), run by hand once per RivetKit version; until it has run for the version the app pins, CI skips `app-bench`, with a notice. Either way it changes only the code running, not the data, so a seeded deployment can switch back and forth.
+
+Without the registry: build the module with `rivetkit-fix/build.sh` on any Linux machine with Rust, copy it to each node's `packages/load/.data/rivetkit-napi-fixed.node`, and start the app and directory with the overlay (anything that recreates them without it goes back to the published module):
 
 ```sh
 LOAD_RIVETKIT_VERSION=3.1.1 docker compose -f node.yaml -f ../../packages/load/rivetkit-fix/compose.yaml up -d app directory
 ```
-
-It changes only the code running, not the data, so it can be switched either way on a seeded deployment; anything that recreates the containers without the overlay goes back to the published module. Another RivetKit version (3.1.2 for the deferred commits) needs the module built at that version.
 
 ## The seed: once, then restored
 

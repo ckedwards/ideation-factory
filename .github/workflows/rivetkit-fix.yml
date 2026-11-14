@@ -1,0 +1,45 @@
+name: RivetKit fix
+
+# RivetKit's native module with the fix for rivet-dev/rivet#5991 (packages/load/rivetkit-fix),
+# at the version the app pins, as an image of its own: ghcr.io/<owner>/<repo>/rivetkit-napi-fixed,
+# tagged with the RivetKit version. The Images workflow builds each commit's benchmark image
+# (app-bench) from it. Run by hand, once per RivetKit version: compiling the module takes a while.
+# Delete it, with app-bench, once a RivetKit release has the fix.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  module:
+    # Pinned, so a new Ubuntu image is a change we choose, not one that arrives
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7.0.1
+      # compiling Rivet's workspace needs more disk than the runner leaves free
+      - name: Make room
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - name: Version
+        id: version
+        run: |
+          version=$(grep -oE '"rivetkit": "[^"]+"' packages/server/package.json | grep -oE '[0-9][^"]*')
+          echo "rivetkit=$version" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}/rivetkit-napi-fixed:$version" >> "$GITHUB_OUTPUT"
+      - name: Sign in to the registry
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        run: |
+          docker buildx build --file packages/load/rivetkit-fix/module.Dockerfile \
+            --build-arg "RIVETKIT_VERSION=$RIVETKIT" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --tag "$IMAGE" --push .
+        env:
+          RIVETKIT: ${{ steps.version.outputs.rivetkit }}
+          IMAGE: ${{ steps.version.outputs.image }}

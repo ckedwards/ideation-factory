@@ -52,3 +52,64 @@ jobs:
         env:
           TAGS: ${{ steps.tags.outputs.tags }}
           VERSION: ${{ steps.tags.outputs.version }}
+
+  # The same build with RivetKit's native module swapped for the one with the fix for
+  # rivet-dev/rivet#5991, for benchmarks only (packages/load/DEPLOYMENT.md): ghcr.io/<owner>/<repo>/
+  # app-bench, with the app's tags. Skipped, with a notice, until the RivetKit fix workflow has
+  # built the module for the RivetKit version the app pins.
+  app-bench:
+    needs: app
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Images
+        id: images
+        run: |
+          repo="ghcr.io/${GITHUB_REPOSITORY,,}"
+          rivetkit=$(grep -oE '"rivetkit": "[^"]+"' packages/server/package.json | grep -oE '[0-9][^"]*')
+          tags="$repo/app-bench:sha-${GITHUB_SHA::7}"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            tags="$tags,$repo/app-bench:$GITHUB_REF_NAME"
+          elif [ "$GITHUB_REF_NAME" = master ]; then
+            tags="$tags,$repo/app-bench:master"
+          fi
+          {
+            echo "app=$repo/app:sha-${GITHUB_SHA::7}"
+            echo "module=$repo/rivetkit-napi-fixed:$rivetkit"
+            echo "rivetkit=$rivetkit"
+            echo "tags=$tags"
+          } >> "$GITHUB_OUTPUT"
+      - name: Sign in to the registry
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: The module for this RivetKit
+        id: module
+        run: |
+          if docker buildx imagetools inspect "$MODULE" >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No $MODULE yet: run the RivetKit fix workflow, then this one again"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          MODULE: ${{ steps.images.outputs.module }}
+      - name: Build and push
+        if: steps.module.outputs.found == 'true'
+        run: |
+          args=()
+          for tag in ${TAGS//,/ }; do
+            args+=(--tag "$tag")
+          done
+          docker buildx build --file packages/load/rivetkit-fix/app.Dockerfile \
+            --build-arg "APP_IMAGE=$APP" --build-arg "MODULE_IMAGE=$MODULE" \
+            --build-arg "RIVETKIT_VERSION=$RIVETKIT" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            "${args[@]}" --push packages/load/rivetkit-fix
+        env:
+          APP: ${{ steps.images.outputs.app }}
+          MODULE: ${{ steps.images.outputs.module }}
+          RIVETKIT: ${{ steps.images.outputs.rivetkit }}
+          TAGS: ${{ steps.images.outputs.tags }}

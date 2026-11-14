@@ -1,5 +1,6 @@
 # The app with RivetKit's native module built with the fix for rivet-dev/rivet#5991 (build.sh),
-# in place of the published one. Load tests only: run.sh adds this with LOAD_RIVETKIT_FIX=1.
+# in place of the published one. Load tests only: run.sh adds this with LOAD_RIVETKIT_FIX=1, and a
+# deployment can (DEPLOYMENT.md), though the app-bench image is simpler there.
 services:
   app:
     volumes: &fixed
