@@ -37,7 +37,7 @@ Run either only while measuring: stop or snapshot between sessions, and tear it 
 - **Buckets:** one for the engine, one for files. Block public access; no versioning, as the engine rewrites its own objects.
 - **Keys:** an IAM user and access key for each bucket (the app's S3 client can't use an instance role), allowed only its own bucket:
   - the engine's: `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:AbortMultipartUpload` on `arn:aws:s3:::<engine bucket>/*`, and `s3:ListBucket` on `arn:aws:s3:::<engine bucket>`;
-  - the files': `s3:GetObject` and `s3:PutObject` on `arn:aws:s3:::<files bucket>/*`, nothing else.
+  - the files': `s3:GetObject` and `s3:PutObject` on `arn:aws:s3:::<files bucket>/*`, and `s3:ListBucket` on `arn:aws:s3:::<files bucket>` (without it, S3 answers 403 for a file not there yet, and every new file fails).
 
   If the engine is refused something it needs, its log says so: note it, so `deploy/README.md` can be corrected.
 

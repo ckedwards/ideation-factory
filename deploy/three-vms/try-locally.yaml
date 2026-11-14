@@ -190,7 +190,7 @@ configs:
         {"name": "engine", "credentials": [{"accessKey": "engine", "secretKey": "${S3_ENGINE_SECRET_ACCESS_KEY}"}],
           "actions": ["Read:ideaf-engine", "Write:ideaf-engine", "List:ideaf-engine", "Tagging:ideaf-engine"]},
         {"name": "files", "credentials": [{"accessKey": "files", "secretKey": "${S3_FILES_SECRET_ACCESS_KEY}"}],
-          "actions": ["Read:ideaf-files", "Write:ideaf-files"]}]}
+          "actions": ["Read:ideaf-files", "Write:ideaf-files", "List:ideaf-files"]}]}
 
 volumes:
   engine1:

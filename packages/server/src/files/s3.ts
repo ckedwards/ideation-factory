@@ -45,9 +45,13 @@ export class S3FileStore implements FileStore {
   async put(content: Uint8Array<ArrayBuffer>): Promise<string> {
     const hash = await contentHash(content)
     const key = this.#key(hash)
-    if (!(await this.#client.exists(key))) {
-      // a copy: the caller may change its buffer while the upload is under way
-      await this.#client.write(key, content.slice(), { type: 'application/octet-stream' })
+    if (!(await this.#exists(key))) {
+      try {
+        // a copy: the caller may change its buffer while the upload is under way
+        await this.#client.write(key, content.slice(), { type: 'application/octet-stream' })
+      } catch (error) {
+        throw refusal(error, `storing ${key}`)
+      }
     }
     return hash
   }
@@ -65,14 +69,43 @@ export class S3FileStore implements FileStore {
       if (isNotFound(error)) {
         return null
       }
-      throw error
+      throw refusal(error, `reading ${this.#key(hash)}`)
     }
   }
 
   async has(hash: string): Promise<boolean> {
     assertContentHash(hash)
-    return this.#client.exists(this.#key(hash))
+    return this.#exists(this.#key(hash))
   }
+
+  async #exists(key: string): Promise<boolean> {
+    try {
+      return await this.#client.exists(key)
+    } catch (error) {
+      throw refusal(error, `checking for ${key}`)
+    }
+  }
+}
+
+/**
+ * S3 refusing the app's key, said plainly. Without s3:ListBucket, AWS answers a missing file with 403,
+ * not 404, so a key allowed only to read and write fails on every new file; Bun reports a 403 to a
+ * HEAD as "an unexpected error", with no status. Anything else (the network, say) passes through.
+ */
+function refusal(error: unknown, doing: string): unknown {
+  const code = (error as { name?: unknown; code?: unknown } | null)?.code
+  if (
+    (error as { name?: unknown } | null)?.name !== 'S3Error' ||
+    (code !== 'AccessDenied' && code !== 'UnknownError')
+  ) {
+    return error
+  }
+  return new Error(
+    `The files bucket refused ${doing} (${String(code)}). The app's key needs s3:GetObject and s3:PutObject on ` +
+      "the bucket's files and s3:ListBucket on the bucket: without listing, S3 answers 403 for a file that " +
+      "isn't there yet (deploy/README.md).",
+    { cause: error },
+  )
 }
 
 function isNotFound(error: unknown): boolean {

@@ -7,13 +7,17 @@
 //
 // (CI runs SeaweedFS for it.)
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { contentHash } from '@ideaf/core'
 import { fileStoreContract } from './contract.ts'
 import { LocalFolderFileStore } from './local-folder.ts'
 import { S3FileStore } from './s3.ts'
 import { fileStoreFromEnv } from './settings.ts'
 
-/** Just enough S3 for the store: objects in memory, signatures not checked. */
-function fakeS3() {
+/**
+ * Just enough S3 for the store: objects in memory, signatures not checked. Unless `listing`, it answers
+ * a missing object as AWS does for a key without s3:ListBucket: 403, not 404.
+ */
+function fakeS3({ listing = true } = {}) {
   const objects = new Map<string, Uint8Array<ArrayBuffer>>()
   const requests: string[] = []
   const server = Bun.serve({
@@ -26,6 +30,14 @@ function fakeS3() {
         return new Response(null, { status: 200, headers: { etag: '"x"' } })
       }
       const object = objects.get(key)
+      if (!object && !listing) {
+        return request.method === 'HEAD'
+          ? new Response(null, { status: 403 })
+          : new Response(
+              '<?xml version="1.0" encoding="UTF-8"?><Error><Code>AccessDenied</Code><Message>Access Denied</Message></Error>',
+              { status: 403, headers: { 'content-type': 'application/xml' } },
+            )
+      }
       if (!object) {
         return request.method === 'HEAD'
           ? new Response(null, { status: 404 })
@@ -71,6 +83,19 @@ describe('S3FileStore', () => {
     const hash = await store.put(new TextEncoder().encode('the original'))
     fake.objects.set(`/ideaf/tampered/${hash.slice(0, 2)}/${hash}`, new TextEncoder().encode('something else'))
     await expect(store.get(hash)).rejects.toThrow("don't match their hash")
+  })
+
+  test("says the key needs s3:ListBucket when S3 answers 403 for a file that isn't there", async () => {
+    const unlisted = fakeS3({ listing: false })
+    try {
+      const store = new S3FileStore({ bucket: 'ideaf', endpoint: unlisted.endpoint, ...credentials })
+      const missing = await contentHash(new TextEncoder().encode('never stored'))
+      await expect(store.put(new TextEncoder().encode('new'))).rejects.toThrow('s3:ListBucket')
+      await expect(store.has(missing)).rejects.toThrow('s3:ListBucket')
+      await expect(store.get(missing)).rejects.toThrow('s3:ListBucket')
+    } finally {
+      unlisted.stop()
+    }
   })
 })
 
