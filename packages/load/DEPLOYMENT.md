@@ -150,8 +150,9 @@ From a seeded deployment that's stopped (`./ec2.sh stop`), the three-node tier a
 7. **The tier on the published RivetKit (25 min):** on each node, in `.env`, `IDEAF_APP_IMAGE=ghcr.io/ckedwards/ideation-factory/app:sha-<commit>` (the same commit), then `docker compose -f node.yaml pull app` and `docker compose -f node.yaml up -d --no-build`. Then `./remote.sh steps` once. Switch back to `app-bench` afterwards the same way.
 8. **The numbers (10 min),** from your machine:
    - `./s3-requests.sh read <start> <end>` for the time at rest, then for the steps;
-   - files: `docker logs ideaf-app-1 2>&1 | grep "file store"` on each node, over the steps;
-   - each node's CPU and memory over each step: the `-stats.csv` beside each step's results.
+   - files: the `file store` lines in each steps run's `logs/` (every node's app, directory and engine logs, saved when its steps end, before anything recreates the containers): `zcat logs/*-app.log.gz | grep "file store"`;
+   - each node's CPU and memory, and the load machine's (`load:`), over each step: the `-stats.csv` beside each step's results;
+   - what ran: `meta.txt` in each steps run (the settings, and each node's image and version). A step with page views in `steps.tsv`'s `dropped` column measured k6, not the deployment: raise `LOAD_VUS`, or give the load machine more CPU, and run it again.
 9. **Stop:** copy `.data/results` from the load machine, then `./s3-requests.sh off` and `./ec2.sh stop`.
 
 ## The second session: the directory's own machines, and fail-over
