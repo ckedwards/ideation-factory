@@ -58,7 +58,7 @@ Run either only while measuring: stop or snapshot between sessions, and tear it 
    - `IDEAF_PERSONAL_TOKENS=on`, as the seeder gets each person a token (otherwise only admins may);
    - `TLS_MODE=internal` (no DNS needed; set `LOAD_INSECURE_TLS=1` on the load machine), or a real name with `acme`.
 
-   Then `docker compose -f node.yaml up -d --build` on each, and wait until the app and directory show healthy.
+   Then `docker compose -f node.yaml up -d --build` on each, and wait until the app and directory show healthy. Or, faster and the same build on every node, the published image for the commit ([deploy/README.md](../../deploy/README.md#the-published-image)): `IDEAF_APP_IMAGE=ghcr.io/ckedwards/ideation-factory/app:sha-<commit>` in `.env`, then `docker compose -f node.yaml pull app` and `up -d --no-build`.
 
 3. **The load balancer:** the same `.env`, with `APP_NODES` (the three nodes' `<address>:8080`) and `LB_TRUSTED_PROXIES=<load machine's private address>/32`, so Caddy passes on k6's X-Forwarded-For. Then `docker compose -f lb.yaml up -d`.
 4. **The load machine:** clone the repository, `bun install`, then copy `packages/load/remote.env.example` to `packages/load/.data/remote.env` and fill it in. With `TLS_MODE=internal` the deployment's name has no DNS: add it to `/etc/hosts` with the load balancer's private address, for the seeder, and set `LOAD_LB_ADDRESS` to the same address, for k6 (its container doesn't see `/etc/hosts`). Then:

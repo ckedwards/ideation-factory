@@ -78,12 +78,25 @@ docker compose -f lb.yaml up -d               # on the load balancer
 
 Everything is in `.env.example`. The app's own settings (single sign-on, SCIM, personal tokens, MCP client hosts) are in the main README.
 
+## The published image
+
+CI publishes the app's image for each commit on `master` and each release: `ghcr.io/ckedwards/ideation-factory/app`, tagged `sha-<commit>` (seven characters), `master`, or the release's tag. To run it rather than build on each machine, set `IDEAF_APP_IMAGE` in `.env` (to a `sha-` or release tag, so every machine runs the same build), then:
+
+```sh
+docker compose pull app
+docker compose up -d --no-build
+```
+
+(`-f node.yaml` on three VMs.) Pulling takes seconds where a build takes minutes, and every machine runs the very build that was tested. Its node version is the commit's time, so on three VMs set `RIVET_NODE_VERSION` to that too (`git log -1 --format=%ct <commit>`). Without `IDEAF_APP_IMAGE`, the Compose files build the image as before.
+
 ## Upgrading
 
 ```sh
 git pull
 docker compose up -d --build
 ```
+
+With the published image, change `IDEAF_APP_IMAGE` to the new tag instead, and pull and start it as above.
 
 Each build of the app is a new node version, so the engine moves actors over to it once it connects. There's a short pause while that happens.
 

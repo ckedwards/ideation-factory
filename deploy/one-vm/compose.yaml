@@ -32,6 +32,8 @@ services:
     networks: [ideaf]
 
   app:
+    # built here, unless IDEAF_APP_IMAGE names a published one (../README.md)
+    image: ${IDEAF_APP_IMAGE:-ideaf-app}
     build:
       context: ../..
       dockerfile: deploy/app.Dockerfile

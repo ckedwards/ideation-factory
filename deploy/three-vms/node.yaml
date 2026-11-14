@@ -9,6 +9,8 @@ name: ideaf
 
 services:
   app:
+    # built here, unless IDEAF_APP_IMAGE names a published one (deploy/README.md)
+    image: ${IDEAF_APP_IMAGE:-ideaf-app}
     build:
       context: ../..
       dockerfile: deploy/app.Dockerfile
