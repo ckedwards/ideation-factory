@@ -1,40 +1,36 @@
 # The load test on a deployment
 
-The three-VM deployment (`deploy/three-vms`) on machines with dedicated CPUs, its buckets in S3, driven from a machine of its own by `remote.sh`. It checks what one laptop couldn't measure steadily: the sizing tiers, fail-over, how much of an idea page goes on reading files from S3, and RivetKit 3.1.2's deferred commits. Benchmarks belong here, or on another machine of their own: a laptop's CPU throttles on battery and when hot, and a day of runs on one drifted more than the changes it measured.
+The three-VM deployment (`deploy/three-vms`) on machines with CPUs of their own (not burstable), its buckets in S3, driven from a machine of its own by `remote.sh`. It checks what one laptop couldn't measure steadily: the sizing tiers, fail-over, how much of an idea page goes on reading files from S3, and RivetKit 3.1.2's deferred commits. Benchmarks belong here, or on another machine of their own: a laptop's CPU throttles on battery and when hot, and a day of runs on one drifted more than the changes it measured.
 
-Two setups, the same layout and steps:
+Two setups on AWS, the same layout and steps:
 
-- **Europe, for everyday benchmarks:** Hetzner Cloud servers in Germany, with S3 in Frankfurt. Cheap by the hour, so runs can be repeated freely. Hetzner's own object storage doesn't have the conditional writes the engine needs, so its buckets are S3: as a Hetzner deployment's would be.
-- **AWS in the US, for checking production:** EC2 and S3 in us-east-1, where customers are likely to deploy. Dearer: for occasional checks, such as before a release.
+- **Frankfurt, for everyday benchmarks:** EC2 and S3 in eu-central-1, in one zone. About $1 an hour, so runs can be repeated freely.
+- **The US, for checking production:** EC2 and S3 in us-east-1, where customers are likely to deploy, the nodes in three zones as a production deployment would be. For occasional checks, such as before a release.
 
-Run either only while measuring: stop or snapshot between sessions, and tear it all down at the end.
-
-A third, **Azure**, isn't ready yet; see [Azure](#azure), below.
+Run either only while measuring: stop or snapshot between sessions, and tear it all down at the end. [Hetzner](#hetzner), below, costs about the same with the buckets still in S3, once its account allows enough dedicated CPUs; **Azure** isn't ready yet ([Azure](#azure)).
 
 ## The machines
 
-| Machine                                        | Count | Europe: Hetzner                 | US: AWS                       | Why                                                              |
-| ---------------------------------------------- | ----- | ------------------------------- | ----------------------------- | ---------------------------------------------------------------- |
-| Node: app, directory node, engine              | 3     | CCX33 (8 dedicated vCPU, 32 GB) | `m7i.2xlarge` (8 vCPU, 32 GB) | The engine used about 5 GB at the design scale                   |
-| Load balancer: Caddy                           | 1     | CCX13 (2 dedicated vCPU)        | `c7i.large`                   | TLS and round-robin                                              |
-| Load: k6, the seeder, Mailpit                  | 1     | CCX23 (4 dedicated vCPU)        | `c7i.2xlarge`                 | k6 at 500 requests a second uses a few cores; kept off the nodes |
-| Directory machines (the dedicated tier, later) | 2     | CCX33                           | `m7i.2xlarge`                 | Only for that part: the directory nodes move here                |
+| Machine                                        | Count | AWS                          | Why                                                                    |
+| ---------------------------------------------- | ----- | ---------------------------- | ---------------------------------------------------------------------- |
+| Node: app, directory node, engine              | 3     | `m7i.xlarge` (4 vCPU, 16 GB) | Three for fail-over, not capacity; the engine used about 5 GB at scale |
+| Load balancer: Caddy                           | 1     | `c7i.large` (2 vCPU)         | TLS and round-robin                                                    |
+| Load: k6, the seeder, Mailpit                  | 1     | `c7i.xlarge` (4 vCPU)        | k6 at 500 requests a second uses a few cores; kept off the nodes       |
+| Directory machines (the dedicated tier, later) | 2     | `m7i.xlarge`                 | Only for that part: the directory nodes move here                      |
 
-Dedicated or non-burstable CPUs only: Hetzner's CCX, not its shared CX or CPX; on AWS, not `t3` or `t4g`. Shared and burstable CPUs slow down under a long test, and the numbers with them.
+**Four vCPUs a node,** a size a customer would buy: at the laptop's peak (about 500 requests a second), the directory took about one core and the engine about three, across all three nodes. Go to eight (`m7i.2xlarge`) only if a node's CPU is the limit before the directory is.
 
-**Europe:**
+**Non-burstable CPUs only:** not `t3` or `t4g`, which slow down under a long test, and the numbers with them.
 
-- **Location:** Nuremberg or Falkenstein, all in one network zone (`eu-central`), with a private network between them.
-- **Disks:** the servers' own NVMe disks hold the engine's write-ahead log and cache.
-- **Buckets:** two S3 buckets in **eu-central-1** (Frankfurt), a few milliseconds away. `S3_ENDPOINT=https://s3.eu-central-1.amazonaws.com`.
-- **Firewall:** a Hetzner firewall on the public side, allowing only SSH from you. Everything else goes over the private network.
+**The quota:** a new account may run only 5 vCPUs of these in a region. Ask for 32 first, in Service Quotas: Amazon EC2, "Running On-Demand Standard (A, C, D, H, I, M, R, T, Z) instances", in the region used. The layout uses 18, and 26 with the directory machines.
 
-**US (AWS):**
+**Frankfurt:**
 
-- **Location:** us-east-1, the nodes in three zones as a production deployment would be, the load balancer and load machine in one of them.
-- **Disks:** gp3, 100 GB on each node.
-- **Buckets:** two S3 buckets in the same region. `S3_ENDPOINT=https://s3.us-east-1.amazonaws.com`.
-- **Security groups:** as the private network rules below.
+- **Location:** eu-central-1, every machine in one zone (eu-central-1a), so nothing pays for traffic between zones.
+- **Network:** a VPC (`10.0.0.0/16`) with one subnet (`10.0.0.0/24`). Each machine has a public address for SSH and for reaching GitHub and image registries, and an S3 gateway endpoint keeps the buckets' traffic inside AWS.
+- **Disks:** gp3, 100 GB on each node for the engine's write-ahead log and cache, 30 GB on the others.
+
+**The US:** the same in us-east-1, with a subnet in each of three zones and a node in each; the load balancer and load machine in one of them. The quota is per region, so ask for it there too.
 
 **Both:**
 
@@ -45,7 +41,7 @@ Dedicated or non-burstable CPUs only: Hetzner's CCX, not its shared CX or CPX; o
 
   If the engine is refused something it needs, its log says so: note it, so `deploy/README.md` can be corrected.
 
-- **Private network rules:**
+- **Security groups,** with SSH from your address only, and between the machines:
   - nodes: 8080 from the load balancer and the load machine; 6421 between the nodes; 22 from the load machine;
   - load balancer: 443 from the load machine;
   - load machine: 1025 (Mailpit's SMTP) from the nodes.
@@ -91,7 +87,7 @@ It can't be made on another machine and copied in: the engine's storage records 
 **To go back to the freshly seeded state** after runs have added comments, versions and notifications, keep a copy of it once:
 
 1. Stop the three nodes' containers (`docker compose -f node.yaml stop`), so nothing is mid-write.
-2. Snapshot the three nodes' disks (Hetzner snapshots, or EBS snapshots).
+2. Snapshot the three nodes' disks (EBS snapshots).
 3. Copy both buckets within S3: `aws s3 sync s3://<bucket> s3://<bucket>-seed`. Within a region that's requests only, no transfer.
 
 To restore it: stop the nodes, restore their disks from the snapshots with the same private addresses, sync both buckets back (`aws s3 sync s3://<bucket>-seed s3://<bucket> --delete`), and start them. Minutes, not hours. Rivet hasn't yet validated restoring a cluster's storage for this release, so try a restore once, and check that the data answers, before relying on it.
@@ -101,28 +97,35 @@ To restore it: stop the nodes, restore their disks from the snapshots with the s
 - **The tiers:** the page-view rate each layout holds with under 1% failures and a p95 under a second, stepping up in 90 s steps after a warm-up:
   - three nodes;
   - three nodes, with the directory's nodes on two machines of their own (move the `directory` services there).
-- **Reading files:** each app node logs a summary of its file store once a minute (`file store, the last 60 s: … reads, p50 …, p95 …, … ms in all`). Compare the reads' time with the time spent on idea pages (`op_open_idea` and `op_list_comments` in k6's results) to see how much of a page goes on S3. Europe's numbers are slightly pessimistic for this: the buckets are a few milliseconds further away than in a single-region deployment.
+- **Reading files:** each app node logs a summary of its file store once a minute (`file store, the last 60 s: … reads, p50 …, p95 …, … ms in all`). Compare the reads' time with the time spent on idea pages (`op_open_idea` and `op_list_comments` in k6's results) to see how much of a page goes on S3.
 - **Fail-over:** a node stopped with SIGTERM, a node's app killed, and a whole node (app, directory node and engine) killed, each while a steady run goes on. Note when everything answers again.
 - **Deferred commits** (RivetKit 3.1.2-rc.1 or later, the directory only, behind a setting that's off by default): the same steps, with them on and off.
 
 ## Costs
 
-Roughly, at on-demand prices (check the providers' calculators; they change):
+Roughly, at on-demand prices in US dollars, from AWS's price list in November 2026 (check the calculator; they change):
 
-|                                        | Europe: Hetzner + S3 Frankfurt                                                                                            | US: AWS                                              |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| The five machines, running             | about €0.40 an hour                                                                                                       | about $1.70 an hour                                  |
-| The two directory machines, while used | about €0.20 an hour                                                                                                       | about $0.80 an hour                                  |
-| Disks while stopped                    | snapshots: cents a day                                                                                                    | about $1 a day for the EBS volumes                   |
-| Data between the nodes and S3          | S3 egress to the internet: about $0.09 per GB read back (the engine's cold reads and compaction): a few dollars a session | none in-region                                       |
-| Data between zones                     | none: one network zone                                                                                                    | about $0.01 per GB each way: a few dollars a session |
-| S3 storage and requests                | a few dollars                                                                                                             | a few dollars                                        |
+|                                        | Frankfurt                             | The US (us-east-1)                                   |
+| -------------------------------------- | ------------------------------------- | ---------------------------------------------------- |
+| The five machines, running             | about $1.03 an hour                   | about $0.87 an hour                                  |
+| The two directory machines, while used | about $0.48 an hour                   | about $0.40 an hour                                  |
+| Public addresses                       | $0.005 an hour each, while running    | the same                                             |
+| Disks while stopped                    | about $1 a day for the EBS volumes    | the same                                             |
+| Data between the nodes and S3          | none: the gateway endpoint, in-region | none                                                 |
+| Data between zones                     | none: one zone                        | about $0.01 per GB each way: a few dollars a session |
+| S3 storage and requests                | a few dollars                         | a few dollars                                        |
 
-A first session (setup, the seed, first measurements) is a few euros in Europe and $15–20 on AWS. Later sessions, starting from the seed's snapshots, cost their hours of measuring. Set a budget alert on the AWS account before starting.
+A first session (setup, the seed, first measurements) is about $10–15. Later sessions, starting from the seed's snapshots, cost their hours of measuring. Set a budget alert on the account before starting.
+
+## Hetzner
+
+Dedicated-CPU servers (CCX23 nodes and load machine, a CCX13 load balancer: about $0.73 an hour together, billed in dollars to a US account) in Nuremberg or Falkenstein, on a private network in the `eu-central` zone, with the buckets in S3 in Frankfurt, a few milliseconds away. Hetzner's own object storage doesn't have the conditional writes the engine needs. It costs a little less by the hour than AWS, but reading from S3 is charged as egress (about $0.09 per GB: the engine's cold reads and compaction, a few dollars a session), and its firewall doesn't filter the private network.
+
+A new Hetzner account is limited to 10 dedicated vCPUs, and can't ask for more until it's older, so the layout's 18 won't fit one at first. Only the dedicated CCX servers will do, not the shared CX or CPX.
 
 ## Azure
 
-Azure costs about what AWS does for the same layout (`D8s_v5` nodes, about $0.38 an hour each), so it adds nothing for everyday benchmarks. Its use is as a check of an Azure deployment before one goes live: the engine's storage on Blob Storage (which the engine supports natively, and which Rivet runs its own load tests on), storage reached with Entra ID instead of keys, and the network a company's tenant puts around it.
+Azure costs about what AWS does for the same layout (`D4s_v5` nodes, about $0.19 an hour each), so it adds nothing for everyday benchmarks. Its use is as a check of an Azure deployment before one goes live: the engine's storage on Blob Storage (which the engine supports natively, and which Rivet runs its own load tests on), storage reached with Entra ID instead of keys, and the network a company's tenant puts around it.
 
 It waits on the app: its file store speaks only S3 so far, and Blob Storage has no S3 API. A run before that would either keep the files in S3, across clouds, which no Azure deployment would do, or test only half the stack. Once the app has an Azure file store, the session follows the steps above with:
 
@@ -132,4 +135,4 @@ It waits on the app: its file store speaks only S3 so far, and Blob Storage has 
 
 ## Afterwards
 
-Between sessions, snapshot and delete the Hetzner servers (they bill while they exist, even when off), or stop the EC2 instances (their disks keep the data). At the end, delete everything: the servers or instances, the snapshots, both buckets and their seed copies, and the two IAM users' keys. Copy the results (`packages/load/.data/results` on the load machine) somewhere first.
+Between sessions, stop the instances (their disks keep the data, at about $1 a day), or for a long break snapshot the nodes' disks and terminate the instances. At the end, delete everything: the instances, their disks and snapshots, the VPC, both buckets and their seed copies, and the two IAM users and their keys. Copy the results (`packages/load/.data/results` on the load machine) somewhere first.
