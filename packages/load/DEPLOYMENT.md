@@ -53,6 +53,7 @@ Run either only while measuring: stop or snapshot between sessions, and tear it 
    - `NODE_ADDRESS`: each node's own private address;
    - `LB_ADDRESSES`: the load balancer's private address **and the load machine's**, so the app believes the addresses k6 sends for each person (otherwise every person is one address, and sign-in's rate limits throttle the seeder);
    - `S3_ENDPOINT`, `S3_REGION`, the buckets, and the two keys;
+   - `RIVET_NODE_VERSION`: the same on every node, such as the commit's time (`git log -1 --format=%ct`); otherwise every actor goes to whichever node built its image last;
    - `IDEAF_SMTP_URL=smtp://<load machine's private address>:1025`, so sign-in codes reach Mailpit;
    - `IDEAF_PERSONAL_TOKENS=on`, as the seeder gets each person a token (otherwise only admins may);
    - `TLS_MODE=internal` (no DNS needed; set `LOAD_INSECURE_TLS=1` on the load machine), or a real name with `acme`.

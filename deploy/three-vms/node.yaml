@@ -44,6 +44,10 @@ services:
       IDEAF_MCP_CLIENT_HOSTS: ${IDEAF_MCP_CLIENT_HOSTS:-}
       # the directory runs on the directory service's node, in a pool of its own (actors/pools.ts)
       IDEAF_DIRECTORY_POOL: directory
+      # the version the engine places actors by: it gives new and waking actors only to the highest
+      # live version, and moves them off lower ones, so it must be the same on every VM. A build's
+      # own time differs from VM to VM, and would send every actor to the VM that built last
+      RIVET_NODE_VERSION: ${RIVET_NODE_VERSION:?set RIVET_NODE_VERSION, the same on every VM and higher with each deploy (the commit's time, git log -1 --format=%ct)}
     volumes:
       - ./ca:/etc/ideaf/ca:ro
 
