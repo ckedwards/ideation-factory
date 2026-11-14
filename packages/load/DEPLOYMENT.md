@@ -87,7 +87,7 @@ LOAD_RIVETKIT_VERSION=3.1.1 docker compose -f node.yaml -f ../../packages/load/r
 
 ## The seed: once, then restored
 
-Seeding the design scale takes hours, but it's done once per deployment. The data lives in the engines' disks and the buckets, and stays through:
+Seeding the design scale is done once per deployment: 37 minutes on the Frankfurt deployment, with nothing failed (ideas 23 minutes, comments 6), where the laptop took two hours. The data lives in the engines' disks and the buckets, and stays through:
 
 - the app's code, settings and images, and RivetKit upgrades that the engine migrates (3.0.6's data went to 3.1.1 as it was);
 - moving the directory nodes (the tiers), the load balancer's settings, and anything on the load machine.
@@ -101,11 +101,28 @@ It can't be made on another machine and copied in: the engine's storage records 
 
 **To go back to the freshly seeded state** after runs have added comments, versions and notifications, keep a copy of it once:
 
-1. Stop the three nodes' containers (`docker compose -f node.yaml stop`), so nothing is mid-write.
-2. Snapshot the three nodes' disks (EBS snapshots).
-3. Copy both buckets within S3: `aws s3 sync s3://<bucket> s3://<bucket>-seed`. Within a region that's requests only, no transfer.
+1. Stop the three nodes' containers (`docker compose -f node.yaml stop`), so nothing is mid-write, and keep them stopped until both steps below are done, so the disks and the buckets are of the same moment.
+2. Snapshot the three nodes' disks: `aws ec2 create-snapshot --volume-id <the node's volume>`. The snapshot is of that moment as soon as the command returns; completing it takes about half an hour, in the background.
+3. Copy both buckets within S3, into new buckets: `aws s3 sync s3://<bucket> s3://<bucket>-seed` (raise `aws configure set default.s3.max_concurrent_requests 64` first). Within a region that's requests only, no transfer: 2 minutes for the engine's 15 GB, 14 for the 100,000 files.
 
-To restore it: stop the nodes, restore their disks from the snapshots with the same private addresses, sync both buckets back (`aws s3 sync s3://<bucket>-seed s3://<bucket> --delete`), and start them. Minutes, not hours. Rivet hasn't yet validated restoring a cluster's storage for this release, so try a restore once, and check that the data answers, before relying on it.
+**To restore it** (tried once: the data answered, with no failures, and the write run's comments and files were gone):
+
+1. Stop the three nodes' containers.
+2. Put each node's disk back from its snapshot, keeping the instance and its addresses: `aws ec2 create-replace-root-volume-task --instance-id <node> --snapshot-id <its snapshot> --delete-replaced-root-volume`. The instance reboots, and the containers stay stopped, as they were when the snapshot was made.
+3. Copy both buckets back: `aws s3 sync s3://<bucket>-seed s3://<bucket> --delete`, then **check every object against the seed**, as `sync` between buckets skips an object of the same size when the copy is newer. The first restore left 54 of the engine's 7,376 objects as the run had rewritten them: its cluster records (`rivet/cluster/coordinator` and the like), which would have started the engines on a mixture. For each bucket:
+
+   ```sh
+   for b in <bucket> <bucket>-seed; do
+     aws s3api list-objects-v2 --bucket $b --query 'Contents[].[Key,ETag]' --output text | sort > $b.etags
+   done
+   diff <bucket>.etags <bucket>-seed.etags | sed -n 's/^> //p' | cut -f1 |
+     while read -r key; do aws s3 cp "s3://<bucket>-seed/$key" "s3://<bucket>/$key"; done
+   ```
+
+   and compare again: no difference left.
+
+4. Start the containers.
+5. **Read each node's disk once before measuring** (`sudo dd if=/dev/nvme0n1 of=/dev/null bs=4M iflag=direct`, about half an hour for 100 GB): a disk made from a snapshot loads each block from S3 the first time it's read, and until then the deployment is slow (opening an idea took 7.4 s at the 95th percentile, where the same run took 0.58 s before the restore). The blocks stay loaded through stopping and starting the instance.
 
 ## What to measure
 
