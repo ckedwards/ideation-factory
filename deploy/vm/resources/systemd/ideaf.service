@@ -1,18 +1,17 @@
 # Ideation Factory's app: the server, with the web app built in, our build of it (deploy/vm/README.md).
 # The load balancer sends it requests on port 8080; /health answers 503 while it's cut off from the
 # engine. On SIGTERM it hands its actors to other machines, each given up to 15 s to save its state:
-# Rivet asks for 60 s before SIGKILL. It exits on its own while the engine is still starting, and
-# systemd starts it again.
+# Rivet asks for 60 s before SIGKILL. It makes the engine's node pools first, waiting while the
+# engine starts; if it can't, it exits, and systemd starts it again.
 [Unit]
 Description=Ideation Factory
-After=ideaf-pools.service rivet.service
-Wants=ideaf-pools.service
+After=rivet.service
 
 [Service]
 User=ideaf
 Group=ideaf
-EnvironmentFile=/etc/ideaf/ideaf.env
-Environment=NODE_ENV=production PORT=8080
+# its settings: /etc/ideaf/ideaf.yaml and secrets.yaml, which it reads itself
+Environment=NODE_ENV=production IDEAF__PORT=8080
 WorkingDirectory=/opt/ideaf/app
 ExecStart=/opt/ideaf/bin/ideaf-start
 Restart=always

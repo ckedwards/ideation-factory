@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ckedwards/ideation-factory/master/deploy/ideaf.schema.json
+#
+# /etc/ideaf/ideaf.yaml: the app's and the directory's settings (deploy/vm/README.md), the same on
+# every machine. Secrets go in secrets.yaml beside it. Every key is in deploy/ideaf.schema.json, and
+# each can also be set by its environment variable (files.s3.bucket is IDEAF__FILES__S3__BUCKET).
+
+# The public URL, through the load balancer
+url: https://ideas.example.com
+site_admins: [you@example.com]
+# the load balancer's private addresses: only it is believed about who the client is
+trusted_proxies: [10.0.0.10]
+
+# This machine's engine; its admin token is in secrets.yaml (engine.token)
+engine:
+  endpoint: http://127.0.0.1:6420
+  # with several machines: the same on all of them, higher with each upgrade (the build's own unless set)
+  # node_version: 1700000000
+
+# The directory runs in a pool of its own (one machine's directory process hosts it)
+directory:
+  pool: directory
+
+# The files bucket, and a key allowed only it (its secret is in secrets.yaml): s3:GetObject and
+# s3:PutObject on its objects, and s3:ListBucket on the bucket
+files:
+  s3:
+    bucket: ideaf-files
+    region: us-east-1
+    endpoint: https://s3.us-east-1.amazonaws.com
+    access_key_id: AKIA…
+
+# Email: this machine's sendmail (its mail setup relays it), or SMTP to a provider or relay (its URL,
+# which holds a password, in secrets.yaml as email.smtp_url)
+email:
+  mode: sendmail
+  # sendmail: /usr/sbin/sendmail
+  from: Ideation Factory <sign-in@example.com>
+  notify_from: Ideation Factory <notifications@example.com>

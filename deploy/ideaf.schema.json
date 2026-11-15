@@ -1,0 +1,411 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/ckedwards/ideation-factory/master/deploy/ideaf.schema.json",
+  "title": "Ideation Factory's settings (ideaf.yaml)",
+  "type": "object",
+  "properties": {
+    "url": {
+      "description": "The deployment's public URL (http://localhost:<port> unless set).",
+      "type": "string",
+      "minLength": 1
+    },
+    "port": {
+      "description": "The port this process serves on.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "default": 8080
+    },
+    "data": {
+      "default": ".data",
+      "description": "Where this machine keeps the app's own files (ideas' files, without a bucket).",
+      "type": "string",
+      "minLength": 1
+    },
+    "site_admins": {
+      "description": "The site admins' emails.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": []
+    },
+    "trusted_proxies": {
+      "description": "The reverse proxies (load balancers) in front of the app, IPs or CIDR ranges, whose X-Forwarded-For is believed.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": []
+    },
+    "engine": {
+      "type": "object",
+      "properties": {
+        "endpoint": {
+          "description": "Its API, like http://127.0.0.1:6420. In development, without it, RivetKit starts an engine itself.",
+          "type": "string",
+          "minLength": 1
+        },
+        "token": {
+          "description": "Its admin token: a secret.",
+          "type": "string",
+          "minLength": 1
+        },
+        "namespace": {
+          "default": "default",
+          "type": "string",
+          "minLength": 1
+        },
+        "pool": {
+          "description": "The node pool this process joins: default for the app, the directory's for a directory process.",
+          "type": "string",
+          "minLength": 1
+        },
+        "node_version": {
+          "description": "The node version the engine places actors by: the build's own unless set, the same on every machine.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "token_file": {
+          "type": "string",
+          "description": "A file holding engine.token, by its full path (/run/secrets/token), in place of the secret itself"
+        }
+      },
+      "additionalProperties": false,
+      "default": {
+        "namespace": "default"
+      }
+    },
+    "directory": {
+      "type": "object",
+      "properties": {
+        "pool": {
+          "description": "The directory's pool: its own nodes' (a pool of its own), or the app's unless set.",
+          "type": "string",
+          "minLength": 1
+        },
+        "calls": {
+          "description": "How many calls this node sends the directory at once (actors/limit.ts).",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024,
+          "default": 4
+        }
+      },
+      "additionalProperties": false,
+      "default": {
+        "calls": 4
+      }
+    },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "secret": {
+          "description": "Signs cookies and encrypts the signing keys: a secret, at least 32 characters, required in production.",
+          "type": "string",
+          "minLength": 32
+        },
+        "personal_tokens": {
+          "default": "admins",
+          "description": "Who may use personal tokens: on, admins or off.",
+          "type": "string",
+          "enum": [
+            "on",
+            "admins",
+            "off"
+          ]
+        },
+        "scim_token": {
+          "description": "The identity provider's SCIM bearer token: a secret, at least 32 characters; SCIM is off without it.",
+          "type": "string",
+          "minLength": 32
+        },
+        "sso": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "default": "off",
+              "type": "string",
+              "enum": [
+                "off",
+                "oidc",
+                "saml"
+              ]
+            },
+            "name": {
+              "default": "single sign-on",
+              "description": "Shown as \"Continue with <name>\".",
+              "type": "string",
+              "minLength": 1
+            },
+            "domains": {
+              "description": "The email domains that can sign in with it (required with it on).",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "default": []
+            },
+            "auto_create": {
+              "description": "Make an account for someone new; off refuses them until someone adds them.",
+              "type": "string",
+              "enum": [
+                "on",
+                "off"
+              ],
+              "default": "on"
+            },
+            "oidc": {
+              "default": {},
+              "type": "object",
+              "properties": {
+                "issuer": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "client_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "client_secret": {
+                  "description": "A secret.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "client_secret_file": {
+                  "type": "string",
+                  "description": "A file holding auth.sso.oidc.client_secret, by its full path (/run/secrets/client_secret), in place of the secret itself"
+                }
+              },
+              "additionalProperties": false
+            },
+            "saml": {
+              "default": {},
+              "type": "object",
+              "properties": {
+                "metadata": {
+                  "description": "A file with the provider's metadata XML.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sp_key": {
+                  "description": "Files with our key and certificate (PEM), for providers that want signed requests.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sp_cert": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false,
+          "default": {
+            "mode": "off",
+            "name": "single sign-on",
+            "domains": [],
+            "auto_create": "on",
+            "oidc": {},
+            "saml": {}
+          }
+        },
+        "secret_file": {
+          "type": "string",
+          "description": "A file holding auth.secret, by its full path (/run/secrets/secret), in place of the secret itself"
+        },
+        "scim_token_file": {
+          "type": "string",
+          "description": "A file holding auth.scim_token, by its full path (/run/secrets/scim_token), in place of the secret itself"
+        }
+      },
+      "additionalProperties": false,
+      "default": {
+        "personal_tokens": "admins",
+        "sso": {
+          "mode": "off",
+          "name": "single sign-on",
+          "domains": [],
+          "auto_create": "on",
+          "oidc": {},
+          "saml": {}
+        }
+      }
+    },
+    "mcp": {
+      "type": "object",
+      "properties": {
+        "client_hosts": {
+          "description": "The only hosts MCP clients' metadata documents may be on, like claude.ai; any unless set.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
+        }
+      },
+      "additionalProperties": false,
+      "default": {
+        "client_hosts": []
+      }
+    },
+    "email": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "description": "sendmail: through this machine's sendmail; log: sign-in codes in the server's log. SMTP when smtp_url is set.",
+          "type": "string",
+          "enum": [
+            "log",
+            "sendmail"
+          ]
+        },
+        "smtp_url": {
+          "description": "smtps://user:password@host:465 or smtp://user:password@host:587: a secret, as it holds the password.",
+          "type": "string",
+          "minLength": 1
+        },
+        "sendmail": {
+          "default": "/usr/sbin/sendmail",
+          "description": "The sendmail command's full path.",
+          "type": "string",
+          "minLength": 1
+        },
+        "from": {
+          "description": "The sender of sign-in codes: \"Ideation Factory <sign-in@example.com>\".",
+          "type": "string",
+          "minLength": 1
+        },
+        "notify_from": {
+          "description": "The sender of notifications (from's unless set).",
+          "type": "string",
+          "minLength": 1
+        },
+        "notifications": {
+          "description": "off: no notification emails (sign-in codes still go).",
+          "type": "string",
+          "enum": [
+            "on",
+            "off"
+          ],
+          "default": "on"
+        },
+        "smtp_url_file": {
+          "type": "string",
+          "description": "A file holding email.smtp_url, by its full path (/run/secrets/smtp_url), in place of the secret itself"
+        }
+      },
+      "additionalProperties": false,
+      "default": {
+        "sendmail": "/usr/sbin/sendmail",
+        "notifications": "on"
+      }
+    },
+    "files": {
+      "type": "object",
+      "properties": {
+        "s3": {
+          "type": "object",
+          "properties": {
+            "bucket": {
+              "type": "string",
+              "minLength": 1
+            },
+            "endpoint": {
+              "description": "The store's URL, for anything but AWS (http://seaweedfs:8333).",
+              "type": "string",
+              "minLength": 1
+            },
+            "region": {
+              "default": "us-east-1",
+              "type": "string",
+              "minLength": 1
+            },
+            "access_key_id": {
+              "description": "Its key, allowed only this bucket; without them, Bun's S3_* or AWS_* variables.",
+              "type": "string",
+              "minLength": 1
+            },
+            "secret_access_key": {
+              "description": "A secret.",
+              "type": "string",
+              "minLength": 1
+            },
+            "prefix": {
+              "default": "files/",
+              "description": "Where files go in it.",
+              "type": "string"
+            },
+            "virtual_hosted": {
+              "description": "The bucket in the hostname, as AWS prefers; in the path when off.",
+              "type": "string",
+              "enum": [
+                "on",
+                "off"
+              ],
+              "default": "off"
+            },
+            "secret_access_key_file": {
+              "type": "string",
+              "description": "A file holding files.s3.secret_access_key, by its full path (/run/secrets/secret_access_key), in place of the secret itself"
+            }
+          },
+          "required": [
+            "bucket"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "max_file_bytes": {
+          "description": "The largest file, in bytes",
+          "type": "integer",
+          "minimum": 16384,
+          "maximum": 1048576,
+          "default": 262144
+        },
+        "max_idea_bytes": {
+          "description": "The largest idea, all its files together, in bytes",
+          "type": "integer",
+          "minimum": 262144,
+          "maximum": 4194304,
+          "default": 2097152
+        }
+      },
+      "additionalProperties": false,
+      "default": {
+        "max_file_bytes": 262144,
+        "max_idea_bytes": 2097152
+      }
+    },
+    "web": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "dir": {
+          "description": "The built web app (the web package's dist unless set).",
+          "type": "string",
+          "minLength": 1
+        },
+        "dev_url": {
+          "description": "Vite's dev server, while working on the web app (bun run dev sets it).",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

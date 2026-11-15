@@ -24,7 +24,7 @@ On the client, `ideaf auth login` opens the sign-in page in the client's Chromiu
 curl -s mailpit:8025/api/v1/messages | grep -o '[0-9]\{6\} is your' | head -1
 ```
 
-To make yourself a site admin, set `IDEAF_SITE_ADMINS=you@example.test` where you run `docker compose up`. `IDEAF_PERSONAL_TOKENS` passes through the same way.
+To make yourself a site admin, set `IDEAF_SITE_ADMINS=you@example.test` where you run `docker compose up` (it becomes the server's `site_admins`). `IDEAF_PERSONAL_TOKENS` passes through the same way.
 
 ## Single sign-on, with Keycloak
 
@@ -34,7 +34,7 @@ To try single sign-on, add `docker-compose.sso.yaml`: it runs Keycloak as the or
 docker compose -f docker-compose.yaml -f docker-compose.sso.yaml up -d --build
 ```
 
-On the client, `ideaf auth login` now shows "Continue with Acme", which goes to Keycloak's sign-in page. Sign in as `alice` or `bob` (the password is the same as the name); they're new here, so they confirm a handle first. Email codes only work for site admins, `admin@acme.test` by default (`IDEAF_SITE_ADMINS` changes it). Keycloak's admin console is at http://keycloak:8180 from the client's browser (`admin` / `admin`), to add people or change them. The realm is `docker/keycloak/acme-realm.json`.
+On the client, `ideaf auth login` now shows "Continue with Acme", which goes to Keycloak's sign-in page. Sign in as `alice` or `bob` (the password is the same as the name); they're new here, so they confirm a handle first. Email codes only work for site admins, `admin@acme.test` by default (`site_admins` changes it). Keycloak's admin console is at http://keycloak:8180 from the client's browser (`admin` / `admin`), to add people or change them. The realm is `docker/keycloak/acme-realm.json`.
 
 Going back to email codes: `docker compose up -d` with the base file alone. Accounts made through Keycloak stay, and keep their handles.
 
@@ -44,7 +44,7 @@ Going back to email codes: `docker compose up -d` with the base file alone. Acco
 
 ## How it fits together
 
-- Both machines use `http://localhost:8080` as the server's URL. Tokens are issued for one URL (`IDEAF_URL`), and OAuth allows a plain-http redirect only on a loopback host, so the client forwards its `localhost:8080` to the server rather than using `http://server:8080`.
+- Both machines use `http://localhost:8080` as the server's URL. Tokens are issued for one URL (`url`), and OAuth allows a plain-http redirect only on a loopback host, so the client forwards its `localhost:8080` to the server rather than using `http://server:8080`.
 - The server isn't published on your machine, so it doesn't clash with `bun run dev` on port 8080. noVNC's port can move too: `IDEAF_SANDBOX_VNC_PORT=6090`.
 - The client's `xdg-open` (`docker/client/xdg-open`) opens links in its Chromium, which runs without its sandbox: that needs user namespaces, which Docker's default seccomp profile doesn't give.
 

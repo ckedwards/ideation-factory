@@ -70,7 +70,7 @@ Run either only while measuring: stop or snapshot between sessions, and tear it 
    LOAD_RATE=100 LOAD_DURATION=5m ./remote.sh steady
    ```
 
-**RivetKit with the fix for rivet-dev/rivet#5991.** Benchmarks run the app on RivetKit's native module with the fix (rivet-dev/rivet#5992), so they measure the app rather than the bug. On the published 3.1.1, even with its workaround (`IDEAF_DIRECTORY_CALLS=4`), the seed's directory writes fell from about 40 a second to 5 within half an hour (the README's findings). The published `app-bench` image has it: the app's image for the same commit with the module swapped, so its node version is the same. On each node, set `IDEAF_APP_IMAGE=ghcr.io/ckedwards/ideation-factory/app-bench:sha-<commit>` in `.env`, then:
+**RivetKit with the fix for rivet-dev/rivet#5991.** Benchmarks run the app on RivetKit's native module with the fix (rivet-dev/rivet#5992), so they measure the app rather than the bug. On the published 3.1.1, even with its workaround (`IDEAF__DIRECTORY__CALLS=4`), the seed's directory writes fell from about 40 a second to 5 within half an hour (the README's findings). The published `app-bench` image has it: the app's image for the same commit with the module swapped, so its node version is the same. On each node, set `IDEAF_APP_IMAGE=ghcr.io/ckedwards/ideation-factory/app-bench:sha-<commit>` in `.env`, then:
 
 ```sh
 docker compose -f node.yaml pull app

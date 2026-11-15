@@ -26,7 +26,7 @@ Releases are `v0.1.<n>` while in alpha. The images are tagged with each release'
 - The engine's (`S3_ENGINE_ACCESS_KEY_ID`, `S3_ENGINE_SECRET_ACCESS_KEY`) reads, writes, deletes and lists in its bucket: on AWS, `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:ListBucket` and `s3:AbortMultipartUpload`.
 - The app's (`S3_FILES_ACCESS_KEY_ID`, `S3_FILES_SECRET_ACCESS_KEY`) reads and writes files, which never change once stored and aren't deleted, and lists the bucket: `s3:GetObject` and `s3:PutObject` on its objects, and `s3:ListBucket` on the bucket, nothing else. Without the listing, S3 answers a file that isn't there yet with 403, not 404, and the app checks for a file before storing it; it says so if the permission is missing.
 
-**Email** for sign-in codes and notifications: over SMTP to a provider or a company's relay (`IDEAF_SMTP_URL`), or through the machine's own `sendmail` (`IDEAF_EMAIL=sendmail`), when its mail setup already relays its mail. Without either, codes go to the app's log, which production refuses unless `IDEAF_EMAIL=log` says so.
+**Email** for sign-in codes and notifications: over SMTP to a provider or a company's relay (`email.smtp_url`), or through the machine's own `sendmail` (`email.mode: sendmail`), when its mail setup already relays its mail. Without either, codes go to the app's log, which production refuses unless `IDEAF__EMAIL__MODE=log` says so.
 
 **Internal CAs** for the app's own connections (single sign-on, SMTP, the bucket, MCP clients' metadata documents): their certificates in the app's `ca/` folder (`*.pem` or `*.crt`) are trusted.
 

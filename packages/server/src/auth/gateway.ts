@@ -66,7 +66,7 @@ export function clientAddress(
  * A proxy nobody listed: with no trusted proxies set, a request from this
  * machine or a private network that carries X-Forwarded-For most likely came
  * through a reverse proxy or load balancer, so every client is counted as that
- * one address. What IDEAF_TRUSTED_PROXIES should probably be, or null.
+ * one address. What trusted_proxies should probably be, or null.
  */
 export function unlistedProxy(
   peer: string | undefined,
@@ -96,7 +96,7 @@ export function authGateway(directory: AuthDirectory, baseURL: string, trustedPr
     if (proxy) {
       warned = true
       console.warn(
-        `requests from ${peer} carry X-Forwarded-For, but IDEAF_TRUSTED_PROXIES isn't set, so sign-in's rate limits count every client behind it as one. If it's your proxy, set IDEAF_TRUSTED_PROXIES=${proxy}.`,
+        `requests from ${peer} carry X-Forwarded-For, but trusted_proxies isn't set, so sign-in's rate limits count every client behind it as one. If it's your proxy, set IDEAF__TRUSTED_PROXIES=${proxy}.`,
       )
     }
     const client = clientAddress(peer, forwardedFor, trustedProxies)

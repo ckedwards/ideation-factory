@@ -3,7 +3,8 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { fakeSmtp } from '../mail/fake-smtp.ts'
 import { emailMailer } from './mail.ts'
-import { logMailer, mailerFromEnv } from './settings.ts'
+import { settingsFrom } from '../settings/load.ts'
+import { logMailer, mailerFrom } from './settings.ts'
 
 let smtp: ReturnType<typeof fakeSmtp>
 beforeAll(() => {
@@ -42,13 +43,15 @@ describe('sign-in codes by email', () => {
 
 describe('which mailer', () => {
   test('SMTP or sendmail when one is set (with a sender); the log in development, or in production only when asked for', () => {
-    expect(mailerFromEnv({})).toBe(logMailer)
-    expect(mailerFromEnv({ NODE_ENV: 'production', IDEAF_EMAIL: 'log' })).toBe(logMailer)
-    expect(() => mailerFromEnv({ NODE_ENV: 'production' })).toThrow('IDEAF_SMTP_URL')
-    expect(() => mailerFromEnv({ IDEAF_SMTP_URL: smtp.url })).toThrow('IDEAF_EMAIL_FROM')
-    expect(() => mailerFromEnv({ IDEAF_SMTP_URL: 'mail.example.test', IDEAF_EMAIL_FROM: 'x' })).toThrow('smtps://')
-    expect(mailerFromEnv({ IDEAF_SMTP_URL: smtp.url, IDEAF_EMAIL_FROM: 'x@example.test' })).not.toBe(logMailer)
-    expect(mailerFromEnv({ IDEAF_EMAIL: 'sendmail', IDEAF_EMAIL_FROM: 'x@example.test' })).not.toBe(logMailer)
-    expect(() => mailerFromEnv({ IDEAF_EMAIL: 'sendmail' })).toThrow('IDEAF_EMAIL_FROM')
+    const mailer = (email: Record<string, unknown>, production = false) =>
+      mailerFrom(settingsFrom({ email }), production)
+    expect(mailer({})).toBe(logMailer)
+    expect(mailer({ mode: 'log' }, true)).toBe(logMailer)
+    expect(() => mailer({}, true)).toThrow('email.smtp_url')
+    expect(() => mailer({ smtp_url: smtp.url })).toThrow('email.from')
+    expect(() => mailer({ smtp_url: 'mail.example.test', from: 'x' })).toThrow('smtps://')
+    expect(mailer({ smtp_url: smtp.url, from: 'x@example.test' })).not.toBe(logMailer)
+    expect(mailer({ mode: 'sendmail', from: 'x@example.test' })).not.toBe(logMailer)
+    expect(() => mailer({ mode: 'sendmail' })).toThrow('email.from')
   })
 })

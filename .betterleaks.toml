@@ -33,3 +33,10 @@ paths = ['''\.test\.ts$''']
 description = "The placeholder in documentation and messages about SMTP settings: smtps://user:password@host"
 targetRules = ["generic-credential-uri"]
 regexes = ['''^password$''']
+
+[[allowlists]]
+description = "The engine's made-up admin token, tok, in the tests' engine URLs (http://default:tok@127.0.0.1)"
+targetRules = ["generic-credential-uri"]
+condition = "AND"
+paths = ['''^packages/server/src/actors/engine-pools\.test\.ts$''', '''^packages/server/src/settings/load\.test\.ts$''']
+regexes = ['''^tok$''']

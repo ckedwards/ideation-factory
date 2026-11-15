@@ -275,7 +275,7 @@ describe('the hosted MCP server', () => {
     expect(all.refresh_token).toBeString()
   })
 
-  test('IDEAF_MCP_CLIENT_HOSTS, when set, lets in only clients whose documents are on those hosts', () => {
+  test('mcp.client_hosts, when set, lets in only clients whose documents are on those hosts', () => {
     const allowed = clientHostAllowed(['claude.ai', 'vscode.dev'])
     expect(allowed('https://claude.ai/oauth/claude-code-client-metadata')).toBe(true)
     expect(allowed('https://VSCode.dev/oauth/client-metadata.json')).toBe(true)

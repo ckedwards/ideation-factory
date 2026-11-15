@@ -13,7 +13,7 @@ import { groupMembers, ideaDocument, ideaTeam, ideaTitle, memberTeams, personIp,
 const env = process.env
 /** The app, reached directly (not through Caddy) from the Docker network's gateway, a trusted proxy. */
 const APP = env.LOAD_APP_URL ?? 'http://localhost:18080'
-/** The deployment's public URL (IDEAF_URL): Better Auth checks a sign-in's Origin against it. */
+/** The deployment's public URL (url): Better Auth checks a sign-in's Origin against it. */
 const ORIGIN = env.LOAD_ORIGIN ?? 'https://localhost:18443'
 const MAILPIT = env.LOAD_MAILPIT_URL ?? 'http://localhost:18025'
 const STATE = env.LOAD_SEED ?? join(import.meta.dir, '../.data/seed.json')

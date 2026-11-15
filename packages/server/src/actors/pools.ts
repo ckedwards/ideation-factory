@@ -2,8 +2,8 @@
 // stays in it: an actor's pool is fixed when it's made.
 //
 // Ideas and search run in the app's pool, on the nodes that serve the API. The
-// directory runs in IDEAF_DIRECTORY_POOL, on nodes of its own (started with
-// RIVET_POOL set to the same name), so its work has a process to itself
+// directory runs in directory.pool (settings/schema.ts), on nodes of its own
+// (started with engine.pool set to the same name), so its work has a process to itself
 // (docs/admin/performance.md). Unset, as in development and the tests, it's the
 // app's pool too. Because the pool is fixed, a deployment sets it from the
 // start: moving the directory to a pool of its own later means moving its data.
@@ -15,8 +15,15 @@
 /** The pool the app's nodes join (RIVET_POOL unset). */
 export const APP_POOL = 'default'
 
+let directoryPoolName = APP_POOL
+
+/** Sets the directory's pool, from the settings, before the node starts; the app's unless given. */
+export function setDirectoryPool(pool: string | undefined): void {
+  directoryPoolName = pool || APP_POOL
+}
+
 /** The directory's pool: its own nodes', or the app's. */
-export const directoryPool = (): string => process.env.IDEAF_DIRECTORY_POOL || APP_POOL
+export const directoryPool = (): string => directoryPoolName
 
 export const DIRECTORY_KEY = ['main']
 export const SEARCH_KEY = ['main']

@@ -27,7 +27,7 @@ packages/load/run.sh down     # stop, keeping the data; `wipe` deletes it and th
 
 What's been made is kept in `.data/seed.json`: IDs, and each person's session cookie and personal token. At full scale, seeding takes about … (see the results).
 
-**Rate limits stay on.** Every request carries its person's own address in `X-Forwarded-For` (`10.x.y.z`). The app trusts that header because the request comes from the Docker network, which the Compose files list in `IDEAF_TRUSTED_PROXIES`. So the limits count people apart, as they would count real people behind Caddy.
+**Rate limits stay on.** Every request carries its person's own address in `X-Forwarded-For` (`10.x.y.z`). The app trusts that header because the request comes from the Docker network, which the Compose files list in `trusted_proxies`. So the limits count people apart, as they would count real people behind Caddy.
 
 **The k6 script** (`k6/load.ts`) runs two scenarios:
 
@@ -69,7 +69,7 @@ From seeding, on one machine (22 cores), RivetKit 3.0.6 and `rivetdev/engine:3.0
   | 64, held for 150 s | 38              | 372 ms        |
 
   It compounds while load lasts, and leaves a hangover until it drains. `perf` put three quarters of the app's CPU in the kernel's futex spin lock, under tokio's `Notify`.
-  - **Workaround, in production until a release has the fix:** each app node sends the directory at most 4 calls at once (`server/src/actors/limit.ts`, `IDEAF_DIRECTORY_CALLS`). The same writes then ran at about 220 a second on 1.5 cores, at 16, 64, and 64 held for 90 s.
+  - **Workaround, in production until a release has the fix:** each app node sends the directory at most 4 calls at once (`server/src/actors/limit.ts`, `directory.calls`). The same writes then ran at about 220 a second on 1.5 cores, at 16, 64, and 64 held for 90 s.
   - **On a deployment, the workaround isn't enough** (the Frankfurt deployment, [DEPLOYMENT.md](DEPLOYMENT.md): three nodes of 4 vCPU, RivetKit 3.1.1 as published). The limit is per app node, so three nodes keep up to 12 calls in flight, and with the seeder's 16 at a time the directory's requests never reached zero. Its writes (sign-ups, then team members) fell from about 40 a second to 5 within 30 minutes, its process at 290% CPU; restarting it gracefully brought back about 21 a second, for a minute or two. With the fix, team members went at about 35 a second and ideas at 45 to 55 (22 on the laptop), the directory's process at about 35 to 40% CPU.
   - **With the fix** (`LOAD_RIVETKIT_FIX=1`, built by `rivetkit-fix/build.sh`): a call costs the same CPU at every concurrency. Seeding ideas ran at 27 to 29 a second instead of 10 to 15, with the app on 0.5 cores instead of 8 to 9, and directory reads meanwhile took 43 ms instead of 72 to 700 (10 ms with the limit raised to 16).
 

@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { emailMailer } from '../auth/mail.ts'
 import { emailSender } from './sender.ts'
-import { emailTransportFromEnv } from './transport.ts'
+import { settingsFrom } from '../settings/load.ts'
+import { emailTransportFrom } from './transport.ts'
 
 let dir: string
 let sendmail: string
@@ -18,26 +19,28 @@ beforeAll(() => {
 })
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
+const transport = (email: Record<string, unknown>) => emailTransportFrom(settingsFrom({ email }).email)
+
 describe('which transport', () => {
   test('SMTP when its URL is set, sendmail when asked for, otherwise none', () => {
-    expect(emailTransportFromEnv({})).toBeNull()
-    expect(emailTransportFromEnv({ IDEAF_EMAIL: 'log' })).toBeNull()
-    expect(emailTransportFromEnv({ IDEAF_SMTP_URL: 'smtp://mail.example.test:587' })).toEqual({
+    expect(transport({})).toBeNull()
+    expect(transport({ mode: 'log' })).toBeNull()
+    expect(transport({ smtp_url: 'smtp://mail.example.test:587' })).toEqual({
       kind: 'smtp',
       url: 'smtp://mail.example.test:587',
     })
-    expect(emailTransportFromEnv({ IDEAF_EMAIL: 'sendmail' })).toEqual({ kind: 'sendmail', path: '/usr/sbin/sendmail' })
-    expect(emailTransportFromEnv({ IDEAF_EMAIL: 'sendmail', IDEAF_SENDMAIL: '/usr/bin/msmtp' })).toEqual({
+    expect(transport({ mode: 'sendmail' })).toEqual({ kind: 'sendmail', path: '/usr/sbin/sendmail' })
+    expect(transport({ mode: 'sendmail', sendmail: '/usr/bin/msmtp' })).toEqual({
       kind: 'sendmail',
       path: '/usr/bin/msmtp',
     })
   })
 
   test('refuses what it can’t use', () => {
-    expect(() => emailTransportFromEnv({ IDEAF_EMAIL: 'smtp' })).toThrow('log or sendmail')
-    expect(() => emailTransportFromEnv({ IDEAF_EMAIL: 'sendmail', IDEAF_SMTP_URL: 'smtp://m:587' })).toThrow('set one')
-    expect(() => emailTransportFromEnv({ IDEAF_EMAIL: 'sendmail', IDEAF_SENDMAIL: 'sendmail' })).toThrow('full path')
-    expect(() => emailTransportFromEnv({ IDEAF_SMTP_URL: 'mail.example.test' })).toThrow('smtps://')
+    expect(() => transport({ mode: 'smtp' })).toThrow('email.mode: log, sendmail, not "smtp"')
+    expect(() => transport({ mode: 'sendmail', smtp_url: 'smtp://m:587' })).toThrow('set one')
+    expect(() => transport({ mode: 'sendmail', sendmail: 'sendmail' })).toThrow('full path')
+    expect(() => transport({ smtp_url: 'mail.example.test' })).toThrow('smtps://')
   })
 })
 

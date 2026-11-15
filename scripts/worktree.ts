@@ -75,19 +75,19 @@ export function settings(): WorktreeSettings {
     webPort,
     testEnv: {
       RIVETKIT_STORAGE_PATH: testData,
-      IDEAF_DATA: testData,
+      IDEAF__DATA: testData,
       RIVET_RUN_ENGINE_PORT: String(testEnginePort),
       RIVET_RUN_SERVICES: '0',
     },
     env: {
       RIVETKIT_STORAGE_PATH: data,
-      IDEAF_DATA: data,
+      IDEAF__DATA: data,
       RIVET_RUN_ENGINE_PORT: String(enginePort),
       RIVET_RUN_SERVICES: '0',
-      PORT: String(serverPort),
-      IDEAF_URL: `http://localhost:${serverPort}`,
+      IDEAF__PORT: String(serverPort),
+      IDEAF__URL: `http://localhost:${serverPort}`,
       IDEAF_WEB_DEV_PORT: String(webPort),
-      IDEAF_WEB_DEV_URL: `http://localhost:${webPort}`,
+      IDEAF__WEB__DEV_URL: `http://localhost:${webPort}`,
     },
   }
 }
@@ -170,11 +170,11 @@ if (import.meta.main) {
   switch (command) {
     case 'info':
       console.log(`${s.linked ? 'Linked' : 'Main'} worktree: ${s.root}`)
-      console.log(`  data       ${s.env.IDEAF_DATA}`)
+      console.log(`  data       ${s.env.IDEAF__DATA}`)
       console.log(`  engine     http://127.0.0.1:${s.enginePort}`)
       console.log(`  server     http://localhost:${s.serverPort} (bun run dev): the API and the web app`)
       console.log(`  web        Vite on http://localhost:${s.webPort}, behind the server`)
-      console.log(`  tests      engine on ${s.testEnginePort}, fresh data in ${s.testEnv.IDEAF_DATA} (bun run test)`)
+      console.log(`  tests      engine on ${s.testEnginePort}, fresh data in ${s.testEnv.IDEAF__DATA} (bun run test)`)
       console.log('Run `eval "$(bun scripts/worktree.ts env)"` to use these from a shell (curl, ideaf).')
       break
     case 'env':

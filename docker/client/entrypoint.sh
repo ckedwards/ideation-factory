@@ -3,7 +3,7 @@
 # VNC through noVNC on port 6080; and the server, forwarded to localhost:8080.
 #
 # The server is forwarded rather than reached as http://server:8080 because
-# its tokens are issued for one URL (IDEAF_URL), and OAuth allows a plain-http
+# its tokens are issued for one URL (url), and OAuth allows a plain-http
 # redirect only on a loopback host: localhost:8080 works for both the cli and
 # the browser in here.
 set -eu

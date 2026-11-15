@@ -24,20 +24,20 @@ x-app: &app
       condition: service_completed_successfully
 
 x-app-environment: &app-environment
-  IDEAF_URL: https://localhost:${HTTPS_PORT:-8443}
-  IDEAF_AUTH_SECRET: '${IDEAF_AUTH_SECRET:?set IDEAF_AUTH_SECRET}'
-  IDEAF_SITE_ADMINS: ${IDEAF_SITE_ADMINS:-}
-  IDEAF_PERSONAL_TOKENS: ${IDEAF_PERSONAL_TOKENS:-on}
-  IDEAF_TRUSTED_PROXIES: 172.30.81.0/24
+  IDEAF__URL: https://localhost:${HTTPS_PORT:-8443}
+  IDEAF__AUTH__SECRET: '${IDEAF_AUTH_SECRET:?set IDEAF_AUTH_SECRET}'
+  IDEAF__SITE_ADMINS: ${IDEAF_SITE_ADMINS:-}
+  IDEAF__AUTH__PERSONAL_TOKENS: ${IDEAF_PERSONAL_TOKENS:-on}
+  IDEAF__TRUSTED_PROXIES: 172.30.81.0/24
   # the directory runs on the directory nodes, in a pool of their own (actors/pools.ts)
-  IDEAF_DIRECTORY_POOL: directory
-  IDEAF_S3_BUCKET: ideaf-files
-  IDEAF_S3_ENDPOINT: http://seaweedfs:8333
+  IDEAF__DIRECTORY__POOL: directory
+  IDEAF__FILES__S3__BUCKET: ideaf-files
+  IDEAF__FILES__S3__ENDPOINT: http://seaweedfs:8333
   # the files bucket's own key, as in node.yaml
-  IDEAF_S3_ACCESS_KEY_ID: files
-  IDEAF_S3_SECRET_ACCESS_KEY: '${S3_FILES_SECRET_ACCESS_KEY:?set S3_FILES_SECRET_ACCESS_KEY}'
+  IDEAF__FILES__S3__ACCESS_KEY_ID: files
+  IDEAF__FILES__S3__SECRET_ACCESS_KEY: '${S3_FILES_SECRET_ACCESS_KEY:?set S3_FILES_SECRET_ACCESS_KEY}'
   # sign-in codes go to the apps' logs
-  IDEAF_EMAIL: log
+  IDEAF__EMAIL__MODE: log
 
 x-engine: &engine
   build:

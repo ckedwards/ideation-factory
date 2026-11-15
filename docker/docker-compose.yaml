@@ -22,12 +22,12 @@ services:
       dockerfile: docker/server.Dockerfile
     environment:
       # the URL tokens are issued for: the client reaches the server here too
-      IDEAF_URL: http://localhost:8080
-      IDEAF_SITE_ADMINS: ${IDEAF_SITE_ADMINS:-}
-      IDEAF_PERSONAL_TOKENS: ${IDEAF_PERSONAL_TOKENS:-admins}
-      IDEAF_SMTP_URL: smtp://mailpit:1025
-      IDEAF_EMAIL_FROM: Ideation Factory <sign-in@ideaf.test>
-      IDEAF_NOTIFY_FROM: Ideation Factory <notifications@ideaf.test>
+      IDEAF__URL: http://localhost:8080
+      IDEAF__SITE_ADMINS: ${IDEAF_SITE_ADMINS:-}
+      IDEAF__AUTH__PERSONAL_TOKENS: ${IDEAF_PERSONAL_TOKENS:-admins}
+      IDEAF__EMAIL__SMTP_URL: smtp://mailpit:1025
+      IDEAF__EMAIL__FROM: Ideation Factory <sign-in@ideaf.test>
+      IDEAF__EMAIL__NOTIFY_FROM: Ideation Factory <notifications@ideaf.test>
     depends_on:
       - mailpit
     volumes:

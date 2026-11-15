@@ -26,26 +26,26 @@ services:
       # for the load balancer, on the private network only
       - ${NODE_ADDRESS:?set NODE_ADDRESS, this VM's private address}:8080:8080
     environment: &app-environment
-      IDEAF_URL: '${IDEAF_URL:?set IDEAF_URL, the public URL, like https://ideas.example.com}'
-      IDEAF_AUTH_SECRET: '${IDEAF_AUTH_SECRET:?set IDEAF_AUTH_SECRET, the same on every VM (openssl rand -hex 32)}'
-      IDEAF_SITE_ADMINS: ${IDEAF_SITE_ADMINS:-}
-      IDEAF_PERSONAL_TOKENS: ${IDEAF_PERSONAL_TOKENS:-admins}
+      IDEAF__URL: '${IDEAF_URL:?set IDEAF_URL, the public URL, like https://ideas.example.com}'
+      IDEAF__AUTH__SECRET: '${IDEAF_AUTH_SECRET:?set IDEAF_AUTH_SECRET, the same on every VM (openssl rand -hex 32)}'
+      IDEAF__SITE_ADMINS: ${IDEAF_SITE_ADMINS:-}
+      IDEAF__AUTH__PERSONAL_TOKENS: ${IDEAF_PERSONAL_TOKENS:-admins}
       # the load balancer's addresses: only it is believed about who the client is
-      IDEAF_TRUSTED_PROXIES: ${LB_ADDRESSES:?set LB_ADDRESSES, the load balancer's private addresses}
+      IDEAF__TRUSTED_PROXIES: ${LB_ADDRESSES:?set LB_ADDRESSES, the load balancer's private addresses}
       RIVET_ENDPOINT: http://default:${RIVET_ADMIN_TOKEN}@engine:6420
-      IDEAF_S3_BUCKET: ${S3_FILES_BUCKET:-ideaf-files}
-      IDEAF_S3_ENDPOINT: ${S3_ENDPOINT:?set S3_ENDPOINT, your bucket store (https://s3.us-east-1.amazonaws.com, say)}
-      IDEAF_S3_REGION: ${S3_REGION:-us-east-1}
+      IDEAF__FILES__S3__BUCKET: ${S3_FILES_BUCKET:-ideaf-files}
+      IDEAF__FILES__S3__ENDPOINT: ${S3_ENDPOINT:?set S3_ENDPOINT, your bucket store (https://s3.us-east-1.amazonaws.com, say)}
+      IDEAF__FILES__S3__REGION: ${S3_REGION:-us-east-1}
       # the files bucket's own key: reading and writing that bucket only (deploy/README.md)
-      IDEAF_S3_ACCESS_KEY_ID: ${S3_FILES_ACCESS_KEY_ID:?set S3_FILES_ACCESS_KEY_ID}
-      IDEAF_S3_SECRET_ACCESS_KEY: ${S3_FILES_SECRET_ACCESS_KEY:?set S3_FILES_SECRET_ACCESS_KEY}
-      IDEAF_SMTP_URL: ${IDEAF_SMTP_URL:-}
-      IDEAF_EMAIL_FROM: ${IDEAF_EMAIL_FROM:-}
-      IDEAF_NOTIFY_FROM: ${IDEAF_NOTIFY_FROM:-}
-      IDEAF_EMAIL: ${IDEAF_EMAIL:-}
-      IDEAF_MCP_CLIENT_HOSTS: ${IDEAF_MCP_CLIENT_HOSTS:-}
+      IDEAF__FILES__S3__ACCESS_KEY_ID: ${S3_FILES_ACCESS_KEY_ID:?set S3_FILES_ACCESS_KEY_ID}
+      IDEAF__FILES__S3__SECRET_ACCESS_KEY: ${S3_FILES_SECRET_ACCESS_KEY:?set S3_FILES_SECRET_ACCESS_KEY}
+      IDEAF__EMAIL__SMTP_URL: ${IDEAF_SMTP_URL:-}
+      IDEAF__EMAIL__FROM: ${IDEAF_EMAIL_FROM:-}
+      IDEAF__EMAIL__NOTIFY_FROM: ${IDEAF_NOTIFY_FROM:-}
+      IDEAF__EMAIL__MODE: ${IDEAF_EMAIL:-}
+      IDEAF__MCP__CLIENT_HOSTS: ${IDEAF_MCP_CLIENT_HOSTS:-}
       # the directory runs on the directory service's node, in a pool of its own (actors/pools.ts)
-      IDEAF_DIRECTORY_POOL: directory
+      IDEAF__DIRECTORY__POOL: directory
       # the version the engine places actors by: it gives new and waking actors only to the highest
       # live version, and moves them off lower ones, so it must be the same on every VM. A build's
       # own time differs from VM to VM, and would send every actor to the VM that built last

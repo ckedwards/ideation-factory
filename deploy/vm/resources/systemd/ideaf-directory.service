@@ -4,14 +4,13 @@
 # requests: its port (8081) is for its own health check, and stays private.
 [Unit]
 Description=Ideation Factory: the directory
-After=ideaf-pools.service rivet.service
-Wants=ideaf-pools.service
+After=rivet.service
 
 [Service]
 User=ideaf
 Group=ideaf
-EnvironmentFile=/etc/ideaf/ideaf.env
-Environment=NODE_ENV=production PORT=8081 RIVET_POOL=directory
+# its settings: /etc/ideaf/ideaf.yaml and secrets.yaml, which it reads itself
+Environment=NODE_ENV=production IDEAF__PORT=8081 IDEAF__ENGINE__POOL=directory
 WorkingDirectory=/opt/ideaf/app
 ExecStart=/opt/ideaf/bin/ideaf-start
 Restart=always

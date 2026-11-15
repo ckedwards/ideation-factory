@@ -1,77 +1,8 @@
-// @ideaf/server: one app node. Hosts the actors (RivetKit) and serves the HTTP
-// API in front of them. In development RivetKit starts a local Rivet Engine
-// itself, storing data under RIVETKIT_STORAGE_PATH, and file contents go under
-// IDEAF_DATA/files (the dev script sets both to .data/ at the repo root). A
-// deployment runs the engine on its own and names it in RIVET_ENDPOINT
-// (http://default:<admin token>@engine:6420), with files in a bucket
-// (files/settings.ts).
-import { join } from 'node:path'
-import { createClient } from 'rivetkit/client'
-import { limitDirectoryCalls } from './actors/limit.ts'
-import { directoryOf } from './actors/pools.ts'
-import { createApp } from './app.ts'
-import { authGateway } from './auth/gateway.ts'
-import { authSettingsFromEnv, mailerFromEnv } from './auth/settings.ts'
-import { WorkerPool } from './core-pool/pool.ts'
-import { configureNode } from './deps.ts'
-import { fileStoreFromEnv } from './files/settings.ts'
-import { timedFileStore } from './files/timed.ts'
-import { limitsFromEnv, MAX_MESSAGE_BYTES } from './limits.ts'
-import { notificationEmailFromEnv } from './mail/sender.ts'
-import { createLive, type LiveData } from './live.ts'
-import { registry, type Registry } from './registry.ts'
-import { devWebApp, staticWebApp } from './web.ts'
+// @ideaf/server: one app node (node.ts). Its settings come first (settings/start.ts), as RivetKit
+// takes the engine's from them when the registry is set up: so the node, and the registry with it,
+// is imported only once they're applied.
+import { startWithSettings } from './settings/start.ts'
 
-const port = Number(process.env.PORT ?? 8080)
-const data = process.env.IDEAF_DATA ?? '.data'
-
-const core = new WorkerPool()
-const auth = authSettingsFromEnv(process.env, mailerFromEnv(process.env))
-configureNode({
-  // timed: a summary of its reads and writes in the log once a minute (files/timed.ts)
-  files: timedFileStore(fileStoreFromEnv(process.env, data)),
-  core,
-  limits: limitsFromEnv(process.env),
-  auth,
-  email: notificationEmailFromEnv(process.env),
-})
-
-// A new engine admits its storage only after about a minute (it must outlast
-// its topology lease), and RivetKit stops waiting before then and exits the
-// process (status 1). Run the app under a supervisor that starts it again
-// (Compose's restart policy, systemd's Restart=); the next start finds it ready.
-await registry.startAndWait()
-// the engine's address, and its namespace and token (taken out of RIVET_ENDPOINT's URL, when it has them)
-const { endpoint, namespace, token } = registry.parseConfig()
-if (!endpoint) {
-  throw new Error('RivetKit has no engine endpoint; set RIVET_ENDPOINT or run in development')
-}
-// the directory gets at most DIRECTORY_CALLS of this node's calls at once (actors/limit.ts)
-const DIRECTORY_CALLS = Number(process.env.IDEAF_DIRECTORY_CALLS ?? 4)
-const actors = limitDirectoryCalls(
-  createClient<Registry>({ endpoint, namespace, ...(token ? { token } : {}) }),
-  DIRECTORY_CALLS,
-)
-
-// the web app: Vite's dev server while working on it (bun run dev sets
-// IDEAF_WEB_DEV_URL), or the built app, from IDEAF_WEB_DIR or the web package
-const web = process.env.IDEAF_WEB_DEV_URL
-  ? devWebApp(process.env.IDEAF_WEB_DEV_URL)
-  : staticWebApp(process.env.IDEAF_WEB_DIR ?? join(import.meta.dir, '../../web/dist'))
-const app = createApp({ actors, auth, web, health: () => registry.routes.health() })
-// each idea's live updates, over a WebSocket beside the API
-const live = createLive({
-  actors,
-  gateway: authGateway(directoryOf(actors), auth.baseURL, auth.trustedProxies),
-})
-const server = Bun.serve<LiveData>({
-  port,
-  // the largest upload a site may allow, with room for its encoding (limits.ts); Bun answers 413 past it
-  maxRequestBodySize: MAX_MESSAGE_BYTES,
-  fetch: (request, server) => {
-    const upgraded = live.upgrade(request, server)
-    return upgraded === null ? app(request, server.requestIP(request)?.address) : upgraded
-  },
-  websocket: live.websocket,
-})
-console.log(`ideaf server on http://localhost:${server.port} (${core.size} core workers)`)
+const settings = startWithSettings()
+const { startNode } = await import('./node.ts')
+await startNode(settings)

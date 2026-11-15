@@ -55,7 +55,7 @@ export function staticWebApp(dir: string): WebApp {
   }
 }
 
-/** The app's Vite dev server, at a URL (IDEAF_WEB_DEV_URL, which `bun run dev` sets). */
+/** The app's Vite dev server, at a URL (web.dev_url, which `bun run dev` sets). */
 export function devWebApp(base: string): WebApp {
   return async (request) => {
     const url = new URL(request.url)

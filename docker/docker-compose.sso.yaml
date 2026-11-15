@@ -37,11 +37,11 @@ services:
       keycloak:
         condition: service_healthy
     environment:
-      IDEAF_SSO: oidc
-      IDEAF_SSO_NAME: Acme
-      IDEAF_SSO_DOMAINS: acme.test
-      IDEAF_OIDC_ISSUER: http://keycloak:8180/realms/acme
-      IDEAF_OIDC_CLIENT_ID: ideaf
-      IDEAF_OIDC_CLIENT_SECRET: sandbox-oidc-secret-not-for-real-use
+      IDEAF__AUTH__SSO__MODE: oidc
+      IDEAF__AUTH__SSO__NAME: Acme
+      IDEAF__AUTH__SSO__DOMAINS: acme.test
+      IDEAF__AUTH__SSO__OIDC__ISSUER: http://keycloak:8180/realms/acme
+      IDEAF__AUTH__SSO__OIDC__CLIENT_ID: ideaf
+      IDEAF__AUTH__SSO__OIDC__CLIENT_SECRET: sandbox-oidc-secret-not-for-real-use
       # a site admin keeps an email code, for when the provider is down
-      IDEAF_SITE_ADMINS: ${IDEAF_SITE_ADMINS:-admin@acme.test}
+      IDEAF__SITE_ADMINS: ${IDEAF_SITE_ADMINS:-admin@acme.test}

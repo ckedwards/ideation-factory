@@ -1,14 +1,10 @@
 #!/bin/sh
-# Starts the app (or, with RIVET_POOL=directory, the directory) from its install in /opt/ideaf, as the
-# image's entrypoint does: the node version from the build unless RIVET_NODE_VERSION is set, and any
-# internal CA certificates in /etc/ideaf/ca trusted for its own connections. exec, so systemd's SIGTERM
-# reaches the server itself.
+# Starts the app (or, with IDEAF__ENGINE__POOL=directory, the directory) from its install in
+# /opt/ideaf, as the image's entrypoint does: any internal CA certificates in /etc/ideaf/ca trusted for
+# its own connections, and its settings from /etc/ideaf/ideaf.yaml and secrets.yaml, which it reads
+# itself. exec, so systemd's SIGTERM reaches the server itself.
 set -e
 APP=/opt/ideaf/app
-if [ -z "$RIVET_NODE_VERSION" ] && [ -s "$APP/build-version" ]; then
-  RIVET_NODE_VERSION="$(cat "$APP/build-version")"
-  export RIVET_NODE_VERSION
-fi
 extra=/var/lib/ideaf/extra-ca.pem
 : > "$extra"
 for certificate in /etc/ideaf/ca/*.pem /etc/ideaf/ca/*.crt; do
@@ -19,7 +15,7 @@ done
 if [ -s "$extra" ]; then
   export NODE_EXTRA_CA_CERTS="$extra"
 fi
-export IDEAF_DATA="${IDEAF_DATA:-/var/lib/ideaf}"
-export IDEAF_WEB_DIR="${IDEAF_WEB_DIR:-$APP/packages/web/dist}"
+export IDEAF__DATA="${IDEAF__DATA:-/var/lib/ideaf}"
+export IDEAF__WEB__DIR="${IDEAF__WEB__DIR:-$APP/packages/web/dist}"
 cd "$APP"
 exec /opt/ideaf/bin/bun packages/server/src/main.ts

@@ -22,8 +22,7 @@ Every email the app sends, sign-in codes and notifications alike, goes to Mailpi
 ## What runs
 
 - **engine:** our build of the Rivet Engine, alone, as in Rivet's [Docker Compose guide](https://rivet.dev/docs/deploy/self-host/control-plane/docker-compose/). It keeps everything in the `engine` volume.
-- **pool:** a one-off step that creates the engine's node pool, which the app joins.
-- **app:** the server, with the web app built in, on port 8080. It keeps ideas' files in the `app` volume.
+- **app:** the server, with the web app built in, on port 8080. It keeps ideas' files in the `app` volume, and makes the engine's node pool it joins.
 - **mailpit:** the inbox for its email, on port 8025 of this machine.
 
 ## Changing things
