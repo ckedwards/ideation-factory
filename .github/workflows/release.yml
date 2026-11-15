@@ -7,7 +7,8 @@ name: Release
 #
 # - the images get the release's version as a tag, then latest once the release is out;
 # - the native builds for VMs and bare metal (deploy/vm/install.sh) are taken out of those images,
-#   with their checksums, as the GitHub release, which makes the tag. The assets' names carry no
+#   with their checksums (scripts/release-assets.sh), as the GitHub release, which makes the tag;
+#   with RivetKit's fixed native module too, for install.sh --rivetkit-fix, when there is one. The assets' names carry no
 #   version, so .../releases/latest/download/<name> is always the newest.
 #
 # The tag comes last but one, so a run that fails leaves no tag, and the next takes the same version.
@@ -90,32 +91,15 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
       - name: Take the native builds out of the images
-        run: |
-          repo="ghcr.io/${GITHUB_REPOSITORY,,}"
-          take() {
-            local id
-            id=$(docker create "$1")
-            docker cp "$id:$2" "$3"
-            docker rm "$id" >/dev/null
-          }
-          docker pull -q "$repo/app:$VERSION"
-          docker pull -q "$repo/engine:$VERSION"
-          mkdir -p dist/ideaf/bin dist/engine
-          take "$repo/app:$VERSION" /app dist/ideaf/app
-          take "$repo/app:$VERSION" /usr/local/bin/bun dist/ideaf/bin/bun
-          take "$repo/engine:$VERSION" /usr/bin/rivet-engine dist/engine/rivet-engine
-          cp -r deploy/vm/resources dist/ideaf/vm
-          echo "$VERSION" > dist/ideaf/VERSION
-          tar -C dist -czf dist/ideaf-linux-x64.tar.gz ideaf
-          tar -C dist/engine -czf dist/rivet-engine-linux-x64.tar.gz rivet-engine
-          (cd dist && sha256sum ideaf-linux-x64.tar.gz rivet-engine-linux-x64.tar.gz > SHA256SUMS)
-          ls -la dist
+        run: scripts/release-assets.sh "$VERSION" "ghcr.io/${GITHUB_REPOSITORY,,}"
         env:
           VERSION: ${{ steps.version.outputs.version }}
       - name: Publish the release
         run: |
+          # every asset release-assets.sh made, as SHA256SUMS lists them, and it
+          mapfile -t assets < <(cut -d' ' -f3 dist/SHA256SUMS)
           gh release create "$VERSION" --target "$GITHUB_SHA" --title "$VERSION" --generate-notes \
-            dist/ideaf-linux-x64.tar.gz dist/rivet-engine-linux-x64.tar.gz dist/SHA256SUMS
+            "${assets[@]/#/dist/}" dist/SHA256SUMS
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
