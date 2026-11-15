@@ -1,0 +1,28 @@
+# The load balancer in front of the machines' apps (README.md): TLS, and requests spread round-robin
+# over the apps that answer their health check. Any app can serve any request: the engines route
+# each actor call to wherever that actor runs. Edit the two marked lines, then put it in
+# /etc/caddy/Caddyfile and run systemctl reload caddy.
+
+# 1. The name people reach it by. Caddy gets its certificate from Let's Encrypt and renews it,
+#    once the name points here and ports 80 and 443 are open. Otherwise, inside this block:
+#      tls /etc/caddy/fullchain.pem /etc/caddy/privkey.pem    your own certificate
+#      tls internal                                           Caddy's own CA (browsers warn)
+ideas.example.com {
+	header Strict-Transport-Security "max-age=31536000"
+	# an upload is a whole idea's files: the app's own cap (MAX_MESSAGE_BYTES, server/src/limits.ts)
+	request_body {
+		max_size 16MB
+	}
+	# 2. Every machine's app, by private address, port 8080
+	reverse_proxy 10.0.0.11:8080 10.0.0.12:8080 10.0.0.13:8080 {
+		lb_policy round_robin
+		# a machine that's down, or whose app is still waiting for its engine, gets nothing
+		health_uri /health
+		health_interval 5s
+		health_timeout 2s
+		# a request that couldn't reach one app goes to another (safe: writes carry idempotency keys)
+		lb_try_duration 10s
+		fail_duration 30s
+		# live updates are WebSockets, open as long as a page is: Caddy holds them with no timeout
+	}
+}

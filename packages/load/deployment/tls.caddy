@@ -1,4 +1,4 @@
-# The TLS modes, shared by the Caddyfiles: TLS_MODE picks one.
+# The TLS modes, shared by the load deployment's Caddyfiles (lb.yaml, try-locally.yaml): TLS_MODE picks one.
 #   internal       Caddy's own local CA: for trying it out (browsers warn)
 #   files          /tls/fullchain.pem and /tls/privkey.pem: yours, an internal CA's, say
 #   acme           from ACME_SERVER (Let's Encrypt by default), renewed automatically
