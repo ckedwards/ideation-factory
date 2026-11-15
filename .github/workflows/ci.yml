@@ -37,8 +37,9 @@ jobs:
           IDEAF_TEST_S3_ACCESS_KEY_ID: test
           IDEAF_TEST_S3_SECRET_ACCESS_KEY: test-secret
 
-  # No secrets anywhere in the history, on any branch (scripts/secrets.sh, .betterleaks.toml), as the
-  # pre-commit hook checks only what's staged, and can be skipped
+  # No secrets anywhere in this branch's history (scripts/secrets.sh, .betterleaks.toml), as the
+  # pre-commit hook checks only what's staged, and can be skipped: each pull request is checked with its
+  # own exceptions, and master's run covers everything merged
   secrets:
     runs-on: ubuntu-24.04
     timeout-minutes: 10

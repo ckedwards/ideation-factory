@@ -5,7 +5,7 @@
 # exceptions (test fixtures that only look like secrets).
 #
 #   scripts/secrets.sh staged     what's staged, before a commit (.githooks/pre-commit)
-#   scripts/secrets.sh history    every commit on every branch (CI)
+#   scripts/secrets.sh history    every commit in this branch's history (CI: a pull request's, and master's)
 #
 # It exits 1 when it finds something: remove it (and, if it was ever pushed, revoke it, as history
 # keeps it), or, if it isn't a secret, add an exception to .betterleaks.toml saying why.
@@ -67,7 +67,9 @@ case "${1:-}" in
     exec "$BIN" git --pre-commit --staged --redact --no-banner --config .betterleaks.toml
     ;;
   history)
-    exec "$BIN" git . --redact --no-banner --config .betterleaks.toml --log-opts="--all" -v
+    # this branch only: each branch is checked with its own .betterleaks.toml, so an exception added
+    # on one doesn't fail the others until it's merged
+    exec "$BIN" git . --redact --no-banner --config .betterleaks.toml --log-opts="HEAD" -v
     ;;
   *)
     sed -n '2,12p' "$0"
