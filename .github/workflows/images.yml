@@ -1,13 +1,12 @@
 name: Images
 
-# The app's image and the engine's, built once for each commit on master and each release tag, so
-# every node of a deployment runs the same builds (deploy/README.md): ghcr.io/<owner>/<repo>/app and
-# .../engine, tagged sha-<commit>, and master; a release (a tag v0.1.<n> while in alpha) also tags
-# them with its version and latest, and publishes the native builds for VMs and bare metal.
+# The app's image and the engine's, built once for each commit on master, so every node of a
+# deployment runs the same builds (deploy/README.md): ghcr.io/<owner>/<repo>/app and .../engine,
+# tagged sha-<commit> and master. A release (release.yml) adds its version and latest to one
+# commit's builds, without building them again.
 on:
   push:
     branches: [master]
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -26,14 +25,7 @@ jobs:
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}/app"
           tags="$image:sha-${GITHUB_SHA::7}"
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
-            # while in alpha, releases are 0.1.x only
-            if ! [[ "$GITHUB_REF_NAME" =~ ^v0\.1\.[0-9]+$ ]]; then
-              echo "::error::$GITHUB_REF_NAME isn't a release: they're v0.1.<n> while in alpha"
-              exit 1
-            fi
-            tags="$tags,$image:$GITHUB_REF_NAME,$image:latest"
-          elif [ "$GITHUB_REF_NAME" = master ]; then
+          if [ "$GITHUB_REF_NAME" = master ]; then
             tags="$tags,$image:master"
           fi
           echo "tags=$tags" >> "$GITHUB_OUTPUT"
@@ -71,14 +63,7 @@ jobs:
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}/engine"
           tags="$image:sha-${GITHUB_SHA::7}"
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
-            # while in alpha, releases are 0.1.x only
-            if ! [[ "$GITHUB_REF_NAME" =~ ^v0\.1\.[0-9]+$ ]]; then
-              echo "::error::$GITHUB_REF_NAME isn't a release: they're v0.1.<n> while in alpha"
-              exit 1
-            fi
-            tags="$tags,$image:$GITHUB_REF_NAME,$image:latest"
-          elif [ "$GITHUB_REF_NAME" = master ]; then
+          if [ "$GITHUB_REF_NAME" = master ]; then
             tags="$tags,$image:master"
           fi
           echo "tags=$tags" >> "$GITHUB_OUTPUT"
@@ -99,52 +84,6 @@ jobs:
         env:
           TAGS: ${{ steps.tags.outputs.tags }}
 
-  # A release: the native builds for VMs and bare metal (deploy/vm/install.sh), taken out of this tag's
-  # own images, with their checksums, as the GitHub release for the tag. The assets' names carry no
-  # version, so .../releases/latest/download/<name> is always the newest.
-  release:
-    if: github.ref_type == 'tag'
-    needs: [app, engine]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    permissions:
-      contents: write
-      packages: read
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - name: Sign in to the registry
-        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Take the builds out of the images
-        run: |
-          repo="ghcr.io/${GITHUB_REPOSITORY,,}"
-          [ -d deploy/vm ] || { echo "::error::no deploy/vm at $GITHUB_REF_NAME"; exit 1; }
-          take() {
-            local id
-            id=$(docker create "$1")
-            docker cp "$id:$2" "$3"
-            docker rm "$id" >/dev/null
-          }
-          docker pull -q "$repo/app:$GITHUB_REF_NAME"
-          docker pull -q "$repo/engine:$GITHUB_REF_NAME"
-          mkdir -p dist/ideaf/bin dist/engine
-          take "$repo/app:$GITHUB_REF_NAME" /app dist/ideaf/app
-          take "$repo/app:$GITHUB_REF_NAME" /usr/local/bin/bun dist/ideaf/bin/bun
-          take "$repo/engine:$GITHUB_REF_NAME" /usr/bin/rivet-engine dist/engine/rivet-engine
-          cp -r deploy/vm dist/ideaf/vm
-          echo "$GITHUB_REF_NAME" > dist/ideaf/VERSION
-          tar -C dist -czf dist/ideaf-linux-x64.tar.gz ideaf
-          tar -C dist/engine -czf dist/rivet-engine-linux-x64.tar.gz rivet-engine
-          (cd dist && sha256sum ideaf-linux-x64.tar.gz rivet-engine-linux-x64.tar.gz > SHA256SUMS)
-          ls -la dist
-      - name: Publish the release
-        run: |
-          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --generate-notes \
-            dist/ideaf-linux-x64.tar.gz dist/rivet-engine-linux-x64.tar.gz dist/SHA256SUMS
-        env:
-          GH_TOKEN: ${{ github.token }}
-
   # The same build with RivetKit's native module swapped for the one with the fix for
   # rivet-dev/rivet#5991, for benchmarks only (packages/load/DEPLOYMENT.md): ghcr.io/<owner>/<repo>/
   # app-bench, with the app's tags. Skipped, with a notice, until the RivetKit fix workflow has
@@ -161,9 +100,7 @@ jobs:
           repo="ghcr.io/${GITHUB_REPOSITORY,,}"
           rivetkit=$(grep -oE '"rivetkit": "[^"]+"' packages/server/package.json | grep -oE '[0-9][^"]*')
           tags="$repo/app-bench:sha-${GITHUB_SHA::7}"
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
-            tags="$tags,$repo/app-bench:$GITHUB_REF_NAME"
-          elif [ "$GITHUB_REF_NAME" = master ]; then
+          if [ "$GITHUB_REF_NAME" = master ]; then
             tags="$tags,$repo/app-bench:master"
           fi
           {
