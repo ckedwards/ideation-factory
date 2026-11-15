@@ -6,7 +6,13 @@
 #   around every body), oxfmt for layout. `bun run format` fixes what it reports.
 # - A changed workflow: every action it uses is pinned in
 #   .github/workflows/actions.lock. `gh actions-lock` updates it.
+# - No secrets: Betterleaks over what's staged (scripts/secrets.sh, .betterleaks.toml).
 cd "$(git rev-parse --show-toplevel)" || exit 1
+
+scripts/secrets.sh staged || {
+  echo "Remove the secret above from what's staged (and revoke it if it was ever pushed), or if it isn't one, add an exception to .betterleaks.toml saying why; then commit again." >&2
+  exit 1
+}
 
 workflows=$(git diff --cached --name-only --diff-filter=ACMR -- '.github/workflows/*.yml' '.github/workflows/*.yaml')
 if [ -n "$workflows" ]; then

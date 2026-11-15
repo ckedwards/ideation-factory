@@ -1,0 +1,35 @@
+# Betterleaks (scripts/secrets.sh): its own rules, with exceptions for what only looks like a secret.
+# Each is limited to its rules and where it is, and says why. Anything else it finds is a secret:
+# remove it, and if it was ever pushed, revoke it, as the history keeps it.
+#
+# Exceptions are allowlists, which add to Betterleaks' own rules. (A rule's or the config's filter
+# would replace the default rules' own filters, so they'd lose their checks for false positives.)
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "The sign-in tests' made-up identity provider's key, generated for them"
+targetRules = ["private-key"]
+paths = ['''^packages/server/src/auth/fixtures/fake-idp-key\.pem$''']
+
+[[allowlists]]
+description = "The sign-in spike's throwaway local servers: its test users' passwords, and JWTs it printed, signed by keys that only existed during that run"
+targetRules = ["generic-password", "generic-api-key"]
+paths = ['''^experiments/spike-better-auth/''']
+
+[[allowlists]]
+description = "The sandbox Keycloak's admin/admin"
+targetRules = ["generic-password"]
+condition = "AND"
+paths = ['''^docker/docker-compose\.sso\.yaml$''']
+regexes = ['''^admin$''']
+
+[[allowlists]]
+description = "Test users' passwords"
+targetRules = ["generic-password"]
+paths = ['''\.test\.ts$''']
+
+[[allowlists]]
+description = "The placeholder in documentation and messages about SMTP settings: smtps://user:password@host"
+targetRules = ["generic-credential-uri"]
+regexes = ['''^password$''']

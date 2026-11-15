@@ -37,6 +37,18 @@ jobs:
           IDEAF_TEST_S3_ACCESS_KEY_ID: test
           IDEAF_TEST_S3_SECRET_ACCESS_KEY: test-secret
 
+  # No secrets anywhere in the history, on any branch (scripts/secrets.sh, .betterleaks.toml), as the
+  # pre-commit hook checks only what's staged, and can be skipped
+  secrets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Betterleaks
+        run: scripts/secrets.sh history
+
   # Whether each package's stories could have changed: the package and those
   # it builds from (ui's: ui and core, whose Markdown the stories render; web's:
   # web, ui, core and api), what they resolve to in bun.lock (not just any
