@@ -2,3 +2,5 @@ node_modules/
 dist/
 # local dev data: RivetKit's actor storage and the files folder
 .data/
+# settings with secrets in them (deploy/compose/create-env.sh writes one)
+.env

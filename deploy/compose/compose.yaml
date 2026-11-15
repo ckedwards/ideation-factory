@@ -1,8 +1,9 @@
 # Ideation Factory on one machine, to try it (README.md): the engine and the app, from our published
-# images, with everything kept in two Docker volumes on this machine. Not for production (../vm).
+# images, with everything kept in two Docker volumes on this machine, and Mailpit catching the email.
+# Not for production (../vm).
 #
 #   cp .env.example .env     fill in the two secrets and your email
-#   docker compose up -d     then open http://localhost:8080
+#   docker compose up -d     then open http://localhost:8080, and http://localhost:8025 for the codes
 name: ideaf
 
 services:
@@ -43,6 +44,8 @@ services:
     depends_on:
       pool:
         condition: service_completed_successfully
+      mailpit:
+        condition: service_started
     ports:
       - ${IDEAF_PORT:-8080}:8080
     environment:
@@ -50,13 +53,22 @@ services:
       IDEAF_AUTH_SECRET: ${IDEAF_AUTH_SECRET:?set IDEAF_AUTH_SECRET in .env (openssl rand -hex 32)}
       IDEAF_SITE_ADMINS: ${IDEAF_SITE_ADMINS:-}
       RIVET_ENDPOINT: http://default:${RIVET_ADMIN_TOKEN}@engine:6420
-      # sign-in codes in the app's log (docker compose logs app), unless IDEAF_SMTP_URL names a relay
-      IDEAF_EMAIL: ${IDEAF_EMAIL:-log}
-      IDEAF_SMTP_URL: ${IDEAF_SMTP_URL:-}
-      IDEAF_EMAIL_FROM: ${IDEAF_EMAIL_FROM:-}
+      # every email to Mailpit, unless IDEAF_SMTP_URL names a relay that delivers it
+      IDEAF_SMTP_URL: ${IDEAF_SMTP_URL:-smtp://mailpit:1025}
+      IDEAF_EMAIL_FROM: ${IDEAF_EMAIL_FROM:-Ideation Factory <sign-in@ideaf.localhost>}
+      IDEAF_NOTIFY_FROM: ${IDEAF_NOTIFY_FROM:-Ideation Factory <notifications@ideaf.localhost>}
     volumes:
       # the files of every idea
       - app:/data
+
+  # An inbox for every email the app sends, sign-in codes included, at http://localhost:8025. Nothing
+  # reaches anyone's own address. It's on this machine only: anyone who can open it can sign in as
+  # anyone.
+  mailpit:
+    image: axllent/mailpit:v1.33.1
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:${MAILPIT_PORT:-8025}:8025
 
 configs:
   engine:
