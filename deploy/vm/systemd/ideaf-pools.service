@@ -1,0 +1,17 @@
+# Makes sure the engine has the node pools the app and the directory join, once it answers (every
+# machine does this; it's harmless), before either starts. Old app versions are drained on upgrade.
+[Unit]
+Description=Ideation Factory: the engine's node pools
+After=rivet.service
+Wants=rivet.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=ideaf
+EnvironmentFile=/etc/ideaf/ideaf.env
+ExecStart=/opt/ideaf/bin/ideaf-pools
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

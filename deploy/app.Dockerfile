@@ -41,6 +41,8 @@ COPY --from=build /app/packages/server packages/server
 COPY --from=build /app/packages/web/dist packages/web/dist
 COPY tsconfig*.json ./
 COPY deploy/app-entrypoint.sh /usr/local/bin/app-entrypoint
+# the VM install (deploy/vm/README.md), so a machine installs from the very build it runs
+COPY deploy/vm deploy/vm
 # the node version, which rises with each build: the commit's time when CI builds it (the same for
 # every node running it), otherwise when this image was built
 ARG BUILD_VERSION

@@ -1,0 +1,17 @@
+{
+  "auth": { "admin_token": "the same on every machine: openssl rand -hex 32" },
+  "api_peer": { "advertise_address": "this machine's private address:6421, like 10.0.0.11:6421" },
+  "storage": { "log_directory": "/var/lib/rivet/log" },
+  "object_storage": {
+    "primary": {
+      "s3": {
+        "bucket": "the engine's bucket",
+        "region": "us-east-1",
+        "endpoint": "https://s3.us-east-1.amazonaws.com",
+        "access_key_id": "the engine's key",
+        "secret_access_key": "its secret"
+      }
+    }
+  },
+  "telemetry": { "enabled": false }
+}

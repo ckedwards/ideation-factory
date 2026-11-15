@@ -1,0 +1,23 @@
+# The directory: the same app in a process of its own, in the engine's directory pool, so the
+# directory's work (the actor every request touches) has a thread to itself. One machine's hosts
+# it; the others' stand by and take over if that machine is lost. Nothing but the engine sends it
+# requests: its port (8081) is for its own health check, and stays private.
+[Unit]
+Description=Ideation Factory: the directory
+After=ideaf-pools.service rivet.service
+Wants=ideaf-pools.service
+
+[Service]
+User=ideaf
+Group=ideaf
+EnvironmentFile=/etc/ideaf/ideaf.env
+Environment=NODE_ENV=production PORT=8081 RIVET_POOL=directory
+WorkingDirectory=/opt/ideaf/app
+ExecStart=/opt/ideaf/bin/ideaf-start
+Restart=always
+RestartSec=2
+TimeoutStopSec=60
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
