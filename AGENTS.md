@@ -30,7 +30,7 @@ Every body of `if`, `else`, `for`, `while` and `do` is a block in braces, on its
 
 ## Secrets
 
-No secrets in the repository: it's public. Betterleaks (`scripts/secrets.sh`) checks what's staged in the pre-commit hook and the whole history in CI; an exception for a test fixture or placeholder goes in `.betterleaks.toml`, limited to its rule and file, with why.
+No secrets in the repository: it's public. Betterleaks (`scripts/secrets.sh`) checks what's staged in the pre-commit hook and the branch's whole history in CI; an exception for a test fixture or placeholder goes in `.betterleaks.toml`, limited to its rule and file, with why.
 
 ## Workflows
 
