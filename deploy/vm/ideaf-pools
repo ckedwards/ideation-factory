@@ -1,0 +1,15 @@
+#!/bin/sh
+# Waits for this machine's engine to answer, then makes sure it has the node pools the app and the
+# directory join (default and directory), with old app versions drained on upgrade. Harmless to run
+# again, on every machine.
+set -e
+engine="${RIVET_ENGINE_URL:-http://127.0.0.1:6420}"
+: "${RIVET_ADMIN_TOKEN:?set RIVET_ADMIN_TOKEN in /etc/ideaf/ideaf.env, the engine's admin token}"
+for pool in default directory; do
+  until curl -sf -m 5 -X PUT "$engine/pools/$pool?namespace=default" \
+    -H "authorization: Bearer $RIVET_ADMIN_TOKEN" -H 'content-type: application/json' \
+    -d '{"drain_on_version_upgrade": true}' >/dev/null; do
+    sleep 2
+  done
+done
+echo "node pools ready: default, directory"

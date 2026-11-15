@@ -1,0 +1,19 @@
+# The Rivet Engine, our build of it (deploy/vm/README.md), as Rivet documents it for VMs and bare
+# metal: its own user, its config readable only by that user, a high open-file limit (it keeps files
+# open for its log and storage), and 11 minutes to stop.
+[Unit]
+Description=Rivet Engine (Ideation Factory)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=rivet
+Group=rivet
+ExecStart=/usr/local/bin/rivet-engine --config /etc/rivet/config.json
+Restart=always
+RestartSec=2
+LimitNOFILE=1048576
+TimeoutStopSec=660
+
+[Install]
+WantedBy=multi-user.target
