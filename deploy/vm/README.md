@@ -1,6 +1,6 @@
 # Ideation Factory on VMs or bare metal
 
-For production: three machines or more, each running a release's native builds under systemd, as Rivet documents its engine (rivet.dev/docs/deploy). No Docker: the install downloads them from the release, and checks them. Or [with containers](containers/README.md): the same machines, settings and steps, with each machine running our published images under Docker Compose.
+For production: three machines or more, or [one](#one-machine) for a small team or a test deployment, each running a release's native builds under systemd, as Rivet documents its engine (rivet.dev/docs/deploy). No Docker: the install downloads them from the release, and checks them. Or [with containers](containers/README.md): the same machines, settings and steps, with each machine running our published images under Docker Compose.
 
 ```
                      load balancer (TLS, to each app's port 8080)
@@ -94,6 +94,27 @@ Every machine on the same release, the engines before the apps (Rivet's rule: a 
 
 With several machines, every app reports the build's node version, the same on every machine running it; set `RIVET_NODE_VERSION` only to override it, the same everywhere. To go back, install the previous release (or move `/opt/ideaf/app.previous` back) and restart.
 
+## One machine
+
+For a small team, or a test deployment on a real server: everything on one machine, with the same install and the same files. It's the cheapest real deployment, and what you give up is fail-over:
+
+- **While it restarts, the site is down:** for an upgrade or a reboot, about a minute. If the machine itself is lost, it's down until you set up another.
+- **Writes from the last few seconds could be lost with its disk.** One engine keeps one copy of recent writes, on its own disk, until they reach the bucket shortly after; everything older is in the bucket. With the engine's objects in a folder in place of a bucket, its disk is everything: back it up.
+- **It doesn't grow into three machines in place.** Rivet doesn't document growing a single engine into a cluster, and we haven't tried it. Start with three if you expect to need them.
+
+What changes from three machines:
+
+- **`/etc/rivet/config.json`:** the engine makes its own storage, as it can't wait for two others, and advertises only itself:
+  ```json
+  "api_peer": { "advertise_address": "127.0.0.1:6421" },
+  "storage": { "log_directory": "/var/lib/rivet/log", "auto_provision_partitions": 1 }
+  ```
+  The bucket is set as for three machines (recommended). For a test deployment, `"object_storage": { "primary": { "file_system": { "path": "/var/lib/rivet/objects" } } }` keeps it on the disk instead.
+- **The load balancer is Caddy on the same machine:** [extras/caddy](extras/caddy/README.md)'s Caddyfile with one app, `reverse_proxy 127.0.0.1:8080`, and `trusted_proxies: [127.0.0.1]` in `ideaf.yaml`.
+- **The machine:** the same requirements, though a small team needs less than the 4 vCPU and 16 GB a cluster's machines want. 2 vCPU and 8 GB should do (not measured yet), still with a 100 GiB disk, and still not burstable.
+
+Starting and upgrading are as for three machines, without the waiting: `systemctl enable --now rivet ideaf ideaf-directory` once, and for an upgrade, the install with the new release, then `systemctl restart rivet`, then `systemctl restart ideaf-directory ideaf`. The same goes for [containers](containers/README.md), with this engine config.
+
 ## Before going live
 
-Rivet's checklist, for this deployment: three engines, each on its own machine and disk, all on the same release; the buckets with versioning on and their keys allowed only their own; 6421 and 6420 private; the admin token in `/etc/rivet/config.json` only, readable by `rivet`; a tested restore of the data ([backups](../../docs/backup-spike.md), being designed); and an upgrade tried once.
+Rivet's checklist, for this deployment (one machine gives up the first item): three engines, each on its own machine and disk, all on the same release; the buckets with versioning on and their keys allowed only their own; 6421 and 6420 private; the admin token in `/etc/rivet/config.json` only, readable by `rivet`; a tested restore of the data ([backups](../../docs/backup-spike.md), being designed); and an upgrade tried once.
