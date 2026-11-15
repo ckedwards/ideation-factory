@@ -99,7 +99,7 @@ With several machines, every app reports the build's node version, the same on e
 For a small team, or a test deployment on a real server: everything on one machine, with the same install and the same files. It's the cheapest real deployment, and what you give up is fail-over:
 
 - **While it restarts, the site is down:** for an upgrade or a reboot, about a minute. If the machine itself is lost, it's down until you set up another.
-- **Writes from the last few seconds could be lost with its disk.** One engine keeps one copy of recent writes, on its own disk, until they reach the bucket shortly after; everything older is in the bucket. With the engine's objects in a folder in place of a bucket, its disk is everything: back it up.
+- **Losing the machine with its disk can't be recovered yet.** One engine keeps recent writes on its own disk until they reach the bucket shortly after, so everything but the last few seconds is in the bucket. But there's no known way yet to bring a deployment back from the bucket alone: Rivet hasn't validated a restore into a fresh cluster, and making it work is part of the [backup spike](../../docs/backup-spike.md). Until then, keep the disk if the machine dies (attach it to a new machine at the same private address), and take whole-machine snapshots: stop it, snapshot the disk, copy both buckets. With the engine's objects in a folder in place of a bucket, its disk is everything.
 - **Growing to three machines is untested:** see [Growing to three](#growing-to-three-untested) below.
 
 What changes from three machines:
