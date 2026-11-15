@@ -49,6 +49,21 @@ The release is optional (the newest unless given), but every machine should run 
 | data                                 | `/var/lib/rivet` (the engine's disk) and `/var/lib/ideaf`                            |
 | what was installed                   | `/opt/ideaf/VERSION`                                                                  |
 
+`IDEAF_DOWNLOADS` names a mirror of the release's assets, for machines that can't reach GitHub: `… | sudo IDEAF_DOWNLOADS=https://mirror.example.com/ideaf/v0.1.3 bash -s -- v0.1.3`.
+
+### RivetKit's fix, for sustained load
+
+```sh
+curl -fsSL …/install.sh | sudo bash -s -- v0.1.3 --rivetkit-fix
+```
+
+RivetKit, the library the app runs actors on, has a bug that makes an actor kept continuously busy slow down more and more (rivet-dev/rivet#5991). The directory is the actor every request touches. A Rivet pull request fixes it (rivet-dev/rivet#5992), but no RivetKit release has it yet. `--rivetkit-fix` installs RivetKit's native module built with that fix, from the release, checked like the rest, in place of the published one. Nothing else changes.
+
+- **Without it** a deployment does well while the directory has idle moments, as it does with people working through the day. In the load tests, at 100 page views a second (about 6,000 people clicking at once), the published module answered as fast as the fixed one.
+- **With it** for anything that keeps the directory busy for minutes on end: bulk imports, a single sign-on directory sync (SCIM) adding many people, agents or scripts writing in a loop, or traffic near capacity. On the published module, the load test's sustained writes slowed the directory from about 40 writes a second to 5 within half an hour. Every load test result in [packages/load](../../packages/load/README.md) is with the fix.
+
+It's remembered: upgrades keep it until `--no-rivetkit-fix`, which goes back to RivetKit as published. A release whose RivetKit has no fixed build yet is refused with the fix on, before anything changes. `/opt/ideaf/VERSION` says which is installed.
+
 ## Settings
 
 **`/etc/rivet/config.json`,** the same on every machine but its address: the admin token (`openssl rand -hex 32`), this machine's private address as `advertise_address` (`10.0.0.11:6421`), the engine's bucket and key. Crash reports to Rivet stay off unless you turn `telemetry` on. Every other engine setting is in Rivet's configuration reference; unknown settings are refused.

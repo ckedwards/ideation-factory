@@ -1,7 +1,8 @@
 # The app's published image with RivetKit's native module swapped for the one with the fix for
 # rivet-dev/rivet#5991 (module.Dockerfile), for benchmarks (packages/load/DEPLOYMENT.md): the same
-# build otherwise, so its node version is the app image's. Not for production: people run the app
-# image, with RivetKit as published.
+# build otherwise, so its node version is the app image's. Deployments run the app image, with
+# RivetKit as published, unless a VM install opts into the same module (install.sh --rivetkit-fix,
+# from the release's rivetkit-fix asset).
 ARG APP_IMAGE
 ARG MODULE_IMAGE
 FROM ${MODULE_IMAGE} AS module

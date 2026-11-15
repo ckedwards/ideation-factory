@@ -26,7 +26,7 @@ Every action a workflow in `.github/workflows/` uses is pinned to a commit in `.
 
 ## Releases
 
-A release is made by hand, from the commit at `master`'s tip: Actions → Release → Run workflow, or `gh workflow run release.yml`. While in alpha it's always the next `v0.1.<n>`, the patch one higher than the last release. It releases the very builds that commit already published (its `sha-<commit>` images), adds the version and `latest` to them, and makes the GitHub release with the native builds for VMs and bare metal, which tags the commit. Don't push release tags yourself: nothing builds from them.
+A release is made by hand, from the commit at `master`'s tip: Actions → Release → Run workflow, or `gh workflow run release.yml`. While in alpha it's always the next `v0.1.<n>`, the patch one higher than the last release. It releases the very builds that commit already published (its `sha-<commit>` images), adds the version and `latest` to them, and makes the GitHub release with the native builds for VMs and bare metal, which tags the commit. Don't push release tags yourself: nothing builds from them. The release also carries RivetKit's native module with the fix for rivet-dev/rivet#5991, for `install.sh --rivetkit-fix`, when the RivetKit fix workflow has built one for the RivetKit the app pins: after upgrading RivetKit, run that workflow before the next release, or VMs installed with the fix can't upgrade to it.
 
 ## Commit messages
 
