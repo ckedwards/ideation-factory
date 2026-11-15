@@ -1,41 +1,144 @@
-# The load test's additions to the try-it-out Compose with SeaweedFS (deploy/compose): this
-# checkout's builds in place of the published images, so a run measures the code it's run from;
-# Mailpit catches the emails (sign-in codes, which the seeder reads, and the notifications the load
-# sends); the app is also reached directly, from this machine, by the seeder; and k6 runs on the
-# Docker network. See README.md: run.sh drives it.
+# The load test on one machine (README.md; run.sh drives it): this checkout's builds of the app and
+# the engine, set up as production is, so a run measures the code it's run from. That's TLS in front
+# (Caddy), the directory in a process of its own, and the engine and the app on buckets (SeaweedFS,
+# here), each with its own key. Mailpit catches the emails (sign-in codes, which the seeder reads,
+# and the notifications the load sends); the app is also reached directly, from this machine, by the
+# seeder; and k6 runs on the Docker network.
 services:
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    depends_on: [app]
+    ports:
+      - ${HTTP_PORT:-18090}:80
+      - ${HTTPS_PORT:-18443}:443
+    environment:
+      IDEAF_HOST: ${IDEAF_HOST:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [ideaf]
+
   app:
     image: ideaf-load-app
     build: &app-build
       context: ../..
       dockerfile: deploy/app.Dockerfile
-    ports:
-      - 127.0.0.1:${LOAD_APP_PORT:-18080}:8080
+    restart: unless-stopped
+    # SIGTERM hands its actors to another node at once; Rivet asks for at least 60 s before SIGKILL
+    stop_grace_period: 60s
     depends_on:
+      pool:
+        condition: service_completed_successfully
       mailpit:
         condition: service_started
+    ports:
+      - 127.0.0.1:${LOAD_APP_PORT:-18080}:8080
     environment: &app-environment
+      IDEAF_URL: ${IDEAF_URL:?set IDEAF_URL}
+      IDEAF_AUTH_SECRET: ${IDEAF_AUTH_SECRET:?set IDEAF_AUTH_SECRET}
+      IDEAF_SITE_ADMINS: ${IDEAF_SITE_ADMINS:-}
+      IDEAF_PERSONAL_TOKENS: 'on'
+      # only Caddy and the seeder reach the app
+      IDEAF_TRUSTED_PROXIES: ${IDEAF_SUBNET:-172.30.80.0/24}
+      RIVET_ENDPOINT: http://default:${RIVET_ADMIN_TOKEN}@engine:6420
+      IDEAF_S3_BUCKET: ideaf-files
+      IDEAF_S3_ENDPOINT: http://seaweedfs:8333
+      IDEAF_S3_REGION: us-east-1
+      IDEAF_S3_ACCESS_KEY_ID: ${S3_FILES_ACCESS_KEY_ID:?set S3_FILES_ACCESS_KEY_ID}
+      IDEAF_S3_SECRET_ACCESS_KEY: ${S3_FILES_SECRET_ACCESS_KEY:?set S3_FILES_SECRET_ACCESS_KEY}
       IDEAF_SMTP_URL: smtp://mailpit:1025
       IDEAF_EMAIL_FROM: Ideation Factory <sign-in@load.test>
       IDEAF_NOTIFY_FROM: Ideation Factory <notifications@load.test>
-      IDEAF_PERSONAL_TOKENS: 'on'
+      # the directory runs on the directory service's node, in a pool of its own (actors/pools.ts)
+      IDEAF_DIRECTORY_POOL: directory
       # how many calls each app node sends the directory at once (server/src/actors/limit.ts)
       IDEAF_DIRECTORY_CALLS: ${IDEAF_DIRECTORY_CALLS:-4}
+    networks: [ideaf]
 
-  # the directory's node: the app's settings too (extends takes the one-VM file's), but no port
+  # The directory: the same app in a process of its own, in the engine's directory pool, so the
+  # directory's work has a JS thread to itself (docs/admin/performance.md). Caddy doesn't send it
+  # requests; it only hosts the directory.
   directory:
     image: ideaf-load-app
     build: *app-build
+    restart: unless-stopped
+    stop_grace_period: 60s
     depends_on:
+      pool:
+        condition: service_completed_successfully
       mailpit:
         condition: service_started
-    environment: *app-environment
+    environment:
+      <<: *app-environment
+      RIVET_POOL: directory
+    networks: [ideaf]
 
   engine:
     image: ideaf-load-engine
     build:
       context: ../..
       dockerfile: deploy/engine.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      buckets:
+        condition: service_completed_successfully
+    # the engine keeps more files open than Docker's soft limit of 1024 on many hosts
+    ulimits:
+      nofile: 524288
+    configs:
+      - source: engine
+        target: /etc/rivet/config.yaml
+    environment:
+      # SeaweedFS here speaks plain HTTP
+      AWS_ALLOW_HTTP: 'true'
+    volumes:
+      - engine:/var/lib/rivet
+    networks: [ideaf]
+
+  # the engine's node pools, the app's and the directory's; draining on upgrade moves actors off an
+  # older app version once a newer one connects
+  pool:
+    image: curlimages/curl:8.16.0
+    depends_on: [engine]
+    entrypoint: ['sh', '-c']
+    command:
+      - |
+        for pool in default directory; do
+          until curl -sf -X PUT "http://engine:6420/pools/$$pool?namespace=default" \
+              -H "authorization: Bearer $$RIVET_ADMIN_TOKEN" -H 'content-type: application/json' \
+              -d '{"drain_on_version_upgrade": true}'; do sleep 2; done
+        done
+    environment:
+      RIVET_ADMIN_TOKEN: ${RIVET_ADMIN_TOKEN}
+    networks: [ideaf]
+
+  # the buckets, on this machine
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.51
+    restart: unless-stopped
+    command: server -dir=/data -s3 -s3.config=/etc/seaweedfs/s3.json
+    configs:
+      - source: seaweedfs
+        target: /etc/seaweedfs/s3.json
+    volumes:
+      - seaweedfs:/data
+    networks: [ideaf]
+
+  # makes the two buckets
+  buckets:
+    image: chrislusf/seaweedfs:4.51
+    depends_on: [seaweedfs]
+    entrypoint: ['sh', '-c']
+    command:
+      - |
+        until echo 's3.bucket.list' | weed shell -master=seaweedfs:9333 -filer=seaweedfs:8888 >/dev/null 2>&1; do sleep 1; done
+        for bucket in ideaf-files ideaf-engine; do
+          echo "s3.bucket.list" | weed shell -master=seaweedfs:9333 -filer=seaweedfs:8888 | grep -qw "$$bucket" \
+            || echo "s3.bucket.create -name $$bucket" | weed shell -master=seaweedfs:9333 -filer=seaweedfs:8888
+        done
+    networks: [ideaf]
 
   mailpit:
     image: axllent/mailpit:v1.33.1
@@ -59,3 +162,43 @@ services:
       LOAD_ORIGIN: ${IDEAF_URL}
       LOAD_SEED: /data/seed.json
     networks: [ideaf]
+
+configs:
+  engine:
+    content: |
+      auth:
+        admin_token: "${RIVET_ADMIN_TOKEN:?set RIVET_ADMIN_TOKEN}"
+      storage:
+        log_directory: /var/lib/rivet/log
+        # one engine: it makes its own storage partition, where a cluster waits for three engines
+        auto_provision_partitions: 1
+      object_storage:
+        primary:
+          s3:
+            bucket: ideaf-engine
+            endpoint: http://seaweedfs:8333
+            region: us-east-1
+            access_key_id: "${S3_ENGINE_ACCESS_KEY_ID}"
+            secret_access_key: "${S3_ENGINE_SECRET_ACCESS_KEY}"
+      telemetry:
+        enabled: false
+  seaweedfs:
+    content: |
+      {"identities": [
+        {"name": "engine", "credentials": [{"accessKey": "${S3_ENGINE_ACCESS_KEY_ID}", "secretKey": "${S3_ENGINE_SECRET_ACCESS_KEY}"}],
+          "actions": ["Read:ideaf-engine", "Write:ideaf-engine", "List:ideaf-engine", "Tagging:ideaf-engine"]},
+        {"name": "files", "credentials": [{"accessKey": "${S3_FILES_ACCESS_KEY_ID}", "secretKey": "${S3_FILES_SECRET_ACCESS_KEY}"}],
+          "actions": ["Read:ideaf-files", "Write:ideaf-files", "List:ideaf-files"]}]}
+
+volumes:
+  engine:
+  seaweedfs:
+  caddy-data:
+  caddy-config:
+
+networks:
+  ideaf:
+    ipam:
+      config:
+        # IDEAF_SUBNET, if this one is taken on this machine
+        - subnet: ${IDEAF_SUBNET:-172.30.80.0/24}

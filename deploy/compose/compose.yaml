@@ -1,161 +1,77 @@
-# Ideation Factory on one machine, for trying it (README.md): what both ways of trying it share,
-# with seaweedfs.yaml (a bucket store beside it) or aws.yaml (your S3 buckets) added on top. The
-# example settings choose which (COMPOSE_FILE), so it's cp seaweedfs.env.example .env (or
-# aws.env.example), fill it in, then docker compose up -d. It pulls our published images, the app
-# and the engine, at IDEAF_VERSION: latest (the newest release) unless set, a release's v0.1.<n>,
-# master (the newest commit), or a commit's sha-<7 characters>.
+# Ideation Factory on one machine, to try it (README.md): the engine and the app, from our published
+# images, with everything kept in two Docker volumes on this machine. Not for production (../vm).
+#
+#   cp .env.example .env     fill in the two secrets and your email
+#   docker compose up -d     then open http://localhost:8080
 name: ideaf
 
 services:
-  # TLS in front of the app, with certificates got and renewed by Caddy itself: see the Caddyfile
-  caddy:
-    image: caddy:2.10.2-alpine
-    restart: unless-stopped
-    depends_on: [app]
-    ports:
-      - ${HTTP_PORT:-80}:80
-      - ${HTTPS_PORT:-443}:443
-      - ${HTTPS_PORT:-443}:443/udp
-    environment:
-      IDEAF_HOST: ${IDEAF_HOST:?set IDEAF_HOST, the name people reach this by}
-      TLS_MODE: ${TLS_MODE:-internal}
-      ACME_EMAIL: ${ACME_EMAIL:-}
-      ACME_SERVER: ${ACME_SERVER:-https://acme-v02.api.letsencrypt.org/directory}
-      ACME_CA_FILE: ${ACME_CA_FILE:-internal-ca.pem}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ../caddy/tls.caddy:/etc/caddy/tls.caddy:ro
-      - ./tls:/tls:ro
-      - ./ca:/ca:ro
-      # Caddy's certificates, and its local CA
-      - caddy-data:/data
-      - caddy-config:/config
-    networks: [ideaf]
-
-  app:
-    image: ${IDEAF_APP_IMAGE:-ghcr.io/ckedwards/ideation-factory/app:${IDEAF_VERSION:-latest}}
-    restart: unless-stopped
-    # SIGTERM hands its actors to another node at once, each given up to 15 s to save its state;
-    # Rivet asks for at least 60 s before SIGKILL, and Docker's default is 10 s. Cut short, they're
-    # left for the engine's 40 s lost threshold (docs/admin/performance.md)
-    stop_grace_period: 60s
-    depends_on:
-      pool:
-        condition: service_completed_successfully
-    environment:
-      IDEAF_URL: '${IDEAF_URL:?set IDEAF_URL, the public URL, like https://ideas.example.com}'
-      IDEAF_AUTH_SECRET: '${IDEAF_AUTH_SECRET:?set IDEAF_AUTH_SECRET (openssl rand -hex 32)}'
-      IDEAF_SITE_ADMINS: ${IDEAF_SITE_ADMINS:-}
-      IDEAF_PERSONAL_TOKENS: ${IDEAF_PERSONAL_TOKENS:-admins}
-      # only Caddy reaches the app, from this network
-      IDEAF_TRUSTED_PROXIES: ${IDEAF_SUBNET:-172.30.80.0/24}
-      RIVET_ENDPOINT: http://default:${RIVET_ADMIN_TOKEN}@engine:6420
-      IDEAF_S3_BUCKET: ${S3_FILES_BUCKET:-ideaf-files}
-      IDEAF_S3_ENDPOINT: ${S3_ENDPOINT:?set S3_ENDPOINT, the bucket store}
-      IDEAF_S3_REGION: ${S3_REGION:-us-east-1}
-      # the files bucket's own key: reading and writing that bucket only (deploy/README.md)
-      IDEAF_S3_ACCESS_KEY_ID: ${S3_FILES_ACCESS_KEY_ID:?set S3_FILES_ACCESS_KEY_ID}
-      IDEAF_S3_SECRET_ACCESS_KEY: ${S3_FILES_SECRET_ACCESS_KEY:?set S3_FILES_SECRET_ACCESS_KEY}
-      # the mail server below, which delivers straight to people's addresses (README.md: it may land
-      # in spam), unless IDEAF_SMTP_URL names a relay of your own
-      IDEAF_SMTP_URL: ${IDEAF_SMTP_URL:-smtp://mail:587}
-      IDEAF_EMAIL_FROM: ${IDEAF_EMAIL_FROM:-Ideation Factory <sign-in@${IDEAF_HOST}>}
-      IDEAF_NOTIFY_FROM: ${IDEAF_NOTIFY_FROM:-Ideation Factory <notifications@${IDEAF_HOST}>}
-      IDEAF_EMAIL: ${IDEAF_EMAIL:-}
-      IDEAF_MCP_CLIENT_HOSTS: ${IDEAF_MCP_CLIENT_HOSTS:-}
-      # the directory runs on the directory service's node, in a pool of its own (actors/pools.ts)
-      IDEAF_DIRECTORY_POOL: directory
-    volumes:
-      # an internal CA's certificates, trusted for the app's own connections
-      - ./ca:/etc/ideaf/ca:ro
-    networks: [ideaf]
-
-  # The directory: the same app in a process of its own, in the engine's directory pool, so the
-  # directory's work has a JS thread to itself (docs/admin/performance.md). Caddy doesn't send it
-  # requests; it only hosts the directory.
-  directory:
-    extends: app
-    environment:
-      RIVET_POOL: directory
-
+  # Rivet's engine on its own, as Rivet's own Compose guide runs it
+  # (rivet.dev/docs/deploy/self-host/control-plane/docker-compose)
   engine:
-    image: ${IDEAF_ENGINE_IMAGE:-ghcr.io/ckedwards/ideation-factory/engine:${IDEAF_VERSION:-latest}}
+    image: ghcr.io/ckedwards/ideation-factory/engine:${IDEAF_VERSION:-latest}
     restart: unless-stopped
-    # the engine keeps files open for its log and storage, more than Docker's soft limit of 1024 on
-    # many hosts (Ubuntu's, say): past it, the engine stops itself ("Too many open files")
+    # it keeps more files open than Docker's soft limit of 1024 on many hosts
     ulimits:
       nofile: 524288
+    environment:
+      RIVET__AUTH__ADMIN_TOKEN: ${RIVET_ADMIN_TOKEN:?set RIVET_ADMIN_TOKEN in .env (openssl rand -hex 32)}
     configs:
       - source: engine
         target: /etc/rivet/config.yaml
-    environment:
-      # a cloud bucket is HTTPS; seaweedfs.yaml allows plain HTTP, for SeaweedFS on this machine
-      AWS_ALLOW_HTTP: 'false'
     volumes:
       - engine:/var/lib/rivet
-    networks: [ideaf]
 
-  # Email, delivered straight to each recipient's mail server: no account anywhere, but without the
-  # DNS records (SPF, DKIM) a real sender has, so providers often file it as spam, and nothing gets
-  # out where outgoing port 25 is blocked (most home connections, and AWS unless asked). For real use,
-  # set IDEAF_SMTP_URL to a relay (README.md).
-  mail:
-    image: boky/postfix:5.2.1-alpine
-    restart: unless-stopped
-    environment:
-      ALLOWED_SENDER_DOMAINS: ${IDEAF_HOST}
-      POSTFIX_myhostname: ${IDEAF_HOST}
-    volumes:
-      - mail:/var/spool/postfix
-    networks: [ideaf]
-
-  # The engine's node pools: the app's nodes' and the directory's (RivetKit only makes one for an
-  # engine it starts itself). Draining on upgrade moves actors off an older app version once a newer one connects.
+  # creates the engine's node pool, which the app joins; it drains an older app once a newer one connects
   pool:
     image: curlimages/curl:8.16.0
     depends_on: [engine]
     entrypoint: ['sh', '-c']
     command:
       - |
-        for pool in default directory; do
-          until curl -sf -X PUT "http://engine:6420/pools/$$pool?namespace=default" \
-              -H "authorization: Bearer $$RIVET_ADMIN_TOKEN" -H 'content-type: application/json' \
-              -d '{"drain_on_version_upgrade": true}'; do sleep 2; done
-        done
+        until curl -sf -X PUT "http://engine:6420/pools/default?namespace=default" \
+            -H "authorization: Bearer $$RIVET_ADMIN_TOKEN" -H 'content-type: application/json' \
+            -d '{"drain_on_version_upgrade": true}'; do sleep 2; done
     environment:
       RIVET_ADMIN_TOKEN: ${RIVET_ADMIN_TOKEN}
-    networks: [ideaf]
+
+  app:
+    image: ghcr.io/ckedwards/ideation-factory/app:${IDEAF_VERSION:-latest}
+    restart: unless-stopped
+    # Rivet asks for at least 60 s for the app to hand its actors back; Docker's default is 10 s
+    stop_grace_period: 60s
+    depends_on:
+      pool:
+        condition: service_completed_successfully
+    ports:
+      - ${IDEAF_PORT:-8080}:8080
+    environment:
+      IDEAF_URL: ${IDEAF_URL:-http://localhost:8080}
+      IDEAF_AUTH_SECRET: ${IDEAF_AUTH_SECRET:?set IDEAF_AUTH_SECRET in .env (openssl rand -hex 32)}
+      IDEAF_SITE_ADMINS: ${IDEAF_SITE_ADMINS:-}
+      RIVET_ENDPOINT: http://default:${RIVET_ADMIN_TOKEN}@engine:6420
+      # sign-in codes in the app's log (docker compose logs app), unless IDEAF_SMTP_URL names a relay
+      IDEAF_EMAIL: ${IDEAF_EMAIL:-log}
+      IDEAF_SMTP_URL: ${IDEAF_SMTP_URL:-}
+      IDEAF_EMAIL_FROM: ${IDEAF_EMAIL_FROM:-}
+    volumes:
+      # the files of every idea
+      - app:/data
 
 configs:
   engine:
     content: |
-      auth:
-        admin_token: "${RIVET_ADMIN_TOKEN:?set RIVET_ADMIN_TOKEN (openssl rand -hex 32)}"
       storage:
         log_directory: /var/lib/rivet/log
-        # one engine: it makes its own storage partition, where a cluster waits for three engines
-        # (Rivet's own single-process engine does the same)
+        # one engine, which makes its own storage (a cluster waits for three)
         auto_provision_partitions: 1
+        balancing:
+          enabled: false
       object_storage:
         primary:
-          s3:
-            bucket: "${S3_ENGINE_BUCKET:-ideaf-engine}"
-            endpoint: "${S3_ENDPOINT}"
-            region: "${S3_REGION:-us-east-1}"
-            access_key_id: "${S3_ENGINE_ACCESS_KEY_ID}"
-            secret_access_key: "${S3_ENGINE_SECRET_ACCESS_KEY}"
-      telemetry:
-        enabled: false
+          file_system:
+            path: /var/lib/rivet/objects
 
 volumes:
   engine:
-  mail:
-  caddy-data:
-  caddy-config:
-
-networks:
-  ideaf:
-    ipam:
-      config:
-        # IDEAF_SUBNET, if this one is taken on this machine
-        - subnet: ${IDEAF_SUBNET:-172.30.80.0/24}
+  app:
