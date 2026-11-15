@@ -9,7 +9,8 @@ import {
   type PersonalTokenPolicy,
   type SsoSettings,
 } from './config.ts'
-import { smtpMailer } from './mail.ts'
+import { emailTransportFromEnv } from '../mail/transport.ts'
+import { emailMailer } from './mail.ts'
 
 const DEV_SECRET = 'ideaf-development-secret-not-for-production-0123456789'
 
@@ -146,28 +147,27 @@ export function scimTokenFromEnv(env: Record<string, string | undefined>): strin
 /**
  * Where sign-in codes go:
  * - IDEAF_SMTP_URL and IDEAF_EMAIL_FROM: by email, over SMTP (see auth/mail.ts);
+ * - IDEAF_EMAIL=sendmail and IDEAF_EMAIL_FROM: by email, through the host's sendmail
+ *   (IDEAF_SENDMAIL, /usr/sbin/sendmail unless set; see mail/transport.ts);
  * - otherwise the server log, which production refuses unless IDEAF_EMAIL=log
  *   says so (a deployment behind single sign-on, say, where only site admins
  *   use codes and can read the log).
  */
 export function mailerFromEnv(env: Record<string, string | undefined>): Mailer {
-  const url = env.IDEAF_SMTP_URL
-  if (url) {
-    if (!/^smtps?:\/\//.test(url)) {
-      throw new Error('IDEAF_SMTP_URL is smtps://user:password@host:465 or smtp://user:password@host:587')
-    }
+  const transport = emailTransportFromEnv(env)
+  if (transport) {
     if (!env.IDEAF_EMAIL_FROM) {
       throw new Error('set IDEAF_EMAIL_FROM, the sender of sign-in codes: "Ideation Factory <sign-in@example.com>"')
     }
-    return smtpMailer({
-      url,
+    return emailMailer({
+      transport,
       from: env.IDEAF_EMAIL_FROM,
       siteURL: env.IDEAF_URL ?? `http://localhost:${env.PORT ?? 8080}`,
     })
   }
   if (env.NODE_ENV === 'production' && env.IDEAF_EMAIL !== 'log') {
     throw new Error(
-      'set IDEAF_SMTP_URL and IDEAF_EMAIL_FROM to send sign-in codes by email (or IDEAF_EMAIL=log to write them to the server log)',
+      'set IDEAF_SMTP_URL (or IDEAF_EMAIL=sendmail) and IDEAF_EMAIL_FROM to send sign-in codes by email (or IDEAF_EMAIL=log to write them to the server log)',
     )
   }
   return logMailer

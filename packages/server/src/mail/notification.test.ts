@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import type { DueEmail, IdeaListing } from '../directory/types.ts'
 import { fakeSmtp } from './fake-smtp.ts'
 import { notificationEmail } from './notification.ts'
-import { logSender, notificationEmailFromEnv, smtpSender } from './sender.ts'
+import { emailSender, logSender, notificationEmailFromEnv } from './sender.ts'
 import { readUnsubscribeToken, unsubscribePage, unsubscribeToken } from './unsubscribe.ts'
 
 const site = { baseURL: 'https://ideas.example.test', secret: 'a-test-secret-0123456789abcdef-0123' }
@@ -159,7 +159,10 @@ afterAll(() => smtp.stop())
 
 describe('sending', () => {
   test('goes over SMTP from the notifications sender, with the headers and threading', async () => {
-    const sender = smtpSender({ url: smtp.url, from: 'Ideation Factory <notifications@example.test>' })
+    const sender = emailSender({
+      transport: { kind: 'smtp', url: smtp.url },
+      from: 'Ideation Factory <notifications@example.test>',
+    })
     await sender.send(notificationEmail(due(), site))
     const message = smtp.received.at(-1)!
     expect(message.from).toBe('notifications@example.test')

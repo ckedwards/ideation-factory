@@ -1,26 +1,21 @@
 // Sign-in codes by email, over SMTP (nodemailer), so any provider works:
 // Amazon SES, Postmark, Mailgun, Resend, Google Workspace, or a server of your
-// own. See mailerFromEnv in settings.ts for the settings.
-import nodemailer from 'nodemailer'
+// own; or through the host's sendmail command (mail/transport.ts). See
+// mailerFromEnv in settings.ts for the settings.
+import { createTransport, type EmailTransport } from '../mail/transport.ts'
 import type { Mailer } from './config.ts'
 
-export interface SmtpSettings {
-  /** smtps://user:password@host:465 (TLS), or smtp://…:587 (STARTTLS when the server offers it). */
-  url: string
+export interface EmailSettings {
+  /** How the email leaves: SMTP, or the host's sendmail. */
+  transport: EmailTransport
   /** The sender: "Ideation Factory <sign-in@example.com>". */
   from: string
   /** The deployment's URL, named in the message so people know where the code is for. */
   siteURL: string
 }
 
-export function smtpMailer(settings: SmtpSettings): Mailer {
-  const transport = nodemailer.createTransport({
-    url: settings.url,
-    // fail rather than leave someone waiting on the sign-in page
-    connectionTimeout: 10_000,
-    greetingTimeout: 10_000,
-    socketTimeout: 20_000,
-  } as never)
+export function emailMailer(settings: EmailSettings): Mailer {
+  const transport = createTransport(settings.transport)
   return {
     async sendCode(email, code) {
       await transport.sendMail({ from: settings.from, to: email, ...signInEmail(code, settings.siteURL) })

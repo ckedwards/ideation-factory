@@ -2,7 +2,7 @@
 // mailer the environment picks.
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { fakeSmtp } from '../mail/fake-smtp.ts'
-import { smtpMailer } from './mail.ts'
+import { emailMailer } from './mail.ts'
 import { logMailer, mailerFromEnv } from './settings.ts'
 
 let smtp: ReturnType<typeof fakeSmtp>
@@ -13,8 +13,8 @@ afterAll(() => smtp.stop())
 
 describe('sign-in codes by email', () => {
   test('go over SMTP, with the code in the subject and both bodies, and where it signs in to', async () => {
-    const mailer = smtpMailer({
-      url: smtp.url,
+    const mailer = emailMailer({
+      transport: { kind: 'smtp', url: smtp.url },
       from: 'Ideation Factory <sign-in@example.test>',
       siteURL: 'https://ideas.example.test',
     })
@@ -31,18 +31,24 @@ describe('sign-in codes by email', () => {
   })
 
   test('a server that refuses or isn’t there is an error, not a silent loss', async () => {
-    const nowhere = smtpMailer({ url: 'smtp://127.0.0.1:1', from: 'x@example.test', siteURL: 'https://x.test' })
+    const nowhere = emailMailer({
+      transport: { kind: 'smtp', url: 'smtp://127.0.0.1:1' },
+      from: 'x@example.test',
+      siteURL: 'https://x.test',
+    })
     await expect(nowhere.sendCode('a@example.test', '111111', 'sign-in')).rejects.toThrow()
   })
 })
 
 describe('which mailer', () => {
-  test('SMTP when it’s set (with a sender); the log in development, or in production only when asked for', () => {
+  test('SMTP or sendmail when one is set (with a sender); the log in development, or in production only when asked for', () => {
     expect(mailerFromEnv({})).toBe(logMailer)
     expect(mailerFromEnv({ NODE_ENV: 'production', IDEAF_EMAIL: 'log' })).toBe(logMailer)
     expect(() => mailerFromEnv({ NODE_ENV: 'production' })).toThrow('IDEAF_SMTP_URL')
     expect(() => mailerFromEnv({ IDEAF_SMTP_URL: smtp.url })).toThrow('IDEAF_EMAIL_FROM')
     expect(() => mailerFromEnv({ IDEAF_SMTP_URL: 'mail.example.test', IDEAF_EMAIL_FROM: 'x' })).toThrow('smtps://')
     expect(mailerFromEnv({ IDEAF_SMTP_URL: smtp.url, IDEAF_EMAIL_FROM: 'x@example.test' })).not.toBe(logMailer)
+    expect(mailerFromEnv({ IDEAF_EMAIL: 'sendmail', IDEAF_EMAIL_FROM: 'x@example.test' })).not.toBe(logMailer)
+    expect(() => mailerFromEnv({ IDEAF_EMAIL: 'sendmail' })).toThrow('IDEAF_EMAIL_FROM')
   })
 })
