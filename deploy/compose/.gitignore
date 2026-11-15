@@ -1,5 +1,1 @@
-tls/*
-!tls/.gitkeep
-ca/*
-!ca/.gitkeep
 .env

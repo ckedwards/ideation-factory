@@ -1,0 +1,10 @@
+# The load test's TLS proxy in front of the app (compose.yaml), with Caddy's own local CA
+{$IDEAF_HOST} {
+	tls internal
+	# an upload is a whole idea's files: the app's own cap (MAX_MESSAGE_BYTES, server/src/limits.ts)
+	request_body {
+		max_size 16MB
+	}
+	# WebSockets (live updates) and X-Forwarded-For pass through as they are
+	reverse_proxy app:8080
+}

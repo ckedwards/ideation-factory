@@ -1,9 +1,9 @@
 # Load test
 
-k6 against the [try-it-out Compose](../../deploy/compose) with SeaweedFS, built from this checkout, on one machine, at the design scale in [scale concerns](../../docs/mvp/scale-concerns.md#load-test-plan): 10,000 people, 1,000 teams, 2,000 groups and 100,000 ideas.
+k6 against this checkout's builds on one machine, set up as production is (`compose.yaml`: TLS, the directory in a process of its own, and buckets, in SeaweedFS here), at the design scale in [scale concerns](../../docs/mvp/scale-concerns.md#load-test-plan): 10,000 people, 1,000 teams, 2,000 groups and 100,000 ideas.
 
 ```sh
-packages/load/run.sh up       # the try-it-out Compose, plus Mailpit, as project ideaf-load
+packages/load/run.sh up       # compose.yaml, with Mailpit, as project ideaf-load
 packages/load/run.sh seed     # the data, through the API (resumable: run it again to carry on)
 packages/load/run.sh steady   # the steady state
 packages/load/run.sh burst    # the steady state with bots
