@@ -308,7 +308,7 @@ Only a group's admins (or a site admin) can delete it. Before deleting, the sett
 
 Notifications are in the app (the inbox) and, where the deployment has email set up, by email too.
 
-**Email notifications** (step 9, part 4c) go out over the same SMTP settings as sign-in codes (any provider: Amazon SES, Postmark, Mailgun, Resend, a server of your own), so a deployment that can send sign-in codes can send them. A deployment without email shows no email options (`IDEAF_EMAIL_NOTIFICATIONS=off` turns them off while keeping sign-in codes; in development without SMTP they go to the server log).
+**Email notifications** (step 9, part 4c) go out the same way as sign-in codes: over SMTP (any provider: Amazon SES, Postmark, Mailgun, Resend, a server of your own), or through the host's `sendmail` command (`IDEAF_EMAIL=sendmail`), for a machine whose own mail setup already relays its mail, so a deployment that can send sign-in codes can send them. A deployment without email shows no email options (`IDEAF_EMAIL_NOTIFICATIONS=off` turns them off while keeping sign-in codes; in development without SMTP they go to the server log).
 
 - **The same events as the inbox,** from the same queue: who hears about an idea, and why, is decided once, and email follows it. Unsubscribing from an idea stops its emails too, and access is checked when an email is sent, so nobody is emailed about an idea they can no longer see.
 - **On by default, for the ideas you're involved in** (author, review requested, via a group, participating, subscribed). Each person picks `involved`, `review-requests` (only being asked to review) or `off`.
