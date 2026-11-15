@@ -5,7 +5,7 @@
 ## What ran
 
 - **The three nodes,** as in session 1, all on `app-bench:sha-e6f8638` (RivetKit 3.1.1 with the fix for rivet-dev/rivet#5991), the nodes' code at `b90a29c` (their engines' API published for the directory machines).
-- **Two directory machines**, `c8a.xlarge`: AMD EPYC 9R45 at 4.5 GHz, one thread a core, against the nodes' `m7i` at 3.2 GHz and two (the directory is limited by one thread, so it wants fast cores, not more of them). Each runs a directory process only (`deploy/three-vms/directory.yaml`), connected to one node's engine: the first to node 1's, the second to node 2's. The nodes then ran without theirs.
+- **Two directory machines**, `c8a.xlarge`: AMD EPYC 9R45 at 4.5 GHz, one thread a core, against the nodes' `m7i` at 3.2 GHz and two (the directory is limited by one thread, so it wants fast cores, not more of them). Each runs a directory process only (`deploy/three-vms/directory.yaml` then, now `packages/load/deployment/directory.yaml`), connected to one node's engine: the first to node 1's, the second to node 2's. The nodes then ran without theirs.
 - **S3 request metrics split by prefix**: the cluster's coordination (`rivet/cluster/`), each node's storage records (`rivet/depot/cluster/`), and the data (`rivet/depot/tablets/`).
 
 | Time (ET)   | What                                                                                   |

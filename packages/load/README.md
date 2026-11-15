@@ -1,9 +1,9 @@
 # Load test
 
-k6 against the [one-VM Compose](../../deploy/one-vm), on one machine, at the design scale in [scale concerns](../../docs/mvp/scale-concerns.md#load-test-plan): 10,000 people, 1,000 teams, 2,000 groups and 100,000 ideas.
+k6 against the [try-it-out Compose](../../deploy/compose) with SeaweedFS, built from this checkout, on one machine, at the design scale in [scale concerns](../../docs/mvp/scale-concerns.md#load-test-plan): 10,000 people, 1,000 teams, 2,000 groups and 100,000 ideas.
 
 ```sh
-packages/load/run.sh up       # the one-VM Compose, plus Mailpit, as project ideaf-load
+packages/load/run.sh up       # the try-it-out Compose, plus Mailpit, as project ideaf-load
 packages/load/run.sh seed     # the data, through the API (resumable: run it again to carry on)
 packages/load/run.sh steady   # the steady state
 packages/load/run.sh burst    # the steady state with bots
@@ -12,7 +12,7 @@ packages/load/run.sh down     # stop, keeping the data; `wipe` deletes it and th
 
 `up` writes `.data/load.env` the first time, with new secrets. The site is at https://localhost:18443 (Caddy's local CA), Mailpit at http://localhost:18025. The seeder reaches the app directly at http://localhost:18080.
 
-**Against a deployment** (the three-VM Compose on AWS: in Frankfurt for everyday benchmarks, in the US to check production), from a machine of its own: `remote.sh`, with the same commands, plus `steps` (a warm-up, then page views rising in steps until it can't keep up) and `check` (opens every seeded idea, to find any that won't). [DEPLOYMENT.md](DEPLOYMENT.md) says what to make, how to set it up, how to keep the seed, and what it costs. Benchmarks are better made that way: one laptop's CPU throttles on battery and when hot, and a day of runs on one drifted more than the changes they measured.
+**Against a deployment** (the three-node Compose in [deployment/](deployment/) on AWS: in Frankfurt for everyday benchmarks, in the US to check production), from a machine of its own: `remote.sh`, with the same commands, plus `steps` (a warm-up, then page views rising in steps until it can't keep up) and `check` (opens every seeded idea, to find any that won't). [DEPLOYMENT.md](DEPLOYMENT.md) says what to make, how to set it up, how to keep the seed, and what it costs. Benchmarks are better made that way: one laptop's CPU throttles on battery and when hot, and a day of runs on one drifted more than the changes they measured.
 
 ## What it does
 
@@ -27,7 +27,7 @@ packages/load/run.sh down     # stop, keeping the data; `wipe` deletes it and th
 
 What's been made is kept in `.data/seed.json`: IDs, and each person's session cookie and personal token. At full scale, seeding takes about … (see the results).
 
-**Rate limits stay on.** Every request carries its person's own address in `X-Forwarded-For` (`10.x.y.z`). The app trusts that header because the request comes from the Docker network, which the one-VM Compose lists in `IDEAF_TRUSTED_PROXIES`. So the limits count people apart, as they would count real people behind Caddy.
+**Rate limits stay on.** Every request carries its person's own address in `X-Forwarded-For` (`10.x.y.z`). The app trusts that header because the request comes from the Docker network, which the Compose files list in `IDEAF_TRUSTED_PROXIES`. So the limits count people apart, as they would count real people behind Caddy.
 
 **The k6 script** (`k6/load.ts`) runs two scenarios:
 
@@ -99,7 +99,7 @@ From the steady state on the same machine, with the directory on a node of its o
 
   More app processes add little: one VM peaks at 426 requests a second and three at 507, as the directory's node (over 100% CPU at the peak) and the engine (about 250 to 300%) are the limit.
 
-- **Fail-over** (the three-VM Compose on one machine, RivetKit 3.1.1): a crashed app node's actors are unavailable for about 45 s, the engine's lost threshold, even if Docker restarts it at once; one stopped with SIGTERM hands them over in about 0.3 s. Killing the directory's whole VM (its app, directory node and engine), everything answered again after 100 to 136 s, in 5 of 5 runs.
+- **Fail-over** (the three-node Compose on one machine, `deployment/try-locally.yaml`, RivetKit 3.1.1): a crashed app node's actors are unavailable for about 45 s, the engine's lost threshold, even if Docker restarts it at once; one stopped with SIGTERM hands them over in about 0.3 s. Killing the directory's whole VM (its app, directory node and engine), everything answered again after 100 to 136 s, in 5 of 5 runs.
 
 From the Frankfurt deployment (the full write-up of both sessions, with what each run ran: [reports/report1](reports/report1/); [DEPLOYMENT.md](DEPLOYMENT.md): three `m7i.xlarge` nodes of 4 vCPU and 16 GB, S3 in the same region, RivetKit and the engine 3.1.1, the app at `e6f8638` from the published images), its first session, 14 November 2026:
 

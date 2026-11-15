@@ -1,6 +1,6 @@
 # The load test on a deployment
 
-The three-VM deployment (`deploy/three-vms`) on machines with CPUs of their own (not burstable), its buckets in S3, driven from a machine of its own by `remote.sh`. It checks what one laptop couldn't measure steadily: the sizing tiers, fail-over, how much of an idea page goes on reading files from S3, and RivetKit 3.1.2's deferred commits. Benchmarks belong here, or on another machine of their own: a laptop's CPU throttles on battery and when hot, and a day of runs on one drifted more than the changes it measured.
+The three-VM deployment (`packages/load/deployment`) on machines with CPUs of their own (not burstable), its buckets in S3, driven from a machine of its own by `remote.sh`. It checks what one laptop couldn't measure steadily: the sizing tiers, fail-over, how much of an idea page goes on reading files from S3, and RivetKit 3.1.2's deferred commits. Benchmarks belong here, or on another machine of their own: a laptop's CPU throttles on battery and when hot, and a day of runs on one drifted more than the changes it measured.
 
 Two setups on AWS, the same layout and steps:
 
@@ -49,7 +49,7 @@ Run either only while measuring: stop or snapshot between sessions, and tear it 
 ## Setting it up
 
 1. **Every machine:** `MY_IP=<your address> ./ec2.sh up` makes them in Frankfurt: the network, the security groups, and the five instances on Ubuntu with Docker, at the addresses `10.0.0.10` (the load balancer), `.11`–`.13` (the nodes) and `.20` (the load machine). By hand, elsewhere: Docker with Compose. The load machine also needs Bun, git, and SSH keys to the nodes (for `docker stats`). Give each machine a fixed private address: the seed's snapshots (below) depend on them staying the same.
-2. **The nodes:** the repository at the commit being measured (cloned, or pushed from your machine: `git init` there with `receive.denyCurrentBranch updateInstead`, then `git push ubuntu@<address>:ideation-factory <commit>:refs/heads/master`), and fill in `deploy/three-vms/.env` from its example:
+2. **The nodes:** the repository at the commit being measured (cloned, or pushed from your machine: `git init` there with `receive.denyCurrentBranch updateInstead`, then `git push ubuntu@<address>:ideation-factory <commit>:refs/heads/master`), and fill in `packages/load/deployment/.env` from its example:
    - `NODE_ADDRESS`: each node's own private address;
    - `LB_ADDRESSES`: the load balancer's private address **and the load machine's**, so the app believes the addresses k6 sends for each person (otherwise every person is one address, and sign-in's rate limits throttle the seeder);
    - `S3_ENDPOINT`, `S3_REGION`, the buckets, and the two keys;
@@ -82,7 +82,8 @@ and `app` in place of `app-bench` for the comparison run on the published RivetK
 Without the registry: build the module with `rivetkit-fix/build.sh` on any Linux machine with Rust, copy it to each node's `packages/load/.data/rivetkit-napi-fixed.node`, and start the app and directory with the overlay (anything that recreates them without it goes back to the published module):
 
 ```sh
-LOAD_RIVETKIT_VERSION=3.1.1 docker compose -f node.yaml -f ../../packages/load/rivetkit-fix/compose.yaml up -d app directory
+LOAD_RIVETKIT_VERSION=3.1.1 LOAD_RIVETKIT_MODULE=$HOME/ideation-factory/packages/load/.data/rivetkit-napi-fixed.node \
+  docker compose -f node.yaml -f ../rivetkit-fix/compose.yaml up -d app directory
 ```
 
 ## The seed: once, then restored
@@ -128,7 +129,7 @@ It can't be made on another machine and copied in: the engine's storage records 
 
 - **The tiers:** the page-view rate each layout holds with under 1% failures and a p95 under a second, stepping up in 90 s steps after a warm-up (`remote.sh steps`), on RivetKit with the fix:
   - three nodes;
-  - three nodes, with the directory on two machines of its own (`deploy/three-vms/directory.yaml`).
+  - three nodes, with the directory on two machines of its own (`packages/load/deployment/directory.yaml`).
 
   Then the three nodes once more on the published RivetKit, at the same steps: what a deployment on today's release gets.
 
@@ -161,7 +162,7 @@ From the same seeded deployment, after the first session.
 
 1. **Start (5 min):** `./ec2.sh start`, then the two directory machines: `DIRECTORY_MACHINES=1 MY_IP=<your address> ./ec2.sh up`, which makes only what's missing (about $0.48 an hour more while they run).
 2. **The nodes' code (10 min):** push `master` to each node and the load machine as in setting up. A node whose `node.yaml` changed (its engine's API now published for the directory machines) recreates its engine on `docker compose -f node.yaml up -d --no-build`: do that one node at a time with the deployment at rest, each healthy before the next, as an engine restarting under load has left ideas that never opened again.
-3. **The directory machines (15 min),** each with the repository at `master` and `deploy/three-vms/.env` as the nodes', with its own `NODE_ADDRESS` and `DIRECTORY_ENGINE` (`10.0.0.11:6420` for the first, `10.0.0.12:6420` for the second): `docker compose -f directory.yaml pull` and `up -d --no-build`. Add the load machine's key to both (`~/.ssh/authorized_keys`), and both to `NODES` in the load machine's `remote.env`, so the runs' samples include them.
+3. **The directory machines (15 min),** each with the repository at `master` and `packages/load/deployment/.env` as the nodes', with its own `NODE_ADDRESS` and `DIRECTORY_ENGINE` (`10.0.0.11:6420` for the first, `10.0.0.12:6420` for the second): `docker compose -f directory.yaml pull` and `up -d --no-build`. Add the load machine's key to both (`~/.ssh/authorized_keys`), and both to `NODES` in the load machine's `remote.env`, so the runs' samples include them.
 4. **Move the directory (2 min):** on each node, `docker compose -f node.yaml up -d --no-build --scale directory=0`. The nodes' directory processes stop gracefully and the directory starts on a directory machine; its CPU there, under load, shows which.
 5. **The tier (2 × 20 min):** `./remote.sh steps`, twice.
 6. **Back to three nodes (5 min):** on each node, `docker compose -f node.yaml up -d --no-build` (their directory processes return), then `docker compose -f directory.yaml stop` on the directory machines, and `./ec2.sh` can leave them stopped from here on.

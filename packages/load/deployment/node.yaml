@@ -12,7 +12,7 @@ services:
     # built here, unless IDEAF_APP_IMAGE names a published one (deploy/README.md)
     image: ${IDEAF_APP_IMAGE:-ideaf-app}
     build:
-      context: ../..
+      context: ../../..
       dockerfile: deploy/app.Dockerfile
     restart: unless-stopped
     # SIGTERM hands its actors to another node at once, each given up to 15 s to save its state;
@@ -65,7 +65,7 @@ services:
 
   engine:
     build:
-      context: ../..
+      context: ../../..
       dockerfile: deploy/engine.Dockerfile
     restart: unless-stopped
     # the engine keeps files open for its log and storage, more than Docker's soft limit of 1024 on

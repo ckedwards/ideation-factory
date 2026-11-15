@@ -1,8 +1,8 @@
-# Ideation Factory on one VM: Caddy (TLS), the app, the Rivet Engine and,
-# unless you bring your own bucket, SeaweedFS. See deploy/README.md.
-#
-#   cp .env.example .env     then fill it in
-#   docker compose up -d --build
+# Ideation Factory on one machine, for trying it (README.md): what both ways of trying it share,
+# with seaweedfs.yaml (a bucket store beside it) or aws.yaml (your S3 buckets) added on top. The
+# example settings choose which (COMPOSE_FILE), so it's cp seaweedfs.env.example .env (or
+# aws.env.example), fill it in, then docker compose up -d. It pulls our published images: the app and the engine, at IDEAF_VERSION (latest
+# unless set: a commit's sha-<7 characters>, or later a release).
 name: ideaf
 
 services:
@@ -32,11 +32,7 @@ services:
     networks: [ideaf]
 
   app:
-    # built here, unless IDEAF_APP_IMAGE names a published one (../README.md)
-    image: ${IDEAF_APP_IMAGE:-ideaf-app}
-    build:
-      context: ../..
-      dockerfile: deploy/app.Dockerfile
+    image: ${IDEAF_APP_IMAGE:-ghcr.io/ckedwards/ideation-factory/app:${IDEAF_VERSION:-latest}}
     restart: unless-stopped
     # SIGTERM hands its actors to another node at once, each given up to 15 s to save its state;
     # Rivet asks for at least 60 s before SIGKILL, and Docker's default is 10 s. Cut short, they're
@@ -51,17 +47,19 @@ services:
       IDEAF_SITE_ADMINS: ${IDEAF_SITE_ADMINS:-}
       IDEAF_PERSONAL_TOKENS: ${IDEAF_PERSONAL_TOKENS:-admins}
       # only Caddy reaches the app, from this network
-      IDEAF_TRUSTED_PROXIES: 172.30.80.0/24
+      IDEAF_TRUSTED_PROXIES: ${IDEAF_SUBNET:-172.30.80.0/24}
       RIVET_ENDPOINT: http://default:${RIVET_ADMIN_TOKEN}@engine:6420
       IDEAF_S3_BUCKET: ${S3_FILES_BUCKET:-ideaf-files}
-      IDEAF_S3_ENDPOINT: ${S3_ENDPOINT:-http://seaweedfs:8333}
+      IDEAF_S3_ENDPOINT: ${S3_ENDPOINT:?set S3_ENDPOINT, the bucket store}
       IDEAF_S3_REGION: ${S3_REGION:-us-east-1}
       # the files bucket's own key: reading and writing that bucket only (deploy/README.md)
       IDEAF_S3_ACCESS_KEY_ID: ${S3_FILES_ACCESS_KEY_ID:?set S3_FILES_ACCESS_KEY_ID}
       IDEAF_S3_SECRET_ACCESS_KEY: ${S3_FILES_SECRET_ACCESS_KEY:?set S3_FILES_SECRET_ACCESS_KEY}
-      IDEAF_SMTP_URL: ${IDEAF_SMTP_URL:-}
-      IDEAF_EMAIL_FROM: ${IDEAF_EMAIL_FROM:-}
-      IDEAF_NOTIFY_FROM: ${IDEAF_NOTIFY_FROM:-}
+      # the mail server below, which delivers straight to people's addresses (README.md: it may land
+      # in spam), unless IDEAF_SMTP_URL names a relay of your own
+      IDEAF_SMTP_URL: ${IDEAF_SMTP_URL:-smtp://mail:587}
+      IDEAF_EMAIL_FROM: ${IDEAF_EMAIL_FROM:-Ideation Factory <sign-in@${IDEAF_HOST}>}
+      IDEAF_NOTIFY_FROM: ${IDEAF_NOTIFY_FROM:-Ideation Factory <notifications@${IDEAF_HOST}>}
       IDEAF_EMAIL: ${IDEAF_EMAIL:-}
       IDEAF_MCP_CLIENT_HOSTS: ${IDEAF_MCP_CLIENT_HOSTS:-}
       # the directory runs on the directory service's node, in a pool of its own (actors/pools.ts)
@@ -80,26 +78,34 @@ services:
       RIVET_POOL: directory
 
   engine:
-    build:
-      context: ../..
-      dockerfile: deploy/engine.Dockerfile
+    image: ${IDEAF_ENGINE_IMAGE:-ghcr.io/ckedwards/ideation-factory/engine:${IDEAF_VERSION:-latest}}
     restart: unless-stopped
     # the engine keeps files open for its log and storage, more than Docker's soft limit of 1024 on
     # many hosts (Ubuntu's, say): past it, the engine stops itself ("Too many open files")
     ulimits:
       nofile: 524288
-    depends_on:
-      buckets:
-        condition: service_completed_successfully
-        required: false
     configs:
       - source: engine
         target: /etc/rivet/config.yaml
     environment:
-      # SeaweedFS here speaks plain HTTP on the private network; a cloud bucket is HTTPS
-      AWS_ALLOW_HTTP: ${S3_ALLOW_HTTP:-true}
+      # a cloud bucket is HTTPS; seaweedfs.yaml allows plain HTTP, for SeaweedFS on this machine
+      AWS_ALLOW_HTTP: 'false'
     volumes:
       - engine:/var/lib/rivet
+    networks: [ideaf]
+
+  # Email, delivered straight to each recipient's mail server: no account anywhere, but without the
+  # DNS records (SPF, DKIM) a real sender has, so providers often file it as spam, and nothing gets
+  # out where outgoing port 25 is blocked (most home connections, and AWS unless asked). For real use,
+  # set IDEAF_SMTP_URL to a relay (README.md).
+  mail:
+    image: boky/postfix:5.2.1-alpine
+    restart: unless-stopped
+    environment:
+      ALLOWED_SENDER_DOMAINS: ${IDEAF_HOST}
+      POSTFIX_myhostname: ${IDEAF_HOST}
+    volumes:
+      - mail:/var/spool/postfix
     networks: [ideaf]
 
   # The engine's node pools: the app's nodes' and the directory's (RivetKit only makes one for an
@@ -119,38 +125,6 @@ services:
       RIVET_ADMIN_TOKEN: ${RIVET_ADMIN_TOKEN}
     networks: [ideaf]
 
-  # A bucket store of your own, unless you use your cloud's (then drop seaweedfs from COMPOSE_PROFILES
-  # and set S3_ENDPOINT and the keys).
-  seaweedfs:
-    image: chrislusf/seaweedfs:4.51
-    profiles: [seaweedfs]
-    restart: unless-stopped
-    command: server -dir=/data -s3 -s3.config=/etc/seaweedfs/s3.json
-    configs:
-      - source: seaweedfs
-        target: /etc/seaweedfs/s3.json
-    volumes:
-      - seaweedfs:/data
-    networks: [ideaf]
-
-  # makes the buckets in SeaweedFS (with a cloud bucket, make them yourself)
-  buckets:
-    image: chrislusf/seaweedfs:4.51
-    profiles: [seaweedfs]
-    depends_on: [seaweedfs]
-    entrypoint: ['sh', '-c']
-    command:
-      - |
-        until echo 's3.bucket.list' | weed shell -master=seaweedfs:9333 -filer=seaweedfs:8888 >/dev/null 2>&1; do sleep 1; done
-        for bucket in "$$FILES" "$$ENGINE"; do
-          echo "s3.bucket.list" | weed shell -master=seaweedfs:9333 -filer=seaweedfs:8888 | grep -qw "$$bucket" \
-            || echo "s3.bucket.create -name $$bucket" | weed shell -master=seaweedfs:9333 -filer=seaweedfs:8888
-        done
-    environment:
-      FILES: ${S3_FILES_BUCKET:-ideaf-files}
-      ENGINE: ${S3_ENGINE_BUCKET:-ideaf-engine}
-    networks: [ideaf]
-
 configs:
   engine:
     content: |
@@ -158,27 +132,23 @@ configs:
         admin_token: "${RIVET_ADMIN_TOKEN:?set RIVET_ADMIN_TOKEN (openssl rand -hex 32)}"
       storage:
         log_directory: /var/lib/rivet/log
+        # one engine: it makes its own storage partition, where a cluster waits for three engines
+        # (Rivet's own single-process engine does the same)
+        auto_provision_partitions: 1
       object_storage:
         primary:
           s3:
             bucket: "${S3_ENGINE_BUCKET:-ideaf-engine}"
-            endpoint: "${S3_ENDPOINT:-http://seaweedfs:8333}"
+            endpoint: "${S3_ENDPOINT}"
             region: "${S3_REGION:-us-east-1}"
             access_key_id: "${S3_ENGINE_ACCESS_KEY_ID}"
             secret_access_key: "${S3_ENGINE_SECRET_ACCESS_KEY}"
       telemetry:
         enabled: false
-  seaweedfs:
-    content: |
-      {"identities": [
-        {"name": "engine", "credentials": [{"accessKey": "${S3_ENGINE_ACCESS_KEY_ID}", "secretKey": "${S3_ENGINE_SECRET_ACCESS_KEY}"}],
-          "actions": ["Read:${S3_ENGINE_BUCKET:-ideaf-engine}", "Write:${S3_ENGINE_BUCKET:-ideaf-engine}", "List:${S3_ENGINE_BUCKET:-ideaf-engine}", "Tagging:${S3_ENGINE_BUCKET:-ideaf-engine}"]},
-        {"name": "files", "credentials": [{"accessKey": "${S3_FILES_ACCESS_KEY_ID}", "secretKey": "${S3_FILES_SECRET_ACCESS_KEY}"}],
-          "actions": ["Read:${S3_FILES_BUCKET:-ideaf-files}", "Write:${S3_FILES_BUCKET:-ideaf-files}", "List:${S3_FILES_BUCKET:-ideaf-files}"]}]}
 
 volumes:
   engine:
-  seaweedfs:
+  mail:
   caddy-data:
   caddy-config:
 
@@ -186,4 +156,5 @@ networks:
   ideaf:
     ipam:
       config:
-        - subnet: 172.30.80.0/24
+        # IDEAF_SUBNET, if this one is taken on this machine
+        - subnet: ${IDEAF_SUBNET:-172.30.80.0/24}

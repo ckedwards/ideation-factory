@@ -1,5 +1,6 @@
 #!/bin/bash
-# The load test on the one-VM Compose, on this machine (see README.md):
+# The load test on the try-it-out Compose with SeaweedFS (deploy/compose), built from this checkout,
+# on this machine (see README.md):
 #
 #   run.sh up        start it, with Mailpit and the app reachable by the seeder
 #   run.sh seed      seed the design scale's data (resumable)
@@ -24,12 +25,17 @@ if [ "${LOAD_RIVETKIT_FIX:-0}" = 1 ]; then
     exit 1
   fi
   FIX=(-f "$HERE/rivetkit-fix/compose.yaml")
+  export LOAD_RIVETKIT_MODULE="$DATA/rivetkit-napi-fixed.node"
   export LOAD_RIVETKIT_VERSION
   LOAD_RIVETKIT_VERSION=$(grep -oE '"rivetkit": "[^"]+"' "$ROOT/packages/server/package.json" | grep -oE '[0-9][^"]*')
 fi
 
 dc() {
-  docker compose -p ideaf-load -f "$ROOT/deploy/one-vm/compose.yaml" -f "$HERE/compose.yaml" "${FIX[@]}" --env-file "$ENV_FILE" "$@"
+  # the try-it-out Compose with SeaweedFS (deploy/compose), with this checkout's builds in place of the
+  # published images (compose.yaml here)
+  S3_ENDPOINT=${S3_ENDPOINT:-http://seaweedfs:8333} COMPOSE_FILE= docker compose -p ideaf-load \
+    -f "$ROOT/deploy/compose/compose.yaml" -f "$ROOT/deploy/compose/seaweedfs.yaml" -f "$HERE/compose.yaml" \
+    "${FIX[@]}" --env-file "$ENV_FILE" "$@"
 }
 
 settings() {
@@ -44,7 +50,7 @@ TLS_MODE=internal
 IDEAF_AUTH_SECRET=$(openssl rand -hex 32)
 RIVET_ADMIN_TOKEN=$(openssl rand -hex 32)
 IDEAF_SITE_ADMINS=admin@load.test
-COMPOSE_PROFILES=seaweedfs
+S3_ENDPOINT=http://seaweedfs:8333
 S3_ENGINE_ACCESS_KEY_ID=engine
 S3_ENGINE_SECRET_ACCESS_KEY=$(openssl rand -hex 16)
 S3_FILES_ACCESS_KEY_ID=files
