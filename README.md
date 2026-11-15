@@ -46,6 +46,14 @@ bun run engine:stop  # stop the local Rivet Engine
 
 **Signing in.** The web app sends you to the sign-in page, http://localhost:8080/login: enter any email, and use the code the dev server prints in its log (it emails codes only when SMTP is set up, below). The first time, pick a handle. Sign in with other emails to try several people.
 
+**Installing the cli.** Each release has it for Linux and macOS, on x64 and arm64, as one file with nothing else to install. With [mise](https://mise.jdx.dev):
+
+```sh
+mise use -g github:ckedwards/ideation-factory      # ideaf, the newest release; mise upgrade for the next
+```
+
+Or download `ideaf-<os>-<arch>.tar.gz` from the [release page](https://github.com/ckedwards/ideation-factory/releases/latest), check it against `SHA256SUMS`, and put `ideaf` on your `PATH`. On macOS, a copy downloaded in a browser needs `xattr -d com.apple.quarantine ideaf` first, as it isn't signed. Releases from `v0.1.1` have it; `ideaf --version` says which one you have.
+
 The cli signs in with **`ideaf auth login`**: it opens your browser to sign in, and to choose what this sign-in may do (who acts with it, read only or not, and which teams or ideas it reaches; flags like `--bot planbot --team core --read-only` fill those in). With no browser of its own (over SSH, say) or with `--no-browser`, it shows a link to open on any device and asks for the code that page shows. Its tokens are kept in the OS keychain and refreshed as needed; `ideaf auth status` shows the sign-in and `ideaf auth logout` ends it.
 
 **In CI**, where nobody can sign in, use a personal token instead. They're a stopgap, and only site admins can make them by default, so start the dev server with your email in `site_admins` (or `IDEAF__AUTH__PERSONAL_TOKENS=on` for everyone), then make one on the sign-in page. It starts `ideaf_`, is shown once, and goes in `IDEAF_TOKEN` (which wins over `ideaf auth login`) or a request's bearer token:

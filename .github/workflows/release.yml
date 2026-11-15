@@ -8,7 +8,8 @@ name: Release
 # - the images get the release's version as a tag, then latest once the release is out;
 # - the native builds for VMs and bare metal (deploy/vm/install.sh) are taken out of those images,
 #   with their checksums (scripts/release-assets.sh), as the GitHub release, which makes the tag;
-#   with RivetKit's fixed native module too, for install.sh --rivetkit-fix, when there is one. The assets' names carry no
+#   with RivetKit's fixed native module too, for install.sh --rivetkit-fix, when there is one;
+# - the cli, for Linux and macOS on x64 and arm64, built from the commit with its version. The assets' names carry no
 #   version, so .../releases/latest/download/<name> is always the newest.
 #
 # The tag comes last but one, so a run that fails leaves no tag, and the next takes the same version.
@@ -90,7 +91,13 @@ jobs:
           fi
         env:
           VERSION: ${{ steps.version.outputs.version }}
-      - name: Take the native builds out of the images
+      # Bun builds the cli for each platform, from this commit
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version-file: package.json
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: The cli, and the native builds out of the images
         run: scripts/release-assets.sh "$VERSION" "ghcr.io/${GITHUB_REPOSITORY,,}"
         env:
           VERSION: ${{ steps.version.outputs.version }}
