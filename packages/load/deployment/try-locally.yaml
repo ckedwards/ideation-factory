@@ -11,7 +11,7 @@ name: ideaf-local3
 
 x-app: &app
   build:
-    context: ../..
+    context: ../../..
     dockerfile: deploy/app.Dockerfile
   image: ideaf-app:local3
   restart: unless-stopped
@@ -41,7 +41,7 @@ x-app-environment: &app-environment
 
 x-engine: &engine
   build:
-    context: ../..
+    context: ../../..
     dockerfile: deploy/engine.Dockerfile
   image: ideaf-engine:local3
   restart: unless-stopped
@@ -70,7 +70,7 @@ services:
       TLS_MODE: internal
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ../caddy/tls.caddy:/etc/caddy/tls.caddy:ro
+      - ../../../deploy/caddy/tls.caddy:/etc/caddy/tls.caddy:ro
 
   app1:
     <<: *app
@@ -111,7 +111,12 @@ services:
     <<: *engine
     # by address, as on real VMs: a stopped container's name stops resolving, which the
     # engine doesn't treat as a lost peer (a VM that's gone just stops answering)
-    environment: { RIVET__API_PEER__ADVERTISE_ADDRESS: '172.30.81.21:6421', RIVET__API_PEER__HOST: 0.0.0.0, AWS_ALLOW_HTTP: 'true' }
+    environment:
+      {
+        RIVET__API_PEER__ADVERTISE_ADDRESS: '172.30.81.21:6421',
+        RIVET__API_PEER__HOST: 0.0.0.0,
+        AWS_ALLOW_HTTP: 'true',
+      }
     volumes: [engine1:/var/lib/rivet]
     networks:
       default:
@@ -120,7 +125,12 @@ services:
     <<: *engine
     # by address, as on real VMs: a stopped container's name stops resolving, which the
     # engine doesn't treat as a lost peer (a VM that's gone just stops answering)
-    environment: { RIVET__API_PEER__ADVERTISE_ADDRESS: '172.30.81.22:6421', RIVET__API_PEER__HOST: 0.0.0.0, AWS_ALLOW_HTTP: 'true' }
+    environment:
+      {
+        RIVET__API_PEER__ADVERTISE_ADDRESS: '172.30.81.22:6421',
+        RIVET__API_PEER__HOST: 0.0.0.0,
+        AWS_ALLOW_HTTP: 'true',
+      }
     volumes: [engine2:/var/lib/rivet]
     networks:
       default:
@@ -129,7 +139,12 @@ services:
     <<: *engine
     # by address, as on real VMs: a stopped container's name stops resolving, which the
     # engine doesn't treat as a lost peer (a VM that's gone just stops answering)
-    environment: { RIVET__API_PEER__ADVERTISE_ADDRESS: '172.30.81.23:6421', RIVET__API_PEER__HOST: 0.0.0.0, AWS_ALLOW_HTTP: 'true' }
+    environment:
+      {
+        RIVET__API_PEER__ADVERTISE_ADDRESS: '172.30.81.23:6421',
+        RIVET__API_PEER__HOST: 0.0.0.0,
+        AWS_ALLOW_HTTP: 'true',
+      }
     volumes: [engine3:/var/lib/rivet]
     networks:
       default:

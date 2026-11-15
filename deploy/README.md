@@ -1,104 +1,46 @@
 # Deploying Ideation Factory
 
-Docker Compose files for running it yourself: `one-vm/` is everything on one machine; `three-vms/` spreads it over three, behind a load balancer.
+Every way of running it uses our builds, which CI publishes for each commit on `master` (and, later, each release): never a build from the source on the machine.
 
-The `docker/` folder is something else: a sandbox for trying ideaf with Claude Code, not a deployment.
+| Where                             | For                                   | Guide                                    |
+| --------------------------------- | ------------------------------------- | ---------------------------------------- |
+| **VMs or bare metal**             | production: three machines or more    | [vm/](vm/) (being written)               |
+| **Docker Compose, on one machine** | trying it                             | [compose/](compose/README.md)            |
+| **Kubernetes**                    | later                                 | [kubernetes/](kubernetes/README.md)      |
 
-## One VM
+This follows Rivet's own advice for its engine (rivet.dev/docs/deploy): Compose to try it, VMs or Kubernetes with three or more engines and a bucket for production. The `docker/` folder is something else: a sandbox for trying ideaf with Claude Code, not a deployment.
 
-```
-VM:  Caddy (TLS) ──> app ──> Rivet Engine ──> bucket (SeaweedFS here, or your cloud's)
-```
+## Our builds
 
-```sh
-cd deploy/one-vm
-cp .env.example .env      # fill it in: secrets are `openssl rand -hex 32`
-docker compose up -d --build
-```
+- **The app:** `ghcr.io/ckedwards/ideation-factory/app`, the server with the web app built in.
+- **The engine:** `ghcr.io/ckedwards/ideation-factory/engine`, Rivet's release pinned to the one the app's RivetKit needs, with Rivet's crash reports to them off unless turned on (`RIVET__TELEMETRY__ENABLED=true`). Rivet wants every engine on the same release, upgraded before RivetKit, so the two come together.
 
-It's up once `docker compose ps` shows the app and the directory healthy: each one's health check passes only while it's connected to the engine. On a brand-new install that takes a little over a minute, because a new engine waits about a minute before it serves.
+Both are tagged `latest` (the newest commit on `master`), `sha-<commit>` (seven characters), and later each release's tag. `latest` is for now: once there are releases, deployments pin one. Every machine of a deployment runs the same tag.
 
-**What runs:**
+## What every deployment needs
 
-- **caddy:** TLS, HTTP→HTTPS, and the proxy to the app, WebSockets included. See TLS below.
-- **app:** the server, with the web app built in. Files go in the bucket, and actors on the engine.
-- **directory:** the same server in a process of its own, hosting only the directory (the actor every request touches), so its work has a thread to itself. Nothing but the engine sends it requests. See [Several app nodes](../docs/admin/performance.md#several-app-nodes) for why.
-- **engine:** the Rivet Engine (the version RivetKit is pinned to). Its write-ahead log is on this machine's disk, in the `engine` volume, and everything durable goes on to the bucket.
-- **pool:** a one-off setup step. It creates the engine's node pools that the app and the directory join, with old app versions drained on upgrade.
-- **seaweedfs** and **buckets** (the `seaweedfs` profile): an S3 store on this machine, and the two buckets in it.
+**A bucket, or two.** The engine keeps everything durable in one bucket; the app keeps files in another. The engine needs a store with conditional writes: AWS S3, Google Cloud Storage, Azure Blob Storage, Cloudflare R2 or SeaweedFS will do; Garage won't, and MinIO is archived. (The app's files speak only S3 so far, so Azure needs a file store of its own first.) Block public access, and turn versioning on, as Rivet advises for the engine's.
 
-**Your cloud's bucket instead.** Take `seaweedfs` out of `COMPOSE_PROFILES`, then set `S3_ENDPOINT`, `S3_REGION` and the keys. Make the two buckets yourself (`S3_FILES_BUCKET`, `S3_ENGINE_BUCKET`), and set `S3_ALLOW_HTTP=false`. The engine needs a store with conditional writes: AWS S3, Google Cloud Storage, Azure, Cloudflare R2 or SeaweedFS will do; Garage won't, and MinIO is archived.
+**A key for each bucket.** The engine and the app each get their own key, allowed only their own bucket, so neither can touch the other's data.
 
-**A key for each bucket.** The engine and the app each get their own key, allowed only their own bucket, so neither can touch the other's data. The engine's key (`S3_ENGINE_ACCESS_KEY_ID`, `S3_ENGINE_SECRET_ACCESS_KEY`) needs to read, write, delete and list in the engine's bucket: on AWS, `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:ListBucket` and `s3:AbortMultipartUpload` on it. The app's (`S3_FILES_ACCESS_KEY_ID`, `S3_FILES_SECRET_ACCESS_KEY`) reads and writes files, which never change once stored and aren't deleted, and lists the bucket: `s3:GetObject` and `s3:PutObject` on the files bucket's objects, and `s3:ListBucket` on the bucket, nothing else. It needs the listing because, without it, S3 answers a file that isn't there yet with 403, not 404, and the app checks for a file before storing it; the app says so if it's missing. The SeaweedFS here is set up that way, though its write permission includes deleting. After changing a key, or anything else the engine's or SeaweedFS's settings are made from, run `docker compose up -d --force-recreate`: Compose doesn't notice a change to those settings, and keeps the old ones running.
+- The engine's (`S3_ENGINE_ACCESS_KEY_ID`, `S3_ENGINE_SECRET_ACCESS_KEY`) reads, writes, deletes and lists in its bucket: on AWS, `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:ListBucket` and `s3:AbortMultipartUpload`.
+- The app's (`S3_FILES_ACCESS_KEY_ID`, `S3_FILES_SECRET_ACCESS_KEY`) reads and writes files, which never change once stored and aren't deleted, and lists the bucket: `s3:GetObject` and `s3:PutObject` on its objects, and `s3:ListBucket` on the bucket, nothing else. Without the listing, S3 answers a file that isn't there yet with 403, not 404, and the app checks for a file before storing it; it says so if the permission is missing.
 
-## Three VMs
+**Email** for sign-in codes and notifications: over SMTP to a provider or a company's relay (`IDEAF_SMTP_URL`), or through the machine's own `sendmail` (`IDEAF_EMAIL=sendmail`), when its mail setup already relays its mail. Without either, codes go to the app's log, which production refuses unless `IDEAF_EMAIL=log` says so.
 
-```
-                 load balancer: lb.yaml (Caddy), or your cloud's
-                 /                |                \
-VM 1: app, directory,   VM 2: app, directory,   VM 3: app, directory,
-      engine                  engine                  engine
-             \________ private network (engines on 6421) ________/
-                                  |
-                       bucket (outside every VM)
-```
+**Internal CAs** for the app's own connections (single sign-on, SMTP, the bucket, MCP clients' metadata documents): their certificates in the app's `ca/` folder (`*.pem` or `*.crt`) are trusted.
 
-```sh
-cd deploy/three-vms
-cp .env.example .env      # the same on every machine, except NODE_ADDRESS
-docker compose -f node.yaml up -d --build     # on each of the three VMs
-docker compose -f lb.yaml up -d               # on the load balancer
-```
+**The app's own settings** (single sign-on, SCIM, personal tokens, MCP client hosts) are in the main README.
 
-- **Each VM** runs the app, a directory node and an engine (`node.yaml`), at the same `RIVET_NODE_VERSION` (see [Upgrading](#upgrading)). The directory runs on one VM's directory node; the other two stand by, using about 100 MB each, and take over if that VM is lost. The engines find each other through the shared bucket and talk on port 6421. That port and the app's port 8080 must stay on the private network.
-- **The load balancer** (`lb.yaml`) is Caddy with the same TLS modes as one VM. It sends requests round-robin to the apps that pass their health check. A cloud load balancer works as well: give it TLS, the three apps' port 8080, and a `/health` check. Any app can serve any request.
-- **The bucket** must be outside the VMs: your cloud's, or a SeaweedFS you run separately. One SeaweedFS on one of the three would take the cluster down with it.
-- **The directory on machines of its own** (`directory.yaml`), when it needs more than a share of a VM: on two more machines, each running only a directory process, connected to the engine of one of the three VMs (`DIRECTORY_ENGINE`, a different one for each). The VMs then run without theirs (`docker compose -f node.yaml up -d --scale directory=0`). Their engines' API (port 6420) must then be reachable from those two machines, and only from them: it's plaintext, behind the admin token. Start the directory machines first, so the directory has somewhere to go when the VMs' processes stop. They use the same `.env` as the VMs, with their own `NODE_ADDRESS`; Compose reads `node.yaml` for them, so it needs the engine's settings too, though they don't use them.
-- **Trying it on one machine:** `try-locally.yaml` runs all of it on one Docker host, with one SeaweedFS. It's for testing fail-over and load, not for production. It needs a `local.env` with `IDEAF_AUTH_SECRET`, `RIVET_ADMIN_TOKEN`, `S3_ENGINE_SECRET_ACCESS_KEY` and `S3_FILES_SECRET_ACCESS_KEY`.
+## Losing a machine, today
 
-**What surviving a lost VM means today.** Writes that were acknowledged are never lost: every test kept them all.
+Writes that were acknowledged are never lost: every test kept them all. Measured on three machines ([the load test's report](../packages/load/reports/report1/session2/README.md)):
 
-- **If a VM's app is stopped** (a redeploy, `docker stop`, anything that sends SIGTERM), it hands its actors to the other VMs before it exits. In our tests no request failed, and none took over a second.
-- **If a VM's app crashes** (or is killed), its actors are unavailable for about 45 s, even when Docker restarts it straight away: the engine waits out its 40 s lost threshold before it starts them elsewhere. If that was the directory's node, the whole site waits, then a standby directory node takes over. See [Several app nodes](../docs/admin/performance.md#several-app-nodes).
-- **If a whole VM fails** (its engine with it), its actors move to the other VMs in about two minutes. On Rivet 3.1.1 they did in 5 of 5 tests that killed the directory's VM, after 100 to 136 s. On 3.0.6 they did in 13 of 15, and in the other two got stuck until the VM returned: Rivet is tracking this as rivet-dev/rivet#5957, still open, so it may happen on 3.1.1 too. If it held the directory actor, that means the whole site. To unstick an actor without waiting, send `POST /actors/<actor id>/reschedule?namespace=default`, with the admin token, to a surviving engine on port 6420. The actor's ID is in the surviving engines' logs, on the "actor did not become ready" lines.
-
-## TLS
-
-`TLS_MODE` in `.env` picks where the certificate comes from. Caddy gets it and renews it itself, and serves a renewed one with no restart.
-
-| `TLS_MODE` | Certificate |
-|---|---|
-| `acme` | Let's Encrypt (or another public ACME server, `ACME_SERVER`). The name in `IDEAF_HOST` must reach this machine on ports 80 and 443. |
-| `acme-internal` | Your company's ACME server (step-ca, say): set `ACME_SERVER` to its directory URL, and put its root certificate in `ca/`, naming it in `ACME_CA_FILE`. |
-| `files` | Your own certificate, from an internal CA or bought: `tls/fullchain.pem` and `tls/privkey.pem`. Replace them and run `docker compose restart caddy` to renew. |
-| `internal` | Caddy's own local CA, for trying it out. Browsers warn. |
-
-**Internal CAs for the app's own connections:** put their certificates in `ca/` (`*.pem` or `*.crt`). The app trusts them for single sign-on, SMTP, the bucket and MCP clients' metadata documents.
-
-## Settings
-
-Everything is in `.env.example`. The app's own settings (single sign-on, SCIM, personal tokens, MCP client hosts) are in the main README.
-
-## The published image
-
-CI publishes the app's image for each commit on `master` and each release: `ghcr.io/ckedwards/ideation-factory/app`, tagged `sha-<commit>` (seven characters), `master`, or the release's tag. To run it rather than build on each machine, set `IDEAF_APP_IMAGE` in `.env` (to a `sha-` or release tag, so every machine runs the same build), then:
-
-```sh
-docker compose pull app
-docker compose up -d --no-build
-```
-
-(`-f node.yaml` on three VMs.) Pulling takes seconds where a build takes minutes, and every machine runs the very build that was tested. Its node version is the commit's time, so on three VMs set `RIVET_NODE_VERSION` to that too (`git log -1 --format=%ct <commit>`). Without `IDEAF_APP_IMAGE`, the Compose files build the image as before.
+- **An app stopped** (a redeploy, anything that sends SIGTERM, given 60 s before SIGKILL): it hands its actors to the other machines first. No request failed.
+- **An app that crashes** (or is killed): its actors wait out the engine's 40 s lost threshold before they start elsewhere. Under load, a minute or two later, they all start again at once, cold, and requests failed for nearly two minutes.
+- **The directory's process stopped, even gracefully, or killed:** the directory moves to a standby process, which starts cold, and under load the whole site failed for about 3 to 5 minutes while it caught up. Until that's fixed, restart the directory's process when it's quiet.
+- **A whole machine lost** (its engine with it): its actors moved to the others in 100 to 136 s, in 5 of 5 tests on Rivet 3.1.1. On 3.0.6 they got stuck in 2 of 15 until the machine returned (rivet-dev/rivet#5957, still open). To unstick an actor without waiting, send `POST /actors/<actor id>/reschedule?namespace=default`, with the admin token, to a surviving engine on port 6420; its ID is in the surviving engines' logs, on the "actor did not become ready" lines.
 
 ## Upgrading
 
-```sh
-git pull
-docker compose up -d --build
-```
-
-With the published image, change `IDEAF_APP_IMAGE` to the new tag instead, and pull and start it as above.
-
-Each build of the app is a new node version, so the engine moves actors over to it once it connects. There's a short pause while that happens.
-
-**Three VMs:** raise `RIVET_NODE_VERSION` in every VM's `.env` (to the new commit's time, `git log -1 --format=%ct`), then pull and run `docker compose -f node.yaml up -d --build` on each in turn. The engine gives new and waking actors only to the highest version it sees, so the version has to be the same on all three: left to each VM's build time, every actor goes to whichever VM built last, and the others sit idle.
+Pull the new tag (or, while it's `latest`, the newest) on every machine, the engine before the app, as Rivet requires. Each new build of the app is a newer node version: the engine moves actors to it once it connects, with a short pause. With several machines, every app must report the same version (`RIVET_NODE_VERSION`, the commit's time unless set): the engine gives new and waking actors only to the highest version it sees, so mixed versions put every actor on whichever machine is newest.

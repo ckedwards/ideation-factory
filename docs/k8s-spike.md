@@ -28,7 +28,7 @@ What a stop costs depends on whether the process gets to say goodbye, and Kubern
 
 ## What's already known
 
-- **The Compose layout** (`deploy/three-vms/node.yaml`) puts an app, a directory process and an engine on each machine; the app and the directory talk to the engine beside them. Nothing requires that: any app can use any engine.
+- **The Compose layout** (`packages/load/deployment/node.yaml`, the load test's, from the three-VM Compose that was `deploy/three-vms`) puts an app, a directory process and an engine on each machine; the app and the directory talk to the engine beside them. Nothing requires that: any app can use any engine.
 - **Every app process must report the same node version** (`RIVET_NODE_VERSION`), or the engine gives every actor to the highest. The published image carries the commit's time, the same for every pod running it.
 - **The health check** (`/health`) passes only while the process is connected to its engine; a new engine waits about a minute before it serves.
 - **SIGTERM needs 60 s** before SIGKILL (`terminationGracePeriodSeconds: 60`).

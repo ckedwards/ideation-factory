@@ -1,10 +1,14 @@
-# The load test's additions to the one-VM Compose (deploy/one-vm/compose.yaml):
-# Mailpit catches the emails (sign-in codes, which the seeder reads, and the
-# notifications the load sends); the app is also reached directly, from this
-# machine, by the seeder; and k6 runs on the Docker network. See README.md:
-# run.sh drives it.
+# The load test's additions to the try-it-out Compose with SeaweedFS (deploy/compose): this
+# checkout's builds in place of the published images, so a run measures the code it's run from;
+# Mailpit catches the emails (sign-in codes, which the seeder reads, and the notifications the load
+# sends); the app is also reached directly, from this machine, by the seeder; and k6 runs on the
+# Docker network. See README.md: run.sh drives it.
 services:
   app:
+    image: ideaf-load-app
+    build: &app-build
+      context: ../..
+      dockerfile: deploy/app.Dockerfile
     ports:
       - 127.0.0.1:${LOAD_APP_PORT:-18080}:8080
     depends_on:
@@ -20,10 +24,18 @@ services:
 
   # the directory's node: the app's settings too (extends takes the one-VM file's), but no port
   directory:
+    image: ideaf-load-app
+    build: *app-build
     depends_on:
       mailpit:
         condition: service_started
     environment: *app-environment
+
+  engine:
+    image: ideaf-load-engine
+    build:
+      context: ../..
+      dockerfile: deploy/engine.Dockerfile
 
   mailpit:
     image: axllent/mailpit:v1.33.1
