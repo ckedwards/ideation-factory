@@ -100,7 +100,7 @@ For a small team, or a test deployment on a real server: everything on one machi
 
 - **While it restarts, the site is down:** for an upgrade or a reboot, about a minute. If the machine itself is lost, it's down until you set up another.
 - **Writes from the last few seconds could be lost with its disk.** One engine keeps one copy of recent writes, on its own disk, until they reach the bucket shortly after; everything older is in the bucket. With the engine's objects in a folder in place of a bucket, its disk is everything: back it up.
-- **It doesn't grow into three machines in place.** Rivet doesn't document growing a single engine into a cluster, and we haven't tried it. Start with three if you expect to need them.
+- **Growing to three machines is untested:** see [Growing to three](#growing-to-three-untested) below.
 
 What changes from three machines:
 
@@ -115,6 +115,18 @@ What changes from three machines:
 
 Starting and upgrading are as for three machines, without the waiting: `systemctl enable --now rivet ideaf ideaf-directory` once, and for an upgrade, the install with the new release, then `systemctl restart rivet`, then `systemctl restart ideaf-directory ideaf`. The same goes for [containers](containers/README.md), with this engine config.
 
+### Growing to three (untested)
+
+Neither Rivet's docs nor our tests cover this. This is what Rivet's placement code (3.1.1) points to:
+- An engine joining a cluster gets replicas of partitions with fewer than three, and takes over partitions whose only replica is on an engine that's leaving.
+- Both happen only while the partition's current replicas are running.
+
+So the one machine stays up while the others join. It isn't shut down first: with every replica of a partition on a stopped engine, nothing could hand it over.
+
+1. **Make the engine reachable:** set `api_peer.advertise_address` in `/etc/rivet/config.json` to the machine's private address (`10.0.0.11:6421`), open 6421 to the new machines, and `systemctl restart rivet`. About a minute down.
+2. **Add two machines** as in [Installing](#installing), with the same bucket, admin token and settings, and their own addresses. Leave `auto_provision_partitions` out on them: it only acts on a cluster with no storage yet. With balancing on (the default), the partitions gain replicas as the engines join, up to three each. `rivet-engine storage partition show --config /etc/rivet` lists each partition's replicas.
+3. **Put the new machines' apps behind the load balancer,** which now needs a machine of its own or your cloud's (`trusted_proxies` changes to its address).
+4. **To end on new machines only,** join three, wait until every partition has three replicas among them, then stop the original. The cluster treats that as losing one engine and rebuilds its replicas on the others.
 ## Before going live
 
 Rivet's checklist, for this deployment (one machine gives up the first item): three engines, each on its own machine and disk, all on the same release; the buckets with versioning on and their keys allowed only their own; 6421 and 6420 private; the admin token in `/etc/rivet/config.json` only, readable by `rivet`; a tested restore of the data ([backups](../../docs/backup-spike.md), being designed); and an upgrade tried once.
