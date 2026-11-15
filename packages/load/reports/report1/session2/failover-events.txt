@@ -1,0 +1,8 @@
+8:35:02 pm ET: 1. node 3's app stopped gracefully (SIGTERM)
+8:36:33 pm ET:    node 3's app started again
+8:39:05 pm ET: 2. the directory is on ideaf-node2 (10.0.0.12)
+8:39:07 pm ET:    its directory process stopped gracefully
+8:40:32 pm ET:    that directory process started again (standing by)
+8:47:02 pm ET: 3. node 3's app killed (kill -9); Docker restarts it
+8:51:08 pm ET: 4. the directory is on ideaf-node3 (10.0.0.13)
+8:51:10 pm ET:    its directory process killed (kill -9); Docker restarts it

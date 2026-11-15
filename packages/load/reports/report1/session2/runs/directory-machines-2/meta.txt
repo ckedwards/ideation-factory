@@ -1,0 +1,18 @@
+started: 2026-11-15T01:15:28Z
+load machine: b90a29c docs: write up the first session on the Frankfurt deployment
+LOAD_APP_URL=https://ideas.bench.internal
+LOAD_HOST=ideas.bench.internal
+LOAD_LB_ADDRESS=10.0.0.10
+LOAD_MAILPIT_URL=http://127.0.0.1:8025
+LOAD_ORIGIN=https://ideas.bench.internal
+LOAD_PRIVATE_ADDRESS=10.0.0.20
+LOAD_STEPS=120 130 140 150 160
+LOAD_URLS=https://ideas.bench.internal
+ideaf-node1 ideaf-app-1: running, ghcr.io/ckedwards/ideation-factory/app-bench:sha-e6f8638, version 1794632478
+ideaf-node1 ideaf-engine-1: running, ideaf-engine, version 
+ideaf-node2 ideaf-app-1: running, ghcr.io/ckedwards/ideation-factory/app-bench:sha-e6f8638, version 1794632478
+ideaf-node2 ideaf-engine-1: running, ideaf-engine, version 
+ideaf-node3 ideaf-app-1: running, ghcr.io/ckedwards/ideation-factory/app-bench:sha-e6f8638, version 1794632478
+ideaf-node3 ideaf-engine-1: running, ideaf-engine, version 
+ideaf-dir1 ideaf-directory-1: running, ghcr.io/ckedwards/ideation-factory/app-bench:sha-e6f8638, version 1794632478
+ideaf-dir2 ideaf-directory-1: running, ghcr.io/ckedwards/ideation-factory/app-bench:sha-e6f8638, version 1794632478

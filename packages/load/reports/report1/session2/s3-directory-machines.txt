@@ -1,0 +1,40 @@
+ideaf-bench-9b6b29-engine (all), 2026-11-15T01:00 to 2026-11-15T01:30 (30 min):
+  GetRequests             86414         172828 an hour
+  PutRequests             18055          36110 an hour
+  ListRequests              895           1790 an hour
+  HeadRequests                5             10 an hour
+  DeleteRequests           9319          18638 an hour
+  BytesDownloaded      2081.0 MB      4162.1 MB an hour
+  BytesUploaded        2029.1 MB      4058.2 MB an hour
+ideaf-bench-9b6b29-engine rivet/cluster/, 2026-11-15T01:00 to 2026-11-15T01:30 (30 min):
+  GetRequests               269            538 an hour
+  PutRequests                 0              0 an hour
+  ListRequests                0              0 an hour
+  HeadRequests                0              0 an hour
+  DeleteRequests              0              0 an hour
+  BytesDownloaded         0.0 MB         0.0 MB an hour
+  BytesUploaded           0.0 MB         0.0 MB an hour
+ideaf-bench-9b6b29-engine rivet/depot/cluster/, 2026-11-15T01:00 to 2026-11-15T01:30 (30 min):
+  GetRequests              1736           3472 an hour
+  PutRequests              1801           3602 an hour
+  ListRequests                0              0 an hour
+  HeadRequests                0              0 an hour
+  DeleteRequests              0              0 an hour
+  BytesDownloaded         0.7 MB         1.4 MB an hour
+  BytesUploaded           0.7 MB         1.4 MB an hour
+ideaf-bench-9b6b29-engine rivet/depot/tablets/, 2026-11-15T01:00 to 2026-11-15T01:30 (30 min):
+  GetRequests             84050         168100 an hour
+  PutRequests             16254          32508 an hour
+  ListRequests                0              0 an hour
+  HeadRequests                5             10 an hour
+  DeleteRequests              0              0 an hour
+  BytesDownloaded      2070.5 MB      4140.9 MB an hour
+  BytesUploaded        2028.4 MB      4056.8 MB an hour
+ideaf-bench-9b6b29-files (all), 2026-11-15T01:00 to 2026-11-15T01:30 (30 min):
+  GetRequests             73024         146048 an hour
+  PutRequests                 0              0 an hour
+  ListRequests                0              0 an hour
+  HeadRequests                0              0 an hour
+  DeleteRequests              0              0 an hour
+  BytesDownloaded       116.7 MB       233.4 MB an hour
+  BytesUploaded           0.0 MB         0.0 MB an hour

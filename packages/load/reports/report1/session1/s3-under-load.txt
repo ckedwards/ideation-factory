@@ -1,0 +1,16 @@
+ideaf-bench-9b6b29-engine (all), 2026-11-14T22:54 to 2026-11-14T23:40 (46 min):
+  GetRequests            130019         169590 an hour
+  PutRequests             26389          34420 an hour
+  ListRequests             1420           1852 an hour
+  HeadRequests               15             19 an hour
+  DeleteRequests          22009          28707 an hour
+  BytesDownloaded      2189.6 MB      2856.0 MB an hour
+  BytesUploaded        2289.3 MB      2986.1 MB an hour
+ideaf-bench-9b6b29-files (all), 2026-11-14T22:54 to 2026-11-14T23:40 (46 min):
+  GetRequests             82781         107975 an hour
+  PutRequests                 0              0 an hour
+  ListRequests                0              0 an hour
+  HeadRequests                0              0 an hour
+  DeleteRequests              0              0 an hour
+  BytesDownloaded       132.3 MB       172.6 MB an hour
+  BytesUploaded           0.0 MB         0.0 MB an hour
