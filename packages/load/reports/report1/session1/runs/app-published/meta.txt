@@ -1,0 +1,19 @@
+started: 2026-11-14T23:26:00Z
+load machine: 025dbbc fix(load): keep each step's k6 summary in its steps folder
+LOAD_APP_URL=https://ideas.bench.internal
+LOAD_HOST=ideas.bench.internal
+LOAD_LB_ADDRESS=10.0.0.10
+LOAD_MAILPIT_URL=http://127.0.0.1:8025
+LOAD_ORIGIN=https://ideas.bench.internal
+LOAD_PRIVATE_ADDRESS=10.0.0.20
+LOAD_STEPS=40 60 80 100 110 120 130 140
+LOAD_URLS=https://ideas.bench.internal
+ideaf-node1 ideaf-app-1: running, ghcr.io/ckedwards/ideation-factory/app:sha-e6f8638, version 1794632478
+ideaf-node1 ideaf-directory-1: running, ghcr.io/ckedwards/ideation-factory/app:sha-e6f8638, version 1794632478
+ideaf-node1 ideaf-engine-1: running, ideaf-engine, version 
+ideaf-node2 ideaf-app-1: running, ghcr.io/ckedwards/ideation-factory/app:sha-e6f8638, version 1794632478
+ideaf-node2 ideaf-directory-1: running, ghcr.io/ckedwards/ideation-factory/app:sha-e6f8638, version 1794632478
+ideaf-node2 ideaf-engine-1: running, ideaf-engine, version 
+ideaf-node3 ideaf-app-1: running, ghcr.io/ckedwards/ideation-factory/app:sha-e6f8638, version 1794632478
+ideaf-node3 ideaf-directory-1: running, ghcr.io/ckedwards/ideation-factory/app:sha-e6f8638, version 1794632478
+ideaf-node3 ideaf-engine-1: running, ideaf-engine, version 

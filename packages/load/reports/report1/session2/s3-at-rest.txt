@@ -1,0 +1,88 @@
+ideaf-bench-9b6b29-engine (all), 2026-11-15T00:06 to 2026-11-15T00:46 (40 min):
+  GetRequests             54465          81697 an hour
+  PutRequests              3052           4578 an hour
+  ListRequests             1199           1798 an hour
+  HeadRequests                0              0 an hour
+  DeleteRequests           1506           2259 an hour
+  BytesDownloaded        85.7 MB       128.6 MB an hour
+  BytesUploaded          60.2 MB        90.3 MB an hour
+ideaf-bench-9b6b29-engine rivet/cluster/, 2026-11-15T00:06 to 2026-11-15T00:46 (40 min):
+  GetRequests               357            535 an hour
+  PutRequests                 0              0 an hour
+  ListRequests                0              0 an hour
+  HeadRequests                0              0 an hour
+  DeleteRequests              0              0 an hour
+  BytesDownloaded         0.0 MB         0.0 MB an hour
+  BytesUploaded           0.0 MB         0.0 MB an hour
+ideaf-bench-9b6b29-engine rivet/depot/cluster/, 2026-11-15T00:06 to 2026-11-15T00:46 (40 min):
+  GetRequests              2311           3466 an hour
+  PutRequests              2406           3609 an hour
+  ListRequests                0              0 an hour
+  HeadRequests                0              0 an hour
+  DeleteRequests              0              0 an hour
+  BytesDownloaded         0.9 MB         1.4 MB an hour
+  BytesUploaded           1.0 MB         1.4 MB an hour
+ideaf-bench-9b6b29-engine rivet/depot/tablets/, 2026-11-15T00:06 to 2026-11-15T00:46 (40 min):
+  GetRequests             51316          76974 an hour
+  PutRequests               646            969 an hour
+  ListRequests                0              0 an hour
+  HeadRequests                0              0 an hour
+  DeleteRequests              0              0 an hour
+  BytesDownloaded        81.7 MB       122.6 MB an hour
+  BytesUploaded          59.3 MB        88.9 MB an hour
+ideaf-bench-9b6b29-files (all), 2026-11-15T00:06 to 2026-11-15T00:46 (40 min):
+  GetRequests                 0              0 an hour
+  PutRequests                 0              0 an hour
+  ListRequests                0              0 an hour
+  HeadRequests                0              0 an hour
+  DeleteRequests              0              0 an hour
+  BytesDownloaded         0.0 MB         0.0 MB an hour
+  BytesUploaded           0.0 MB         0.0 MB an hour
+
+## 00:06 to 00:16 UTC, by prefix
+ideaf-bench-9b6b29-engine rivet/depot/cluster/, 2026-11-15T00:06 to 2026-11-15T00:16 (10 min):
+  GetRequests               578           3468 an hour
+  PutRequests               597           3582 an hour
+  BytesDownloaded         0.2 MB         1.4 MB an hour
+  BytesUploaded           0.2 MB         1.4 MB an hour
+ideaf-bench-9b6b29-engine rivet/depot/tablets/, 2026-11-15T00:06 to 2026-11-15T00:16 (10 min):
+  GetRequests             13010          78060 an hour
+  PutRequests               239           1434 an hour
+  BytesDownloaded        52.8 MB       316.6 MB an hour
+  BytesUploaded          44.2 MB       265.5 MB an hour
+
+## 00:16 to 00:26 UTC, by prefix
+ideaf-bench-9b6b29-engine rivet/depot/cluster/, 2026-11-15T00:16 to 2026-11-15T00:26 (10 min):
+  GetRequests               574           3444 an hour
+  PutRequests               599           3594 an hour
+  BytesDownloaded         0.2 MB         1.4 MB an hour
+  BytesUploaded           0.2 MB         1.4 MB an hour
+ideaf-bench-9b6b29-engine rivet/depot/tablets/, 2026-11-15T00:16 to 2026-11-15T00:26 (10 min):
+  GetRequests             12782          76692 an hour
+  PutRequests               144            864 an hour
+  BytesDownloaded         6.0 MB        35.8 MB an hour
+  BytesUploaded           1.3 MB         7.8 MB an hour
+
+## 00:26 to 00:36 UTC, by prefix
+ideaf-bench-9b6b29-engine rivet/depot/cluster/, 2026-11-15T00:26 to 2026-11-15T00:36 (10 min):
+  GetRequests               573           3438 an hour
+  PutRequests               605           3630 an hour
+  BytesDownloaded         0.2 MB         1.4 MB an hour
+  BytesUploaded           0.2 MB         1.4 MB an hour
+ideaf-bench-9b6b29-engine rivet/depot/tablets/, 2026-11-15T00:26 to 2026-11-15T00:36 (10 min):
+  GetRequests             12824          76944 an hour
+  PutRequests               137            822 an hour
+  BytesDownloaded        17.1 MB       102.6 MB an hour
+  BytesUploaded          12.2 MB        73.4 MB an hour
+
+## 00:36 to 00:46 UTC, by prefix
+ideaf-bench-9b6b29-engine rivet/depot/cluster/, 2026-11-15T00:36 to 2026-11-15T00:46 (10 min):
+  GetRequests               586           3516 an hour
+  PutRequests               605           3630 an hour
+  BytesDownloaded         0.2 MB         1.4 MB an hour
+  BytesUploaded           0.2 MB         1.4 MB an hour
+ideaf-bench-9b6b29-engine rivet/depot/tablets/, 2026-11-15T00:36 to 2026-11-15T00:46 (10 min):
+  GetRequests             12700          76200 an hour
+  PutRequests               126            756 an hour
+  BytesDownloaded         5.9 MB        35.4 MB an hour
+  BytesUploaded           1.5 MB         8.9 MB an hour

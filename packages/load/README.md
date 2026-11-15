@@ -101,7 +101,7 @@ From the steady state on the same machine, with the directory on a node of its o
 
 - **Fail-over** (the three-VM Compose on one machine, RivetKit 3.1.1): a crashed app node's actors are unavailable for about 45 s, the engine's lost threshold, even if Docker restarts it at once; one stopped with SIGTERM hands them over in about 0.3 s. Killing the directory's whole VM (its app, directory node and engine), everything answered again after 100 to 136 s, in 5 of 5 runs.
 
-From the Frankfurt deployment ([DEPLOYMENT.md](DEPLOYMENT.md): three `m7i.xlarge` nodes of 4 vCPU and 16 GB, S3 in the same region, RivetKit and the engine 3.1.1, the app at `e6f8638` from the published images), its first session, 14 November 2026:
+From the Frankfurt deployment (the full write-up of both sessions, with what each run ran: [reports/report1](reports/report1/); [DEPLOYMENT.md](DEPLOYMENT.md): three `m7i.xlarge` nodes of 4 vCPU and 16 GB, S3 in the same region, RivetKit and the engine 3.1.1, the app at `e6f8638` from the published images), its first session, 14 November 2026:
 
 - **The three-node tier: about 120 page views a second, 130 at the edge** (about 400 to 430 requests a second; at the design scale's page a minute each, about 7,200 people all active at once). On RivetKit with the fix for rivet-dev/rivet#5991 (`app-bench`), two runs of `remote.sh steps`:
 
