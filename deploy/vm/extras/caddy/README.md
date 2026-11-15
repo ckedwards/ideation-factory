@@ -6,6 +6,6 @@ For VMs without a cloud load balancer: Caddy on a machine of its own, in front o
 2. Copy `Caddyfile` here to `/etc/caddy/Caddyfile` and edit its two marked lines: the name people reach it by, and the machines' private addresses.
 3. `systemctl reload caddy`.
 
-On the app machines, put this machine's private address in `IDEAF_TRUSTED_PROXIES` (`/etc/ideaf/ideaf.env`), so the apps take each person's address from it: sign-in's rate limits count per person.
+On the app machines, put this machine's private address in `trusted_proxies` (`/etc/ideaf/ideaf.env`), so the apps take each person's address from it: sign-in's rate limits count per person.
 
 **A cloud load balancer instead** does the same: TLS, the apps' port 8080 as its targets, a health check on `/health`, and an hour's idle timeout, so live updates' WebSockets stay open.

@@ -1,6 +1,7 @@
 # The ideaf app for a deployment: the server, with the web app built in. It
-# runs on an engine of its own (RIVET_ENDPOINT) with files in a bucket
-# (IDEAF_S3_BUCKET); see deploy/README.md. Build from the repository's root:
+# runs on an engine of its own (engine.endpoint) with files in a bucket
+# (files.s3), its settings from /etc/ideaf/ideaf.yaml, secrets.yaml or IDEAF__…
+# variables; see deploy/README.md. Build from the repository's root:
 #
 #   docker build -f deploy/app.Dockerfile -t ideaf-app .
 FROM oven/bun:1.4.3 AS build
@@ -46,9 +47,9 @@ COPY deploy/app-entrypoint.sh /usr/local/bin/app-entrypoint
 ARG BUILD_VERSION
 RUN echo "${BUILD_VERSION:-$(date +%s)}" > /app/build-version
 ENV NODE_ENV=production \
-    PORT=8080 \
-    IDEAF_DATA=/data \
-    IDEAF_WEB_DIR=/app/packages/web/dist
+    IDEAF__PORT=8080 \
+    IDEAF__DATA=/data \
+    IDEAF__WEB__DIR=/app/packages/web/dist
 VOLUME /data
 EXPOSE 8080
 HEALTHCHECK --interval=5s --timeout=3s --start-period=120s \

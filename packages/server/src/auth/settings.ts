@@ -1,173 +1,110 @@
-// Auth settings from the environment, and the mail senders for sign-in codes:
-// SMTP in production, the server log in development, a capture in tests.
+// Auth settings from the server's settings (settings/schema.ts), and the mail senders for sign-in
+// codes: SMTP in production, the server log in development, a capture in tests.
 import { readFileSync } from 'node:fs'
 import { findInvalidTrustedProxies } from '@better-auth/core/utils/ip'
-import {
-  type AuthSettings,
-  type Mailer,
-  PERSONAL_TOKEN_POLICIES,
-  type PersonalTokenPolicy,
-  type SsoSettings,
-} from './config.ts'
-import { emailTransportFromEnv } from '../mail/transport.ts'
+import type { AuthSettings, Mailer, SsoSettings } from './config.ts'
+import { emailTransportFrom } from '../mail/transport.ts'
+import type { Settings } from '../settings/schema.ts'
 import { emailMailer } from './mail.ts'
 
 const DEV_SECRET = 'ideaf-development-secret-not-for-production-0123456789'
 
-/**
- * IDEAF_URL is the deployment's public URL; IDEAF_AUTH_SECRET (at least 32
- * characters) signs cookies and encrypts signing keys, and is required in
- * production; IDEAF_SITE_ADMINS lists the site admins' emails, comma-separated;
- * IDEAF_PERSONAL_TOKENS is on, admins (the default) or off;
- * IDEAF_TRUSTED_PROXIES lists the reverse proxies in front of the app nodes
- * (IPs or CIDR ranges, comma-separated), whose X-Forwarded-For is believed;
- * IDEAF_MCP_CLIENT_HOSTS, if set, the only hosts MCP clients' metadata
- * documents may be on (comma-separated, like claude.ai,vscode.dev).
- * Single sign-on and SCIM are in ssoFromEnv below.
- */
-export function authSettingsFromEnv(env: Record<string, string | undefined>, mailer: Mailer): AuthSettings {
-  const secret = env.IDEAF_AUTH_SECRET
-  if (!secret && env.NODE_ENV === 'production') {
-    throw new Error('set IDEAF_AUTH_SECRET (at least 32 random characters) to run in production')
-  }
-  if (secret && secret.length < 32) {
-    throw new Error('IDEAF_AUTH_SECRET must be at least 32 characters')
-  }
-  const personalTokens = (env.IDEAF_PERSONAL_TOKENS ?? 'admins') as PersonalTokenPolicy
-  if (!PERSONAL_TOKEN_POLICIES.includes(personalTokens)) {
-    throw new Error(`IDEAF_PERSONAL_TOKENS is on, admins or off, not "${personalTokens}"`)
-  }
-  return {
-    baseURL: (env.IDEAF_URL ?? `http://localhost:${env.PORT ?? 8080}`).replace(/\/$/, ''),
-    secret: secret ?? DEV_SECRET,
-    siteAdmins: new Set(
-      (env.IDEAF_SITE_ADMINS ?? '')
-        .split(',')
-        .map((e) => e.trim().toLowerCase())
-        .filter(Boolean),
-    ),
-    mailer,
-    personalTokens,
-    trustedProxies: trustedProxiesFromEnv(env),
-    sso: ssoFromEnv(env),
-    scimToken: scimTokenFromEnv(env),
-    mcp: { clientHosts: list(env.IDEAF_MCP_CLIENT_HOSTS).length ? list(env.IDEAF_MCP_CLIENT_HOSTS) : null },
-  }
-}
+/** The deployment's public URL: url, or this process on localhost. */
+export const siteURL = (settings: Settings) => (settings.url ?? `http://localhost:${settings.port}`).replace(/\/$/, '')
 
-function trustedProxiesFromEnv(env: Record<string, string | undefined>): string[] {
-  const proxies = (env.IDEAF_TRUSTED_PROXIES ?? '')
-    .split(',')
-    .map((p) => p.trim())
-    .filter(Boolean)
-  const invalid = findInvalidTrustedProxies(proxies)
+/**
+ * auth.secret signs cookies and encrypts signing keys, and is required in production; site_admins
+ * lists the site admins' emails; auth.personal_tokens is on, admins or off; trusted_proxies lists
+ * the reverse proxies in front of the app nodes, whose X-Forwarded-For is believed; mcp.client_hosts,
+ * if set, the only hosts MCP clients' metadata documents may be on. Single sign-on and SCIM are below.
+ */
+export function authSettingsFrom(settings: Settings, mailer: Mailer, production: boolean): AuthSettings {
+  const { secret } = settings.auth
+  if (!secret && production) {
+    throw new Error('set auth.secret (at least 32 random characters) to run in production')
+  }
+  const invalid = findInvalidTrustedProxies(settings.trusted_proxies)
   if (invalid.length > 0) {
-    throw new Error(`IDEAF_TRUSTED_PROXIES takes IP addresses and CIDR ranges, not: ${invalid.join(', ')}`)
+    throw new Error(`trusted_proxies takes IP addresses and CIDR ranges, not: ${invalid.join(', ')}`)
   }
-  return proxies
+  const hosts = settings.mcp.client_hosts.map((h) => h.toLowerCase())
+  return {
+    baseURL: siteURL(settings),
+    secret: secret ?? DEV_SECRET,
+    siteAdmins: new Set(settings.site_admins.map((e) => e.toLowerCase())),
+    mailer,
+    personalTokens: settings.auth.personal_tokens,
+    trustedProxies: settings.trusted_proxies,
+    sso: ssoFrom(settings.auth.sso),
+    scimToken: settings.auth.scim_token ?? null,
+    mcp: { clientHosts: hosts.length ? hosts : null },
+  }
 }
 
-const list = (value: string | undefined) =>
-  (value ?? '')
-    .split(',')
-    .map((v) => v.trim().toLowerCase())
-    .filter(Boolean)
-
 /**
- * Single sign-on, off unless IDEAF_SSO is oidc or saml:
- * - IDEAF_SSO_NAME: shown as "Continue with <name>" (default "single sign-on");
- * - IDEAF_SSO_DOMAINS: the email domains that can sign in, comma-separated (required);
- * - IDEAF_SSO_AUTO_CREATE: on (the default) makes an account for someone new; off refuses them;
- * - OIDC: IDEAF_OIDC_ISSUER, IDEAF_OIDC_CLIENT_ID and IDEAF_OIDC_CLIENT_SECRET;
- * - SAML: IDEAF_SAML_METADATA, a file with the provider's metadata XML, and
- *   IDEAF_SAML_SP_KEY and IDEAF_SAML_SP_CERT, files with our key and
- *   certificate (PEM), for providers that want signed requests.
+ * Single sign-on, off unless auth.sso.mode is oidc or saml:
+ * - name: shown as "Continue with <name>";
+ * - domains: the email domains that can sign in (required);
+ * - auto_create: on (the default) makes an account for someone new; off refuses them;
+ * - OIDC: oidc.issuer, oidc.client_id and oidc.client_secret;
+ * - SAML: saml.metadata, a file with the provider's metadata XML, and saml.sp_key and
+ *   saml.sp_cert, files with our key and certificate (PEM), for providers that want signed requests.
  */
-export function ssoFromEnv(env: Record<string, string | undefined>): SsoSettings | null {
-  const mode = env.IDEAF_SSO ?? 'off'
-  if (mode === 'off') {
+export function ssoFrom(sso: Settings['auth']['sso']): SsoSettings | null {
+  if (sso.mode === 'off') {
     return null
   }
-  if (mode !== 'oidc' && mode !== 'saml') {
-    throw new Error(`IDEAF_SSO is off, oidc or saml, not "${mode}"`)
+  if (sso.domains.length === 0) {
+    throw new Error('set auth.sso.domains: the email domains that can sign in with single sign-on')
   }
-  const domains = list(env.IDEAF_SSO_DOMAINS)
-  if (domains.length === 0) {
-    throw new Error('set IDEAF_SSO_DOMAINS: the email domains that can sign in with single sign-on')
+  const base = {
+    name: sso.name,
+    domains: sso.domains.map((d) => d.toLowerCase()),
+    autoCreate: sso.auto_create === 'on',
   }
-  const autoCreate = env.IDEAF_SSO_AUTO_CREATE ?? 'on'
-  if (autoCreate !== 'on' && autoCreate !== 'off') {
-    throw new Error(`IDEAF_SSO_AUTO_CREATE is on or off, not "${autoCreate}"`)
-  }
-  const need = (name: string) => {
-    const value = env[name]
-    if (!value) {
-      throw new Error(`set ${name} for IDEAF_SSO=${mode}`)
+  if (sso.mode === 'oidc') {
+    const { issuer, client_id, client_secret } = sso.oidc
+    if (!issuer || !client_id || !client_secret) {
+      throw new Error('set auth.sso.oidc.issuer, client_id and client_secret for auth.sso.mode: oidc')
     }
-    return value
+    return { ...base, oidc: { issuer: issuer.replace(/\/$/, ''), clientId: client_id, clientSecret: client_secret } }
   }
-  const file = (name: string) => readFileSync(need(name), 'utf8')
-  const base = { name: env.IDEAF_SSO_NAME || 'single sign-on', domains, autoCreate: autoCreate === 'on' }
-  if (mode === 'oidc') {
-    return {
-      ...base,
-      oidc: {
-        issuer: need('IDEAF_OIDC_ISSUER').replace(/\/$/, ''),
-        clientId: need('IDEAF_OIDC_CLIENT_ID'),
-        clientSecret: need('IDEAF_OIDC_CLIENT_SECRET'),
-      },
-    }
+  const { metadata, sp_key, sp_cert } = sso.saml
+  if (!metadata) {
+    throw new Error("set auth.sso.saml.metadata for auth.sso.mode: saml, a file with the provider's metadata XML")
   }
-  if (Boolean(env.IDEAF_SAML_SP_KEY) !== Boolean(env.IDEAF_SAML_SP_CERT)) {
-    throw new Error('set both IDEAF_SAML_SP_KEY and IDEAF_SAML_SP_CERT, or neither')
+  if (Boolean(sp_key) !== Boolean(sp_cert)) {
+    throw new Error('set both auth.sso.saml.sp_key and sp_cert, or neither')
   }
+  const file = (path: string) => readFileSync(path, 'utf8')
   return {
     ...base,
     saml: {
-      metadata: file('IDEAF_SAML_METADATA'),
-      ...(env.IDEAF_SAML_SP_KEY
-        ? { spPrivateKey: file('IDEAF_SAML_SP_KEY'), spCertificate: file('IDEAF_SAML_SP_CERT') }
-        : {}),
+      metadata: file(metadata),
+      ...(sp_key && sp_cert ? { spPrivateKey: file(sp_key), spCertificate: file(sp_cert) } : {}),
     },
   }
 }
 
-/** IDEAF_SCIM_TOKEN: the identity provider's SCIM bearer token (at least 32 characters); SCIM is off without it. */
-export function scimTokenFromEnv(env: Record<string, string | undefined>): string | null {
-  const token = env.IDEAF_SCIM_TOKEN
-  if (!token) {
-    return null
-  }
-  if (token.length < 32) {
-    throw new Error('IDEAF_SCIM_TOKEN must be at least 32 characters')
-  }
-  return token
-}
-
 /**
  * Where sign-in codes go:
- * - IDEAF_SMTP_URL and IDEAF_EMAIL_FROM: by email, over SMTP (see auth/mail.ts);
- * - IDEAF_EMAIL=sendmail and IDEAF_EMAIL_FROM: by email, through the host's sendmail
- *   (IDEAF_SENDMAIL, /usr/sbin/sendmail unless set; see mail/transport.ts);
- * - otherwise the server log, which production refuses unless IDEAF_EMAIL=log
- *   says so (a deployment behind single sign-on, say, where only site admins
- *   use codes and can read the log).
+ * - email.smtp_url and email.from: by email, over SMTP (see auth/mail.ts);
+ * - email.mode: sendmail and email.from: by email, through the host's sendmail (email.sendmail;
+ *   see mail/transport.ts);
+ * - otherwise the server log, which production refuses unless email.mode: log says so (a
+ *   deployment behind single sign-on, say, where only site admins use codes and can read the log).
  */
-export function mailerFromEnv(env: Record<string, string | undefined>): Mailer {
-  const transport = emailTransportFromEnv(env)
+export function mailerFrom(settings: Settings, production: boolean): Mailer {
+  const transport = emailTransportFrom(settings.email)
   if (transport) {
-    if (!env.IDEAF_EMAIL_FROM) {
-      throw new Error('set IDEAF_EMAIL_FROM, the sender of sign-in codes: "Ideation Factory <sign-in@example.com>"')
+    if (!settings.email.from) {
+      throw new Error('set email.from, the sender of sign-in codes: "Ideation Factory <sign-in@example.com>"')
     }
-    return emailMailer({
-      transport,
-      from: env.IDEAF_EMAIL_FROM,
-      siteURL: env.IDEAF_URL ?? `http://localhost:${env.PORT ?? 8080}`,
-    })
+    return emailMailer({ transport, from: settings.email.from, siteURL: siteURL(settings) })
   }
-  if (env.NODE_ENV === 'production' && env.IDEAF_EMAIL !== 'log') {
+  if (production && settings.email.mode !== 'log') {
     throw new Error(
-      'set IDEAF_SMTP_URL (or IDEAF_EMAIL=sendmail) and IDEAF_EMAIL_FROM to send sign-in codes by email (or IDEAF_EMAIL=log to write them to the server log)',
+      'set email.smtp_url (or email.mode: sendmail) and email.from to send sign-in codes by email (or email.mode: log to write them to the server log)',
     )
   }
   return logMailer

@@ -11,7 +11,8 @@ import { contentHash } from '@ideaf/core'
 import { fileStoreContract } from './contract.ts'
 import { LocalFolderFileStore } from './local-folder.ts'
 import { S3FileStore } from './s3.ts'
-import { fileStoreFromEnv } from './settings.ts'
+import { settingsFrom } from '../settings/load.ts'
+import { fileStoreFrom } from './settings.ts'
 
 /**
  * Just enough S3 for the store: objects in memory, signatures not checked. Unless `listing`, it answers
@@ -117,12 +118,11 @@ if (real) {
 }
 
 describe('which store', () => {
-  test('a bucket when IDEAF_S3_BUCKET is set, a folder otherwise; settings checked', () => {
-    expect(fileStoreFromEnv({}, '/data')).toBeInstanceOf(LocalFolderFileStore)
-    expect(
-      fileStoreFromEnv({ IDEAF_S3_BUCKET: 'ideaf', IDEAF_S3_ENDPOINT: 'http://seaweedfs:8333' }, '/data'),
-    ).toBeInstanceOf(S3FileStore)
-    expect(() => fileStoreFromEnv({ IDEAF_S3_BUCKET: 'b', IDEAF_S3_ACCESS_KEY_ID: 'only-one' }, '/d')).toThrow('both')
-    expect(() => fileStoreFromEnv({ IDEAF_S3_BUCKET: 'b', IDEAF_S3_VIRTUAL_HOSTED: 'yes' }, '/d')).toThrow('on or off')
+  test('a bucket when files.s3 is set, a folder otherwise; settings checked', () => {
+    const store = (s3?: Record<string, unknown>) => fileStoreFrom(settingsFrom(s3 ? { files: { s3 } } : {}))
+    expect(store()).toBeInstanceOf(LocalFolderFileStore)
+    expect(store({ bucket: 'ideaf', endpoint: 'http://seaweedfs:8333' })).toBeInstanceOf(S3FileStore)
+    expect(() => store({ bucket: 'b', access_key_id: 'only-one' })).toThrow('both')
+    expect(() => store({ bucket: 'b', virtual_hosted: 'yes' })).toThrow('on or off')
   })
 })

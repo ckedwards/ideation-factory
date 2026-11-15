@@ -23,40 +23,25 @@ services:
     volumes:
       - engine:/var/lib/rivet
 
-  # creates the engine's node pool, which the app joins; it drains an older app once a newer one connects
-  pool:
-    image: curlimages/curl:8.16.0
-    depends_on: [engine]
-    entrypoint: ['sh', '-c']
-    command:
-      - |
-        until curl -sf -X PUT "http://engine:6420/pools/default?namespace=default" \
-            -H "authorization: Bearer $$RIVET_ADMIN_TOKEN" -H 'content-type: application/json' \
-            -d '{"drain_on_version_upgrade": true}'; do sleep 2; done
-    environment:
-      RIVET_ADMIN_TOKEN: ${RIVET_ADMIN_TOKEN}
-
   app:
     image: ghcr.io/ckedwards/ideation-factory/app:${IDEAF_VERSION:-latest}
     restart: unless-stopped
     # Rivet asks for at least 60 s for the app to hand its actors back; Docker's default is 10 s
     stop_grace_period: 60s
-    depends_on:
-      pool:
-        condition: service_completed_successfully
-      mailpit:
-        condition: service_started
+    # it makes the engine's node pool it joins, once the engine answers (a new one takes a minute)
+    depends_on: [engine, mailpit]
     ports:
       - ${IDEAF_PORT:-8080}:8080
     environment:
-      IDEAF_URL: ${IDEAF_URL:-http://localhost:8080}
-      IDEAF_AUTH_SECRET: ${IDEAF_AUTH_SECRET:?set IDEAF_AUTH_SECRET in .env (openssl rand -hex 32)}
-      IDEAF_SITE_ADMINS: ${IDEAF_SITE_ADMINS:-}
-      RIVET_ENDPOINT: http://default:${RIVET_ADMIN_TOKEN}@engine:6420
+      IDEAF__URL: ${IDEAF_URL:-http://localhost:8080}
+      IDEAF__AUTH__SECRET: ${IDEAF_AUTH_SECRET:?set IDEAF_AUTH_SECRET in .env (openssl rand -hex 32)}
+      IDEAF__SITE_ADMINS: ${IDEAF_SITE_ADMINS:-}
+      IDEAF__ENGINE__ENDPOINT: http://engine:6420
+      IDEAF__ENGINE__TOKEN: ${RIVET_ADMIN_TOKEN}
       # every email to Mailpit, unless IDEAF_SMTP_URL names a relay that delivers it
-      IDEAF_SMTP_URL: ${IDEAF_SMTP_URL:-smtp://mailpit:1025}
-      IDEAF_EMAIL_FROM: ${IDEAF_EMAIL_FROM:-Ideation Factory <sign-in@ideaf.localhost>}
-      IDEAF_NOTIFY_FROM: ${IDEAF_NOTIFY_FROM:-Ideation Factory <notifications@ideaf.localhost>}
+      IDEAF__EMAIL__SMTP_URL: ${IDEAF_SMTP_URL:-smtp://mailpit:1025}
+      IDEAF__EMAIL__FROM: ${IDEAF_EMAIL_FROM:-Ideation Factory <sign-in@ideaf.localhost>}
+      IDEAF__EMAIL__NOTIFY_FROM: ${IDEAF_NOTIFY_FROM:-Ideation Factory <notifications@ideaf.localhost>}
     volumes:
       # the files of every idea
       - app:/data

@@ -1,41 +1,30 @@
-// Which file store a node uses, from the environment: a bucket when
-// IDEAF_S3_BUCKET is set (every node of a deployment with more than one must
-// share it), otherwise a folder under IDEAF_DATA, which suits one machine.
-//
-// - IDEAF_S3_BUCKET: the bucket;
-// - IDEAF_S3_ENDPOINT: the store's URL, for anything but AWS (http://seaweedfs:8333);
-// - IDEAF_S3_REGION (default us-east-1), IDEAF_S3_ACCESS_KEY_ID and IDEAF_S3_SECRET_ACCESS_KEY,
-//   or neither, for Bun's S3_* or AWS_* variables (its client doesn't fetch an
-//   instance's or a pod's role itself);
-// - IDEAF_S3_PREFIX: where files go in it (default files/);
-// - IDEAF_S3_VIRTUAL_HOSTED=on: the bucket in the hostname, as AWS prefers; the path otherwise.
+// Which file store a node uses, from its settings (settings/schema.ts): a bucket when files.s3 is
+// set (every node of a deployment with more than one must share it), otherwise a folder under
+// data, which suits one machine. Without files.s3's keys, Bun's S3_* or AWS_* variables.
 import { join } from 'node:path'
+import type { Settings } from '../settings/schema.ts'
 import { LocalFolderFileStore } from './local-folder.ts'
 import { S3FileStore } from './s3.ts'
 import type { FileStore } from './store.ts'
 
-export function fileStoreFromEnv(env: Record<string, string | undefined>, data: string): FileStore {
-  const bucket = env.IDEAF_S3_BUCKET
-  if (!bucket) {
-    return new LocalFolderFileStore(join(data, 'files'))
+export function fileStoreFrom(settings: Settings): FileStore {
+  const s3 = settings.files.s3
+  if (!s3) {
+    return new LocalFolderFileStore(join(settings.data, 'files'))
   }
-  const hosted = env.IDEAF_S3_VIRTUAL_HOSTED ?? 'off'
-  if (hosted !== 'on' && hosted !== 'off') {
-    throw new Error(`IDEAF_S3_VIRTUAL_HOSTED is on or off, not "${hosted}"`)
-  }
-  if (Boolean(env.IDEAF_S3_ACCESS_KEY_ID) !== Boolean(env.IDEAF_S3_SECRET_ACCESS_KEY)) {
+  if (Boolean(s3.access_key_id) !== Boolean(s3.secret_access_key)) {
     throw new Error(
-      'set both IDEAF_S3_ACCESS_KEY_ID and IDEAF_S3_SECRET_ACCESS_KEY, or neither (to use the S3_* or AWS_* variables)',
+      'set both files.s3.access_key_id and files.s3.secret_access_key, or neither (to use the S3_* or AWS_* variables)',
     )
   }
-  const prefix = env.IDEAF_S3_PREFIX ?? 'files/'
+  const prefix = s3.prefix && !s3.prefix.endsWith('/') ? `${s3.prefix}/` : s3.prefix
   return new S3FileStore({
-    bucket,
-    region: env.IDEAF_S3_REGION || 'us-east-1',
-    prefix: prefix && !prefix.endsWith('/') ? `${prefix}/` : prefix,
-    ...(env.IDEAF_S3_ENDPOINT ? { endpoint: env.IDEAF_S3_ENDPOINT } : {}),
-    ...(env.IDEAF_S3_ACCESS_KEY_ID ? { accessKeyId: env.IDEAF_S3_ACCESS_KEY_ID } : {}),
-    ...(env.IDEAF_S3_SECRET_ACCESS_KEY ? { secretAccessKey: env.IDEAF_S3_SECRET_ACCESS_KEY } : {}),
-    ...(hosted === 'on' ? { virtualHostedStyle: true } : {}),
+    bucket: s3.bucket,
+    region: s3.region,
+    prefix,
+    ...(s3.endpoint ? { endpoint: s3.endpoint } : {}),
+    ...(s3.access_key_id ? { accessKeyId: s3.access_key_id } : {}),
+    ...(s3.secret_access_key ? { secretAccessKey: s3.secret_access_key } : {}),
+    ...(s3.virtual_hosted === 'on' ? { virtualHostedStyle: true } : {}),
   })
 }

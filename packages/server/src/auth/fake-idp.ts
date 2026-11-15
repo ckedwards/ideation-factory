@@ -149,7 +149,7 @@ export async function fakeOidcProvider(): Promise<FakeOidcProvider> {
 }
 
 export interface FakeSamlProvider {
-  /** The provider's metadata XML, for IDEAF_SAML_METADATA. */
+  /** The provider's metadata XML, for auth.sso.saml.metadata. */
   metadata: string
   /** Who the next sign-in is; `edit` changes the signed response, as an attacker might. */
   as(person: IdpPerson, edit?: (xml: string) => string): void

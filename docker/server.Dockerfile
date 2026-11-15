@@ -16,8 +16,8 @@ COPY packages/web/package.json packages/web/
 RUN bun install --frozen-lockfile --ignore-scripts
 COPY packages packages
 
-ENV PORT=8080 \
-    IDEAF_DATA=/data \
+ENV IDEAF__PORT=8080 \
+    IDEAF__DATA=/data \
     RIVETKIT_STORAGE_PATH=/data \
     RIVET_RUN_ENGINE_PORT=6420 \
     RIVET_RUN_SERVICES=0

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Operator commands, run where the server runs: they talk to the Rivet Engine
-// directly (RIVET_ENDPOINT, or the local engine in development), as the
+// directly (engine.endpoint, or the local engine in development), as the
 // server does, so they need no sign-in. A site admin page can call the same
 // directory actions later.
 //
@@ -99,5 +99,8 @@ export async function admin(argv: string[], env: Record<string, string | undefin
 }
 
 if (import.meta.main) {
+  // the engine's settings, and the directory's pool, as the server has them (settings/start.ts)
+  const { startWithSettings } = await import('./settings/start.ts')
+  startWithSettings()
   process.exit(await admin(process.argv.slice(2), process.env))
 }

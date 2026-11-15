@@ -5,7 +5,8 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import type { DueEmail, IdeaListing } from '../directory/types.ts'
 import { fakeSmtp } from './fake-smtp.ts'
 import { notificationEmail } from './notification.ts'
-import { emailSender, logSender, notificationEmailFromEnv } from './sender.ts'
+import { settingsFrom } from '../settings/load.ts'
+import { emailSender, logSender, notificationEmailFrom } from './sender.ts'
 import { readUnsubscribeToken, unsubscribePage, unsubscribeToken } from './unsubscribe.ts'
 
 const site = { baseURL: 'https://ideas.example.test', secret: 'a-test-secret-0123456789abcdef-0123' }
@@ -173,14 +174,16 @@ describe('sending', () => {
     expect(message.data).toContain('In-Reply-To: <id1@ideas.example.test>')
   })
 
-  test('which sender: IDEAF_NOTIFY_FROM, else IDEAF_EMAIL_FROM; the log in development; none in production without SMTP', () => {
-    expect(notificationEmailFromEnv({})?.sender).toBe(logSender)
-    expect(notificationEmailFromEnv({ NODE_ENV: 'production' })).toBeNull()
-    expect(notificationEmailFromEnv({ IDEAF_SMTP_URL: smtp.url, IDEAF_EMAIL_NOTIFICATIONS: 'off' })).toBeNull()
-    expect(() => notificationEmailFromEnv({ IDEAF_EMAIL_NOTIFICATIONS: 'maybe' })).toThrow('on or off')
-    expect(() => notificationEmailFromEnv({ IDEAF_NOTIFY_FROM: 'n@example.test' })).toThrow('IDEAF_SMTP_URL')
-    expect(() => notificationEmailFromEnv({ IDEAF_SMTP_URL: smtp.url })).toThrow('IDEAF_NOTIFY_FROM')
-    const smtpOne = notificationEmailFromEnv({ IDEAF_SMTP_URL: smtp.url, IDEAF_EMAIL_FROM: 's@example.test' })
+  test('which sender: email.notify_from, else email.from; the log in development; none in production without SMTP', () => {
+    const notifications = (email: Record<string, unknown>, production = false) =>
+      notificationEmailFrom(settingsFrom({ email }).email, production)
+    expect(notifications({})?.sender).toBe(logSender)
+    expect(notifications({}, true)).toBeNull()
+    expect(notifications({ smtp_url: smtp.url, notifications: 'off' })).toBeNull()
+    expect(() => notifications({ notifications: 'maybe' })).toThrow('on or off')
+    expect(() => notifications({ notify_from: 'n@example.test' })).toThrow('email.smtp_url')
+    expect(() => notifications({ smtp_url: smtp.url })).toThrow('email.notify_from')
+    const smtpOne = notifications({ smtp_url: smtp.url, from: 's@example.test' })
     expect(smtpOne?.sender).not.toBe(logSender)
     expect(smtpOne?.timing.quietMs).toBe(5 * 60_000)
   })

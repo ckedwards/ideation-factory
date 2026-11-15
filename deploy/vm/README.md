@@ -42,9 +42,9 @@ The release is optional (the newest unless given), but every machine should run 
 | ------------------------------------ | ------------------------------------------------------------------------------------- |
 | the engine                           | `/usr/local/bin/rivet-engine`, run as the `rivet` user                               |
 | the app, and Bun                     | `/opt/ideaf/app` and `/opt/ideaf/bin`, run as the `ideaf` user (the last one kept in `app.previous`) |
-| the units, and the helpers they run  | `rivet`, `ideaf-pools`, `ideaf`, `ideaf-directory` in `/etc/systemd/system`; the release's `deploy/vm/resources` in `/opt/ideaf/vm` |
+| the units, and the helpers they run  | `rivet`, `ideaf`, `ideaf-directory` in `/etc/systemd/system`; the release's `deploy/vm/resources` in `/opt/ideaf/vm` |
 | the engine's settings                | `/etc/rivet/config.json`, readable by `rivet` only (from `rivet.json.example`)       |
-| the app's settings                   | `/etc/ideaf/ideaf.env`, readable by root and `ideaf` (from `ideaf.env.example`)      |
+| the app's settings, and its secrets  | `/etc/ideaf/ideaf.yaml` and `/etc/ideaf/secrets.yaml`, readable by root and `ideaf` (from their `.example`s) |
 | internal CAs, for the app's own connections | `/etc/ideaf/ca/*.pem` or `*.crt`                                               |
 | data                                 | `/var/lib/rivet` (the engine's disk) and `/var/lib/ideaf`                            |
 | what was installed                   | `/opt/ideaf/VERSION`                                                                  |
@@ -68,18 +68,20 @@ It's remembered: upgrades keep it until `--no-rivetkit-fix`, which goes back to 
 
 **`/etc/rivet/config.json`,** the same on every machine but its address: the admin token (`openssl rand -hex 32`), this machine's private address as `advertise_address` (`10.0.0.11:6421`), the engine's bucket and key. Crash reports to Rivet stay off unless you turn `telemetry` on. Every other engine setting is in Rivet's configuration reference; unknown settings are refused.
 
-**`/etc/ideaf/ideaf.env`,** the same on every machine: the public URL, the sign-in secret, the load balancer's addresses (`IDEAF_TRUSTED_PROXIES`), the admin token (twice: on its own, and in `RIVET_ENDPOINT`), the files bucket and key, and email. The app's other settings (single sign-on, SCIM, personal tokens, MCP clients) are in the main README.
+**`/etc/ideaf/ideaf.yaml`,** the same on every machine: the public URL, the load balancer's addresses (`trusted_proxies`), this machine's engine, the directory's pool, the files bucket and its key's ID, and email. **`/etc/ideaf/secrets.yaml`** beside it holds the secrets, and only them: the sign-in secret (`auth.secret`), the engine's admin token (`engine.token`, the same as in `/etc/rivet/config.json`), the bucket key's secret, and an SMTP URL's password if there is one. The app reads both itself when it starts, and says which key is wrong, and where it came from, if one is.
+
+Every setting is in [`deploy/ideaf.schema.json`](../ideaf.schema.json), which editors use to complete and check the two files (the examples name it on their first line), and each can also be set by its environment variable: `files.s3.bucket` is `IDEAF__FILES__S3__BUCKET`. A secret can also come from a file of its own, `<key>_file` (`auth.secret_file: /run/credentials/auth-secret`). The app's other settings (single sign-on, SCIM, personal tokens, MCP clients) are in the main README.
 
 ## Starting
 
 Start the engines on all machines within a minute of each other (a new cluster waits for three before it makes its storage), then the rest:
 
 ```sh
-systemctl enable --now rivet ideaf-pools ideaf ideaf-directory
+systemctl enable --now rivet ideaf ideaf-directory
 ```
 
 - `curl -s localhost:6420/health` is the engine (`"status":"ok"`); `curl -s localhost:8080/health` the app and `localhost:8081/health` the directory process, each 200 once connected to the engine.
-- A new engine waits about a minute before it serves, and the app restarts itself until then: give it two.
+- A new engine waits about a minute before it serves. The app makes the engine's node pools first, waiting for it, and restarts itself if it has to: give it two.
 - Logs: `journalctl -u rivet`, `-u ideaf`, `-u ideaf-directory`.
 
 ## Upgrading

@@ -1,7 +1,8 @@
 // Sending notification emails: over the same SMTP settings as sign-in codes
 // (auth/mail.ts), from their own sender so people and mail rules can sort
 // them; the server log in development; a capture in tests.
-import { createTransport, type EmailTransport, emailTransportFromEnv } from './transport.ts'
+import { createTransport, type EmailTransport, emailTransportFrom } from './transport.ts'
+import type { Settings } from '../settings/schema.ts'
 import { EMAIL_TIMING, type EmailTiming } from '../directory/types.ts'
 
 /** One email, ready to go. */
@@ -68,32 +69,26 @@ export class CapturingSender implements EmailSender {
 }
 
 /**
- * Notification emails go the way sign-in codes do (IDEAF_SMTP_URL, or the host's sendmail with
- * IDEAF_EMAIL=sendmail: mail/transport.ts), from
- * IDEAF_NOTIFY_FROM, or IDEAF_EMAIL_FROM without it. In development without
- * SMTP they go to the server log; in production without it there are none,
- * and nobody sees email settings. IDEAF_EMAIL_NOTIFICATIONS=off turns them
- * off with SMTP set (sign-in codes still go).
+ * Notification emails go the way sign-in codes do (email.smtp_url, or the host's sendmail with
+ * email.mode: sendmail: mail/transport.ts), from email.notify_from, or email.from without it. In
+ * development without either they go to the server log; in production there are none, and nobody
+ * sees email settings. email.notifications: off turns them off (sign-in codes still go).
  */
-export function notificationEmailFromEnv(env: Record<string, string | undefined>): NotificationEmail | null {
-  const off = env.IDEAF_EMAIL_NOTIFICATIONS
-  if (off !== undefined && off !== 'on' && off !== 'off') {
-    throw new Error(`IDEAF_EMAIL_NOTIFICATIONS is on or off, not "${off}"`)
-  }
-  if (off === 'off') {
+export function notificationEmailFrom(email: Settings['email'], production: boolean): NotificationEmail | null {
+  if (email.notifications === 'off') {
     return null
   }
-  const transport = emailTransportFromEnv(env)
+  const transport = emailTransportFrom(email)
   if (!transport) {
-    if (env.IDEAF_NOTIFY_FROM) {
-      throw new Error('IDEAF_NOTIFY_FROM needs IDEAF_SMTP_URL or IDEAF_EMAIL=sendmail, the way notification emails go')
+    if (email.notify_from) {
+      throw new Error('email.notify_from needs email.smtp_url or email.mode: sendmail, the way notification emails go')
     }
-    return env.NODE_ENV === 'production' ? null : { sender: logSender, timing: EMAIL_TIMING }
+    return production ? null : { sender: logSender, timing: EMAIL_TIMING }
   }
-  const from = env.IDEAF_NOTIFY_FROM || env.IDEAF_EMAIL_FROM
+  const from = email.notify_from || email.from
   if (!from) {
     throw new Error(
-      'set IDEAF_NOTIFY_FROM, the sender of notification emails: "Ideation Factory <notifications@example.com>"',
+      'set email.notify_from, the sender of notification emails: "Ideation Factory <notifications@example.com>"',
     )
   }
   return { sender: emailSender({ transport, from }), timing: EMAIL_TIMING }

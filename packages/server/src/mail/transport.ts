@@ -1,35 +1,30 @@
 // How email leaves the server, for sign-in codes and notifications alike: over SMTP, to a mail
-// provider or a company's relay (IDEAF_SMTP_URL), or through the host's own sendmail command
-// (IDEAF_EMAIL=sendmail), for a machine whose mail setup (Postfix, msmtp, a company relay) already
+// provider or a company's relay (email.smtp_url), or through the host's own sendmail command
+// (email.mode: sendmail), for a machine whose mail setup (Postfix, msmtp, a company relay) already
 // delivers its mail. Neither: nothing is sent, and the caller decides (the log in development).
 import nodemailer from 'nodemailer'
+import type { Settings } from '../settings/schema.ts'
 
 export type EmailTransport = { kind: 'smtp'; url: string } | { kind: 'sendmail'; path: string }
 
-const SENDMAIL = '/usr/sbin/sendmail'
-
 /** The transport the settings name, or null for none. Throws on a setting it can't use. */
-export function emailTransportFromEnv(env: Record<string, string | undefined>): EmailTransport | null {
-  const mode = env.IDEAF_EMAIL
-  if (mode !== undefined && mode !== '' && mode !== 'log' && mode !== 'sendmail') {
-    throw new Error(`IDEAF_EMAIL is log or sendmail, not "${mode}"`)
+export function emailTransportFrom(email: Settings['email']): EmailTransport | null {
+  if (email.smtp_url && email.mode === 'sendmail') {
+    throw new Error('email.smtp_url and email.mode: sendmail both name a way to send email: set one')
   }
-  const url = env.IDEAF_SMTP_URL
-  if (url && mode === 'sendmail') {
-    throw new Error('IDEAF_SMTP_URL and IDEAF_EMAIL=sendmail both name a way to send email: set one')
-  }
-  if (url) {
-    if (!/^smtps?:\/\//.test(url)) {
-      throw new Error('IDEAF_SMTP_URL is smtps://user:password@host:465 or smtp://user:password@host:587')
+  if (email.smtp_url) {
+    if (!/^smtps?:\/\//.test(email.smtp_url)) {
+      throw new Error('email.smtp_url is smtps://user:password@host:465 or smtp://user:password@host:587')
     }
-    return { kind: 'smtp', url }
+    return { kind: 'smtp', url: email.smtp_url }
   }
-  if (mode === 'sendmail') {
-    const path = env.IDEAF_SENDMAIL || SENDMAIL
-    if (!path.startsWith('/')) {
-      throw new Error(`IDEAF_SENDMAIL is the sendmail command's full path, like ${SENDMAIL}, not "${path}"`)
+  if (email.mode === 'sendmail') {
+    if (!email.sendmail.startsWith('/')) {
+      throw new Error(
+        `email.sendmail is the sendmail command's full path, like /usr/sbin/sendmail, not "${email.sendmail}"`,
+      )
     }
-    return { kind: 'sendmail', path }
+    return { kind: 'sendmail', path: email.sendmail }
   }
   return null
 }

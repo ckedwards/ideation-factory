@@ -36,25 +36,25 @@ services:
     ports:
       - 127.0.0.1:${LOAD_APP_PORT:-18080}:8080
     environment: &app-environment
-      IDEAF_URL: ${IDEAF_URL:?set IDEAF_URL}
-      IDEAF_AUTH_SECRET: ${IDEAF_AUTH_SECRET:?set IDEAF_AUTH_SECRET}
-      IDEAF_SITE_ADMINS: ${IDEAF_SITE_ADMINS:-}
-      IDEAF_PERSONAL_TOKENS: 'on'
+      IDEAF__URL: ${IDEAF_URL:?set IDEAF_URL}
+      IDEAF__AUTH__SECRET: ${IDEAF_AUTH_SECRET:?set IDEAF_AUTH_SECRET}
+      IDEAF__SITE_ADMINS: ${IDEAF_SITE_ADMINS:-}
+      IDEAF__AUTH__PERSONAL_TOKENS: 'on'
       # only Caddy and the seeder reach the app
-      IDEAF_TRUSTED_PROXIES: ${IDEAF_SUBNET:-172.30.80.0/24}
+      IDEAF__TRUSTED_PROXIES: ${IDEAF_SUBNET:-172.30.80.0/24}
       RIVET_ENDPOINT: http://default:${RIVET_ADMIN_TOKEN}@engine:6420
-      IDEAF_S3_BUCKET: ideaf-files
-      IDEAF_S3_ENDPOINT: http://seaweedfs:8333
-      IDEAF_S3_REGION: us-east-1
-      IDEAF_S3_ACCESS_KEY_ID: ${S3_FILES_ACCESS_KEY_ID:?set S3_FILES_ACCESS_KEY_ID}
-      IDEAF_S3_SECRET_ACCESS_KEY: ${S3_FILES_SECRET_ACCESS_KEY:?set S3_FILES_SECRET_ACCESS_KEY}
-      IDEAF_SMTP_URL: smtp://mailpit:1025
-      IDEAF_EMAIL_FROM: Ideation Factory <sign-in@load.test>
-      IDEAF_NOTIFY_FROM: Ideation Factory <notifications@load.test>
+      IDEAF__FILES__S3__BUCKET: ideaf-files
+      IDEAF__FILES__S3__ENDPOINT: http://seaweedfs:8333
+      IDEAF__FILES__S3__REGION: us-east-1
+      IDEAF__FILES__S3__ACCESS_KEY_ID: ${S3_FILES_ACCESS_KEY_ID:?set S3_FILES_ACCESS_KEY_ID}
+      IDEAF__FILES__S3__SECRET_ACCESS_KEY: ${S3_FILES_SECRET_ACCESS_KEY:?set S3_FILES_SECRET_ACCESS_KEY}
+      IDEAF__EMAIL__SMTP_URL: smtp://mailpit:1025
+      IDEAF__EMAIL__FROM: Ideation Factory <sign-in@load.test>
+      IDEAF__EMAIL__NOTIFY_FROM: Ideation Factory <notifications@load.test>
       # the directory runs on the directory service's node, in a pool of its own (actors/pools.ts)
-      IDEAF_DIRECTORY_POOL: directory
+      IDEAF__DIRECTORY__POOL: directory
       # how many calls each app node sends the directory at once (server/src/actors/limit.ts)
-      IDEAF_DIRECTORY_CALLS: ${IDEAF_DIRECTORY_CALLS:-4}
+      IDEAF__DIRECTORY__CALLS: ${IDEAF_DIRECTORY_CALLS:-4}
     networks: [ideaf]
 
   # The directory: the same app in a process of its own, in the engine's directory pool, so the

@@ -107,18 +107,24 @@ mv "$tmp/ideaf/vm" /opt/ideaf/vm
 chown -R root:root /opt/ideaf/app /opt/ideaf/vm
 chmod -R a+rX /opt/ideaf/app /opt/ideaf/vm
 vm=/opt/ideaf/vm
-install -m 755 "$vm/ideaf-start" "$vm/ideaf-pools" /opt/ideaf/bin/
+# the release's helpers, units and example settings, whatever it has
+install -m 755 "$vm"/ideaf-* /opt/ideaf/bin/
 install -m 644 "$vm"/systemd/*.service /etc/systemd/system/
 
+# each example the release has becomes its settings file, unless that's there already
 new=0
-if [ ! -f /etc/rivet/config.json ]; then
-  install -o rivet -g rivet -m 600 "$vm/rivet.json.example" /etc/rivet/config.json
-  new=1
-fi
-if [ ! -f /etc/ideaf/ideaf.env ]; then
-  install -o root -g ideaf -m 640 "$vm/ideaf.env.example" /etc/ideaf/ideaf.env
-  new=1
-fi
+settings() {
+  local example=$1 file=$2 owner=$3 group=$4 mode=$5
+  if [ -f "$vm/$example" ] && [ ! -f "$file" ]; then
+    install -o "$owner" -g "$group" -m "$mode" "$vm/$example" "$file"
+    new=1
+  fi
+}
+settings rivet.json.example /etc/rivet/config.json rivet rivet 600
+settings ideaf.yaml.example /etc/ideaf/ideaf.yaml root ideaf 640
+settings secrets.yaml.example /etc/ideaf/secrets.yaml root ideaf 640
+# a release from before ideaf.yaml (v0.1.0) has its settings in an environment file
+settings ideaf.env.example /etc/ideaf/ideaf.env root ideaf 640
 {
   echo "release: $release"
   if [ "$FIX" = on ]; then
@@ -138,8 +144,9 @@ fi
 echo "installed $release$fixed: /usr/local/bin/rivet-engine, /opt/ideaf (cat /opt/ideaf/VERSION)"
 if [ "$new" = 1 ]; then
   cat <<'EOF'
-Next: fill in /etc/rivet/config.json and /etc/ideaf/ideaf.env (deploy/vm/README.md), then
-  systemctl enable --now rivet ideaf-pools ideaf ideaf-directory
+Next: fill in /etc/rivet/config.json, /etc/ideaf/ideaf.yaml and /etc/ideaf/secrets.yaml
+(deploy/vm/README.md), then
+  systemctl enable --now rivet ideaf ideaf-directory
 EOF
 else
   cat <<'EOF'

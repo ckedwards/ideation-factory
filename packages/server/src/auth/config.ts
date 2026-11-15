@@ -109,7 +109,7 @@ export interface McpSettings {
   fetchClientMetadata?: ClientMetadataResourceFetch
 }
 
-/** Whether an MCP client's metadata document is on one of these hosts (IDEAF_MCP_CLIENT_HOSTS). */
+/** Whether an MCP client's metadata document is on one of these hosts (mcp.client_hosts). */
 export const clientHostAllowed = (hosts: readonly string[]) => (url: string) => {
   try {
     return hosts.includes(new URL(url).hostname.toLowerCase())

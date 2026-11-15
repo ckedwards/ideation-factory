@@ -91,7 +91,7 @@ A **bucket of their own,** with versioning and possibly Object Lock. The app get
 On the Frankfurt deployment, with its design-scale seed (`packages/load/DEPLOYMENT.md`):
 
 - **Manifests:** add the write; compare a version write's latency and failures, with and without, under the load test's bots.
-- **Exporting one idea:** the time and size for a small idea, a typical seeded one, and one at the size limits (`IDEAF_MAX_IDEA_BYTES`, up to 4 MB of files, plus many versions and comments). Whether the read holds up the idea's writes, and for how long.
+- **Exporting one idea:** the time and size for a small idea, a typical seeded one, and one at the size limits (`limits.max_idea_bytes`, up to 4 MB of files, plus many versions and comments). Whether the read holds up the idea's writes, and for how long.
 - **Exporting many:** every seeded idea once, then every idea one day of load test changes. The total time, bytes stored, S3 requests, and the CPU on the nodes. Both triggers: the nightly job and exporting once quiet.
 - **The directory:** export time and size at the design scale; whether the export holds up sign-ins and lists.
 - **Import:** one idea into a fresh actor, compared with the original through the API. Then a broken idea: break one on purpose (a restart during a write, as happened), delete its actor, restore it. Then everything into an empty deployment, and the time it takes.

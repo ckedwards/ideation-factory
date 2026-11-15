@@ -1,6 +1,6 @@
 // The Markdown size limits: site admins set them per deployment (see
 // Deployment settings in docs/architecture.md). Until the admin page exists
-// they come from configuration, with these defaults.
+// they come from the settings (limits in ideaf.yaml), with these defaults.
 export interface Limits {
   /** Largest Markdown file, in bytes. */
   maxFileBytes: number
@@ -23,24 +23,11 @@ export const LIMIT_RANGES = {
  */
 export const MAX_MESSAGE_BYTES = 4 * LIMIT_RANGES.maxIdeaBytes.max
 
-export function limitsFromEnv(env: Record<string, string | undefined>): Limits {
-  const read = (name: string, key: keyof Limits): number => {
-    const raw = env[name]
-    if (raw === undefined) {
-      return DEFAULT_LIMITS[key]
-    }
-    const value = Number(raw)
-    const { min, max } = LIMIT_RANGES[key]
-    if (!Number.isInteger(value) || value < min || value > max) {
-      throw new Error(`${name} must be a whole number of bytes from ${min} to ${max}`)
-    }
-    return value
-  }
-  return {
-    maxFileBytes: read('IDEAF_MAX_FILE_BYTES', 'maxFileBytes'),
-    maxIdeaBytes: read('IDEAF_MAX_IDEA_BYTES', 'maxIdeaBytes'),
-  }
-}
+/** The limits in the settings (limits.max_file_bytes and max_idea_bytes, checked against LIMIT_RANGES there). */
+export const limitsFrom = (limits: { max_file_bytes: number; max_idea_bytes: number }): Limits => ({
+  maxFileBytes: limits.max_file_bytes,
+  maxIdeaBytes: limits.max_idea_bytes,
+})
 
 export const byteLength = (text: string) => new TextEncoder().encode(text).length
 
