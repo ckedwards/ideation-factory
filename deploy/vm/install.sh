@@ -1,53 +1,46 @@
 #!/bin/bash
 # Installs, or upgrades, Ideation Factory on this machine natively, under systemd (deploy/vm/README.md):
-# the engine's binary and the app (with Bun) taken out of our published images, and the units and
-# helpers from the app's. Docker or Podman is needed only for that. Settings that are there already
-# are left alone; the app it replaces is kept in /opt/ideaf/app.previous.
+# a release's native builds (the app with Bun, and the engine), downloaded from its GitHub release and
+# checked against its SHA256SUMS. Needs curl, tar, sha256sum and systemd, nothing else. Settings that
+# are there already are left alone; the app it replaces is kept in /opt/ideaf/app.previous.
 #
-#   sudo ./install.sh [tag]     latest unless given: a commit's sha-<7 characters>, or later a release
-#
-# To get it, from the image it installs:
-#   docker run --rm --entrypoint cat ghcr.io/ckedwards/ideation-factory/app:latest /app/deploy/vm/install.sh > install.sh
+#   curl -fsSL https://raw.githubusercontent.com/ckedwards/ideation-factory/master/deploy/vm/install.sh | sudo bash
+#   curl -fsSL .../install.sh | sudo bash -s -- v0.1.3      a release of your choosing; the newest unless given
 set -euo pipefail
-TAG=${1:-latest}
-REPO=${IDEAF_IMAGES:-ghcr.io/ckedwards/ideation-factory}
+VERSION=${1:-latest}
+REPO=${IDEAF_REPO:-ckedwards/ideation-factory}
 
 die() {
   echo "install.sh: $*" >&2
   exit 1
 }
 [ "$(id -u)" = 0 ] || die "run it as root (sudo)"
-RUN=$(command -v podman || command -v docker || true)
-[ -n "$RUN" ] || die "needs Docker or Podman, to take the builds out of their images"
-command -v curl >/dev/null || die "needs curl (the node pools' setup uses it)"
-command -v systemctl >/dev/null || die "needs systemd"
+for tool in curl tar sha256sum systemctl; do
+  command -v "$tool" >/dev/null || die "needs $tool"
+done
+[ "$(uname -m)" = x86_64 ] || die "the builds are for x86_64 (64-bit Intel or AMD); this machine is $(uname -m)"
 # the engine's binary needs glibc 2.34 or newer: Ubuntu 22.04, Debian 12, RHEL 9, or later
 glibc=$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+$' || true)
 if [ -z "$glibc" ] || [ "$(printf '%s\n2.34\n' "$glibc" | sort -V | head -1)" != 2.34 ]; then
   die "needs glibc 2.34 or newer (this machine has ${glibc:-none}): Ubuntu 22.04, Debian 12, RHEL 9, or later"
 fi
+if [ "$VERSION" = latest ]; then
+  base="https://github.com/$REPO/releases/latest/download"
+else
+  [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "a release is like v0.1.3, not $VERSION"
+  base="https://github.com/$REPO/releases/download/$VERSION"
+fi
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-
-# copies $2 out of image $1 to $3
-take() {
-  local id
-  id=$("$RUN" create "$1")
-  "$RUN" cp "$id:$2" "$3"
-  "$RUN" rm "$id" >/dev/null
-}
-
-# IDEAF_PULL=0 uses images already on this machine (loaded by hand, say) instead of pulling them
-if [ "${IDEAF_PULL:-1}" != 0 ]; then
-  echo "pulling $REPO/engine:$TAG and $REPO/app:$TAG"
-  "$RUN" pull -q "$REPO/engine:$TAG" >/dev/null
-  "$RUN" pull -q "$REPO/app:$TAG" >/dev/null
-fi
-take "$REPO/engine:$TAG" /usr/bin/rivet-engine "$tmp/rivet-engine"
-take "$REPO/app:$TAG" /usr/local/bin/bun "$tmp/bun"
-take "$REPO/app:$TAG" /app "$tmp/app"
-[ -d "$tmp/app/deploy/vm" ] || die "$REPO/app:$TAG has no deploy/vm: it's older than this guide"
+echo "downloading $VERSION from github.com/$REPO"
+for asset in SHA256SUMS ideaf-linux-x64.tar.gz rivet-engine-linux-x64.tar.gz; do
+  curl -fsSL --retry 3 -o "$tmp/$asset" "$base/$asset" || die "couldn't download $base/$asset"
+done
+(cd "$tmp" && sha256sum --quiet -c SHA256SUMS) || die "the downloads don't match their checksums: not installing them"
+tar -xzf "$tmp/ideaf-linux-x64.tar.gz" -C "$tmp"
+tar -xzf "$tmp/rivet-engine-linux-x64.tar.gz" -C "$tmp"
+release=$(cat "$tmp/ideaf/VERSION")
 
 # the users the engine and the app run as, their data, and their settings' folders
 for user in rivet ideaf; do
@@ -60,15 +53,16 @@ install -d -o ideaf -g ideaf -m 750 /var/lib/ideaf
 install -d -m 755 /etc/rivet /etc/ideaf /etc/ideaf/ca /opt/ideaf /opt/ideaf/bin
 
 install -m 755 "$tmp/rivet-engine" /usr/local/bin/rivet-engine
-install -m 755 "$tmp/bun" /opt/ideaf/bin/bun
-rm -rf /opt/ideaf/app.previous
+install -m 755 "$tmp/ideaf/bin/bun" /opt/ideaf/bin/bun
+rm -rf /opt/ideaf/app.previous /opt/ideaf/vm
 if [ -d /opt/ideaf/app ]; then
   mv /opt/ideaf/app /opt/ideaf/app.previous
 fi
-mv "$tmp/app" /opt/ideaf/app
-chown -R root:root /opt/ideaf/app
-chmod -R a+rX /opt/ideaf/app
-vm=/opt/ideaf/app/deploy/vm
+mv "$tmp/ideaf/app" /opt/ideaf/app
+mv "$tmp/ideaf/vm" /opt/ideaf/vm
+chown -R root:root /opt/ideaf/app /opt/ideaf/vm
+chmod -R a+rX /opt/ideaf/app /opt/ideaf/vm
+vm=/opt/ideaf/vm
 install -m 755 "$vm/ideaf-start" "$vm/ideaf-pools" /opt/ideaf/bin/
 install -m 644 "$vm"/systemd/*.service /etc/systemd/system/
 
@@ -82,14 +76,13 @@ if [ ! -f /etc/ideaf/ideaf.env ]; then
   new=1
 fi
 {
-  echo "tag: $TAG"
-  echo "engine: $("$RUN" image inspect --format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{else}}{{.Id}}{{end}}' "$REPO/engine:$TAG")"
-  echo "app: $("$RUN" image inspect --format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{else}}{{.Id}}{{end}}' "$REPO/app:$TAG")"
+  echo "release: $release"
+  sed 's/^/sha256: /' "$tmp/SHA256SUMS"
   echo "installed: $(date -u +%FT%TZ)"
 } > /opt/ideaf/VERSION
 systemctl daemon-reload
 
-echo "installed $TAG: /usr/local/bin/rivet-engine, /opt/ideaf (cat /opt/ideaf/VERSION)"
+echo "installed $release: /usr/local/bin/rivet-engine, /opt/ideaf (cat /opt/ideaf/VERSION)"
 if [ "$new" = 1 ]; then
   cat <<'EOF'
 Next: fill in /etc/rivet/config.json and /etc/ideaf/ideaf.env (deploy/vm/README.md), then
