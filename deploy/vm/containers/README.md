@@ -53,15 +53,14 @@ Run them with `umask 077`, so the file is readable by root only. Compose hands i
 
 ## Starting
 
-The engines first, on every machine within a minute of each other, as a new cluster waits for three; then the rest:
+On each machine, in any order:
 
 ```sh
 cd /opt/ideaf
-sudo docker compose up -d engine     # on every machine
-sudo docker compose up -d            # then on each
+sudo docker compose up -d
 ```
 
-It's up when `docker compose ps` shows the app and the directory healthy. Their health checks pass once they're connected to the engine. The app makes the engine's node pools itself.
+It's up when `docker compose ps` shows the app and the directory healthy. Their health checks pass once they're connected to the engine. A new cluster makes its storage once three engines have joined, and until then each app waits for its engine, restarting if it has to: give it two minutes after the third machine starts. The app makes the engine's node pools itself. Only upgrades have an order (below).
 
 ## Upgrading
 
