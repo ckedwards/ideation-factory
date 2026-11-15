@@ -1,6 +1,6 @@
 # Ideation Factory on VMs or bare metal
 
-For production: three machines or more, each running a release's native builds under systemd, as Rivet documents its engine (rivet.dev/docs/deploy). No Docker: the install downloads them from the release, and checks them.
+For production: three machines or more, each running a release's native builds under systemd, as Rivet documents its engine (rivet.dev/docs/deploy). No Docker: the install downloads them from the release, and checks them. Or [with containers](containers/README.md): the same machines, settings and steps, with each machine running our published images under Docker Compose.
 
 ```
                      load balancer (TLS, to each app's port 8080)
@@ -16,6 +16,7 @@ machine 1: app, directory,   machine 2: the same      machine 3: the same
 
 - `install.sh`: installs or upgrades a release on one machine (Installing, below).
 - `resources/`: what it installs, from the release: the systemd units, the helpers they run, and the example settings.
+- `containers/`: [the same deployment with our images under Docker Compose](containers/README.md), in place of the native builds.
 - `extras/`: for the machines around them: [caddy](extras/caddy/README.md), a load balancer.
 
 ## What it needs
