@@ -28,6 +28,10 @@ Pull requests are squashed or rebased, never merged with a merge commit. A squas
 
 Every body of `if`, `else`, `for`, `while` and `do` is a block in braces, on its own lines. oxlint and oxfmt check it in a pre-commit hook and in CI; `bun run format` fixes it.
 
+## Secrets
+
+No secrets in the repository: it's public. Betterleaks (`scripts/secrets.sh`) checks what's staged in the pre-commit hook and the whole history in CI; an exception for a test fixture or placeholder goes in `.betterleaks.toml`, limited to its rule and file, with why.
+
 ## Workflows
 
 Actions used in `.github/workflows/` are pinned in `.github/workflows/actions.lock`. After changing a workflow, run `gh actions-lock` and commit the lockfile with it; the pre-commit hook and CI refuse a workflow whose actions aren't pinned.

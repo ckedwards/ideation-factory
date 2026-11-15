@@ -16,6 +16,10 @@
 
 - The formatter decides the rest of the layout: 2-space indents, single quotes, no semicolons, trailing commas, lines up to 120 characters.
 
+
+## Secrets
+
+No secrets go in the repository, and it's public. [Betterleaks](https://github.com/betterleaks/betterleaks) checks for them with its own rules (`scripts/secrets.sh`, which downloads one pinned release and checks it against its checksum before running it): the pre-commit hook over what's staged, and CI over every commit on every branch. If it finds one, remove it, and if it was ever pushed, revoke it: the history keeps it. If what it found only looks like a secret (a test fixture, a placeholder), add an exception to `.betterleaks.toml`, limited to that rule and file, and say why.
 ## Workflows
 
 Every action a workflow in `.github/workflows/` uses is pinned to a commit in `.github/workflows/actions.lock`, written by [gh actions-lock](https://github.com/github/gh-actions-lock) (`gh extension install github/gh-actions-lock`). When you add or change a workflow, or the version of an action it uses, run `gh actions-lock` and commit the lockfile with it. The pre-commit hook checks that every action has an entry, and CI checks that each pin is still the commit its tag pointed to.
