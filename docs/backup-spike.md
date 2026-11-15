@@ -4,7 +4,7 @@
 
 ## The question
 
-How does someone running Ideation Factory **get back to an earlier state**: one idea after its storage is lost or damaged, everything after a disaster, or the whole deployment moved to a new cluster. And can it be done **without stopping the app** and without a database server?
+How does someone running Ideation Factory **get back to an earlier state**: one idea after its storage is lost or damaged, everything after a disaster (every machine lost, disks included, with only the buckets left), or the whole deployment moved to a new cluster. And can it be done **without stopping the app** and without a database server?
 
 ## Why we're asking
 
@@ -12,6 +12,7 @@ Every idea's history, comments and reviews live in its own actor's SQLite databa
 
 - **Whole-deployment snapshots work,** but only offline and all at once. They were tested on the Frankfurt load-test deployment (`packages/load/DEPLOYMENT.md`, "The seed: once, then restored"): stop every container, snapshot the nodes' disks, copy both buckets, and restore all of it. The data answered, with no failures. But it means downtime for every backup, it loses everyone's work since the backup, and it only restores onto the same engines at the same addresses.
 - **Rivet offers nothing finer.** An actor fork copies the actor's *latest* committed database (`api-public-shim/src/routes.rs`, `fork_actor`), so it copies damage too. There's no point-in-time restore, and Rivet doesn't document a live backup of a cluster.
+- **Losing every machine isn't covered.** The buckets are why it should be survivable: the engines keep the durable copy of everything there, and only the last few seconds' writes are on the disks alone. But nothing brings a deployment back from the buckets. Rivet's backup guide: "Restoring a bucket into a fresh cluster has not yet been validated for this release," with no procedure. In its placement code (3.1.1), a partition moves to a new engine only from replicas that are still running, so a fresh engine on the same bucket may not take over a lost one's partitions by itself. The whole-deployment snapshots need the disks too. That leaves a one-machine deployment that loses its machine, or a cluster that loses all three, with its data in the bucket and no known way to it.
 - **Actors' databases can be damaged.** On the Frankfurt deployment, 20 new ideas were left with databases that never open again ("database disk image is malformed", SQLite code 11; "file is not a database", code 26). Each was being created when an engine restarted, once after it stopped itself (too many open files) and once from a graceful restart. None of those writes had been acknowledged, so nothing was lost that time. But the same thing during an edit to an existing idea would leave it unopenable, and today nothing could bring it back. That's a Rivet bug; backups are what makes it survivable.
 
 ## What's already known
@@ -85,6 +86,7 @@ A **bucket of their own,** with versioning and possibly Object Lock. The app get
 4. The directory can be exported and imported the same way, sign-in included: people can sign in afterwards, and their tokens and grants still work.
 5. A restored idea and a directory restored from another moment stay consistent, or the mismatch can be found and repaired (an idea's team, its grants, its inbox rows).
 6. The whole thing runs while the app serves its usual load.
+7. **Losing every machine is recoverable from the buckets,** for one machine and for three: the deployment comes back on fresh machines with fresh disks, losing at most the writes that hadn't reached the bucket (seconds, if Rivet's storage can be brought back) or those since the last export (if only ours can).
 
 ## Experiments
 
@@ -97,12 +99,14 @@ On the Frankfurt deployment, with its design-scale seed (`packages/load/DEPLOYME
 - **Import:** one idea into a fresh actor, compared with the original through the API. Then a broken idea: break one on purpose (a restart during a write, as happened), delete its actor, restore it. Then everything into an empty deployment, and the time it takes.
 - **Formats:** SQLite file against newline-separated JSON, for size, time, and how easy each is to read years later.
 - **Consistency:** restore an idea from the night before while the directory is current, and list what disagrees.
+- **Losing every machine:** first on one machine, locally: one engine on a SeaweedFS bucket with the app, some ideas and people, then stop everything once their writes have reached the bucket, delete the engine's disk, and start a fresh engine on the same bucket. Does everything come back by itself? If not, can Rivet's partition commands (`rivet-engine storage partition grant`, `replace-replica`, `show`, `health`) put the partitions onto the new engine from the bucket? Then the same with three machines on the Frankfurt deployment, all three lost at once. Where Rivet's storage can't come back, the exports above are the way back (everything into an empty deployment), which measures how much it loses and how long it takes. Either way the answer, and its steps, go in the admin guide.
 
 ## Deciding
 
 - **Nightly job or ideas exporting themselves once quiet:** by how much they lose (minutes or a day), the load each puts on the nodes, and how simple each is to run and check.
 - **The export format:** whatever imports reliably and is easiest to inspect.
 - **What's promised:** how much can be lost (the recovery point) and how long a restore takes (the recovery time), for one idea and for everything. These go in the admin guide.
+- **Who recovers from the buckets alone:** Rivet's storage, by itself or with its partition commands, or our exports into a fresh deployment. Ask Rivet whether validating a restore into a fresh cluster is planned, whatever the experiment shows.
 - **Whether whole-deployment snapshots stay part of the answer:** they're still the fastest way back from losing the whole deployment, if the downtime for taking them is acceptable.
 
 ## Risks
