@@ -1,0 +1,129 @@
+name: Release
+
+# A release, by hand: Actions → Release → Run workflow, or `gh workflow run release.yml`. It releases
+# the commit at master's tip as the next v0.1.<n> (while in alpha, only the patch goes up), from that
+# commit's own builds, the ones the images workflow published and the deployments already ran as
+# sha-<commit>. Nothing is built again:
+#
+# - the images get the release's version as a tag, then latest once the release is out;
+# - the native builds for VMs and bare metal (deploy/vm/install.sh) are taken out of those images,
+#   with their checksums, as the GitHub release, which makes the tag. The assets' names carry no
+#   version, so .../releases/latest/download/<name> is always the newest.
+#
+# The tag comes last but one, so a run that fails leaves no tag, and the next takes the same version.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# one release at a time, so two can't take the same version
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Only from master
+        if: github.ref != 'refs/heads/master'
+        run: |
+          echo "::error::Releases are made from master, not $GITHUB_REF_NAME"
+          exit 1
+      - uses: actions/checkout@v7.0.1
+        with:
+          # for the tags
+          fetch-depth: 0
+      - name: The version
+        id: version
+        run: |
+          released=$(git tag --points-at HEAD -l 'v*' | head -1)
+          if [ -n "$released" ]; then
+            echo "::error::${GITHUB_SHA::7} is already $released: there's nothing new to release"
+            exit 1
+          fi
+          # while in alpha, v0.1.<n>: one more than the highest so far, or v0.1.0 for the first
+          last=$(git tag -l 'v0.1.*' | sed -n 's/^v0\.1\.\([0-9][0-9]*\)$/\1/p' | sort -n | tail -1)
+          if [ -z "$last" ]; then
+            version=v0.1.0
+          else
+            version=v0.1.$((last + 1))
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "::notice::Releasing ${GITHUB_SHA::7} as $version"
+      - name: Sign in to the registry
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: This commit's builds
+        run: |
+          # the images workflow publishes them a couple of minutes after the commit lands
+          repo="ghcr.io/${GITHUB_REPOSITORY,,}"
+          for image in app engine; do
+            tries=0
+            until docker buildx imagetools inspect "$repo/$image:sha-${GITHUB_SHA::7}" >/dev/null 2>&1; do
+              tries=$((tries + 1))
+              if [ "$tries" -gt 40 ]; then
+                echo "::error::No $image:sha-${GITHUB_SHA::7}: did the images workflow for this commit fail?"
+                exit 1
+              fi
+              echo "waiting for $image:sha-${GITHUB_SHA::7}"
+              sleep 15
+            done
+          done
+      - name: Tag the images with the version
+        run: |
+          repo="ghcr.io/${GITHUB_REPOSITORY,,}"
+          build="sha-${GITHUB_SHA::7}"
+          for image in app engine; do
+            docker buildx imagetools create --tag "$repo/$image:$VERSION" "$repo/$image:$build"
+          done
+          # the benchmarks' app, when there is one for this commit
+          if docker buildx imagetools inspect "$repo/app-bench:$build" >/dev/null 2>&1; then
+            docker buildx imagetools create --tag "$repo/app-bench:$VERSION" "$repo/app-bench:$build"
+          fi
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+      - name: Take the native builds out of the images
+        run: |
+          repo="ghcr.io/${GITHUB_REPOSITORY,,}"
+          take() {
+            local id
+            id=$(docker create "$1")
+            docker cp "$id:$2" "$3"
+            docker rm "$id" >/dev/null
+          }
+          docker pull -q "$repo/app:$VERSION"
+          docker pull -q "$repo/engine:$VERSION"
+          mkdir -p dist/ideaf/bin dist/engine
+          take "$repo/app:$VERSION" /app dist/ideaf/app
+          take "$repo/app:$VERSION" /usr/local/bin/bun dist/ideaf/bin/bun
+          take "$repo/engine:$VERSION" /usr/bin/rivet-engine dist/engine/rivet-engine
+          cp -r deploy/vm dist/ideaf/vm
+          echo "$VERSION" > dist/ideaf/VERSION
+          tar -C dist -czf dist/ideaf-linux-x64.tar.gz ideaf
+          tar -C dist/engine -czf dist/rivet-engine-linux-x64.tar.gz rivet-engine
+          (cd dist && sha256sum ideaf-linux-x64.tar.gz rivet-engine-linux-x64.tar.gz > SHA256SUMS)
+          ls -la dist
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+      - name: Publish the release
+        run: |
+          gh release create "$VERSION" --target "$GITHUB_SHA" --title "$VERSION" --generate-notes \
+            dist/ideaf-linux-x64.tar.gz dist/rivet-engine-linux-x64.tar.gz dist/SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+      - name: Make it latest
+        run: |
+          repo="ghcr.io/${GITHUB_REPOSITORY,,}"
+          for image in app engine; do
+            docker buildx imagetools create --tag "$repo/$image:latest" "$repo/$image:$VERSION"
+          done
+        env:
+          VERSION: ${{ steps.version.outputs.version }}

@@ -12,6 +12,8 @@ workflows:
     '.github/workflows/pull-request.yml':
         - 'actions/checkout@v7.0.1'
         - 'oven-sh/setup-bun@v2.2.0'
+    '.github/workflows/release.yml':
+        - 'actions/checkout@v7.0.1'
     '.github/workflows/rivetkit-fix.yml':
         - 'actions/checkout@v7.0.1'
 dependencies:
