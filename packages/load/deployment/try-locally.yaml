@@ -70,7 +70,7 @@ services:
       TLS_MODE: internal
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ../../../deploy/caddy/tls.caddy:/etc/caddy/tls.caddy:ro
+      - ./tls.caddy:/etc/caddy/tls.caddy:ro
 
   app1:
     <<: *app

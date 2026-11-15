@@ -1,5 +1,5 @@
 # The load balancer in front of the three app nodes: TLS (TLS_MODE, see
-# ../caddy/tls.caddy), and requests spread round-robin over the nodes in
+# tls.caddy), and requests spread round-robin over the nodes in
 # APP_NODES that answer their health check. Any node can serve any request:
 # the engines route each actor call to wherever that actor runs.
 

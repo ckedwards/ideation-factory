@@ -12,12 +12,18 @@ machine 1: app, directory,   machine 2: the same      machine 3: the same
                        two buckets (outside every machine)
 ```
 
+## What's here
+
+- `install.sh`: installs or upgrades a release on one machine (Installing, below).
+- `resources/`: what it installs, from the release: the systemd units, the helpers they run, and the example settings.
+- `extras/`: for the machines around them: [caddy](extras/caddy/README.md), a load balancer.
+
 ## What it needs
 
 - **Three machines or more,** each on its own hardware, on one private network: x86_64, Ubuntu 22.04, Debian 12, RHEL 9 or later (the engine needs glibc 2.34), with systemd, curl, tar and sha256sum. At least 4 vCPU and 16 GB each; dedicated or non-burstable CPUs (`m7i`, not `t3`), as burstable ones slow down under steady load.
 - **A disk on each, of its own,** for the engine's write-ahead log and cache in `/var/lib/rivet`: block storage (local NVMe, or EBS and the like), never a network file system, and at least 100 GiB. The engine keeps a tenth of it, and at least 4 GiB, free, and won't start without.
 - **Two buckets,** with public access blocked and versioning on, and a key for each allowed only its own ([what each needs](../README.md#what-every-deployment-needs)).
-- **A load balancer** for TLS: your cloud's, or Caddy on a machine of its own. It sends requests to the apps' port 8080, checks `/health` there, and should allow long-lived connections (live updates are WebSockets): an hour's idle timeout, as Rivet advises.
+- **A load balancer** for TLS: your cloud's, or Caddy on a machine of its own ([extras/caddy](extras/caddy/README.md) has its configuration). It sends requests to the apps' port 8080, checks `/health` there, and should allow long-lived connections (live updates are WebSockets): an hour's idle timeout, as Rivet advises.
 - **Email:** the machines' own mail setup through `sendmail` (Postfix, msmtp, a company relay), or SMTP to a provider ([email](../README.md#what-every-deployment-needs)).
 
 **The network:** 6421 (the engines to each other) and 6420 (the engine's API) stay private: 6421 is plaintext and unauthenticated, and 6420 needs nothing from outside, as each app talks to its own machine's engine. 8080 is for the load balancer only. 8081 is the directory process's own health check, for the machine itself.
@@ -36,7 +42,7 @@ The release is optional (the newest unless given), but every machine should run 
 | ------------------------------------ | ------------------------------------------------------------------------------------- |
 | the engine                           | `/usr/local/bin/rivet-engine`, run as the `rivet` user                               |
 | the app, and Bun                     | `/opt/ideaf/app` and `/opt/ideaf/bin`, run as the `ideaf` user (the last one kept in `app.previous`) |
-| the units, and the helpers they run  | `rivet`, `ideaf-pools`, `ideaf`, `ideaf-directory` in `/etc/systemd/system`; the release's `deploy/vm` in `/opt/ideaf/vm` |
+| the units, and the helpers they run  | `rivet`, `ideaf-pools`, `ideaf`, `ideaf-directory` in `/etc/systemd/system`; the release's `deploy/vm/resources` in `/opt/ideaf/vm` |
 | the engine's settings                | `/etc/rivet/config.json`, readable by `rivet` only (from `rivet.json.example`)       |
 | the app's settings                   | `/etc/ideaf/ideaf.env`, readable by root and `ideaf` (from `ideaf.env.example`)      |
 | internal CAs, for the app's own connections | `/etc/ideaf/ca/*.pem` or `*.crt`                                               |

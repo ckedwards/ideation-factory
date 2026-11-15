@@ -104,7 +104,7 @@ jobs:
           take "$repo/app:$VERSION" /app dist/ideaf/app
           take "$repo/app:$VERSION" /usr/local/bin/bun dist/ideaf/bin/bun
           take "$repo/engine:$VERSION" /usr/bin/rivet-engine dist/engine/rivet-engine
-          cp -r deploy/vm dist/ideaf/vm
+          cp -r deploy/vm/resources dist/ideaf/vm
           echo "$VERSION" > dist/ideaf/VERSION
           tar -C dist -czf dist/ideaf-linux-x64.tar.gz ideaf
           tar -C dist/engine -czf dist/rivet-engine-linux-x64.tar.gz rivet-engine
