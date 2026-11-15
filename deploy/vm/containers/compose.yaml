@@ -3,8 +3,8 @@
 # files in /etc, the same data in /var/lib. Every machine runs it, at the same IDEAF_VERSION. See
 # README.md here.
 #
-#   docker compose up -d engine     on every machine first (a new cluster waits for three engines)
-#   docker compose up -d            then the rest
+#   docker compose up -d     on each machine, in any order: the apps wait until three engines have
+#                            joined, as a new cluster makes its storage then
 #
 # The host's network, as the native install has: the engine advertises this machine's private
 # address, and the app reaches it on 127.0.0.1:6420. Keep 6420 and 6421 private, and 8080 for the
