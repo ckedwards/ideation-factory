@@ -74,14 +74,14 @@ Every setting is in [`deploy/ideaf.schema.json`](../ideaf.schema.json), which ed
 
 ## Starting
 
-Start the engines on all machines within a minute of each other (a new cluster waits for three before it makes its storage), then the rest:
+On each machine, in any order:
 
 ```sh
 systemctl enable --now rivet ideaf ideaf-directory
 ```
 
 - `curl -s localhost:6420/health` is the engine (`"status":"ok"`); `curl -s localhost:8080/health` the app and `localhost:8081/health` the directory process, each 200 once connected to the engine.
-- A new engine waits about a minute before it serves. The app makes the engine's node pools first, waiting for it, and restarts itself if it has to: give it two.
+- A new cluster makes its storage once three engines have joined, and a new engine waits about a minute before it serves. Until then each app waits for its engine, and restarts itself if it has to: give it two minutes after the third machine starts. Only upgrades have an order (below).
 - Logs: `journalctl -u rivet`, `-u ideaf`, `-u ideaf-directory`.
 
 ## Upgrading
