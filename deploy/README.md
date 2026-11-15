@@ -15,7 +15,7 @@ This follows Rivet's own advice for its engine (rivet.dev/docs/deploy): Compose 
 - **The app:** `ghcr.io/ckedwards/ideation-factory/app`, the server with the web app built in.
 - **The engine:** `ghcr.io/ckedwards/ideation-factory/engine`, Rivet's release pinned to the one the app's RivetKit needs, with Rivet's crash reports to them off unless turned on (`RIVET__TELEMETRY__ENABLED=true`). Rivet wants every engine on the same release, upgraded before RivetKit, so the two come together.
 
-Both are tagged `latest` (the newest commit on `master`), `sha-<commit>` (seven characters), and later each release's tag. `latest` is for now: once there are releases, deployments pin one. Every machine of a deployment runs the same tag.
+Releases are `v0.1.<n>` while in alpha. The images are tagged with each release's version and `latest` (the newest release), `master` (the newest commit on `master`), and `sha-<commit>` (seven characters). Each release also has the native builds that VMs and bare metal install, on its GitHub release page. Every machine of a deployment runs the same version.
 
 ## What every deployment needs
 

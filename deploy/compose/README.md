@@ -61,6 +61,6 @@ That's fine for trying it. To reach inboxes reliably, set `IDEAF_SMTP_URL` (and 
 
 ## Changing things
 
-- **A newer build:** `docker compose pull && docker compose up -d`. `IDEAF_VERSION` picks another (a commit's `sha-<7 characters>`).
+- **A newer build:** `docker compose pull && docker compose up -d`. `IDEAF_VERSION` picks another: a release (`v0.1.<n>`), `master` for the newest commit, or a commit's `sha-<7 characters>`.
 - **Keys, or anything the engine's or SeaweedFS's settings are made from:** `docker compose up -d --force-recreate`. Compose doesn't notice a change to those settings and keeps the old ones running.
 - **Start again from nothing:** `docker compose down -v` deletes the data, SeaweedFS's included.

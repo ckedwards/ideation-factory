@@ -1,8 +1,9 @@
 # Ideation Factory on one machine, for trying it (README.md): what both ways of trying it share,
 # with seaweedfs.yaml (a bucket store beside it) or aws.yaml (your S3 buckets) added on top. The
 # example settings choose which (COMPOSE_FILE), so it's cp seaweedfs.env.example .env (or
-# aws.env.example), fill it in, then docker compose up -d. It pulls our published images: the app and the engine, at IDEAF_VERSION (latest
-# unless set: a commit's sha-<7 characters>, or later a release).
+# aws.env.example), fill it in, then docker compose up -d. It pulls our published images, the app
+# and the engine, at IDEAF_VERSION: latest (the newest release) unless set, a release's v0.1.<n>,
+# master (the newest commit), or a commit's sha-<7 characters>.
 name: ideaf
 
 services:
