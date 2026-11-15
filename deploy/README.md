@@ -5,6 +5,7 @@ Every way of running it uses our builds, which CI publishes for each commit on `
 | Where                             | For                                   | Guide                                    |
 | --------------------------------- | ------------------------------------- | ---------------------------------------- |
 | **VMs or bare metal**             | production: three machines or more    | [vm/](vm/README.md)                      |
+| **VMs, with containers**          | the same, with our images under Compose | [vm/containers/](vm/containers/README.md) |
 | **Docker Compose, on one machine** | trying it                             | [compose/](compose/README.md)            |
 | **Kubernetes**                    | later                                 | [kubernetes/](kubernetes/README.md)      |
 

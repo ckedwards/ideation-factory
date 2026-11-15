@@ -1,0 +1,66 @@
+# One machine of a deployment on VMs (../README.md), running our published images under Docker
+# Compose (or Podman's) in place of the native install: the same three processes, the same settings
+# files in /etc, the same data in /var/lib. Every machine runs it, at the same IDEAF_VERSION. See
+# README.md here.
+#
+#   docker compose up -d engine     on every machine first (a new cluster waits for three engines)
+#   docker compose up -d            then the rest
+#
+# The host's network, as the native install has: the engine advertises this machine's private
+# address, and the app reaches it on 127.0.0.1:6420. Keep 6420 and 6421 private, and 8080 for the
+# load balancer, with the machine's firewall or its cloud's.
+name: ideaf
+
+x-app: &app
+  image: ${IDEAF_APP_IMAGE:-ghcr.io/ckedwards/ideation-factory/app}:${IDEAF_VERSION:?set IDEAF_VERSION in .env, the release every machine runs (v0.1.<n>)}
+  network_mode: host
+  restart: unless-stopped
+  # SIGTERM hands its actors to another machine first: Rivet asks for 60 s before SIGKILL, and
+  # Docker's default is 10 s
+  stop_grace_period: 60s
+  ulimits:
+    nofile: 65536
+  depends_on: [engine]
+  secrets:
+    - ideaf
+  volumes:
+    - /etc/ideaf/ideaf.yaml:/etc/ideaf/ideaf.yaml:ro
+    # internal CAs' certificates, trusted for the app's own connections
+    - /etc/ideaf/ca:/etc/ideaf/ca:ro
+    # ideas' files without a bucket: one machine only
+    - /var/lib/ideaf:/data
+
+services:
+  engine:
+    image: ghcr.io/ckedwards/ideation-factory/engine:${IDEAF_VERSION}
+    network_mode: host
+    restart: unless-stopped
+    # Rivet's figures for its engine: 11 minutes to stop, and a million open files (its log and storage)
+    stop_grace_period: 660s
+    ulimits:
+      nofile: 1048576
+    volumes:
+      - /etc/rivet:/etc/rivet:ro
+      # its write-ahead log and cache: this machine's own block disk, never a network file system
+      - /var/lib/rivet:/var/lib/rivet
+
+  # the server, with the web app built in, for the load balancer on port 8080
+  app:
+    <<: *app
+    environment:
+      IDEAF__PORT: 8080
+      IDEAF_SECRETS: /run/secrets/ideaf
+
+  # the directory: the same app in a process of its own, in the directory's pool; its port, 8081, is
+  # for its own health check only
+  directory:
+    <<: *app
+    environment:
+      IDEAF__PORT: 8081
+      IDEAF__ENGINE__POOL: directory
+      IDEAF_SECRETS: /run/secrets/ideaf
+
+# the secrets, from the file on this machine, readable by root only (README.md: where it comes from)
+secrets:
+  ideaf:
+    file: /etc/ideaf/secrets.yaml
