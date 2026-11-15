@@ -60,7 +60,7 @@ fi
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 echo "downloading $VERSION from $base"
-assets=(ideaf-linux-x64.tar.gz rivet-engine-linux-x64.tar.gz)
+assets=(ideaf-server-linux-x64.tar.gz rivet-engine-linux-x64.tar.gz)
 if [ "$FIX" = on ]; then
   assets+=(rivetkit-fix-linux-x64.tar.gz)
 fi
@@ -123,8 +123,6 @@ settings() {
 settings rivet.json.example /etc/rivet/config.json rivet rivet 600
 settings ideaf.yaml.example /etc/ideaf/ideaf.yaml root ideaf 640
 settings secrets.yaml.example /etc/ideaf/secrets.yaml root ideaf 640
-# a release from before ideaf.yaml (v0.1.0) has its settings in an environment file
-settings ideaf.env.example /etc/ideaf/ideaf.env root ideaf 640
 {
   echo "release: $release"
   if [ "$FIX" = on ]; then
