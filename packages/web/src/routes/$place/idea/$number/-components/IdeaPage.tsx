@@ -6,7 +6,7 @@
 // the page gives the document and the panel (IdeaEditor, EditPanel). Comparing shows the file as a redline against an earlier
 // version, with the comments as a list. The route loads the data and does the
 // writing.
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react'
 import { markdownTree } from '@ideaf/core'
 import {
   type Actor,
@@ -279,6 +279,18 @@ export function IdeaPage(props: IdeaPageProps) {
       document={
         <div ref={document}>
           {props.banner}
+          {base && !props.editing && !props.showSource && (
+            <ChangeSummary
+              sections={
+                sections.filter((h) => {
+                  const end = sectionEnd(sections, h)
+                  return h.level >= 2 && changed.some((range) => range.start < end && h.offset < range.end)
+                }).length
+              }
+              changes={changed.length}
+              root={document}
+            />
+          )}
           {props.editing ? (
             props.editing.document
           ) : props.showSource ? (
@@ -339,6 +351,45 @@ export function IdeaPage(props: IdeaPageProps) {
         )
       }
     />
+  )
+}
+
+/** When comparing: how much changed, and a way from one change to the next. */
+function ChangeSummary({
+  sections,
+  changes,
+  root,
+}: {
+  sections: number
+  changes: number
+  root: RefObject<HTMLDivElement | null>
+}) {
+  const [at, setAt] = useState(-1)
+  if (changes === 0) {
+    return <p className="change-summary">Nothing changed in this file.</p>
+  }
+  const go = (step: number) => {
+    const blocks = [...(root.current?.querySelectorAll<HTMLElement>('.rl') ?? [])]
+    if (blocks.length === 0) {
+      return
+    }
+    const next = (at + step + blocks.length) % blocks.length
+    setAt(next)
+    blocks[next]!.scrollIntoView({ block: 'center' })
+  }
+  return (
+    <p className="change-summary" role="status">
+      <span>
+        {changes === 1 ? '1 change' : `${changes} changes`}
+        {sections > 0 && ` in ${sections === 1 ? '1 section' : `${sections} sections`}`}
+      </span>
+      <Button size="sm" variant="ghost" onClick={() => go(-1)} aria-label="Previous change">
+        ↑ Previous
+      </Button>
+      <Button size="sm" variant="ghost" onClick={() => go(1)} aria-label="Next change">
+        ↓ Next
+      </Button>
+    </p>
   )
 }
 
