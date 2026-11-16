@@ -1,9 +1,9 @@
 // A team's or a group's members, for someone who can manage them, as a table: each person (you
-// marked), their role (only admins change it) and when they joined, filtered by name or handle and
-// sorted by name, role or when they joined. Maintainers remove members, admins anyone, and anyone
-// can leave; adding someone is a dialog.
+// marked), their role and when they joined, filtered by name or handle and sorted by name, role or
+// when they joined. A row's actions are in its menu: admins change roles, maintainers remove members,
+// admins anyone, and anyone can leave, each asked first; adding someone is a dialog.
 import { useEffect, useState } from 'react'
-import { Button, Dialog, Link, type Person, SearchInput, Select, Stack, Tag, UserName } from '@ideaf/ui'
+import { Button, Dialog, Link, type Person, RowMenu, SearchInput, Select, Stack, Tag, UserName } from '@ideaf/ui'
 import type { MemberInfo } from './MemberList.tsx'
 import { PersonPicker } from './PersonPicker.tsx'
 import './MemberTable.css'
@@ -42,15 +42,31 @@ export interface MemberTableProps {
   onRole: (person: Person, role: Role) => void
   onRemove: (person: Person) => void
   onAdd: (person: Person, role: Role) => void
+  /** The team's or group's name, for what removing someone means. */
+  name?: string
   /** While the members for a new search or sort are coming. */
   loading?: boolean
   more?: { loading: boolean; onMore: () => void } | null
 }
 
-export function MemberTable({ members, you, view, onView, onRole, onRemove, onAdd, loading, more }: MemberTableProps) {
+export function MemberTable({
+  members,
+  you,
+  view,
+  onView,
+  onRole,
+  onRemove,
+  onAdd,
+  name,
+  loading,
+  more,
+}: MemberTableProps) {
+  const where = name ?? 'it'
   const admin = you.role === 'admin'
   const [text, setText] = useState(view.q ?? '')
   const [adding, setAdding] = useState(false)
+  // asked first: who'd be removed (or you, leaving)
+  const [removing, setRemoving] = useState<Person | null>(null)
   const sort = view.sort ?? 'name'
   const order = view.order ?? 'asc'
   // the search, once typing pauses
@@ -138,22 +154,11 @@ export function MemberTable({ members, you, view, onView, onRole, onRemove, onAd
                     </td>
                   )}
                   <td data-label="Role">
-                    {admin && direct(member) ? (
-                      <Select
-                        size="sm"
-                        aria-label={`${member.person.name}’s role`}
-                        options={ROLES}
-                        // their own role, which is what this changes; a higher one through a group is noted
-                        value={member.direct ?? member.role}
-                        onChange={(next) => onRole(member.person, next)}
-                      />
-                    ) : (
-                      <span className="member-row-role">{ROLES.find((r) => r.value === member.role)?.label}</span>
-                    )}
-                    {admin && direct(member) && member.direct !== member.role && (
+                    <span className="member-row-role">{ROLES.find((r) => r.value === member.role)?.label}</span>
+                    {direct(member) && member.direct && member.direct !== member.role && (
                       <span className="member-row-role">
                         {' '}
-                        ({ROLES.find((r) => r.value === member.role)?.label} through a group)
+                        (theirs: {ROLES.find((r) => r.value === member.direct)?.label}; higher through a group)
                       </span>
                     )}
                   </td>
@@ -165,16 +170,34 @@ export function MemberTable({ members, you, view, onView, onRole, onRemove, onAd
                     )}
                   </td>
                   <td className="member-actions">
-                    {removable(member) && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={yours ? 'Leave' : `Remove ${member.person.name}`}
-                        onClick={() => onRemove(member.person)}
-                      >
-                        {yours ? 'Leave' : 'Remove'}
-                      </Button>
-                    )}
+                    <RowMenu
+                      label={member.person.name}
+                      groups={[
+                        {
+                          label: 'Role',
+                          // their own membership's role, which is what this changes
+                          items:
+                            admin && direct(member)
+                              ? ROLES.map((r) => ({
+                                  label: r.label,
+                                  current: (member.direct ?? member.role) === r.value,
+                                  onSelect: () => onRole(member.person, r.value),
+                                }))
+                              : [],
+                        },
+                        {
+                          items: removable(member)
+                            ? [
+                                {
+                                  label: yours ? 'Leave' : 'Remove',
+                                  danger: true,
+                                  onSelect: () => setRemoving(member.person),
+                                },
+                              ]
+                            : [],
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               )
@@ -189,6 +212,35 @@ export function MemberTable({ members, you, view, onView, onRole, onRemove, onAd
           </Button>
         </div>
       )}
+      <Dialog
+        open={removing !== null}
+        title={removing?.id === you.id ? `Leave ${where}?` : `Remove ${removing?.name ?? ''}?`}
+        onClose={() => setRemoving(null)}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setRemoving(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                if (removing) {
+                  onRemove(removing)
+                }
+                setRemoving(null)
+              }}
+            >
+              {removing?.id === you.id ? 'Leave' : 'Remove'}
+            </Button>
+          </>
+        }
+      >
+        <p>
+          {removing?.id === you.id ? 'You' : removing?.name} will no longer be a member of {where}, and lose what its
+          members can see and do: its ideas shared with its members, and starting ideas in it.
+          {removing?.id === you.id ? ' To come back, you’ll have to be added again, or ask to join.' : ''}
+        </p>
+      </Dialog>
       <AddMember
         open={adding}
         admin={admin}

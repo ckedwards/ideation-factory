@@ -34,11 +34,20 @@ export const Admin: Story = {
     const yours = page.getByRole('row', { name: /Riley/ })
     await expect(within(yours).getByText('It’s you')).toBeVisible()
     await expect(within(yours).getByText('Sep 19, 2026')).toBeVisible()
-    await userEvent.selectOptions(page.getByRole('combobox', { name: 'Sam Achebe’s role' }), 'maintainer')
+    const body = within(canvasElement.ownerDocument.body)
+    // roles are text; changing one is in the row's menu
+    await expect(page.queryByRole('combobox', { name: /’s role/ })).toBeNull()
+    await userEvent.click(page.getByRole('button', { name: 'Sam Achebe: actions' }))
+    await expect(await body.findByRole('menuitem', { name: /Member \(now\)/ })).toHaveAttribute('aria-disabled', 'true')
+    await userEvent.click(body.getByRole('menuitem', { name: 'Maintainer' }))
     await expect(args.onRole).toHaveBeenCalledWith(sam, 'maintainer')
-    await expect(page.getByRole('button', { name: 'Leave' })).toBeVisible()
-    await expect(page.getAllByRole('button', { name: /^Remove / })).toHaveLength(3)
-    await userEvent.click(page.getByRole('button', { name: 'Remove Sam Achebe' }))
+    // removing is in the menu too, and asked first
+    await userEvent.click(page.getByRole('button', { name: 'Sam Achebe: actions' }))
+    await userEvent.click(await body.findByRole('menuitem', { name: 'Remove' }))
+    const dialog = await body.findByRole('dialog', { name: 'Remove Sam Achebe?' })
+    await expect(dialog).toHaveTextContent('lose what its members can see and do')
+    await expect(args.onRemove).not.toHaveBeenCalled()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Remove' }))
     await expect(args.onRemove).toHaveBeenCalledWith(sam)
   },
 }
@@ -48,8 +57,8 @@ export const Maintainer: Story = {
   args: { you: { id: maya.id, role: 'maintainer' } },
   play: async ({ canvasElement }) => {
     const page = within(canvasElement)
-    await expect(page.queryByRole('combobox', { name: /’s role/ })).toBeNull()
-    await expect(page.getAllByRole('button', { name: /^Remove / })).toHaveLength(2)
+    // a menu only where there's something to do: members to remove, and leaving
+    await expect(page.getAllByRole('button', { name: /: actions$/ })).toHaveLength(3)
     await expect(within(page.getByRole('row', { name: /Maya/ })).getByText('It’s you')).toBeVisible()
   },
 }
@@ -121,11 +130,10 @@ export const ThroughGroups: Story = {
     await expect(page.getByRole('columnheader', { name: 'Source' })).toBeVisible()
     const sam_ = page.getByRole('row', { name: /Sam/ })
     await expect(within(sam_).getByText(/Through/)).toBeVisible()
-    await expect(within(sam_).queryByRole('combobox')).toBeNull()
+    // in only through a group: nothing to change or remove here
     await expect(within(sam_).queryByRole('button')).toBeNull()
     const maya_ = page.getByRole('row', { name: /Maya/ })
     await expect(within(maya_).getByText('Direct')).toBeVisible()
-    await expect(within(maya_).getByRole('combobox', { name: /role/ })).toHaveValue('member')
-    await expect(within(maya_).getByText(/Maintainer through a group/)).toBeVisible()
+    await expect(within(maya_).getByText(/theirs: Member; higher through a group/)).toBeVisible()
   },
 }
