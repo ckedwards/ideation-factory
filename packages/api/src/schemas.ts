@@ -477,6 +477,8 @@ export const IdeaRow = z.object({
    * (private), others it's shared with too (shared), or everyone (public).
    */
   visibility: z.enum(['private', 'shared', 'public']),
+  /** Its team's approval requirements, checked: met with no checks when it has none. */
+  requirements: RequirementsCheck,
 })
 
 /** Why you hear about an idea, most direct first; `watching`: through a team you watch. */

@@ -30,6 +30,7 @@ const listing = (extra: Partial<IdeaListing> = {}): IdeaListing => ({
   approvals: [],
   reviewers: [],
   visibility: 'private',
+  requirements: { met: true, checks: [] },
   ...extra,
 })
 
