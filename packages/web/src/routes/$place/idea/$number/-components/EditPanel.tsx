@@ -54,30 +54,33 @@ export function EditPanel(props: EditPanelProps) {
   return (
     <div className="edit-panel">
       <Stack gap={4}>
-        <p className="edit-panel-note">
-          The draft, on v{props.version}: everyone who can edit works on it, and committing it makes v
-          {props.version + 1}.
+        <p className="edit-panel-lead">
+          You’re editing the draft, on v{props.version}. Everyone who can edit works on it together, and committing it
+          makes v{props.version + 1}.
         </p>
-        <Section title={changes.length === 1 ? '1 change' : `${changes.length} changes`}>
-          {changes.length === 0 ? (
-            <p className="edit-panel-note">Edit a block, or add text below one.</p>
-          ) : (
-            <ol className="edit-panel-changes">
-              {changes.map((change) => (
-                <li key={change.key} className={change.problem ? 'has-problem' : undefined}>
-                  <span className="edit-panel-label">
-                    {change.label}
-                    <span className="edit-panel-by"> · {change.by}</span>
-                  </span>
-                  <Button size="sm" variant="link" onClick={() => props.onUndo(change.key)}>
-                    Undo
-                  </Button>
-                  {change.problem && <span className="edit-panel-problem">Outdated: {change.problem}</span>}
-                </li>
-              ))}
-            </ol>
-          )}
-        </Section>
+        {changes.length === 0 ? (
+          // the instruction first: there's nothing to count yet
+          <p className="edit-panel-lead">Hover a block to edit it, add text below it or delete it.</p>
+        ) : (
+          <Section title={changes.length === 1 ? '1 change' : `${changes.length} changes`}>
+            {
+              <ol className="edit-panel-changes">
+                {changes.map((change) => (
+                  <li key={change.key} className={change.problem ? 'has-problem' : undefined}>
+                    <span className="edit-panel-label">
+                      {change.label}
+                      <span className="edit-panel-by"> · {change.by}</span>
+                    </span>
+                    <Button size="sm" variant="link" onClick={() => props.onUndo(change.key)}>
+                      Undo
+                    </Button>
+                    {change.problem && <span className="edit-panel-problem">Outdated: {change.problem}</span>}
+                  </li>
+                ))}
+              </ol>
+            }
+          </Section>
+        )}
         {touched.length > 0 && (
           <Section title="Comments">
             <ul className="edit-panel-outcomes">
@@ -131,8 +134,9 @@ export function EditPanel(props: EditPanelProps) {
               </Button>
             )}
             <Button variant="ghost" onClick={props.onClose}>
-              Done
+              Close editor
             </Button>
+            <span className="edit-panel-note edit-panel-stays">Your changes stay in the draft.</span>
           </div>
         )}
       </Stack>

@@ -6,6 +6,17 @@
   margin: 0;
   color: var(--ink-2);
 }
+/* what a first-time editor needs to read: at the panel's own size, not the smallest */
+.edit-panel-lead {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--text-md);
+  line-height: 1.5;
+}
+.edit-panel-stays {
+  flex-basis: 100%;
+  text-align: right;
+}
 .edit-panel-changes,
 .edit-panel-outcomes {
   display: grid;
