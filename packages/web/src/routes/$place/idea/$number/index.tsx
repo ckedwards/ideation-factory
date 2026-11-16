@@ -186,6 +186,12 @@ function Overview() {
     }),
   ].sort((a, b) => a.at - b.at)
 
+  // the groups one of whose members' approvals counts toward a rule that names them
+  const approvedGroups = new Set(
+    reviews.requirements.checks.flatMap((c) =>
+      c.kind === 'groups' ? c.groups.filter((g) => g.approvedBy.length > 0).map((g) => g.id) : [],
+    ),
+  )
   // the review: its panel, the status in the header, and closing it
   const review: ReviewPanelProps = {
     status: statusOf(reviews.status),
@@ -194,6 +200,8 @@ function Overview() {
       key: subjectKey(s),
       subject: s,
       label: names.get(subjectKey(s))?.label ?? '…',
+      // a group's approval, from the requirement checks
+      ...(subjectKey(s).startsWith('group:') ? { approved: approvedGroups.has((s as { id: string }).id) } : {}),
     })),
     reviews: reviews.reviews.map((r): ReviewRow => ({
       ...r,

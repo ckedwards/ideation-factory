@@ -20,10 +20,14 @@
   color: var(--ink-2);
   font-weight: 600;
 }
+/* each reviewer on a line, with where they are */
 .review-panel-asked {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-2);
+  display: grid;
+  flex-basis: 100%;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 .review-panel-verdicts {
   display: grid;
@@ -92,9 +96,27 @@
   gap: var(--space-2);
 }
 .review-panel-reviewer {
-  display: inline-flex;
+  display: flex;
   align-items: baseline;
-  gap: var(--space-1);
+  gap: var(--space-2);
+}
+.review-panel-reviewer-name {
+  flex: 1;
+  min-width: 0;
+}
+.review-panel-state {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.review-panel-state.is-approve {
+  color: var(--ok);
+  font-weight: 600;
+}
+.review-panel-state.is-request-changes,
+.review-panel-state.is-reject {
+  color: var(--warn);
+  font-weight: 600;
 }
 .review-panel-ask {
   display: flex;

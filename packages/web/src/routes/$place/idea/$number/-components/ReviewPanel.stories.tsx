@@ -84,6 +84,10 @@ export const Verdicts: Story = {
     await expect(page.getByText('a bot’s: doesn’t count')).toBeVisible()
     await expect(page.getByText('Stands')).toBeVisible()
     await expect(page.getByText(/An objection stands/)).toBeVisible()
+    // each reviewer says where they are: Devon asked for changes on v2; Security hasn't approved
+    const reviewers = page.getAllByRole('listitem').filter((li) => li.classList.contains('review-panel-reviewer'))
+    await expect(reviewers[0]).toHaveTextContent('Changes requested v2')
+    await expect(reviewers[1]).toHaveTextContent('Not yet')
   },
 }
 
