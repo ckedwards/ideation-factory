@@ -50,8 +50,8 @@ export type ReviewerSubject = { kind: 'user' | 'group'; id: string }
 export interface ReviewPanelProps {
   status: ShownStatus
   latest: number
-  /** People and groups asked to review, as they show. */
-  reviewers: Array<{ key: string; subject: ReviewerSubject; label: ReactNode }>
+  /** People and groups asked to review, as they show; a group's approval, when one of its members' counts. */
+  reviewers: Array<{ key: string; subject: ReviewerSubject; label: ReactNode; approved?: boolean }>
   reviews: ReviewRow[]
   /** Its team's approval requirements, checked; empty when it has none. */
   requirements: RequirementCheck[]
@@ -137,10 +137,11 @@ export function ReviewPanel(props: ReviewPanelProps) {
           {props.reviewers.length === 0 ? (
             <span className="review-panel-none">Nobody’s been asked yet.</span>
           ) : (
-            <span className="review-panel-asked">
+            <ul className="review-panel-asked">
               {props.reviewers.map((r) => (
-                <span key={r.key} className="review-panel-reviewer">
-                  {r.label}
+                <li key={r.key} className="review-panel-reviewer">
+                  <span className="review-panel-reviewer-name">{r.label}</span>
+                  <ReviewerState reviewer={r} reviews={props.reviews} latest={props.latest} />
                   {props.onAsk && (
                     <Button
                       size="sm"
@@ -151,9 +152,9 @@ export function ReviewPanel(props: ReviewPanelProps) {
                       ×
                     </Button>
                   )}
-                </span>
+                </li>
               ))}
-            </span>
+            </ul>
           )}
         </div>
         {props.onAsk && !closed && <Ask onAsk={props.onAsk} />}
@@ -191,6 +192,36 @@ export function ReviewPanel(props: ReviewPanelProps) {
         )}
       </div>
     </Section>
+  )
+}
+
+/** Where a reviewer is: their latest verdict (and on which version), or not yet. */
+function ReviewerState({
+  reviewer,
+  reviews,
+  latest,
+}: {
+  reviewer: ReviewPanelProps['reviewers'][number]
+  reviews: ReviewRow[]
+  latest: number
+}) {
+  if (reviewer.subject.kind === 'group') {
+    return reviewer.approved ? (
+      <span className="review-panel-state is-approve">Approved</span>
+    ) : (
+      <span className="review-panel-state">Not yet</span>
+    )
+  }
+  const theirs = reviews.find((r) => r.reviewer === `u:${reviewer.subject.id}` && !r.dismissed)
+  if (!theirs) {
+    return <span className="review-panel-state">Not yet</span>
+  }
+  const on = theirs.version !== latest ? ` v${theirs.version}` : ''
+  return (
+    <span className={`review-panel-state is-${theirs.verdict}`}>
+      {theirs.verdict === 'approve' ? 'Approved' : theirs.verdict === 'reject' ? 'Rejected' : 'Changes requested'}
+      {on}
+    </span>
   )
 }
 
