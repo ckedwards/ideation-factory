@@ -13,7 +13,6 @@ import {
   type ClosedReason,
   Dialog,
   type OpenStatus,
-  type Person,
   RelativeTime,
   type RequirementCheck,
   RequirementList,
@@ -22,11 +21,9 @@ import {
   StatusControl,
   StatusPill,
   Tag,
-  Select,
   TextArea,
 } from '@ideaf/ui'
-import { GroupPicker, type GroupRef } from '../../../../../components/GroupPicker.tsx'
-import { PersonPicker } from '../../../../../components/PersonPicker.tsx'
+import { type Picked, SubjectPicker } from '../../../../../components/SubjectPicker.tsx'
 import type { ShownStatus } from '../../../../../ideas.ts'
 import './ReviewPanel.css'
 
@@ -519,47 +516,30 @@ function Ask({ onAsk }: { onAsk: NonNullable<ReviewPanelProps['onAsk']> }) {
 }
 
 function AskForm({ onAsk, onDone }: { onAsk: NonNullable<ReviewPanelProps['onAsk']>; onDone: () => void }) {
-  const [kind, setKind] = useState<'user' | 'group'>('user')
-  const [person, setPerson] = useState<Person | null>(null)
-  const [group, setGroup] = useState<GroupRef | null>(null)
+  const [picked, setPicked] = useState<Picked | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const chosen = kind === 'user' ? person : group
   return (
     <form
       className="review-panel-ask"
       onSubmit={(event) => {
         event.preventDefault()
-        if (!chosen) {
+        if (!picked || (picked.kind !== 'user' && picked.kind !== 'group')) {
           return
         }
         setError(null)
-        onAsk({ kind, id: chosen.id }, true).then(
+        onAsk({ kind: picked.kind, id: picked.id }, true).then(
           () => {
-            setPerson(null)
-            setGroup(null)
+            setPicked(null)
             onDone()
           },
           (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
         )
       }}
     >
-      <Select
-        aria-label="Ask"
-        options={[
-          { value: 'user', label: 'A person' },
-          { value: 'group', label: 'A group' },
-        ]}
-        value={kind}
-        onChange={setKind}
-      />
       <div className="review-panel-ask-who">
-        {kind === 'user' ? (
-          <PersonPicker label="Who" value={person} onChange={setPerson} />
-        ) : (
-          <GroupPicker label="Which group" value={group} onChange={setGroup} />
-        )}
+        <SubjectPicker label="Who to ask" value={picked} onChange={setPicked} kinds={['user', 'group']} />
       </div>
-      <Button size="sm" type="submit" disabled={!chosen}>
+      <Button size="sm" type="submit" disabled={!picked}>
         Ask to review
       </Button>
       <Button size="sm" variant="ghost" onClick={onDone}>

@@ -8,7 +8,9 @@ import './AccessList.css'
 
 export interface GrantRow {
   key: string
+  /** Its name; with its kind, said quietly after it. */
   label: string
+  kind?: 'user' | 'group' | 'team' | 'everyone'
   href?: string | undefined
   everyone: boolean
   edit: boolean
@@ -36,7 +38,14 @@ export function AccessList({ owner, grants, canShare, onLevel, onRemove, adder }
         </li>
         {grants.map((grant) => (
           <li key={grant.key} className="access-row">
-            {grant.href ? <Link href={grant.href}>{grant.label}</Link> : <span>{grant.label}</span>}
+            <span className="access-who">
+              {grant.href ? <Link href={grant.href}>{grant.label}</Link> : <span>{grant.label}</span>}
+              {grant.kind && grant.kind !== 'everyone' && (
+                <span className="access-kind">
+                  {grant.kind === 'user' ? 'person' : grant.kind === 'team' ? 'team' : 'group'}
+                </span>
+              )}
+            </span>
             <span className="access-actions">
               {canShare && !grant.everyone ? (
                 <Select
