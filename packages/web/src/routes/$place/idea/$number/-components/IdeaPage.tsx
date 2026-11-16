@@ -279,6 +279,10 @@ export function IdeaPage(props: IdeaPageProps) {
       document={
         <div ref={document}>
           {props.banner}
+          {!props.editing && (
+            // shown only where the comments can't sit beside the text (IdeaPage.css)
+            <p className="idea-narrow-note">On a screen this narrow, the comments are listed after the document.</p>
+          )}
           {base && !props.editing && !props.showSource && (
             <ChangeSummary
               sections={
