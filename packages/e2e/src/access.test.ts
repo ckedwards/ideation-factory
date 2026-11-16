@@ -212,3 +212,41 @@ describe('ideaf team and ideaf group', () => {
     }
   })
 })
+
+describe('groups in teams', () => {
+  test("a group's members are the team's while it's in it, and its admins can take it out", async () => {
+    const devon = api(h('devon'))
+    const maya = await api(h('maya')).me({})
+    const sam = await api(h('sam')).me({})
+    const design = await devon.createGroup({ handle: h('design'), name: 'Design' })
+    await devon.addGroupMember({ group: design.handle, user: maya.id })
+    await devon.addGroupMember({ group: design.handle, user: sam.id, role: 'maintainer' })
+
+    const r = await repoAs('riley')
+    await r.ideaf('team', 'create', h('core'), '--name', 'Core')
+    const added = await r.ideaf('team', 'add-group', h('core'), `group:${h('design')}`, '--role', 'maintainer')
+    expect(added.exit).toBe(0)
+    expect(added.out).toContain(`group:${h('design')} is part of team:${h('core')}`)
+    expect((await r.ideaf('team', 'groups', h('core'))).out).toMatch(
+      new RegExp(`group:${h('design')} +Design +its members are maintainers`),
+    )
+    // where each member comes from, and each at the lower of the group's role and their own in it
+    const members = (await r.ideaf('team', 'members', h('core'))).out
+    expect(members).toMatch(new RegExp(`@${h('maya')} +member +through group:${h('design')}`))
+    expect(members).toMatch(new RegExp(`@${h('sam')} +maintainer +through group:${h('design')}`))
+    expect(members).toMatch(new RegExp(`@${h('riley')} +admin +direct`))
+
+    // the team's idea reaches the group's members, until the group's admin takes it out
+    const { idea } = await api(h('riley')).createIdea({
+      title: 'Team plan',
+      files: [{ path: 'plan.md', content: PLAN }],
+      team: h('core'),
+    })
+    expect((await api(h('maya')).getAccess({ idea })).you.view).toBe(true)
+    const left = await repoAs('devon').then((d) => d.ideaf('group', 'leave-team', h('design'), h('core')))
+    expect(left.exit).toBe(0)
+    expect(left.out).toContain(`group:${h('design')} is no longer part of team:${h('core')}: 3 people left it with it.`)
+    // she can't see it any more: to her, it isn't there
+    await expect(api(h('maya')).getAccess({ idea })).rejects.toThrow("can't see it")
+  })
+})
