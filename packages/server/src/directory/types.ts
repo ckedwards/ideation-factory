@@ -313,6 +313,8 @@ export interface Memberships {
     direct: Role | null
     watch: WatchLevel
   }>
+  /** The teams watched above participating, whether you're in them or not. */
+  watching: Array<{ id: string; handle: string; name: string; level: WatchLevel }>
   groups: Array<{ id: string; handle: string; name: string; role: Role }>
   requested: Array<{ kind: ContainerKind; id: string }>
 }

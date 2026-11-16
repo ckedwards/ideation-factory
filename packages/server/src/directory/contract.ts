@@ -831,10 +831,16 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
               watch: 'participating',
             },
           ],
+          watching: [],
           groups: [{ id: sec, handle: 'sec', name: 'Security', role: 'member' }],
           requested: [{ kind: 'team', id: web }],
         })
-        expect(await d.memberships('u-outsider')).toEqual({ teams: [], groups: [], requested: [] })
+        expect(await d.memberships('u-outsider')).toEqual({ teams: [], watching: [], groups: [], requested: [] })
+        // a team watched, member or not, is in watching with its level
+        await d.setWatch('u-outsider', 'web', 'all')
+        expect((await d.memberships('u-outsider')).watching).toEqual([
+          { id: web, handle: 'web', name: 'Web', level: 'all' },
+        ])
       })
 
       test('only an admin changes a role, and never so the team has no admin', async () => {

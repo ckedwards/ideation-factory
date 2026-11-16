@@ -2137,8 +2137,18 @@ export class SqlDirectory implements Directory {
         })
       }
     }
+    // every team watched above participating, member or not: anyone can watch a team
+    const watching = await this.#db
+      .selectFrom('watches as w')
+      .innerJoin('teams as t', 't.id', 'w.team')
+      .select(['t.id', 't.handle', 't.name', 'w.level'])
+      .where('w.user', '=', user)
+      .where('t.archived', '=', 0)
+      .orderBy('t.name')
+      .execute()
     return {
       teams: [...byTeam.values()].toSorted((a, b) => (a.handle < b.handle ? -1 : a.handle > b.handle ? 1 : 0)),
+      watching: watching.map((w) => ({ id: w.id, handle: w.handle, name: w.name, level: w.level as WatchLevel })),
       groups: groups.map((g) => ({ id: g.id, handle: g.handle, name: g.name, role: g.role })),
       requested: requested.map((r) => ({ kind: r.kind, id: r.container })),
     }

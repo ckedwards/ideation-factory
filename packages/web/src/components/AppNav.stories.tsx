@@ -70,3 +70,22 @@ export const Unread: Story = {
     await expect(within(canvasElement).getByText('99+')).toBeVisible()
   },
 }
+
+// The teams you watch, member or not, with how much; the team whose page this is marked
+export const WatchingAndTheCurrentTeam: Story = {
+  args: {
+    currentTeam: 'mobile',
+    watching: [
+      { handle: 'mobile', name: 'Mobile', level: 'all' },
+      { handle: 'payments', name: 'Payments', level: 'active' },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    const nav = within(canvasElement)
+    await expect(nav.getByText('Watching')).toBeVisible()
+    await expect(nav.getAllByRole('link', { name: /Payments/ }).at(-1)).toHaveTextContent('Active')
+    for (const link of nav.getAllByRole('link', { name: /^Mobile/ })) {
+      await expect(link).toHaveAttribute('aria-current', 'page')
+    }
+  },
+}
