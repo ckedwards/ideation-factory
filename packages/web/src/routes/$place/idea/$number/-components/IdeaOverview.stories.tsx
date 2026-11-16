@@ -94,7 +94,7 @@ const meta = {
     startedBy: actors.person,
     startedAt: hours(72),
     description: 'Field technicians lose signal in basements. Queue their changes, and send them **oldest first**.',
-    tabs: <IdeaTabs current="overview" overview="#" files="#files" changes="#changes" />,
+    tabs: <IdeaTabs current="overview" overview="#" files="#files" />,
     sharingHref: '#sharing',
     activity,
     canComment: true,

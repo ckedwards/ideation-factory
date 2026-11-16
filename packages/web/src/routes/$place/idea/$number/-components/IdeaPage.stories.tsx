@@ -5,6 +5,7 @@ import { actors, maya, NOW, riley } from '@ideaf/ui/fixtures'
 import { expect, fn, waitFor, within } from 'storybook/test'
 import { IdeaPage, type PageComment } from './IdeaPage.tsx'
 import { VersionBanner } from './VersionBanner.tsx'
+import { DocToolbar } from './DocToolbar.tsx'
 import type { VersionListProps } from './VersionList.tsx'
 
 const source = `# Offline sync
@@ -249,11 +250,25 @@ export const Compare: Story = {
     compare: { base: 1, source: earlier },
     versions: { ...versions, base: 1 },
     canComment: false,
-    banner: <VersionBanner kind="compare" version={3} base={1} stopHref="#stop" />,
+    banner: (
+      <DocToolbar
+        path="plan.md"
+        version={3}
+        latest={3}
+        compare={{ base: 1, stopHref: '#stop' }}
+        compareWith={[]}
+        onCompare={() => {}}
+        source={false}
+        onSource={() => {}}
+        review={null}
+        edit={null}
+      />
+    ),
   },
   play: async ({ canvasElement }) => {
     const page = within(canvasElement)
-    await expect(page.getByText('Changes since v1')).toBeVisible()
+    await expect(page.getByText('Changes v1 → v3')).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Stop comparing' })).toHaveAttribute('href', '#stop')
     await expect(canvasElement.querySelector('ins')).not.toBeNull()
     await expect(canvasElement.querySelector('del')).not.toBeNull()
     // the versions panel is open, the range from v1 to v3 marked
