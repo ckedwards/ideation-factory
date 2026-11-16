@@ -304,6 +304,90 @@ Only a group's admins (or a site admin) can delete it. Before deleting, the sett
 - An idea that had the group as a reviewer shows it as a deleted reviewer.
 - Access given to the group ends, and the delete report lists the ideas it was shared with, so their owners can give access another way.
 
+## Groups in teams (proposed)
+
+**Status:** a design, not built. Nothing below exists yet.
+
+A team's admins can **add a group to the team**, the way GitLab shares a project with a group: the group's members become the team's members, with a role the team chooses, for as long as they're in the group. Organizations manage people in groups. Adding the same people to each team by hand, and keeping every team in step when someone joins or leaves, is what this saves.
+
+**How it differs from groups elsewhere in a team:**
+
+- **A team's defaults for new ideas** can give a group view or edit on each new idea. That's a grant on each idea, made when the idea is created and changeable per idea, and it gives nothing else.
+- **A team's approval requirements** can name a group, whose members' approvals count. That's about who must approve, not about membership.
+- **A group in a team** makes its members the team's members. They get everything membership gives (below), and it follows the group: someone who joins the group is in the team, and someone who leaves is out, at once.
+
+**The role.**
+
+- **The team chooses the group's role:** member (the default) or maintainer, **never admin**. A team's admins can share every idea in the team and change all its settings, so control stays with people named directly.
+- **Each person's role through the group is the lower of the group's role and their own role in the group.** That's GitLab's rule ("the lower of the maximum role you select and their existing role in the invited group"). Added as maintainer, a group's admins and maintainers are the team's maintainers, and its plain members are the team's members. Adding a group never makes anyone more than they are in it.
+- **Their role in the team is the highest of every way they're in it:** directly, and through each group.
+
+Keeping admin direct also means everything only an admin may do is checked as it is today:
+- seeing every idea in the team;
+- the rule that a team keeps at least one admin;
+- sharing any idea.
+
+**One level only.** A group's own members come in; nothing else does. Groups don't contain groups, and teams can't be added to teams. So working out a team's members is always two steps: the team, then its groups' members. That's also GitLab's rule: "only direct members of the invited group get access".
+
+**What membership through a group gives.** The same as direct membership, at the role it works out to:
+
+- **Ideas:** whatever the team's grants give its members. That means the "members" level of its defaults for new ideas, and any idea shared with the team.
+- **Creating ideas,** when the team lets its members (or, as maintainers, its maintainers) create them.
+- **Watching the team,** at any level.
+- **As maintainers:** managing the team's direct members and join requests, and its approval requirements, as a direct maintainer does.
+
+**Leaving, and changes taking effect.**
+
+- **Someone in a team only through a group can't leave the team on its own.** They leave the group, or ask a team admin to remove the group, and the team's page says so. Anyone may still ask to join, or be added, directly. That's how someone in through a group as a member gets maintainer.
+- **Changes take effect on the next request:** removing someone from the group, removing the group from the team, or deleting the group. Access is worked out when it's read (below), so there's no copy to update. As with direct removal, the ideas it gave stop showing, and their notifications from it stop.
+
+**Who can add a group:** a team's admins, and any group, as groups are visible to everyone and admins can already add anyone directly. The group's admins get an inbox notice ("Design reviewers was added to Mobile, as members"). Whether to require more, as GitLab does, is an open question below.
+
+**What people see:**
+
+- **The Members tab:**
+  - **A Source column:** "Direct", "Through Design reviewers", or each way someone's in.
+  - **One row per person,** with their role as it works out. GitLab lists each way separately; we don't.
+  - **The role menu** changes only a direct role. Someone in only through a group shows their role without a menu, and adding them directly gives them one.
+- **A Groups tab:**
+  - **Each group in the team,** with its member count, its role, and who added it and when.
+  - **Adding a group:** a group picker and its role.
+  - **Removing a group** first shows who would leave the team: the people in it only through that group.
+- **The group's own page** lists, under "where it's used", the teams it's in, with its role in each.
+- **The team's member count** is people, counted once however they're in it.
+- **Deleting a group:** its report also lists the teams it's in, and the people who'd leave each.
+- **Moving an idea:** the move wizard counts the people in a team through its groups, when it lists who gains or loses access.
+- **The API, MCP and the cli:**
+  - `list_team_groups`, `add_team_group` (team, group, role), `remove_team_group`;
+  - `list_team_members` gives each member's sources;
+  - `ideaf team group add|remove|list`.
+
+**Working out access.** Today "the teams someone is in" is one indexed lookup: their memberships of kind team. It's used where a grant to a team is matched (`grantAppliesTo`, behind lists, search and every permission check), in "your teams", in who may watch a team, and in the create and maintainer checks. With groups in teams it becomes those memberships, together with the teams their groups are in:
+
+- **A new table:** `team_groups (team, group, role, added_by, created_at)`, indexed by group and by team.
+- **The lookup gains one join:** the person's group memberships, then `team_groups` by group. Everywhere that uses it gets the same widened set, in the same single query. Lists and search stay one indexed query each.
+- **Admin checks don't change,** as no one is an admin through a group.
+- **The members list** becomes direct members together with the members of the team's groups, merged per person (the highest role, and every source), and still paged on its sort key and then the handle.
+- **Watches** are kept as they are, but read only while the watcher is still in the team, so leaving a group ends what they hear from the team, with no cleanup.
+- **No copy of who's in each team.** A table of everyone's team memberships, kept in step on every change, would make reads slightly cheaper. It would cost a write per person whenever a group joins a team (2,000 writes for a 2,000-person group), and it's another copy that could disagree with the groups. If the widened lookup turns out to be slow, that's a decision to make then, from measurements.
+
+**At the design scale** (10,000 people, 1,000 teams, 2,000 groups, 100,000 ideas):
+- **The new table stays small.** Each team would have a handful of groups, so a few thousand rows at most.
+- **Each person's set of teams grows by a few dozen at most:** say five groups, each in three teams. That set is worked out once per query.
+- **The expected cost is small, but it needs measuring:** on the Frankfurt deployment's seed, add groups to a few hundred teams, then compare list, search and permission-check latency at the steady load (100 page views a second) before and after.
+
+**Not doing:**
+- groups in groups, or teams in teams;
+- admin through a group;
+- expiry dates, as nothing records them;
+- different roles for different people within one group's membership of a team: anyone needing more is added directly.
+
+**Open questions:**
+
+- **Consent.** GitLab lets only someone who's a member of the group invite it. Here, adding a group pulls its people into the team's ideas and notifications. Should a team admin need to be in the group, or the group's admins agree, rather than only hear about it?
+- **The overlap with the team's defaults for new ideas,** which can also name groups. Keep both? Defaults are per idea and editable, while a group in the team is all or nothing. Or fold the defaults' groups into this?
+- **Single sign-on.** Groups provisioned by SCIM from the identity provider could then give team membership. Should a team be able to follow an IdP group directly?
+
 # Emails and messaging
 
 Notifications are in the app (the inbox) and, where the deployment has email set up, by email too.
