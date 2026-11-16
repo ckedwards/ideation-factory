@@ -786,11 +786,16 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         if (input.owner && !owner) {
           return notFound(`no one is called ${input.owner}`)
         }
+        const reviewer = input.reviewer ? await directory().user(input.reviewer) : null
+        if (input.reviewer && !reviewer) {
+          return notFound(`no one is called ${input.reviewer}`)
+        }
         const page = await directory().listIdeas(
           caller.user,
           {
             ...(team ? { team: team.id } : {}),
             ...(owner ? { owner: owner.id } : {}),
+            ...(reviewer ? { reviewer: reviewer.id } : {}),
             ...(input.status ? { status: input.status } : {}),
             ...(input.state ? { state: input.state } : {}),
             ...(input.cursor ? { cursor: input.cursor } : {}),

@@ -224,13 +224,15 @@ export const directoryOperations = {
     mcp: true,
     summary: 'List ideas',
     description:
-      'Ideas you can see, most recently updated first, 25 at a time, optionally in one team, by one owner, in one status, or open or closed (an idea in an archived team counts as closed, whatever its status).',
+      "Ideas you can see, most recently updated first, 25 at a time, optionally in one team, by one owner, asking one person to review it (by name or through a group they're in), in one status, or open or closed (an idea in an archived team counts as closed, whatever its status).",
     method: 'GET',
     path: '/ideas',
     kind: 'read',
     input: z.strictObject({
       team: Ref.optional(),
       owner: Ref.optional(),
+      /** Asking this person to review it, by name or through a group they're in. */
+      reviewer: Ref.optional(),
       status: IdeaStatus.optional(),
       state: z.enum(['open', 'closed']).optional(),
       cursor: Cursor,

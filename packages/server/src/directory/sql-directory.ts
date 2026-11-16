@@ -3004,6 +3004,7 @@ export class SqlDirectory implements Directory {
       ...(token ? { token } : {}),
       ...(filter.team ? { team: filter.team } : {}),
       ...(filter.owner ? { owner: filter.owner } : {}),
+      ...(filter.reviewer ? { reviewer: filter.reviewer } : {}),
       ...(filter.status ? { status: filter.status } : {}),
       ...(filter.state === 'open' ? { open: true as const } : {}),
       ...(filter.state === 'closed' ? { closed: true as const } : {}),
@@ -3616,6 +3617,7 @@ const Q = {
     token?: string
     team?: string
     owner?: string
+    reviewer?: string
     status?: string
     open?: true
     closed?: true
@@ -3643,6 +3645,33 @@ const Q = {
     }
     if (s.owner !== undefined) {
       query = query.where('ideas.owner', '=', s.owner)
+    }
+    const { reviewer } = s
+    if (reviewer !== undefined) {
+      // asked by name, or through a group they're in
+      query = query.where('ideas.id', 'in', (eb) =>
+        eb
+          .selectFrom('grants')
+          .select('grants.idea')
+          .where('grants.reviewer', '=', 1)
+          .where((g) =>
+            g.or([
+              g.and([g('grants.kind', '=', 'user'), g('grants.subject', '=', reviewer)]),
+              g.and([
+                g('grants.kind', '=', 'group'),
+                g(
+                  'grants.subject',
+                  'in',
+                  g
+                    .selectFrom('memberships')
+                    .select('memberships.container')
+                    .where('memberships.kind', '=', 'group')
+                    .where('memberships.user', '=', reviewer),
+                ),
+              ]),
+            ]),
+          ),
+      )
     }
     if (s.status !== undefined) {
       query = query.where('ideas.status', '=', s.status)
