@@ -20,7 +20,9 @@
   background: var(--surface-2);
 }
 .idea-page-document {
-  padding: var(--space-6) var(--space-7) var(--space-8);
+  /* its top padding, which what's pinned to its top (a toolbar) reaches back over */
+  --idea-document-top: var(--space-6);
+  padding: var(--idea-document-top) var(--space-7) var(--space-8);
   outline: none;
 }
 /* a comfortable line length: about 70 characters of the reading face */
@@ -36,8 +38,32 @@
   border-left: var(--hairline) solid var(--rule);
   background: var(--bg);
 }
-/* narrow: one column, the page scrolls */
-@media (max-width: 75rem) {
+/* a tablet: the rail across the top, the comments still beside the document, level with their text */
+@media (max-width: 75rem) and (min-width: 62.5rem) {
+  .idea-page {
+    grid-template-columns: minmax(0, 1fr) 20rem;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .idea-page-no-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .idea-page-nav {
+    grid-column: 1 / -1;
+    border-right: none;
+    border-bottom: var(--hairline) solid var(--rule);
+  }
+  /* the contents are the rail's to show, and there's no room for them here */
+  .idea-page-nav .toc,
+  .idea-page-nav .toc-empty {
+    display: none;
+  }
+  .idea-page-document {
+    --idea-document-top: var(--space-5);
+    padding: var(--idea-document-top) var(--space-5) var(--space-7);
+  }
+}
+/* narrow: one column, the page scrolls; the comments come after the document */
+@media (max-width: 62.5rem) {
   .idea-page,
   .idea-page-no-panel {
     grid-template-columns: minmax(0, 1fr);
@@ -55,7 +81,8 @@
     border-bottom: var(--hairline) solid var(--rule);
   }
   .idea-page-document {
-    padding: var(--space-5) var(--space-4) var(--space-7);
+    --idea-document-top: var(--space-5);
+    padding: var(--idea-document-top) var(--space-4) var(--space-7);
   }
   .idea-page-panel {
     border-left: none;
