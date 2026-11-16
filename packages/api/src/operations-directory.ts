@@ -317,11 +317,29 @@ export const directoryOperations = {
     input: z.strictObject({
       done: Flag.optional(),
       reason: InboxReason.optional(),
+      /** Only ideas in this team. */
+      team: Ref.optional(),
       unread: Flag.optional(),
       cursor: Cursor,
       limit: Limit,
     }),
     output: Page(Notification),
+  }),
+  countNotifications: defineOperation({
+    name: 'count_notifications',
+    summary: 'Count your inbox',
+    description:
+      'How many ideas your inbox has (not done): in all, with unread updates, by why you hear about them, and by team.',
+    method: 'GET',
+    path: '/notifications/counts',
+    kind: 'read',
+    input: z.strictObject({}),
+    output: z.object({
+      all: z.number().int(),
+      unread: z.number().int(),
+      reasons: z.partialRecord(InboxReason, z.number().int()),
+      teams: z.array(z.object({ id: z.string(), handle: z.string(), name: z.string(), count: z.number().int() })),
+    }),
   }),
   unreadNotifications: defineOperation({
     name: 'count_unread_notifications',

@@ -46,6 +46,7 @@ import {
   type IdeaPlace,
   type IdeaAccess,
   type IdeaCounts,
+  type InboxCounts,
   type IdeaListing,
   type IdeaVisibility,
   type ListedReviewer,
@@ -1171,12 +1172,23 @@ export class SqlDirectory implements Directory {
     const after: [number, string] | null = cursor ? [Number(cursor[0]), String(cursor[1])] : null
     const newer = (r: { updatedAt: number; idea: string }) =>
       !after || r.updatedAt < after[0] || (r.updatedAt === after[0] && r.idea < after[1])
-    const direct = filter.reason === 'watching' ? [] : await this.#direct(user, filter, token ?? null, after, limit + 1)
+    // one team's: every row read and filtered by its idea's team before paging (an inbox is one row an idea)
+    const inTeam = filter.team ? await this.#ideasInTeam(filter.team) : null
+    const direct =
+      filter.reason === 'watching'
+        ? []
+        : (await this.#direct(user, filter, token ?? null, after, inTeam ? null : limit + 1)).filter(
+            (r) => !inTeam || inTeam.has(r.idea),
+          )
     const watched =
       filter.reason && filter.reason !== 'watching'
         ? []
         : (await this.#watched(user, token ?? null)).filter(
-            (r) => r.done === Boolean(filter.done) && (!filter.unread || r.newCount > 0) && newer(r),
+            (r) =>
+              r.done === Boolean(filter.done) &&
+              (!filter.unread || r.newCount > 0) &&
+              newer(r) &&
+              (!inTeam || inTeam.has(r.idea)),
           )
     // both newest first; take a page from the two together
     const rows = [...direct, ...watched]
@@ -1254,6 +1266,47 @@ export class SqlDirectory implements Directory {
         ]
       }),
       next: rows.length > limit ? encodeCursor([page.at(-1)!.updatedAt, page.at(-1)!.idea]) : null,
+    }
+  }
+
+  /** The ideas in a team, for filtering an inbox by it. */
+  async #ideasInTeam(team: string): Promise<Set<string>> {
+    const rows = await this.#db.selectFrom('ideas').select('id').where('team', '=', team).execute()
+    return new Set(rows.map((r) => r.id))
+  }
+
+  async inboxCounts(user: string, token?: string | null): Promise<InboxCounts> {
+    const rows = [
+      ...(await this.#direct(user, {}, token ?? null, null, null)),
+      ...(await this.#watched(user, token ?? null)).filter((r) => !r.done),
+    ]
+    const reasons: Partial<Record<InboxReason, number>> = {}
+    for (const r of rows) {
+      reasons[r.reason] = (reasons[r.reason] ?? 0) + 1
+    }
+    const ideas = rows.length
+      ? await this.#db
+          .selectFrom('ideas')
+          .innerJoin('teams', 'teams.id', 'ideas.team')
+          .select(['ideas.id', 'teams.id as team', 'teams.handle', 'teams.name'])
+          .where(
+            'ideas.id',
+            'in',
+            rows.map((r) => r.idea),
+          )
+          .execute()
+      : []
+    const teams = new Map<string, { id: string; handle: string; name: string; count: number }>()
+    for (const i of ideas) {
+      const t = teams.get(i.team) ?? { id: i.team, handle: i.handle, name: i.name, count: 0 }
+      t.count++
+      teams.set(i.team, t)
+    }
+    return {
+      all: rows.length,
+      unread: rows.filter((r) => r.newCount > 0).length,
+      reasons,
+      teams: [...teams.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
     }
   }
 

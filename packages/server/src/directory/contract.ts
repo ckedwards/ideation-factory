@@ -607,6 +607,23 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         expect((await asked())!.asked).toBeUndefined()
       })
 
+      test("the inbox counts its ideas by why and by team, and lists one team's", async () => {
+        const { d, team } = await withTeam()
+        await d.registerIdea(idea('teams', { team }))
+        await d.registerIdea(idea('own', {}))
+        for (const id of ['teams', 'own']) {
+          await d.setReviewer('u-riley', id, { kind: 'user', id: 'u-sam' }, true)
+        }
+        expect(await d.inboxCounts('u-sam')).toEqual({
+          all: 2,
+          unread: 2,
+          reasons: { 'review-requested': 2 },
+          teams: [{ id: team, handle: 'core', name: 'Core', count: 1 }],
+        })
+        expect((await d.inbox('u-sam', { team })).items.map((r) => r.idea.id)).toEqual(['teams'])
+        expect((await d.inbox('u-sam')).items).toHaveLength(2)
+      })
+
       test('people, groups and teams can be named by handle, and are stored by ID', async () => {
         const { d, team } = await withTeam()
         const group = (

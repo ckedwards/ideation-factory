@@ -1,9 +1,17 @@
 // Your notifications (/notifications): the ideas you hear about, one row per
-// idea, newest first; the inbox, or (?done) the ones you've cleared. Filter
-// by why you hear about them, or to those with something new.
+// idea, newest first; the inbox, or (?done) the ones you've cleared. A column
+// beside them filters, each with how many: the inbox, what's unread, done, why
+// you hear about them, and which team they're in.
 import { type Caller, ideaPath, type Notification } from '@ideaf/api'
-import { Page, PageHeader, SegmentedControl, Select, Stack } from '@ideaf/ui'
-import { infiniteQueryOptions, useInfiniteQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
+import { Link, Page, PageHeader } from '@ideaf/ui'
+import {
+  infiniteQueryOptions,
+  queryOptions,
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+  useSuspenseQuery,
+} from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { api, meQuery } from '../../api.ts'
 import { statusOf } from '../../ideas.ts'
@@ -12,7 +20,7 @@ import { usePeople } from '../$place/idea/$number/-components/shared.tsx'
 import { InboxList, type InboxRowView } from './-components/InboxList.tsx'
 
 type Reason = Notification['reason']
-type Filter = { done: boolean; reason?: Reason | undefined; unread: boolean }
+type Filter = { done: boolean; reason?: Reason | undefined; unread: boolean; team?: string | undefined }
 
 export const notificationsQuery = (filter: Filter) =>
   infiniteQueryOptions({
@@ -21,6 +29,7 @@ export const notificationsQuery = (filter: Filter) =>
       api.listNotifications({
         ...(filter.done ? { done: true } : {}),
         ...(filter.reason ? { reason: filter.reason } : {}),
+        ...(filter.team ? { team: filter.team } : {}),
         ...(filter.unread ? { unread: true } : {}),
         ...(pageParam ? { cursor: pageParam } : {}),
       }),
@@ -37,15 +46,19 @@ const WHY: Record<Reason, string> = {
   watching: 'Watching a team',
 }
 
-const REASONS = [
-  { value: 'all', label: 'Every reason' },
-  ...(Object.entries(WHY) as Array<[Reason, string]>).map(([value, label]) => ({ value, label })),
-]
+/** How many of each, for the filter column. */
+const countsQuery = queryOptions({
+  queryKey: ['notifications', 'counts'],
+  queryFn: () => api.countNotifications({}),
+})
 
 export const Route = createFileRoute('/notifications/')({
-  validateSearch: (search: Record<string, unknown>): { done?: true; reason?: Reason; unread?: true } => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { done?: true; reason?: Reason; unread?: true; team?: string } => ({
     ...(search['done'] === true || search['done'] === 'true' ? { done: true as const } : {}),
     ...(typeof search['reason'] === 'string' && search['reason'] in WHY ? { reason: search['reason'] as Reason } : {}),
+    ...(typeof search['team'] === 'string' && search['team'] ? { team: search['team'] } : {}),
     ...(search['unread'] === true || search['unread'] === 'true' ? { unread: true as const } : {}),
   }),
   staticData: { nav: 'notifications' },
@@ -57,7 +70,13 @@ function Notifications() {
   const navigate = useNavigate({ from: Route.fullPath })
   const queryClient = useQueryClient()
   const { data: me } = useSuspenseQuery(meQuery)
-  const filter: Filter = { done: search.done === true, reason: search.reason, unread: search.unread === true }
+  const filter: Filter = {
+    done: search.done === true,
+    reason: search.reason,
+    unread: search.unread === true,
+    team: search.team,
+  }
+  const counts = useQuery(countsQuery).data
   const list = useInfiniteQuery(notificationsQuery(filter))
   const items = list.data?.pages.flatMap((p) => p.items) ?? []
   const people = usePeople(items.flatMap((n) => (n.latest.actor.user ? [n.latest.actor.user] : [])))
@@ -68,6 +87,7 @@ function Notifications() {
         ...(f.done ? { done: true as const } : {}),
         ...(f.reason ? { reason: f.reason } : {}),
         ...(f.unread ? { unread: true as const } : {}),
+        ...(f.team ? { team: f.team } : {}),
       },
       replace: true,
     })
@@ -84,6 +104,8 @@ function Notifications() {
     where: n.idea.team ? n.idea.team.name : n.idea.owner.id === me.id ? 'Your ideas' : `${n.idea.owner.name}’s ideas`,
     status: statusOf(n.idea.status),
     reason: WHY[n.reason],
+    asked: n.reason === 'review-requested' || n.reason === 'group-review',
+    kind: n.latest.kind,
     actor: n.latest.actor.user ? actorOf(n.latest.actor as Caller, people) : null,
     update: updateWords(n),
     newCount: n.newCount,
@@ -91,30 +113,57 @@ function Notifications() {
   }))
 
   return (
-    <Page>
+    <Page width="wide">
       <PageHeader title="Notifications" sub="What’s happened to the ideas you hear about, one row each." />
-      <Stack gap={4}>
-        <div className="inbox-filters">
-          <SegmentedControl
-            label="Inbox or done"
-            options={[
-              { value: 'inbox', label: 'Inbox' },
-              { value: 'done', label: 'Done' },
-            ]}
-            value={filter.done ? 'done' : 'inbox'}
-            onChange={(v) => go({ done: v === 'done' })}
-          />
-          <Select
-            aria-label="Why you hear about it"
-            options={REASONS}
-            value={filter.reason ?? 'all'}
-            onChange={(v) => go({ reason: v === 'all' ? undefined : (v as Reason) })}
-          />
-          <label className="inbox-unread">
-            <input type="checkbox" checked={filter.unread} onChange={(e) => go({ unread: e.target.checked })} />
-            Unread only
-          </label>
-        </div>
+      <div className="inbox-layout">
+        <nav className="inbox-side" aria-label="Show">
+          <ul>
+            <Choice
+              label="Inbox"
+              count={counts?.all}
+              current={!filter.done && !filter.unread && !filter.reason && !filter.team}
+              onPick={() => go({ done: false, unread: false, reason: undefined, team: undefined })}
+            />
+            <Choice
+              label="Unread"
+              count={counts?.unread}
+              current={!filter.done && filter.unread}
+              onPick={() => go({ done: false, unread: true })}
+            />
+            <Choice label="Done" current={filter.done} onPick={() => go({ done: true, unread: false })} />
+          </ul>
+          <h3>Why</h3>
+          <ul>
+            {(Object.entries(WHY) as Array<[Reason, string]>)
+              .filter(([reason]) => (counts?.reasons[reason] ?? 0) > 0 || filter.reason === reason)
+              .map(([reason, label]) => (
+                <Choice
+                  key={reason}
+                  label={label}
+                  count={counts?.reasons[reason]}
+                  current={filter.reason === reason}
+                  asked={reason === 'review-requested' || reason === 'group-review'}
+                  onPick={() => go({ reason: filter.reason === reason ? undefined : reason })}
+                />
+              ))}
+          </ul>
+          {(counts?.teams.length ?? 0) > 0 && (
+            <>
+              <h3>Teams</h3>
+              <ul>
+                {counts!.teams.map((t) => (
+                  <Choice
+                    key={t.id}
+                    label={t.name}
+                    count={t.count}
+                    current={filter.team === t.handle}
+                    onPick={() => go({ team: filter.team === t.handle ? undefined : t.handle })}
+                  />
+                ))}
+              </ul>
+            </>
+          )}
+        </nav>
         <InboxList
           rows={rows}
           showing={filter.done ? 'done' : 'inbox'}
@@ -124,8 +173,34 @@ function Notifications() {
           empty={filter.done ? 'Nothing marked done.' : 'Nothing new. You’re all caught up.'}
           more={list.hasNextPage ? { loading: list.isFetchingNextPage, onMore: () => void list.fetchNextPage() } : null}
         />
-      </Stack>
+      </div>
     </Page>
+  )
+}
+
+/** One of the filters down the side, with how many it has; choosing the current one again clears it. */
+function Choice(props: {
+  label: string
+  count?: number | undefined
+  current: boolean
+  asked?: boolean
+  onPick: () => void
+}) {
+  return (
+    <li>
+      <Link
+        href="#"
+        className={`inbox-choice${props.asked ? ' is-asked' : ''}`}
+        aria-current={props.current ? 'true' : undefined}
+        onClick={(event) => {
+          event.preventDefault()
+          props.onPick()
+        }}
+      >
+        <span>{props.label}</span>
+        {props.count !== undefined && props.count > 0 && <span className="inbox-choice-count">{props.count}</span>}
+      </Link>
+    </li>
   )
 }
 

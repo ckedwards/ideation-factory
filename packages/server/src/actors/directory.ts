@@ -121,6 +121,7 @@ export const directory = actor({
     requestRuleGroups: (c, idea: string) => directoryOf(c).requestRuleGroups(idea),
     inbox: (c, user: string, filter?: InboxFilter, token?: string | null) => directoryOf(c).inbox(user, filter, token),
     unreadCount: (c, user: string, token?: string | null) => directoryOf(c).unreadCount(user, token),
+    inboxCounts: (c, user: string, token?: string | null) => directoryOf(c).inboxCounts(user, token),
     markInbox: (c, user: string, ideas: string[] | null, change: { read?: boolean; done?: boolean }) =>
       directoryOf(c).markInbox(user, ideas, change),
     subscription: (c, user: string, idea: string) => directoryOf(c).subscription(user, idea),

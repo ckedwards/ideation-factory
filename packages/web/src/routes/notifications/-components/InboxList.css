@@ -20,9 +20,10 @@
   list-style: none;
   background: var(--surface);
 }
+/* fixed columns: the eye goes straight down state, reason and time */
 .inbox-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  grid-template-columns: auto 1.5rem minmax(0, 1fr) 9rem 8rem 4.5rem;
   align-items: center;
   gap: var(--space-1) var(--space-3);
   padding: var(--space-2) var(--space-3);
@@ -31,12 +32,16 @@
 .inbox-row + .inbox-row {
   border-top: var(--hairline) solid var(--rule);
 }
-/* unread: an accent bar, and a bold title */
+/* unread: a tint across the row, and a bold title */
 .inbox-row.is-unread {
-  border-left-color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 6%, var(--surface));
 }
 .inbox-row.is-unread .inbox-title a {
   font-weight: 700;
+}
+/* on the tint, the quieter text a step darker, to stay readable */
+.inbox-row.is-unread :is(.inbox-where, .inbox-new, .inbox-time, .inbox-reason:not(.is-asked)) {
+  color: var(--ink-2);
 }
 .inbox-main {
   display: grid;
@@ -63,10 +68,10 @@
 }
 @media (max-width: 40rem) {
   .inbox-row {
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: auto 1.5rem minmax(0, 1fr);
   }
-  .inbox-row > :nth-child(n + 3) {
-    grid-column: 2;
+  .inbox-row > :nth-child(n + 4) {
+    grid-column: 3;
   }
 }
 .inbox-filters {
@@ -89,4 +94,105 @@
 .inbox-title a:hover,
 .inbox-title a:focus-visible {
   text-decoration: underline;
+}
+.inbox-day {
+  display: grid;
+  gap: var(--space-2);
+}
+.inbox-day-title {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.inbox-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+.inbox-icon.is-review,
+.inbox-icon.is-version {
+  color: var(--ok);
+}
+.inbox-icon.is-requested {
+  color: var(--warn);
+  font-weight: 700;
+}
+.inbox-state {
+  justify-self: start;
+}
+/* the one reason that asks something of you */
+.inbox-reason.is-asked {
+  color: var(--warn);
+  font-weight: 700;
+}
+.inbox-time {
+  justify-self: end;
+}
+/* the filters down the side of the inbox, each with how many */
+.inbox-layout {
+  display: grid;
+  grid-template-columns: 13rem minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+.inbox-side {
+  display: grid;
+  gap: var(--space-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+}
+.inbox-side h3 {
+  margin: var(--space-3) 0 0;
+  padding: 0 var(--space-3);
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.inbox-side ul {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.inbox-choice {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius);
+  color: var(--ink-2);
+  text-decoration: none;
+}
+.inbox-choice:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.inbox-choice[aria-current='true'] {
+  background: var(--surface-2);
+  color: var(--ink);
+  font-weight: 600;
+}
+.inbox-choice.is-asked {
+  color: var(--warn);
+  font-weight: 600;
+}
+.inbox-choice-count {
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 60rem) {
+  .inbox-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

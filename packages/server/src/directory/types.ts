@@ -119,10 +119,20 @@ export interface InboxRow {
   latest: InboxEvent
 }
 
+export interface InboxCounts {
+  all: number
+  unread: number
+  reasons: Partial<Record<InboxReason, number>>
+  /** Each team with ideas in it, most first. */
+  teams: Array<{ id: string; handle: string; name: string; count: number }>
+}
+
 export interface InboxFilter {
   /** The Done list, rather than the inbox. */
   done?: boolean
   reason?: InboxReason
+  /** Only ideas in this team (its ID). */
+  team?: string
   /** Only ideas with something new. */
   unread?: boolean
   cursor?: string
@@ -556,6 +566,8 @@ export interface Directory {
   nextEmailAt(timing: EmailTiming): Promise<number | null>
   /** A person's inbox (or Done list): one row per idea they can still see, newest first. */
   inbox(user: string, filter?: InboxFilter, token?: string | null): Promise<Page<InboxRow>>
+  /** How many ideas the inbox has (not done): all, unread, by why, and by team, for its filters. */
+  inboxCounts(user: string, token?: string | null): Promise<InboxCounts>
   /** How many ideas in the inbox have something new. */
   unreadCount(user: string, token?: string | null): Promise<number>
   /** Marks ideas in a person's inbox read, done or back in the inbox; `null` for all of them. Says how many changed. */
