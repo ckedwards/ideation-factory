@@ -3,14 +3,15 @@
 import { useState } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
-import { createRootRouteWithContext, Outlet, redirect, useMatches } from '@tanstack/react-router'
-import { AppShell, Empty, Link, Page, PageHeader, type Theme } from '@ideaf/ui'
+import { createRootRouteWithContext, Outlet, redirect, useMatches, useNavigate } from '@tanstack/react-router'
+import { AppShell, Empty, Link, Page, PageHeader, SearchInput, type Theme } from '@ideaf/ui'
 import { membershipsQuery, meQuery, unreadQuery } from '../api.ts'
 import { AppNav, type NavPage } from '../components/AppNav.tsx'
 import { QuickSearch } from '../components/QuickSearch.tsx'
 import { SiteLinks } from '../components/SiteLinks.tsx'
 import { accessToken, SignedOut, signInHref, signOut } from '../session.ts'
 import { savedTheme, setTheme } from '../theme.ts'
+import './-root.css'
 
 export interface RouterContext {
   queryClient: QueryClient
@@ -81,11 +82,29 @@ function Root() {
   )
 }
 
+// No page here, or one you can't see: they look the same, on purpose (an idea you can't see doesn't say
+// it exists), so say both, and offer a way to find what was meant.
 function NotFound() {
+  const navigate = useNavigate()
+  const [q, setQ] = useState('')
   return (
     <Page>
       <PageHeader title="Not found" />
-      <Empty action={<Link href="/">Go home</Link>}>There’s no page here.</Empty>
+      <Empty action={<Link href="/">Go home</Link>}>
+        There’s no page here, or you don’t have access to it. If someone sent you the link, ask them to share it with
+        you.
+      </Empty>
+      <form
+        className="not-found-search"
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (q.trim()) {
+            void navigate({ to: '/ideas', search: { q: q.trim() } })
+          }
+        }}
+      >
+        <SearchInput label="Search ideas" placeholder="Search ideas by title" value={q} onChange={setQ} />
+      </form>
     </Page>
   )
 }
