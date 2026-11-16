@@ -1,0 +1,11 @@
+.new-container-field {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.new-container-note {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
