@@ -9,3 +9,20 @@
   margin: 0;
   color: var(--ink-2);
 }
+/* its ideas, with its members in a column beside them */
+.team-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 15rem;
+  gap: var(--space-7);
+  align-items: start;
+}
+.team-main {
+  display: grid;
+  gap: var(--space-6);
+  min-width: 0;
+}
+@media (max-width: 75rem) {
+  .team-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

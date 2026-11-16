@@ -1,0 +1,29 @@
+/* a column of names beside a page's main content */
+.member-column {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+}
+.member-column ul {
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+.member-column li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.member-column a {
+  min-width: 0;
+  color: var(--ink);
+  text-decoration: none;
+}
+.member-column a:hover {
+  text-decoration: underline;
+}

@@ -74,7 +74,8 @@ function TeamPage({ handle }: { handle: string }) {
   const [state, setState] = useState<IdeaState>('open')
   const ideas = useInfiniteQuery(ideasQuery({ team: team.id, state }))
   const counts = useQuery(countQuery({ team: team.id }))
-  const members = useInfiniteQuery(membersQuery('team', team.handle))
+  // admins and maintainers first
+  const members = useInfiniteQuery(membersQuery('team', team.handle, { sort: 'role' }))
   const membership = useMembership('team', team)
   const queryClient = useQueryClient()
   // its approval requirements, with the groups they name by name, as a sentence
@@ -98,7 +99,7 @@ function TeamPage({ handle }: { handle: string }) {
     queryFn: () => api.getTeamWatch({ team: team.id }),
   })
   return (
-    <Page>
+    <Page width="wide">
       <PageHeader
         title={team.name}
         sub={`${team.handle} · team · ${plural(team.members, 'member')}${team.archived ? ' · archived' : ''}`}
@@ -121,38 +122,47 @@ function TeamPage({ handle }: { handle: string }) {
         }
       />
       {team.description && <p>{team.description}</p>}
-      <Section
-        title="How ideas are approved"
-        action={manages ? <Link href={`/${team.handle}/settings?tab=requirements`}>Change</Link> : undefined}
-      >
-        <p className="team-approving">{approving}</p>
-      </Section>
-      <Section title="Ideas">
-        <StateTabs value={state} onChange={setState} counts={counts.data}>
-          <IdeaList
-            ideas={(ideas.data?.pages.flatMap((p) => p.items) ?? []).map((row) => ideaInfo(row, me.id))}
-            hide={{ team: true }}
-            empty={
-              state === 'closed'
-                ? 'No closed ideas you can see in this team.'
-                : 'No open ideas you can see in this team.'
-            }
-            more={
-              ideas.hasNextPage ? { loading: ideas.isFetchingNextPage, onMore: () => void ideas.fetchNextPage() } : null
-            }
-          />
-        </StateTabs>
-      </Section>
-      <Section title="Members">
-        <MemberList
-          members={members.data?.pages.flatMap((p) => p.items) ?? []}
-          more={
-            members.hasNextPage
-              ? { loading: members.isFetchingNextPage, onMore: () => void members.fetchNextPage() }
-              : null
-          }
-        />
-      </Section>
+      <div className="team-layout">
+        <div className="team-main">
+          <Section
+            title="How ideas are approved"
+            action={manages ? <Link href={`/${team.handle}/settings?tab=requirements`}>Change</Link> : undefined}
+          >
+            <p className="team-approving">{approving}</p>
+          </Section>
+          <Section title="Ideas">
+            <StateTabs value={state} onChange={setState} counts={counts.data}>
+              <IdeaList
+                ideas={(ideas.data?.pages.flatMap((p) => p.items) ?? []).map((row) => ideaInfo(row, me.id))}
+                hide={{ team: true }}
+                empty={
+                  state === 'closed'
+                    ? 'No closed ideas you can see in this team.'
+                    : 'No open ideas you can see in this team.'
+                }
+                more={
+                  ideas.hasNextPage
+                    ? { loading: ideas.isFetchingNextPage, onMore: () => void ideas.fetchNextPage() }
+                    : null
+                }
+              />
+            </StateTabs>
+          </Section>
+        </div>
+        <aside className="team-aside" aria-label="Members">
+          <Section title="Members">
+            <MemberList
+              compact={{ total: team.members }}
+              members={members.data?.pages.flatMap((p) => p.items) ?? []}
+              more={
+                members.hasNextPage
+                  ? { loading: members.isFetchingNextPage, onMore: () => void members.fetchNextPage() }
+                  : null
+              }
+            />
+          </Section>
+        </aside>
+      </div>
     </Page>
   )
 }

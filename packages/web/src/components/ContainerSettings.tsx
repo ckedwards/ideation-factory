@@ -87,6 +87,7 @@ export function ContainerSettings({ kind, container, href, tab, onTab, pages = [
         <Tabs label={`${container.name}’s settings`} tabs={tabs} value={shown} onChange={onTab}>
           {shown === 'members' && (
             <MemberTable
+              name={container.name}
               members={members.data?.pages.flatMap((p) => p.items) ?? []}
               you={{ id: me.id, role: role! }}
               view={view}

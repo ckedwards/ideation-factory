@@ -35,7 +35,8 @@ export const Route = createFileRoute('/groups/$group/')({
 function Group() {
   const { group: handle } = Route.useParams()
   const { data: group } = useSuspenseQuery(groupByHandleQuery(handle))
-  const members = useInfiniteQuery(membersQuery('group', handle))
+  // admins and maintainers first
+  const members = useInfiniteQuery(membersQuery('group', handle, { sort: 'role' }))
   const membership = useMembership('group', group)
   const teams = useQuery(groupTeamsQuery(handle))
   const { data: me } = useSuspenseQuery(meQuery)
@@ -53,6 +54,7 @@ function Group() {
       {group.description && <p>{group.description}</p>}
       <Section title="Members">
         <MemberList
+          compact={{ total: group.members }}
           members={members.data?.pages.flatMap((p) => p.items) ?? []}
           more={
             members.hasNextPage
