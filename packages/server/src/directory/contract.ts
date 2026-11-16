@@ -507,6 +507,22 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         expect((await d.listIdeas('u-outsider', { reviewer: 'u-sam' })).items).toEqual([])
       })
 
+      test('counts the ideas a list has, open and closed, under its filters', async () => {
+        const { d, team } = await withTeam()
+        await d.registerIdea(idea('draft', { team }))
+        await d.registerIdea(idea('review', { team, status: 'requesting-review' }))
+        await d.registerIdea(idea('done', { team, status: 'closed-accepted' }))
+        await d.registerIdea(idea('mayas', { owner: 'u-maya' }))
+        await d.setReviewer('u-riley', 'review', { kind: 'user', id: 'u-maya' }, true)
+        expect(await d.countIdeas('u-riley')).toEqual({ open: 2, closed: 1 })
+        expect(await d.countIdeas('u-riley', { team })).toEqual({ open: 2, closed: 1 })
+        expect(await d.countIdeas('u-riley', { status: 'draft' })).toEqual({ open: 1, closed: 0 })
+        expect(await d.countIdeas('u-maya', { reviewer: 'u-maya' })).toEqual({ open: 1, closed: 0 })
+        // only what the caller can see
+        expect(await d.countIdeas('u-maya', { owner: 'u-maya' })).toEqual({ open: 1, closed: 0 })
+        expect(await d.countIdeas('u-riley', { owner: 'u-maya' })).toEqual({ open: 0, closed: 0 })
+      })
+
       test('people, groups and teams can be named by handle, and are stored by ID', async () => {
         const { d, team } = await withTeam()
         const group = (

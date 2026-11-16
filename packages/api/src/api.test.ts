@@ -27,6 +27,16 @@ const ops = {
     }),
     output: z.object({ thing: z.string(), version: z.number().nullable() }),
   }),
+  countThings: defineOperation({
+    name: 'count_things',
+    summary: 'Count things',
+    description: 'Counts them.',
+    method: 'GET',
+    path: '/things/count',
+    kind: 'read',
+    input: z.strictObject({}),
+    output: z.object({ count: z.number() }),
+  }),
   renameThing: defineOperation({
     name: 'rename_thing',
     summary: 'Rename a thing',
@@ -48,6 +58,7 @@ function setup(overrides: Partial<Handlers<typeof ops>> = {}) {
         ? { ok: false, error: { code: 'not_found', message: 'no such thing' } }
         : { ok: true, value: { thing: input.thing, version: input.version ?? null } }
     },
+    countThings: async () => ({ ok: true, value: { count: 2 } }),
     renameThing: async (input, context) => {
       seen.push({ input, context })
       return { ok: true, value: { name: input.name } }
@@ -72,6 +83,14 @@ describe('the router', () => {
     expect(response!.status).toBe(200)
     expect(await response!.json()).toEqual({ thing: 't1', version: 3 })
     expect(seen[0]).toMatchObject({ input: { thing: 't1', version: 3 }, context: { caller: ME, key: null } })
+  })
+
+  test('a fixed segment wins over a parameter, whichever is defined first', async () => {
+    const { router } = setup()
+    const response = await router(
+      new Request('http://x/api/things/count', { headers: { authorization: 'Bearer good' } }),
+    )
+    expect(await response!.json()).toEqual({ count: 2 })
   })
 
   test('takes the body for a write, and its idempotency key', async () => {

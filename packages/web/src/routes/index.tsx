@@ -88,7 +88,10 @@ function Home() {
       <PageHeader title="Home" sub={summary} />
       <div className="home">
         <div className="home-main">
-          <Section title="Waiting on your review">
+          <Section
+            title="Waiting on your review"
+            action={<Link href={`/ideas?reviewer=${me.handle}`}>See all asked of you</Link>}
+          >
             <IdeaList
               ideas={waiting.map((row) => ideaInfo(row, me.id))}
               extra={(idea: IdeaInfo) => {

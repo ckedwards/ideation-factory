@@ -45,6 +45,7 @@ import {
   type IdeaPage,
   type IdeaPlace,
   type IdeaAccess,
+  type IdeaCounts,
   type IdeaListing,
   type IdeaVisibility,
   type ListedReviewer,
@@ -3017,6 +3018,46 @@ export class SqlDirectory implements Directory {
     }
   }
 
+  async countIdeas(actor: string, filter: IdeaFilter = {}, token?: string | null): Promise<IdeaCounts> {
+    const closed = ['closed-accepted', 'closed-rejected']
+    const archived = this.#db.selectFrom('teams').select('id').where('archived', '=', 1)
+    let query = this.#db
+      .with('visible', (d) => visibleIdeas(d, actor))
+      .selectFrom('visible')
+      .innerJoin('ideas', 'ideas.id', 'visible.id')
+      .select((eb) => [
+        eb.fn.countAll<number>().as('all'),
+        eb.fn
+          .count<number>(
+            eb
+              .case()
+              .when(eb.or([eb('ideas.status', 'in', closed), eb('ideas.team', 'in', archived)]))
+              .then(1)
+              .end(),
+          )
+          .as('closed'),
+      ])
+      .where((eb) =>
+        token ? tokenReaches(eb as unknown as ExpressionBuilder<DB, 'ideas'>, actor, token) : eb.lit(true),
+      )
+    if (filter.team !== undefined) {
+      query = query.where('ideas.team', '=', filter.team)
+    }
+    if (filter.owner !== undefined) {
+      query = query.where('ideas.owner', '=', filter.owner)
+    }
+    if (filter.reviewer !== undefined) {
+      query = query.where('ideas.id', 'in', askedToReview(this.#db, filter.reviewer))
+    }
+    if (filter.status !== undefined) {
+      query = query.where('ideas.status', '=', filter.status)
+    }
+    const row = await query.executeTakeFirst()
+    const all = Number(row?.all ?? 0)
+    const shut = Number(row?.closed ?? 0)
+    return { open: all - shut, closed: shut }
+  }
+
   /**
    * Rows as lists show them: with their address, their teams and owners by name, who approved them
    * and who's asked to review them, and who else can see them, read once per page.
@@ -3182,6 +3223,31 @@ function teamsOf(eb: ExpressionBuilder<DB, 'grants'>, user: string) {
  * by idea). A deployment with most ideas shared with everyone makes this set
  * large: then walking ideas newest first would be the quicker plan.
  */
+/** The ideas asking someone to review them: by name, or through a group they're in. */
+function askedToReview(db: QueryCreator<DB>, user: string) {
+  return db
+    .selectFrom('grants')
+    .select('grants.idea')
+    .where('grants.reviewer', '=', 1)
+    .where((g) =>
+      g.or([
+        g.and([g('grants.kind', '=', 'user'), g('grants.subject', '=', user)]),
+        g.and([
+          g('grants.kind', '=', 'group'),
+          g(
+            'grants.subject',
+            'in',
+            g
+              .selectFrom('memberships')
+              .select('memberships.container')
+              .where('memberships.kind', '=', 'group')
+              .where('memberships.user', '=', user),
+          ),
+        ]),
+      ]),
+    )
+}
+
 function visibleIdeas(db: QueryCreator<DB>, user: string) {
   return db
     .selectFrom('ideas')
@@ -3648,30 +3714,7 @@ const Q = {
     }
     const { reviewer } = s
     if (reviewer !== undefined) {
-      // asked by name, or through a group they're in
-      query = query.where('ideas.id', 'in', (eb) =>
-        eb
-          .selectFrom('grants')
-          .select('grants.idea')
-          .where('grants.reviewer', '=', 1)
-          .where((g) =>
-            g.or([
-              g.and([g('grants.kind', '=', 'user'), g('grants.subject', '=', reviewer)]),
-              g.and([
-                g('grants.kind', '=', 'group'),
-                g(
-                  'grants.subject',
-                  'in',
-                  g
-                    .selectFrom('memberships')
-                    .select('memberships.container')
-                    .where('memberships.kind', '=', 'group')
-                    .where('memberships.user', '=', reviewer),
-                ),
-              ]),
-            ]),
-          ),
-      )
+      query = query.where('ideas.id', 'in', askedToReview(db, reviewer))
     }
     if (s.status !== undefined) {
       query = query.where('ideas.status', '=', s.status)

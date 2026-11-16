@@ -240,6 +240,22 @@ export const directoryOperations = {
     }),
     output: Page(IdeaRow),
   }),
+  countIdeas: defineOperation({
+    name: 'count_ideas',
+    summary: 'Count ideas',
+    description:
+      "How many ideas list_ideas would list with these filters, open and closed (an idea in an archived team counts as closed): for the counts on a list's tabs.",
+    method: 'GET',
+    path: '/ideas/count',
+    kind: 'read',
+    input: z.strictObject({
+      team: Ref.optional(),
+      owner: Ref.optional(),
+      reviewer: Ref.optional(),
+      status: IdeaStatus.optional(),
+    }),
+    output: z.object({ open: z.number().int(), closed: z.number().int() }),
+  }),
   searchIdeas: defineOperation({
     name: 'search_ideas',
     mcp: true,

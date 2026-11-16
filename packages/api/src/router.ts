@@ -65,7 +65,10 @@ export function createRouter<Ops extends Record<string, Operation>>(
     if (matching.length === 0) {
       return null
     }
-    const route = matching.find((r) => r.operation.method === request.method)
+    // a fixed segment wins over a parameter: /ideas/count is counting, not the idea "count"
+    const route = matching
+      .filter((r) => r.operation.method === request.method)
+      .toSorted((a, b) => a.params.length - b.params.length)[0]
     if (!route) {
       return error(
         'invalid',

@@ -9,15 +9,22 @@ type Page = { items: ListedIdea[]; next: string | null }
 
 export type IdeaState = 'open' | 'closed'
 
-/** Open or closed, for a list's filter. */
-export const STATES = [
-  { value: 'open', label: 'Open' },
-  { value: 'closed', label: 'Closed' },
-] satisfies Array<{ value: IdeaState; label: string }>
+/** What a list can be narrowed to: a team, an author, who's asked to review, a status (by ID or handle). */
+export type IdeaFilters = {
+  team?: string
+  owner?: string
+  reviewer?: string
+  status?: 'draft' | 'requesting-review'
+}
 
-export const ideasQuery = (
-  filter: { team?: string; owner?: string; reviewer?: string; status?: 'requesting-review'; state?: IdeaState } = {},
-) =>
+/** How many ideas a list has, open and closed, for its tabs. */
+export const countQuery = (filter: IdeaFilters = {}) =>
+  queryOptions({
+    queryKey: ['ideas', 'count', filter],
+    queryFn: () => api.countIdeas(filter),
+  })
+
+export const ideasQuery = (filter: IdeaFilters & { state?: IdeaState } = {}) =>
   infiniteQueryOptions<Page, Error, InfiniteData<Page>, readonly unknown[], string | null>({
     queryKey: ['ideas', filter],
     queryFn: ({ pageParam }) => api.listIdeas({ ...filter, ...(pageParam ? { cursor: pageParam } : {}) }),
