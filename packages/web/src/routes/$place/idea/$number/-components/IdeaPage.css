@@ -87,6 +87,11 @@
   flex-wrap: wrap;
   gap: var(--space-2);
 }
+.idea-comment-filters > * {
+  flex: 0 1 auto;
+  width: auto;
+  max-width: 12rem;
+}
 .idea-panel-group {
   display: grid;
   gap: var(--space-2);
@@ -110,4 +115,49 @@
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
+}
+/* the rail's head: the title on one line with its status as a dot, then where it is */
+.idea-rail-head {
+  display: grid;
+  gap: var(--space-1);
+  /* so the title can be cut short, not push the rail wider */
+  min-width: 0;
+}
+.idea-rail-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+.idea-rail-title > span:nth-child(2) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.idea-rail-dot {
+  display: inline-flex;
+  flex: none;
+}
+.idea-rail-meta {
+  margin: 0;
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}
+.idea-rail-meta a {
+  color: var(--ink-2);
+}
+.idea-rail-label {
+  margin: 0 0 var(--space-2);
+  color: var(--ink-3);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
