@@ -1,8 +1,11 @@
-// Bare pages until the web app (step 8) has real ones, talking to Better
-// Auth's endpoints from the browser: sign in (an email code and a handle the
-// first time, or the organization's single sign-on, then back to the web app's
-// page in ?next=, or optionally a personal token), the OAuth consent page (what a token may do), and the page that
-// shows the cli the code to paste.
+// The pages signing in happens on, served by the server rather than the web app
+// and talking to Better Auth's endpoints from the browser: sign in (an email code
+// and a handle the first time, or the organization's single sign-on, then back to
+// the web app's page in ?next=, or optionally a personal token), the OAuth consent
+// page (what a token may do), and the page that shows the cli the code to paste.
+// They look like the web app: its design tokens (packages/ui/src/theme/tokens.css,
+// copied here, as the server can't import the web app's built styles) and the theme
+// picked in it, which this browser keeps.
 const html = (body: string) => new Response(body, { headers: { 'content-type': 'text/html; charset=utf-8' } })
 
 /** The identity provider, as the sign-in page offers it; null while single sign-on is off. */
@@ -16,17 +19,92 @@ export const consentPage = () => html(CONSENT)
 export const cliCodePage = () => html(CLI_CODE)
 
 const STYLE = `<style>
-  body { font: 16px/1.5 system-ui, sans-serif; max-width: 30rem; margin: 3rem auto; padding: 0 1rem; color: #1d1d1f; }
-  label { display: block; margin-top: .75rem; }
-  fieldset { margin-top: 1rem; border: 1px solid #ccc; border-radius: 6px; }
-  input[type=text], input[type=email], input:not([type]) { width: 100%; box-sizing: border-box; }
-  input, button { font: inherit; padding: .4rem .6rem; }
-  button { margin-top: 1rem; margin-right: .5rem; }
-  [hidden] { display: none; }
-  .error { color: #b00020; }
-  code { word-break: break-all; background: #f2f2f2; padding: .1rem .3rem; }
-  .big { font-size: 1.4rem; display: block; padding: .6rem; margin: 1rem 0; }
-</style>`
+  :root {
+    color-scheme: light dark;
+    --bg: light-dark(#f6f4ef, #151412);
+    --surface: light-dark(#fffdf9, #1c1b18);
+    --surface-2: light-dark(#efebe3, #25231f);
+    --ink: light-dark(#1f1d1a, #ece8df);
+    --ink-2: light-dark(#514c44, #bbb4a7);
+    --ink-3: light-dark(#6f685e, #9a9387);
+    --rule: light-dark(#e3ded3, #34312b);
+    --rule-strong: light-dark(#cfc8ba, #48443c);
+    --accent: light-dark(#2b6b5a, #6cc4a6);
+    --accent-ink: light-dark(#ffffff, #0d1f19);
+    --lost: light-dark(#b4232a, #ff8a8f);
+    --shadow: 0 0.5rem 1.75rem light-dark(rgb(40 30 15 / 0.1), rgb(0 0 0 / 0.45));
+    --font-display: 'Source Serif 4 Variable', 'Source Serif 4', Georgia, serif;
+    --font-ui: 'Inter Variable', 'Inter', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
+  }
+  :root[data-theme='light'] { color-scheme: light; }
+  :root[data-theme='dark'] { color-scheme: dark; }
+  :root[data-theme='contrast'] {
+    color-scheme: dark;
+    --bg: #000; --surface: #000; --surface-2: #121212; --ink: #fff; --ink-2: #fff; --ink-3: #d6d6d6;
+    --rule: #fff; --rule-strong: #fff; --accent: #7ee0bd; --accent-ink: #000; --lost: #ff9da1;
+  }
+  * { box-sizing: border-box; }
+  body {
+    display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; padding: 3rem 1rem;
+    background: var(--bg); color: var(--ink); font: 0.9375rem/1.5 var(--font-ui);
+  }
+  .brand {
+    margin-bottom: 1.5rem; color: var(--ink); font: 600 1.125rem var(--font-display); text-decoration: none;
+  }
+  .brand span { color: var(--accent); }
+  main {
+    width: 100%; max-width: 26rem; padding: 2rem; border: 0.0625rem solid var(--rule); border-radius: 0.875rem;
+    background: var(--surface); box-shadow: var(--shadow);
+  }
+  h1 { margin: 0 0 1.25rem; font: 600 1.75rem/1.2 var(--font-display); }
+  p { margin: 0.75rem 0; }
+  a { color: var(--accent); }
+  label { display: block; margin-top: 1rem; color: var(--ink-2); font-size: 0.8125rem; font-weight: 600; }
+  label > input:not([type=checkbox]):not([type=radio]) { display: block; width: 100%; margin-top: 0.375rem; }
+  input:not([type=checkbox]):not([type=radio]) {
+    padding: 0.5rem 0.75rem; border: 0.0625rem solid var(--rule-strong); border-radius: 0.5rem;
+    background: var(--bg); color: var(--ink); font: inherit; font-size: 0.9375rem;
+  }
+  input[type=checkbox], input[type=radio] { accent-color: var(--accent); margin-right: 0.375rem; }
+  fieldset { margin: 1rem 0 0; padding: 0.5rem 1rem 1rem; border: 0.0625rem solid var(--rule); border-radius: 0.5rem; }
+  legend { padding: 0 0.25rem; color: var(--ink-2); font-size: 0.8125rem; font-weight: 600; }
+  fieldset label { margin-top: 0.5rem; color: var(--ink); font-size: 0.9375rem; font-weight: 400; }
+  button {
+    margin-top: 1.25rem; padding: 0.5rem 1rem; border: 0.0625rem solid var(--rule-strong); border-radius: 0.5rem;
+    background: var(--surface); color: var(--ink); font: inherit; font-weight: 600; cursor: pointer;
+  }
+  button:hover { background: var(--surface-2); }
+  button.primary { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+  button.primary:hover { filter: brightness(1.08); }
+  button.wide { display: block; width: 100%; }
+  button.link {
+    margin: 0; padding: 0; border: none; background: none; color: var(--accent); font-weight: 500;
+    text-decoration: underline;
+  }
+  .buttons { display: flex; gap: 0.5rem; }
+  .or { display: flex; align-items: center; gap: 0.75rem; margin: 1.25rem 0 0; color: var(--ink-3); font-size: 0.8125rem; }
+  .or::before, .or::after { content: ''; flex: 1; border-top: 0.0625rem solid var(--rule); }
+  .or + button { margin-top: 1rem; }
+  .note, .links { color: var(--ink-3); font-size: 0.8125rem; }
+  .links { margin-top: 1rem; }
+  :focus-visible { outline: 0.125rem solid var(--accent); outline-offset: 0.125rem; }
+  [hidden] { display: none !important; }
+  .error { color: var(--lost); }
+  .error:empty { display: none; }
+  code { padding: 0.1rem 0.3rem; border-radius: 0.3125rem; background: var(--surface-2); font-family: var(--font-mono); font-size: 0.875em; word-break: break-all; }
+  .big { display: block; margin: 1rem 0; padding: 0.75rem; font-size: 1.125rem; }
+</style>
+<script>
+  // the theme picked in the web app, which this browser keeps
+  try {
+    const theme = localStorage.getItem('ideaf-theme')
+    if (theme && theme !== 'auto') document.documentElement.dataset.theme = theme
+  } catch {}
+</script>`
+
+/** The site's name, leading home, above each page's card. */
+const BRAND = `<a class="brand" href="/"><span aria-hidden="true">✳</span> Ideation Factory</a>`
 
 /** Shared script: posting to Better Auth, and the signed OAuth query it hands these pages. */
 const SCRIPT_BASE = `
@@ -87,7 +165,7 @@ const SCRIPT_BASE = `
 const HANDLE_FORM = `<form id="handle-form" hidden>
   <p>Welcome! Your handle is how people mention you: <strong>@<span id="suggested"></span></strong>. Keep it or pick another. You can't change it later.</p>
   <label>Handle (lowercase letters, digits and dashes) <input id="new-handle" autocomplete="username"></label>
-  <button>Continue</button>
+  <button class="primary wide">Continue</button>
 </form>`
 
 const login = (sso: SsoChoice) => `<!doctype html>
@@ -99,27 +177,32 @@ const login = (sso: SsoChoice) => `<!doctype html>
 ${STYLE}
 </head>
 <body>
+${BRAND}
+<main>
 <h1>Sign in</h1>
 <section id="sso" hidden>
-  <button id="sso-button" type="button">Continue with <span id="sso-name"></span></button>
-  <p><a href="#" id="admin-link">Site admin? Sign in with an email code</a></p>
+  <button id="sso-button" class="primary wide" type="button">Continue with <span id="sso-name"></span></button>
+  <p class="links"><a href="#" id="admin-link">Site admin? Sign in with an email code</a></p>
 </section>
 ${HANDLE_FORM}
 <form id="email-form">
   <label>Email <input id="email" type="email" autocomplete="email" required></label>
-  <button>Send me a code</button>
-  <p>Or <button id="passkey-button" type="button">sign in with a passkey</button></p>
+  <button class="primary wide">Send me a code</button>
+  <p class="or">or</p>
+  <button id="passkey-button" class="wide" type="button">Sign in with a passkey</button>
 </form>
 <form id="code-form" hidden>
   <p>We sent a 6-digit code to <strong id="sent-to"></strong>.</p>
   <label>Code <input id="code" inputmode="numeric" autocomplete="one-time-code" required></label>
   <label id="handle-label" hidden>Pick a handle (lowercase letters, digits and dashes)
     <input id="handle" autocomplete="username"></label>
-  <button>Sign in</button>
+  <button class="primary wide">Sign in</button>
+  <p class="links"><button type="button" class="link" id="resend">Send it again</button> ·
+    <button type="button" class="link" id="different">Use a different email</button></p>
 </form>
 <section id="signed-in" hidden>
-  <p>Signed in as <strong id="who"></strong>.</p>
-  <p>For the cli, run <code>ideaf auth login</code>. A personal token is only for CI, where nobody can sign in:</p>
+  <p>Signed in as <strong id="who"></strong>. <a href="/">Go to Ideation Factory</a></p>
+  <p class="note">For the cli, run <code>ideaf auth login</code>. A personal token is only for CI, where nobody can sign in:</p>
   <form id="token-form">
     <label>Make a personal token named <input id="token-name" value="ci" required></label>
     <label><input type="checkbox" id="token-read-only"> Read only</label>
@@ -131,6 +214,7 @@ ${HANDLE_FORM}
     Use it with <code>export IDEAF_TOKEN=…</code></p>
 </section>
 <p class="error" id="error" role="alert"></p>
+</main>
 <script>
 ${SCRIPT_BASE}
   const SSO = ${scriptJson(sso)}
@@ -199,7 +283,19 @@ ${SCRIPT_BASE}
     $('sent-to').textContent = $('email').value
     $('email-form').hidden = true
     $('code-form').hidden = false
+    $('code').focus()
   })
+  $('resend').onclick = run(async () => {
+    await post('/email-otp/send-verification-otp', { email: $('email').value, type: 'sign-in' })
+    $('sent-to').textContent = $('email').value + ' again'
+  })
+  $('different').onclick = (event) => {
+    event.preventDefault()
+    $('code').value = ''
+    $('code-form').hidden = true
+    $('email-form').hidden = false
+    $('email').focus()
+  }
   // Signing in uses the code up, so anything that could still go wrong is
   // checked first: whether the account is new (which needs a handle), and
   // whether the handle is free. A first sign-in takes one code, like any other.
@@ -261,6 +357,8 @@ const CONSENT = `<!doctype html>
 ${STYLE}
 </head>
 <body>
+${BRAND}
+<main>
 <h1>Allow <span id="client">an app</span>?</h1>
 ${HANDLE_FORM}
 <form id="consent" hidden>
@@ -285,9 +383,10 @@ ${HANDLE_FORM}
       <p>Limited to some ideas, it can't share them, move them, or manage teams.</p>
     </div>
   </fieldset>
-  <button>Allow</button><button type="button" id="deny">Deny</button>
+  <div class="buttons"><button class="primary">Allow</button><button type="button" id="deny">Deny</button></div>
 </form>
 <p class="error" id="error" role="alert"></p>
+</main>
 <script>
 ${SCRIPT_BASE}
   const params = new URLSearchParams(location.search)
@@ -359,10 +458,13 @@ const CLI_CODE = `<!doctype html>
 ${STYLE}
 </head>
 <body>
+${BRAND}
+<main>
 <h1 id="title">Copy this into ideaf</h1>
 <p id="message">Paste it where <code>ideaf auth login</code> is waiting:</p>
 <code class="big" id="code"></code>
-<p>It works once, only with the ideaf that asked for it, and for a few minutes.</p>
+<p class="note">It works once, only with the ideaf that asked for it, and for a few minutes.</p>
+</main>
 <script>
   const params = new URLSearchParams(location.search)
   if (params.get('error')) {
