@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, fn, within } from 'storybook/test'
-import { TeamRequirements } from './TeamRequirements.tsx'
+import { RequirementsDraft, TeamRequirements } from './TeamRequirements.tsx'
 
 const security = { id: 'g1', handle: 'security', name: 'Security' }
 const legal = { id: 'g2', handle: 'legal', name: 'Legal' }
@@ -21,7 +21,7 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-// Each change is saved as it's made
+// Each change is reported as it's made (RequirementsDraft keeps them until Save)
 export const Requirements: Story = {
   play: async ({ args, canvasElement, userEvent }) => {
     const page = within(canvasElement)
@@ -63,5 +63,27 @@ export const Empty: Story = {
     const page = within(canvasElement)
     await expect(page.getByRole('combobox', { name: 'Approvals from people, on the latest version' })).toHaveValue('0')
     await expect(page.getByRole('button', { name: 'Add a rule' })).toBeDisabled()
+  },
+}
+
+// As the settings page has it: a draft that says what it'll need, saved only with Save, or discarded
+export const Draft: Story = {
+  render: (args) => <RequirementsDraft saved={args.requirements} onSave={async (next) => args.onChange(next)} />,
+  play: async ({ args, canvasElement, userEvent }) => {
+    const page = within(canvasElement)
+    await expect(
+      page.getByText(
+        'Closing an idea as accepted will need 2 approvals from people and an approval from each of Security and Legal.',
+      ),
+    ).toBeVisible()
+    await expect(page.queryByRole('button', { name: 'Save requirements' })).toBeNull()
+    await userEvent.selectOptions(page.getByRole('combobox', { name: /Approvals from people/ }), '1')
+    await expect(page.getByText(/will need 1 approval from a person and/)).toBeVisible()
+    await expect(args.onChange).not.toHaveBeenCalled()
+    await userEvent.click(page.getByRole('button', { name: 'Discard' }))
+    await expect(page.getByText(/will need 2 approvals from people/)).toBeVisible()
+    await userEvent.selectOptions(page.getByRole('combobox', { name: /Approvals from people/ }), '3')
+    await userEvent.click(page.getByRole('button', { name: 'Save requirements' }))
+    await expect(args.onChange).toHaveBeenCalledWith(expect.objectContaining({ approvals: 3 }))
   },
 }
