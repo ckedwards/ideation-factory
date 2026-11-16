@@ -387,9 +387,15 @@ Keeping admin direct also means everything only an admin may do is checked as it
 - different roles for different people within one group's membership of a team: anyone needing more is added directly.
 - teams following an identity provider's groups: SCIM brings people, not groups (Deprovisioning with SCIM, above), and that stays. An identity provider's groups bring a lot of baggage (nesting, naming, every group in the organization) for little here, so groups and teams stay ideaf's own.
 
-**Open questions:**
+**Kept separate: a group in the team, and a group in the team's defaults.** Both let a group's people see a team's ideas, but they answer different questions, so both stay:
 
-- **The overlap with the team's defaults for new ideas,** which can also name groups. Keep both? Defaults are per idea and editable, while a group in the team is all or nothing. Or fold the defaults' groups into this?
+- **A group in the team** answers "who's on this team?": *Mobile developers* in the Mobile team. Its people are members, with everything that brings, on every idea at once, and it's all or nothing.
+- **The groups in the team's defaults for new ideas** answer "who else should see our ideas, without joining us?": *Security review* getting view on each new idea. Each idea is shared with the group as it's created, and can then be changed on its own (taken off a confidential idea, or given edit), and the group's people never become members, create ideas there or watch the team.
+
+Folding the defaults' groups into this would make *Security review* team members and end per-idea control, so they stay. The app keeps them apart:
+- **The Groups tab** holds the groups that are part of the team.
+- **Settings → Its ideas** says "Also shared with" for the defaults' groups.
+- Each says in one line what the other is for.
 
 # Emails and messaging
 
