@@ -469,6 +469,8 @@ export type TokenGrantInput = {
 export interface IdeaFilter {
   team?: string
   owner?: string
+  /** Someone asked to review it, by name or through a group they're in (a user's ID). */
+  reviewer?: string
   status?: string
   /** Open, or closed: closed as accepted or rejected, or in an archived team. */
   state?: 'open' | 'closed'

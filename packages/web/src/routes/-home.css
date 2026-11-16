@@ -1,0 +1,24 @@
+/* the lists, with what's unread, waiting on you and your teams beside them; on a narrow screen, after them */
+.home {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 17rem;
+  gap: var(--space-7);
+  align-items: start;
+}
+.home-main {
+  display: grid;
+  gap: var(--space-6);
+  min-width: 0;
+}
+.home-aside {
+  position: sticky;
+  top: var(--space-5);
+}
+@media (max-width: 75rem) {
+  .home {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .home-aside {
+    position: static;
+  }
+}

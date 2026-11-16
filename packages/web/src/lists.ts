@@ -15,7 +15,9 @@ export const STATES = [
   { value: 'closed', label: 'Closed' },
 ] satisfies Array<{ value: IdeaState; label: string }>
 
-export const ideasQuery = (filter: { team?: string; owner?: string; state?: IdeaState } = {}) =>
+export const ideasQuery = (
+  filter: { team?: string; owner?: string; reviewer?: string; status?: 'requesting-review'; state?: IdeaState } = {},
+) =>
   infiniteQueryOptions<Page, Error, InfiniteData<Page>, readonly unknown[], string | null>({
     queryKey: ['ideas', filter],
     queryFn: ({ pageParam }) => api.listIdeas({ ...filter, ...(pageParam ? { cursor: pageParam } : {}) }),

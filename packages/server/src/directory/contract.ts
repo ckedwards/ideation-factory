@@ -487,6 +487,26 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         expect((await listed('own')).visibility).toBe('public')
       })
 
+      test("lists the ideas asking someone to review them, by name or through a group they're in", async () => {
+        const { d, team } = await withTeam()
+        await d.createGroup('u-devon', { handle: 'security', name: 'Security' })
+        await d.addMember('u-devon', 'group', 'security', 'u-sam')
+        for (const id of ['named', 'grouped', 'other']) {
+          await d.registerIdea(idea(id, { team }))
+        }
+        await d.setReviewer('u-riley', 'named', { kind: 'user', id: 'u-sam' }, true)
+        await d.setReviewer('u-riley', 'grouped', { kind: 'group', id: 'security' }, true)
+        // someone with access who wasn't asked doesn't count
+        await d.setGrant('u-riley', 'other', { kind: 'user', id: 'u-sam' }, { edit: false, share: false })
+        const asked = async (user: string) =>
+          (await d.listIdeas(user, { reviewer: user })).items.map((i) => i.id).toSorted()
+        expect(await asked('u-sam')).toEqual(['grouped', 'named'])
+        expect(await asked('u-devon')).toEqual(['grouped'])
+        expect(await asked('u-maya')).toEqual([])
+        // what the caller can't see stays hidden, whoever it asks
+        expect((await d.listIdeas('u-outsider', { reviewer: 'u-sam' })).items).toEqual([])
+      })
+
       test('people, groups and teams can be named by handle, and are stored by ID', async () => {
         const { d, team } = await withTeam()
         const group = (

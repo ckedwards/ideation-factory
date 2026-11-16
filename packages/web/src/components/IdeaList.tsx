@@ -14,16 +14,18 @@ export interface IdeaListProps {
   empty: ReactNode
   /** More to load: a button that loads them, saying so while it does. */
   more?: { loading: boolean; onMore: () => void } | null
+  /** A note on a row, beside its team and author (why it's yours to review). */
+  extra?: (idea: IdeaInfo) => ReactNode
 }
 
-export function IdeaList({ ideas, query, hide, empty, more }: IdeaListProps) {
+export function IdeaList({ ideas, query, hide, empty, more, extra }: IdeaListProps) {
   if (ideas.length === 0) {
     return <Empty>{empty}</Empty>
   }
   return (
     <Stack gap={3}>
       {ideas.map((idea) => (
-        <IdeaRow key={idea.id} idea={idea} query={query} {...(hide ? { hide } : {})} />
+        <IdeaRow key={idea.id} idea={idea} query={query} {...(hide ? { hide } : {})} extra={extra?.(idea)} />
       ))}
       {more && (
         <div>
