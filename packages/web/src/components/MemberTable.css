@@ -70,12 +70,24 @@
   padding-left: calc(var(--space-2) + 1.5rem);
   color: var(--ink-2);
 }
+.member-group-size {
+  flex-basis: 100%;
+  color: var(--ink-2);
+}
+.member-table a {
+  color: var(--accent);
+}
 .member-joined {
   color: var(--ink-2);
   white-space: nowrap;
 }
 .member-actions {
   text-align: right;
+}
+.member-source {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--ink-2);
 }
 /* on a phone, each member is a card: the column names become labels */
 @media (max-width: 40rem) {
@@ -96,9 +108,7 @@
     padding: var(--space-1) 0;
     border: 0;
   }
-  .member-table td.member-account {
-    display: flex;
-  }
+  .member-table td[data-label='Source']::before,
   .member-table td[data-label='Role']::before,
   .member-table td[data-label='Joined']::before {
     content: attr(data-label) ': ';

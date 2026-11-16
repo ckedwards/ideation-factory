@@ -5,11 +5,19 @@ import { type ReactNode, useState } from 'react'
 import { Empty, Link, Page, PageHeader, Stack, Tabs, Toast } from '@ideaf/ui'
 import { keepPreviousData, useInfiniteQuery, useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { meQuery } from '../api.ts'
-import { joinRequestsQuery, membersQuery, useMemberWrites, useMembership } from '../members.ts'
+import {
+  joinRequestsQuery,
+  membersQuery,
+  teamGroupsQuery,
+  useMemberWrites,
+  useMembership,
+  useTeamGroupWrites,
+} from '../members.ts'
 import { JoinRequests } from './JoinRequests.tsx'
 import { MemberTable, type MemberView } from './MemberTable.tsx'
+import { TeamGroups } from './TeamGroups.tsx'
 
-export type SettingsTab = 'members' | 'requests' | 'settings'
+export type SettingsTab = 'members' | 'groups' | 'requests' | 'settings'
 
 export interface ContainerSettingsProps {
   kind: 'team' | 'group'
@@ -37,6 +45,8 @@ export function ContainerSettings({ kind, container, href, tab, onTab, children,
     placeholderData: keepPreviousData,
   })
   const requests = useQuery({ ...joinRequestsQuery(kind, container.handle), enabled: managing })
+  const teamGroups = useQuery({ ...teamGroupsQuery(container.handle), enabled: managing && kind === 'team' })
+  const groupWrites = useTeamGroupWrites(setProblem)
   const writes = useMemberWrites(kind, container.handle, setProblem)
   const settings = managed !== undefined || (role === 'admin' && children !== undefined)
   const tabs = [
@@ -45,6 +55,7 @@ export function ContainerSettings({ kind, container, href, tab, onTab, children,
       label: 'Members',
       ...(container.members !== undefined ? { count: container.members } : {}),
     },
+    ...(kind === 'team' ? [{ id: 'groups' as const, label: 'Groups', count: teamGroups.data?.items.length ?? 0 }] : []),
     { id: 'requests' as const, label: 'Requests', count: requests.data?.items.length ?? 0 },
     ...(settings ? [{ id: 'settings' as const, label: 'Settings' }] : []),
   ]
@@ -74,6 +85,16 @@ export function ContainerSettings({ kind, container, href, tab, onTab, children,
                   ? { loading: members.isFetchingNextPage, onMore: () => void members.fetchNextPage() }
                   : null
               }
+            />
+          )}
+          {shown === 'groups' && (
+            <TeamGroups
+              team={container}
+              groups={teamGroups.data?.items ?? []}
+              admin={role === 'admin'}
+              onAdd={(group, next) => groupWrites.add(container.handle, group.handle, next)}
+              onRole={(group, next) => groupWrites.add(container.handle, group.handle, next)}
+              onRemove={(group) => groupWrites.remove(container.handle, group.handle)}
             />
           )}
           {shown === 'requests' && (

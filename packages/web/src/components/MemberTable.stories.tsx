@@ -93,3 +93,39 @@ export const NoMatch: Story = {
     await expect(within(canvasElement).getByText('No member matches “zed”.')).toBeVisible()
   },
 }
+
+// in a team through groups: where each comes from; someone in only through a group follows the
+// group, so their role can't be changed here and they can't be removed
+export const ThroughGroups: Story = {
+  args: {
+    members: [
+      { person: riley, role: 'admin', direct: 'admin', through: [], joined: day('2026-09-19') },
+      {
+        person: maya,
+        role: 'maintainer',
+        direct: 'member',
+        through: [{ group: { id: 'g-design', handle: 'design', name: 'Design' }, role: 'maintainer' }],
+        joined: day('2026-08-12'),
+      },
+      {
+        person: sam,
+        role: 'member',
+        direct: null,
+        through: [{ group: { id: 'g-design', handle: 'design', name: 'Design' }, role: 'member' }],
+        joined: day('2026-08-05'),
+      },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    const page = within(canvasElement)
+    await expect(page.getByRole('columnheader', { name: 'Source' })).toBeVisible()
+    const sam_ = page.getByRole('row', { name: /Sam/ })
+    await expect(within(sam_).getByText(/Through/)).toBeVisible()
+    await expect(within(sam_).queryByRole('combobox')).toBeNull()
+    await expect(within(sam_).queryByRole('button')).toBeNull()
+    const maya_ = page.getByRole('row', { name: /Maya/ })
+    await expect(within(maya_).getByText('Direct')).toBeVisible()
+    await expect(within(maya_).getByRole('combobox', { name: /role/ })).toHaveValue('member')
+    await expect(within(maya_).getByText(/Maintainer through a group/)).toBeVisible()
+  },
+}

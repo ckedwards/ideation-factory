@@ -1,11 +1,13 @@
-// A group: what it's for, and who's in it.
+// A group: what it's for, who's in it, and the teams it's part of.
 import { ApiError } from '@ideaf/api'
-import { Page, PageHeader, Section } from '@ideaf/ui'
-import { useInfiniteQuery, useSuspenseQuery } from '@tanstack/react-query'
+import { Page, PageHeader, Section, Toast } from '@ideaf/ui'
+import { useState } from 'react'
+import { useInfiniteQuery, useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, notFound } from '@tanstack/react-router'
+import { GroupTeams } from '../../../components/GroupTeams.tsx'
 import { Membership } from '../../../components/Membership.tsx'
 import { MemberList } from '../../../components/MemberList.tsx'
-import { membersQuery, useMembership } from '../../../members.ts'
+import { groupTeamsQuery, membersQuery, useMembership, useTeamGroupWrites } from '../../../members.ts'
 import { groupByHandleQuery } from '../../../places.ts'
 import { plural } from '../../../plural.ts'
 
@@ -29,6 +31,9 @@ function Group() {
   const { data: group } = useSuspenseQuery(groupByHandleQuery(handle))
   const members = useInfiniteQuery(membersQuery('group', handle))
   const membership = useMembership('group', group)
+  const teams = useQuery(groupTeamsQuery(handle))
+  const [problem, setProblem] = useState<string | null>(null)
+  const writes = useTeamGroupWrites(setProblem)
   return (
     <Page>
       <PageHeader
@@ -47,6 +52,15 @@ function Group() {
           }
         />
       </Section>
+      <Section title="Teams">
+        <GroupTeams
+          group={group}
+          teams={teams.data?.items ?? []}
+          admin={membership.role === 'admin'}
+          onLeave={(team) => writes.remove(team.handle, group.handle)}
+        />
+      </Section>
+      <Toast message={problem} onDismiss={() => setProblem(null)} />
     </Page>
   )
 }
