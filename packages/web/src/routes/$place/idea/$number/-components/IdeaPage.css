@@ -81,3 +81,33 @@
     display: block;
   }
 }
+/* the comments panel: its filters, its small group labels, and the whole-file box at the end */
+.idea-comment-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.idea-panel-group {
+  display: grid;
+  gap: var(--space-2);
+}
+.idea-panel-label {
+  margin: 0;
+  color: var(--ink-3);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.idea-file-comment {
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: var(--hairline) solid var(--rule);
+}
+.idea-file-comment-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
