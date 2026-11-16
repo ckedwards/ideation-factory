@@ -116,7 +116,6 @@ function Ideas() {
             setQuery(value)
             set({ q: value.trim() ? value : undefined })
           }}
-          shortcut="/"
         />
         {searching ? (
           found.isPending ? (
