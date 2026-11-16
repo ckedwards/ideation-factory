@@ -64,9 +64,15 @@ describe('a notification email', () => {
     expect(email.to).toBe('maya@example.test')
     expect(email.subject).toBe('[Mobile] Faster sign-in (mobile/idea/9)')
     expect(email.text).toContain('…and 3 earlier updates')
+    // the idea and its team first, in the body too, not only the subject
+    expect(email.text.startsWith('Faster sign-in · Mobile\n')).toBe(true)
     expect(email.text).toContain('Riley (@riley) asked you to review it')
-    expect(email.text).toContain('planbot for Riley (@riley) commented: “Shall we <b>drop</b> passwords?”')
-    expect(email.text).toContain('Open it: https://ideas.example.test/mobile/idea/9')
+    // a comment: who, then what they said, in full, quoted
+    expect(email.text).toContain('planbot for Riley (@riley) commented:\n> Shall we <b>drop</b> passwords?')
+    expect(email.text).toContain('View Faster sign-in: https://ideas.example.test/mobile/idea/9')
+    expect(email.html).toContain('<blockquote')
+    expect(email.html).toContain('>View Faster sign-in</a>')
+    expect(email.html).not.toContain('Open it')
     expect(email.text).toContain('You’re getting this because you were asked to review it.')
     // escaped in the HTML
     expect(email.html).toContain('Shall we &lt;b&gt;drop&lt;/b&gt; passwords?')

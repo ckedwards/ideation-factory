@@ -112,7 +112,7 @@ function ideaEmail(due: DueEmail, item: DueEmail['ideas'][number], site: Site, h
   const address = ideaPath(idea.place, idea.number).slice(1)
   const where = idea.teamInfo ? idea.teamInfo.name : idea.place
   const unsubscribe = unsubscribeURL(site.baseURL, site.secret, { user: due.to.id, scope: idea.id })
-  const block = ideaBlock(item, due.people, site, false)
+  const block = ideaBlock(item, due.people, site)
   const why = `You’re getting this because ${WHY[item.reason]}.`
   return {
     to: due.to.email,
@@ -139,31 +139,55 @@ function ideaEmail(due: DueEmail, item: DueEmail['ideas'][number], site: Site, h
   }
 }
 
-/** One idea's updates, with its title as a link (above them in a digest) and a link to open it. */
-function ideaBlock(item: DueEmail['ideas'][number], people: DueEmail['people'], site: Site, titled = true) {
+/** What someone wrote with an update (a comment, a reply, a suggestion, a review's summary), if anything. */
+function saidIn(event: InboxEvent): string | null {
+  return typeof event.detail.body === 'string' && event.detail.body.trim() ? event.detail.body.trim() : null
+}
+
+/**
+ * One idea's updates: its title (a link) and team first, then each update: who did what, and what
+ * they wrote quoted in full under it, then a link that says where it goes.
+ */
+function ideaBlock(item: DueEmail['ideas'][number], people: DueEmail['people'], site: Site) {
   const { idea } = item
   const url = `${site.baseURL}${ideaPath(idea.place, idea.number)}`
-  const lines = item.events.map((e) => updateLine(e, people))
   const earlier = item.more > 0 ? `…and ${item.more} earlier ${item.more === 1 ? 'update' : 'updates'}` : null
   const where = idea.teamInfo ? idea.teamInfo.name : idea.place
+  const updates = item.events.map((e) => {
+    const said = saidIn(e)
+    // the line without what was said, which is quoted under it
+    const line = updateLine(said ? { ...e, detail: { ...e.detail, body: '' } } : e, people)
+    return { line: said ? `${line}:` : line, said: said ? clip(said, 2000) : null }
+  })
+  const view = `View ${idea.title}`
   return {
     text: [
-      ...(titled ? [`${idea.title} (${where}, ${WHY[item.reason]})`] : []),
-      ...(earlier ? [earlier] : []),
-      ...lines.map((l) => (titled ? `  ${l}` : l)),
+      `${idea.title} · ${where}`,
       '',
-      `Open it: ${url}`,
+      ...(earlier ? [earlier, ''] : []),
+      ...updates.flatMap((u) => [u.line, ...(u.said ? u.said.split('\n').map((l) => `> ${l}`) : []), '']),
+      `${view}: ${url}`,
       '',
     ].join('\n'),
-    html: `${titled ? `<h2 style="font-size:17px;margin:20px 0 4px"><a href="${escape(url)}" style="color:#1d1d1f">${escape(idea.title)}</a> <span style="color:#666;font-weight:400;font-size:14px">${escape(where)} · ${escape(WHY[item.reason])}</span></h2>` : ''}
-${earlier ? `<p style="color:#666;margin:4px 0">${escape(earlier)}</p>` : ''}
-<ul style="padding-left:20px;margin:4px 0">${lines.map((l) => `<li>${escape(l)}</li>`).join('')}</ul>
-<p style="margin:8px 0 16px"><a href="${escape(url)}">Open it</a></p>`,
+    html: `<h2 style="font:600 19px/1.3 Georgia,serif;margin:20px 0 2px"><a href="${escape(url)}" style="color:#1f1d1a;text-decoration:none">${escape(idea.title)}</a></h2>
+<p style="color:#6f685e;font-size:13px;margin:0 0 12px">${escape(where)} · ${escape(WHY[item.reason])}</p>
+${earlier ? `<p style="color:#6f685e;margin:4px 0">${escape(earlier)}</p>` : ''}
+${updates
+  .map(
+    (u) =>
+      `<p style="margin:10px 0 4px">${escape(u.line)}</p>${
+        u.said
+          ? `<blockquote style="margin:0 0 8px;padding:6px 12px;border-left:3px solid #cfc8ba;color:#1f1d1a;white-space:pre-wrap">${escape(u.said)}</blockquote>`
+          : ''
+      }`,
+  )
+  .join('\n')}
+<p style="margin:14px 0 18px"><a href="${escape(url)}" style="display:inline-block;padding:6px 14px;border-radius:6px;background:#2b6b5a;color:#ffffff;text-decoration:none;font-weight:600">${escape(view)}</a></p>`,
   }
 }
 
 function page(body: string, footer: string): string {
-  return `<!doctype html><html><body style="font:15px/1.5 system-ui,sans-serif;color:#1d1d1f">
+  return `<!doctype html><html><body style="font:15px/1.5 system-ui,sans-serif;color:#1f1d1a;max-width:40rem">
 ${body}
 <p style="color:#666;font-size:13px;border-top:1px solid #ddd;padding-top:8px">${footer}</p>
 </body></html>`
