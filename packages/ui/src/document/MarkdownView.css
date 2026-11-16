@@ -294,6 +294,10 @@
   color: var(--del-ink);
   text-decoration: line-through;
 }
+/* what was taken out, then what replaced it: a gap between them, so their words don't run together */
+.prose del + ins {
+  margin-inline-start: 0.3em;
+}
 .prose .rl::before {
   content: '';
   position: absolute;

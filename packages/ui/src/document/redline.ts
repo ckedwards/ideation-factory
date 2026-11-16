@@ -145,7 +145,7 @@ function wordChanges(
   }
   const oldText = base.source.slice(start(before), end(before))
   const newText = current.source.slice(start(after), end(after))
-  const parts = diffWordsWithSpace(oldText, newText)
+  const parts = joined(diffWordsWithSpace(oldText, newText))
   const common = parts.filter((p) => !p.added && !p.removed).reduce((n, p) => n + p.value.trim().length, 0)
   if (common / Math.max(oldText.trim().length, newText.trim().length, 1) < SIMILAR) {
     return null
@@ -171,6 +171,53 @@ function wordChanges(
     }
   }
   return { inserted, deleted }
+}
+
+type Part = { value: string; added?: boolean; removed?: boolean }
+
+/**
+ * Changes a space or one word apart, joined into one: the unchanged words between them go into both
+ * sides, so "a week" to "every two weeks" reads ~~a week~~ every two weeks, as tracked changes do, not
+ * ~~a~~every two ~~week~~weeks with the words run together.
+ */
+function joined(parts: Part[]): Part[] {
+  const out: Part[] = []
+  let i = 0
+  while (i < parts.length) {
+    if (!parts[i]!.added && !parts[i]!.removed) {
+      out.push(parts[i++]!)
+      continue
+    }
+    let removed = ''
+    let added = ''
+    for (;;) {
+      while (i < parts.length && (parts[i]!.added || parts[i]!.removed)) {
+        const part = parts[i++]!
+        if (part.added) {
+          added += part.value
+        } else {
+          removed += part.value
+        }
+      }
+      // a gap of spaces, or one word with its spaces, before another change: into both sides
+      const gap = parts[i]
+      const next = parts[i + 1]
+      if (gap && next && (next.added || next.removed) && gap.value.trim().split(/\s+/).filter(Boolean).length <= 1) {
+        removed += gap.value
+        added += gap.value
+        i++
+        continue
+      }
+      break
+    }
+    if (removed) {
+      out.push({ value: removed, removed: true })
+    }
+    if (added) {
+      out.push({ value: added, added: true })
+    }
+  }
+  return out
 }
 
 function comparable(before: RootContent, after: RootContent): boolean {

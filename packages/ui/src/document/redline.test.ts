@@ -34,6 +34,21 @@ describe('the redline', () => {
     ])
   })
 
+  test('changes a space or one word apart read as one change, not words run together', () => {
+    // "a week" to "every two weeks" was "a"→"every two", " ", "week"→"weeks": ~~a~~every two ~~week~~weeks
+    expect(summary('Move one type a week.\n', 'Move one type every two weeks.\n')).toEqual([
+      { kind: 'edited', inserted: ['every two weeks'], deleted: ['a week'] },
+    ])
+    // one unchanged word between two changes joins them too
+    expect(
+      summary('Ship the fast path to every team this week.\n', 'Ship a fast road to every team this week.\n'),
+    ).toEqual([{ kind: 'edited', inserted: ['a fast road'], deleted: ['the fast path'] }])
+    // two unchanged words keep them apart
+    expect(summary('Ship it to every team now.\n', 'Ship them to every team today.\n')).toEqual([
+      { kind: 'edited', inserted: ['them', 'today'], deleted: ['it', 'now'] },
+    ])
+  })
+
   test('a deletion shows the words a reader saw, not the Markdown around them', () => {
     expect(summary('Ship it **soon**, to everyone.\n', 'Ship it to everyone.\n')).toEqual([
       { kind: 'edited', inserted: [], deleted: ['soon, '] },
