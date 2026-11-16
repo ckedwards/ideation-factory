@@ -103,3 +103,18 @@
   color: var(--ink-3);
   font-size: var(--text-sm);
 }
+/* a review in the timeline: its verdict's colour on the rule, and what they said under it */
+.idea-activity-review.is-approve {
+  border-left-color: var(--ok);
+}
+.idea-activity-review.is-request-changes,
+.idea-activity-review.is-reject {
+  border-left-color: var(--warn);
+}
+.idea-activity-said {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-prose);
+  font-size: var(--text-md);
+}

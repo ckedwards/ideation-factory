@@ -39,6 +39,21 @@ const activity: ActivityItem[] = [
     },
   },
   {
+    kind: 'requested',
+    at: hours(40),
+    by: actors.person,
+    who: 'Maya Chen (@maya)',
+  },
+  {
+    kind: 'review',
+    at: hours(30),
+    by: { kind: 'person', person: maya },
+    verdict: 'request-changes',
+    version: 1,
+    body: 'Say what happens to a change made offline twice.',
+    dismissed: null,
+  },
+  {
     kind: 'version',
     number: 2,
     by: actors.botForPerson,
@@ -99,6 +114,10 @@ export const Activity: Story = {
     await expect(page.getByText('Edited with 3 commands', { exact: false })).toBeVisible()
     await expect(page.getByRole('link', { name: 'What changed' })).toHaveAttribute('href', '#changes-1-2')
     await expect(page.getByRole('link', { name: 'notes/risks.md' })).toHaveAttribute('href', '#risks')
+    // reviews are in the timeline too, with what they said
+    await expect(page.getByText(/requested changes to v1/)).toBeVisible()
+    await expect(page.getByText(/asked Maya Chen \(@maya\) to review/)).toBeVisible()
+    await expect(page.getByText('Say what happens to a change made offline twice.')).toBeVisible()
   },
 }
 

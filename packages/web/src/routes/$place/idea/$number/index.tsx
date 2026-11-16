@@ -71,6 +71,7 @@ function Overview() {
     ...idea.versions.map((v) => v.by.user),
     ...reviews.reviews.flatMap((r) => [r.by.user, ...(r.dismissed ? [r.dismissed.by.user] : [])]),
     ...reviews.history.map((h) => h.by.user),
+    ...reviews.requests.flatMap((r) => (r.by ? [r.by] : [])),
   ])
   const asked = reviews.reviewers.filter(
     (s): s is Extract<Subject, { kind: 'user' | 'group' }> => s.kind === 'user' || s.kind === 'group',
@@ -131,6 +132,29 @@ function Overview() {
       changesHref: v.number > 1 ? links.changes(v.number - 1, v.number) : null,
     })),
     // the first is how it was created, which its first version already says
+    // who was asked to review, when, and by whom (or by the team's rules)
+    ...reviews.requests.flatMap((r): ActivityItem[] =>
+      r.subject.kind === 'user' || r.subject.kind === 'group'
+        ? [
+            {
+              kind: 'requested',
+              at: r.at,
+              by: r.by ? actorOf({ user: r.by, bot: null, purpose: 'me' }, people) : null,
+              who: names.get(subjectKey(r.subject))?.label ?? '…',
+            },
+          ]
+        : [],
+    ),
+    // each reviewer's latest verdict, when they gave it
+    ...reviews.reviews.map((r): ActivityItem => ({
+      kind: 'review',
+      at: r.at,
+      by: actorOf(r.by, people),
+      verdict: r.verdict,
+      version: r.version,
+      body: r.body,
+      dismissed: r.dismissed ? { by: actorOf(r.dismissed.by, people), reason: r.dismissed.reason } : null,
+    })),
     ...reviews.history.slice(1).map((h, i): ActivityItem => ({
       kind: 'status',
       at: h.at,

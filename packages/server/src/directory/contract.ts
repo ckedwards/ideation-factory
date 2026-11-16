@@ -429,10 +429,29 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         expect((await d.permission('i1', 'u-sam')).view).toBe(true)
         expect((await d.permission('i1', 'u-devon')).view).toBe(true)
         expect(await d.grants('i1')).toEqual([
-          { subject: { kind: 'group', id: group }, edit: false, share: false, reviewer: true },
+          // each request says when, and who asked
+          {
+            subject: { kind: 'group', id: group },
+            edit: false,
+            share: false,
+            reviewer: true,
+            asked: { at: expect.any(Number), by: 'u-riley' },
+          },
           { subject: { kind: 'team', id: team }, edit: false, share: false, reviewer: false },
-          { subject: { kind: 'user', id: 'u-maya' }, edit: true, share: false, reviewer: true },
-          { subject: { kind: 'user', id: 'u-sam' }, edit: false, share: false, reviewer: true },
+          {
+            subject: { kind: 'user', id: 'u-maya' },
+            edit: true,
+            share: false,
+            reviewer: true,
+            asked: { at: expect.any(Number), by: 'u-riley' },
+          },
+          {
+            subject: { kind: 'user', id: 'u-sam' },
+            edit: false,
+            share: false,
+            reviewer: true,
+            asked: { at: expect.any(Number), by: 'u-riley' },
+          },
         ])
         // off the reviewers, still a viewer
         await d.setReviewer('u-riley', 'i1', { kind: 'user', id: 'u-sam' }, false)
@@ -570,6 +589,22 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         expect(met.checks[1]).toMatchObject({ met: true, groups: [{ approvedBy: ['u-devon'] }] })
         // an idea outside any team has none
         expect((await listed('own')).requirements).toEqual({ met: true, checks: [] })
+      })
+
+      test('a review request says when, and who asked; asked again, it stands; taken off, it goes', async () => {
+        const { d, team } = await withTeam()
+        await d.registerIdea(idea('i1', { team }))
+        const asked = async () =>
+          (await d.grants('i1')).find((g) => g.subject.kind === 'user' && g.subject.id === 'u-sam')
+        const first = clock
+        await d.setReviewer('u-riley', 'i1', { kind: 'user', id: 'u-sam' }, true)
+        const request = (await asked())!.asked
+        expect(request).toMatchObject({ by: 'u-riley' })
+        expect(request!.at).toBeGreaterThanOrEqual(first)
+        await d.setReviewer('u-maya', 'i1', { kind: 'user', id: 'u-sam' }, true)
+        expect((await asked())!.asked).toEqual(request)
+        await d.setReviewer('u-riley', 'i1', { kind: 'user', id: 'u-sam' }, false)
+        expect((await asked())!.asked).toBeUndefined()
       })
 
       test('people, groups and teams can be named by handle, and are stored by ID', async () => {

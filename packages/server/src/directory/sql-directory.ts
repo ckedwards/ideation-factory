@@ -740,8 +740,13 @@ export class SqlDirectory implements Directory {
           can_share: 0,
           reviewer: 1,
           created_at: this.#now(),
+          // asked by its team's rules, not a person
+          asked_at: this.#now(),
+          asked_by: null,
         })
-        .onConflict((oc) => oc.columns(['idea', 'kind', 'subject']).doUpdateSet({ reviewer: 1 }))
+        .onConflict((oc) =>
+          oc.columns(['idea', 'kind', 'subject']).doUpdateSet({ reviewer: 1, asked_at: this.#now(), asked_by: null }),
+        )
         .execute()
       await this.#notifyRequest(ideaId, { kind: 'group', id }, null)
       asked.push(id)
@@ -2685,6 +2690,8 @@ export class SqlDirectory implements Directory {
       edit: r.can_edit === 1,
       share: r.can_share === 1,
       reviewer: r.reviewer === 1,
+      // only on a review request
+      ...(r.reviewer === 1 && r.asked_at !== null ? { asked: { at: Number(r.asked_at), by: r.asked_by } } : {}),
     }))
   }
 
@@ -2787,8 +2794,17 @@ export class SqlDirectory implements Directory {
           can_share: 0,
           reviewer: 1,
           created_at: this.#now(),
+          asked_at: this.#now(),
+          asked_by: actor,
         })
-        .onConflict((oc) => oc.columns(['idea', 'kind', 'subject']).doUpdateSet({ reviewer: 1 }))
+        .onConflict((oc) =>
+          oc
+            .columns(['idea', 'kind', 'subject'])
+            // asked again: when they were first asked, and by whom, stands
+            .doUpdateSet(
+              before?.reviewer === 1 ? { reviewer: 1 } : { reviewer: 1, asked_at: this.#now(), asked_by: actor },
+            ),
+        )
         .execute()
       if (before?.reviewer !== 1) {
         await this.#notifyRequest(ideaId, subject, { user: actor, bot: null, purpose: 'me' })
@@ -2797,7 +2813,7 @@ export class SqlDirectory implements Directory {
       // taken off the reviewers, they keep their access
       await this.#db
         .updateTable('grants')
-        .set({ reviewer: 0 })
+        .set({ reviewer: 0, asked_at: null, asked_by: null })
         .where('idea', '=', ideaId)
         .where('kind', '=', subject.kind)
         .where('subject', '=', subject.id)

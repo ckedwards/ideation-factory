@@ -89,6 +89,9 @@ export interface DB {
     can_share: number
     reviewer: number
     created_at: number
+    /** When it asked them to review, and who did (null: its team's rules); null while they're not asked. */
+    asked_at: number | null
+    asked_by: string | null
   }
   /**
    * What a token was made to do, chosen when it was approved: its purpose (and
@@ -221,7 +224,7 @@ export const COLUMNS = {
   numbering: ['place', 'next'],
   idea_aliases: ['place', 'number', 'idea'],
   handle_aliases: ['kind', 'handle', 'owner', 'created_at'],
-  grants: ['idea', 'kind', 'subject', 'can_edit', 'can_share', 'reviewer', 'created_at'],
+  grants: ['idea', 'kind', 'subject', 'can_edit', 'can_share', 'reviewer', 'created_at', 'asked_at', 'asked_by'],
   token_grants: ['id', 'user', 'purpose', 'bot', 'read_only', 'limited', 'created_at', 'revoked_at'],
   token_grant_targets: ['token_grant', 'kind', 'target'],
   inbox_events: ['id', 'idea', 'kind', 'actor', 'by_user', 'at', 'detail'],
@@ -349,6 +352,8 @@ const MIGRATIONS: Migration[] = [
       .addColumn('can_share', 'integer', (c) => c.notNull())
       .addColumn('reviewer', 'integer', (c) => c.notNull().defaultTo(0))
       .addColumn('created_at', 'bigint', (c) => c.notNull())
+      .addColumn('asked_at', 'bigint')
+      .addColumn('asked_by', 'text')
       .addPrimaryKeyConstraint('grants_pk', ['idea', 'kind', 'subject'])
       .execute()
     await db.schema.createIndex('grants_subject').on('grants').columns(['kind', 'subject', 'idea']).execute()
