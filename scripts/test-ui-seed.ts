@@ -43,7 +43,9 @@ async function auth(path: string, ip: string, body: unknown, cookie?: string): P
       },
       body: JSON.stringify(body),
     })
-    // without the trusted address, everyone shares one, and the limits make them wait their turn
+    // Sign-in limits how many codes one address can ask for. If the app doesn't believe our
+    // X-Forwarded-For (test-ui.yaml trusts Docker's usual networks), everyone counts as one
+    // address and some get 429: wait and try again, so they get through a few at a time.
     if (response.status === 429 && attempt < 12) {
       await Bun.sleep(5_000)
       continue
