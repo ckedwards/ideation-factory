@@ -66,6 +66,7 @@ import {
   type TokenGrant,
   type TokenGrantInput,
   type User,
+  type MemberListOptions,
 } from './types.ts'
 
 const HANDLE = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/
@@ -1699,29 +1700,53 @@ export class SqlDirectory implements Directory {
     })
   }
 
-  async members(
-    kind: ContainerKind,
-    id: string,
-    options: { cursor?: string; limit?: number } = {},
-  ): Promise<Page<Member>> {
+  async members(kind: ContainerKind, id: string, options: MemberListOptions = {}): Promise<Page<Member>> {
     const limit = pageSize(options.limit)
-    const after = decodeCursor(options.cursor)
+    const sort = options.sort ?? 'name'
+    const desc = options.order === 'desc'
+    const q = likeEscape((options.query ?? '').trim().toLowerCase())
+    // the sort's key, then the handle, which is unique, so pages never overlap or skip
+    const key =
+      sort === 'joined'
+        ? raw<string | number>`memberships.created_at`
+        : sort === 'role'
+          ? raw<string | number>`CASE memberships.role WHEN 'admin' THEN 0 WHEN 'maintainer' THEN 1 ELSE 2 END`
+          : raw<string | number>`lower(users.name)`
+    const direction = desc ? 'desc' : 'asc'
     let query = this.#db
       .selectFrom('memberships')
       .innerJoin('users', 'users.id', 'memberships.user')
-      .select(['users.id', 'users.handle', 'users.name', 'users.inactive', 'memberships.role'])
+      .select([
+        'users.id',
+        'users.handle',
+        'users.name',
+        'users.inactive',
+        'memberships.role',
+        'memberships.created_at',
+      ])
+      .select(key.as('sort_key'))
       .where('memberships.kind', '=', kind)
       .where('memberships.container', '=', id)
-      .orderBy('users.handle')
+      .orderBy(key, direction)
+      .orderBy('users.handle', direction)
       .limit(limit + 1)
-    if (after) {
-      query = query.where('users.handle', '>', String(after[0]))
+    if (q) {
+      query = query.where((eb) =>
+        eb.or([eb('users.handle', 'like', `${q}%`), eb(eb.fn('lower', ['users.name']), 'like', `%${q}%`)]),
+      )
+    }
+    const after = decodeCursor(options.cursor)
+    if (after && after.length === 2) {
+      const [k, h] = after
+      const past = raw.raw(desc ? '<' : '>')
+      query = query.where(raw<SqlBool>`(${key} ${past} ${k} OR (${key} = ${k} AND users.handle ${past} ${String(h)}))`)
     }
     const rows = await query.execute()
     const page = rows.slice(0, limit)
+    const last = page.at(-1)
     return {
-      items: page.map((r) => ({ user: toUser(r), role: r.role })),
-      next: rows.length > limit ? encodeCursor([page.at(-1)!.handle]) : null,
+      items: page.map((r) => ({ user: toUser(r), role: r.role, joined: r.created_at })),
+      next: rows.length > limit && last ? encodeCursor([last.sort_key as string | number, last.handle]) : null,
     }
   }
 
@@ -1830,7 +1855,15 @@ export class SqlDirectory implements Directory {
         .where('user', '=', user)
         .execute()
     })
-    return ok({ user: person, role })
+    // when they joined: a role change keeps the day they first did
+    const joined = await this.#db
+      .selectFrom('memberships')
+      .select('created_at')
+      .where('kind', '=', kind)
+      .where('container', '=', container.id)
+      .where('user', '=', user)
+      .executeTakeFirstOrThrow()
+    return ok({ user: person, role, joined: joined.created_at })
   }
 
   async removeMember(actor: string, kind: ContainerKind, id: string, user: string): Promise<Result<null>> {

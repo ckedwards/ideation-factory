@@ -242,6 +242,20 @@ export const HANDLE_PARKED_MS = 90 * 24 * 60 * 60 * 1000
 export interface Member {
   user: User
   role: Role
+  /** When they joined (ms). */
+  joined: number
+}
+
+/** How a members list is sorted: by name (the default), by role (admins first), or by when they joined. */
+export type MemberSort = 'name' | 'role' | 'joined'
+
+export interface MemberListOptions {
+  cursor?: string
+  limit?: number
+  /** Those whose handle starts with it, or whose name has it in it. */
+  query?: string
+  sort?: MemberSort
+  order?: 'asc' | 'desc'
 }
 
 /** The teams and groups someone is in, with their role, and those they've asked to join. */
@@ -502,7 +516,7 @@ export interface Directory {
    * their own old handle, or it was left long enough ago.
    */
   parkedUntil(kind: 'user' | 'team', handle: string, requester: string | null): Promise<number | null>
-  members(kind: ContainerKind, id: string, options?: { cursor?: string; limit?: number }): Promise<Page<Member>>
+  members(kind: ContainerKind, id: string, options?: MemberListOptions): Promise<Page<Member>>
   memberships(user: string): Promise<Memberships>
   addMember(actor: string, kind: ContainerKind, id: string, user: string, role?: Role): Promise<Result<Member>>
   removeMember(actor: string, kind: ContainerKind, id: string, user: string): Promise<Result<null>>

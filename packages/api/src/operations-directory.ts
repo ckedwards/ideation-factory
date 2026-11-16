@@ -66,11 +66,19 @@ function membership<K extends 'team' | 'group'>(kind: K) {
     members: defineOperation({
       name: `list_${kind}_members`,
       summary: `List a ${kind}'s members`,
-      description: `A ${kind}'s members with their roles, 25 at a time.`,
+      description: `A ${kind}'s members with their roles and when they joined, 25 at a time: by name unless sorted by role (admins first) or by when they joined, and optionally only those whose handle starts with, or whose name has, a search.`,
       method: 'GET',
       path: `${path}/members`,
       kind: 'read',
-      input: id.extend({ cursor: Cursor, limit: Limit }).strict(),
+      input: id
+        .extend({
+          q: z.string().max(100).optional(),
+          sort: z.enum(['name', 'role', 'joined']).optional(),
+          order: z.enum(['asc', 'desc']).optional(),
+          cursor: Cursor,
+          limit: Limit,
+        })
+        .strict(),
       output: Page(Member),
     }),
     addMember: defineOperation({
