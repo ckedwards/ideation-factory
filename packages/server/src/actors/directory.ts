@@ -47,6 +47,7 @@ import type {
   NotificationSettings,
   NotifyBatch,
   WatchLevel,
+  MemberListOptions,
 } from '../directory/types.ts'
 
 /** A new idea's row for the directory's index, before it's numbered. */
@@ -177,13 +178,18 @@ export const directory = actor({
     releaseHandle: (c, handle: string) => releaseHandle(authOf(c), directoryOf(c), handle),
     parkedUntil: (c, kind: 'user' | 'team', handle: string, requester: string | null) =>
       directoryOf(c).parkedUntil(kind, handle, requester),
-    members: (c, kind: ContainerKind, id: string, options?: { cursor?: string; limit?: number }) =>
+    members: (c, kind: ContainerKind, id: string, options?: MemberListOptions) =>
       directoryOf(c).members(kind, id, options),
     addMember: (c, by: string, kind: ContainerKind, id: string, user: string, role?: Role) =>
       directoryOf(c).addMember(by, kind, id, user, role),
     memberships: (c, user: string) => directoryOf(c).memberships(user),
     removeMember: (c, by: string, kind: ContainerKind, id: string, user: string) =>
       directoryOf(c).removeMember(by, kind, id, user),
+    teamGroups: (c, team: string) => directoryOf(c).teamGroups(team),
+    groupTeams: (c, group: string) => directoryOf(c).groupTeams(group),
+    addTeamGroup: (c, by: string, team: string, group: string, role?: 'member' | 'maintainer') =>
+      directoryOf(c).addTeamGroup(by, team, group, role),
+    removeTeamGroup: (c, by: string, team: string, group: string) => directoryOf(c).removeTeamGroup(by, team, group),
     requestToJoin: (c, by: string, kind: ContainerKind, id: string) => directoryOf(c).requestToJoin(by, kind, id),
     joinRequests: (c, by: string, kind: ContainerKind, id: string) => directoryOf(c).joinRequests(by, kind, id),
     decide: (c, by: string, kind: ContainerKind, id: string, user: string, approve: boolean) =>

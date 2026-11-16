@@ -241,9 +241,40 @@ export const HANDLE_PARKED_MS = 90 * 24 * 60 * 60 * 1000
 
 export interface Member {
   user: User
+  /** Their role: the highest of their own and each group's (Groups in teams in architecture.md). */
   role: Role
-  /** When they joined (ms). */
+  /** When they joined (ms): directly, or through the first of their groups. */
   joined: number
+  /** Their own membership's role, or null when they're in only through groups. */
+  direct: Role | null
+  /** The groups they're in it through (teams only), each with the role it gives them. */
+  through: Array<{ group: ContainerRef; role: Role }>
+}
+
+/** A team's or group's ID, handle and name, to show and link to. */
+export interface ContainerRef {
+  id: string
+  handle: string
+  name: string
+}
+
+/** A group in a team: its members are the team's, at up to its role (never admin). */
+export interface TeamGroup {
+  group: ContainerRef & { members: number }
+  role: Exclude<Role, 'admin'>
+  addedBy: User | null
+  added: number
+  /** How many are in the team only through this group: who'd leave it if the group did. */
+  leaving: number
+}
+
+/** A team a group is in, with the role the group has there. */
+export interface GroupTeam {
+  team: ContainerRef
+  role: Exclude<Role, 'admin'>
+  added: number
+  /** How many are in the team only through this group: who'd leave it if the group did. */
+  leaving: number
 }
 
 /** How a members list is sorted: by name (the default), by role (admins first), or by when they joined. */
@@ -261,7 +292,17 @@ export interface MemberListOptions {
 /** The teams and groups someone is in, with their role, and those they've asked to join. */
 export interface Memberships {
   /** With how much of each you hear about. */
-  teams: Array<{ id: string; handle: string; name: string; archived: boolean; role: Role; watch: WatchLevel }>
+  teams: Array<{
+    id: string
+    handle: string
+    name: string
+    archived: boolean
+    /** Your role: the highest of your own and each of your groups'. */
+    role: Role
+    /** Your own membership's role, or null when you're in only through groups (and can't leave on your own). */
+    direct: Role | null
+    watch: WatchLevel
+  }>
   groups: Array<{ id: string; handle: string; name: string; role: Role }>
   requested: Array<{ kind: ContainerKind; id: string }>
 }
@@ -520,6 +561,14 @@ export interface Directory {
   memberships(user: string): Promise<Memberships>
   addMember(actor: string, kind: ContainerKind, id: string, user: string, role?: Role): Promise<Result<Member>>
   removeMember(actor: string, kind: ContainerKind, id: string, user: string): Promise<Result<null>>
+  /** The groups in a team, by handle. */
+  teamGroups(team: string): Promise<Result<TeamGroup[]>>
+  /** The teams a group is in, by handle. */
+  groupTeams(group: string): Promise<Result<GroupTeam[]>>
+  /** Adds a group to a team, or changes its role there: the team's admins. */
+  addTeamGroup(actor: string, team: string, group: string, role?: Exclude<Role, 'admin'>): Promise<Result<TeamGroup>>
+  /** Takes a group out of a team: the team's admins, or the group's (its leaving). */
+  removeTeamGroup(actor: string, team: string, group: string): Promise<Result<null>>
   requestToJoin(actor: string, kind: ContainerKind, id: string): Promise<Result<{ requested: boolean }>>
   joinRequests(actor: string, kind: ContainerKind, id: string): Promise<Result<User[]>>
   decide(actor: string, kind: ContainerKind, id: string, user: string, approve: boolean): Promise<Result<null>>

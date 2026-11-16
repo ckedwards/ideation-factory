@@ -388,8 +388,33 @@ export const Team = z.object({
   requirements: TeamRequirements,
 })
 export const Group = z.object({ kind: z.literal('group'), ...ContainerFields, deleted: z.boolean() })
-/** A team's or group's member: their role, and when they joined (ms). */
-export const Member = z.object({ user: User, role: Role, joined: z.number() })
+/** A team's or group's ID, handle and name. */
+export const ContainerRef = z.object({ id: z.string(), handle: z.string(), name: z.string() })
+/** A group in a team, or a team a group is in, has a member's or a maintainer's role there: never admin. */
+export const GroupRole = z.enum(['member', 'maintainer'])
+/**
+ * A team's or group's member: their role (the highest of their own and, in a team, each of its
+ * groups' they're in), when they joined (ms), their own membership's role (null when they're in only
+ * through groups), and the groups they're in it through.
+ */
+export const Member = z.object({
+  user: User,
+  role: Role,
+  joined: z.number(),
+  direct: Role.nullable(),
+  through: z.array(z.object({ group: ContainerRef, role: Role })),
+})
+/** A group in a team: its members are the team's, at the lower of its role here and theirs in it. */
+export const TeamGroup = z.object({
+  group: ContainerRef.extend({ members: z.number().int() }),
+  role: GroupRole,
+  addedBy: User.nullable(),
+  added: z.number(),
+  /** How many are in the team only through this group: who'd leave it if the group did. */
+  leaving: z.number().int(),
+})
+/** A team a group is in. */
+export const GroupTeam = z.object({ team: ContainerRef, role: GroupRole, added: z.number(), leaving: z.number().int() })
 /**
  * How much of a team you hear about: only the ideas you're involved in (the
  * default), every idea once it's out of draft up to and including its close,
@@ -407,7 +432,10 @@ export const Memberships = z.object({
       handle: z.string(),
       name: z.string(),
       archived: z.boolean(),
+      /** Your role: the highest of your own and each of your groups'. */
       role: Role,
+      /** Your own membership's role, or null when you're in only through groups. */
+      direct: Role.nullable(),
       watch: WatchLevel,
     }),
   ),
