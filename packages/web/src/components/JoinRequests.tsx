@@ -2,7 +2,7 @@
 // let in or turn away.
 import { Button, Empty, type Person, UserName } from '@ideaf/ui'
 import './ContainerList.css'
-import './MemberManager.css'
+import './MemberTable.css'
 
 export interface JoinRequestsProps {
   people: Person[]

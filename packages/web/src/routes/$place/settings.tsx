@@ -6,13 +6,15 @@ import { Section } from '@ideaf/ui'
 import { useMutation, useQueries, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, notFound, redirect, useNavigate } from '@tanstack/react-router'
 import { api } from '../../api.ts'
-import { ContainerSettings } from '../../components/ContainerSettings.tsx'
+import { ContainerSettings, type SettingsTab } from '../../components/ContainerSettings.tsx'
 import { groupByHandleQuery, teamByHandleQuery } from '../../places.ts'
 import { TeamPolicies, type TeamDefaults } from './-components/TeamPolicies.tsx'
 import { TeamProfile } from './-components/TeamProfile.tsx'
 import { type RequirementsView, TeamRequirements } from './-components/TeamRequirements.tsx'
 
 export const Route = createFileRoute('/$place/settings')({
+  validateSearch: (search: Record<string, unknown>): { tab?: SettingsTab } =>
+    search['tab'] === 'requests' || search['tab'] === 'settings' ? { tab: search['tab'] } : {},
   loader: async ({ context: { queryClient }, params }) => {
     if (params.place.startsWith('@')) {
       throw redirect({ to: '/settings', replace: true })
@@ -31,6 +33,7 @@ export const Route = createFileRoute('/$place/settings')({
 
 function TeamSettings() {
   const { place } = Route.useParams()
+  const { tab = 'members' } = Route.useSearch()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { data: team } = useSuspenseQuery(teamByHandleQuery(place))
@@ -73,6 +76,8 @@ function TeamSettings() {
       kind="team"
       container={team}
       href={`/${team.handle}`}
+      tab={tab}
+      onTab={(next) => void navigate({ to: '.', search: next === 'members' ? {} : { tab: next }, replace: true })}
       managed={({ onProblem }) => (
         <Section title="Approval requirements">
           <TeamRequirements

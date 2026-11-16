@@ -1,0 +1,110 @@
+.member-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.member-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.member-row-role {
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+.member-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+.member-add-person {
+  flex: 1;
+  min-width: 14rem;
+}
+.member-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.member-toolbar-search {
+  flex: 1;
+  min-width: 12rem;
+}
+.member-toolbar-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.member-none {
+  margin: 0;
+  color: var(--ink-2);
+}
+.member-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+.member-table th {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--rule-strong);
+  text-align: left;
+  font-weight: 600;
+}
+.member-table td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--rule);
+  vertical-align: middle;
+}
+.member-account {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--space-2);
+}
+.member-handle {
+  flex-basis: 100%;
+  padding-left: calc(var(--space-2) + 1.5rem);
+  color: var(--ink-2);
+}
+.member-joined {
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.member-actions {
+  text-align: right;
+}
+/* on a phone, each member is a card: the column names become labels */
+@media (max-width: 40rem) {
+  .member-table thead {
+    display: none;
+  }
+  .member-table,
+  .member-table tbody,
+  .member-table tr,
+  .member-table td {
+    display: block;
+  }
+  .member-table tr {
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .member-table td {
+    padding: var(--space-1) 0;
+    border: 0;
+  }
+  .member-table td.member-account {
+    display: flex;
+  }
+  .member-table td[data-label='Role']::before,
+  .member-table td[data-label='Joined']::before {
+    content: attr(data-label) ': ';
+    color: var(--ink-2);
+  }
+  .member-actions {
+    text-align: left;
+  }
+}

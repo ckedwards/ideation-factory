@@ -8,19 +8,26 @@ import {
 } from '@tanstack/react-query'
 import { api, membershipsQuery } from './api.ts'
 import type { MemberInfo } from './components/MemberList.tsx'
+import type { MemberView } from './components/MemberTable.tsx'
 
 type Page = { items: MemberInfo[]; next: string | null }
 
-export const membersQuery = (kind: 'team' | 'group', handle: string) =>
+/** A team's or a group's members: by name, or as a view searches and sorts them (MemberTable). */
+export const membersQuery = (kind: 'team' | 'group', handle: string, view: MemberView = {}) =>
   infiniteQueryOptions({
-    queryKey: [kind, handle, 'members'],
+    queryKey: [kind, handle, 'members', view],
     queryFn: async ({ pageParam }: { pageParam: string | null }): Promise<Page> => {
-      const cursor = pageParam ? { cursor: pageParam } : {}
+      const input = {
+        ...(pageParam ? { cursor: pageParam } : {}),
+        ...(view.q ? { q: view.q } : {}),
+        ...(view.sort ? { sort: view.sort } : {}),
+        ...(view.order ? { order: view.order } : {}),
+      }
       const page =
         kind === 'team'
-          ? await api.listTeamMembers({ team: handle, ...cursor })
-          : await api.listGroupMembers({ group: handle, ...cursor })
-      return { items: page.items.map((m) => ({ person: m.user, role: m.role })), next: page.next }
+          ? await api.listTeamMembers({ team: handle, ...input })
+          : await api.listGroupMembers({ group: handle, ...input })
+      return { items: page.items.map((m) => ({ person: m.user, role: m.role, joined: m.joined })), next: page.next }
     },
     initialPageParam: null as string | null,
     getNextPageParam: (page) => page.next,

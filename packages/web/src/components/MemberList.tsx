@@ -6,6 +6,8 @@ import './ContainerList.css'
 export interface MemberInfo {
   person: Person
   role: 'admin' | 'maintainer' | 'member'
+  /** When they joined (ms). */
+  joined?: number
 }
 
 export interface MemberListProps {
