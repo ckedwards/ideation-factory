@@ -1,0 +1,37 @@
+/* the filters in one row under the search, each with its label above it, wrapping on a narrow screen */
+.ideas-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-3) var(--space-4);
+}
+.ideas-filter {
+  display: grid;
+  flex: 0 1 13rem;
+  gap: var(--space-1);
+  min-width: 10rem;
+}
+.ideas-filter-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+.ideas-filters-check {
+  margin-bottom: var(--space-1);
+  font-size: var(--text-sm);
+}
+.ideas-filters-check input {
+  accent-color: var(--accent);
+}
+.ideas-filters > .button {
+  margin-bottom: var(--space-1);
+}
+.ideas-total {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}

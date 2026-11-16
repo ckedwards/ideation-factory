@@ -247,6 +247,15 @@ describe('lists and search', () => {
     expect((await listed())?.visibility).toBe('public')
   })
 
+  test('counts what a list has, open and closed, at its own address', async () => {
+    const riley = as('riley')
+    const owner = handle('riley')
+    const before = await riley.countIdeas({ owner })
+    await riley.createIdea({ title: 'Counted', files: [{ path: 'a.md', content: PLAN }] })
+    expect(await riley.countIdeas({ owner })).toEqual({ open: before.open + 1, closed: before.closed })
+    await expect(riley.countIdeas({ owner: 'no-one-here' })).rejects.toMatchObject({ code: 'not_found' })
+  })
+
   test("a team's idea is listed with its team and description", async () => {
     const riley = as('riley')
     const team = await riley.createTeam({ handle: handle('listed'), name: 'Listed' })

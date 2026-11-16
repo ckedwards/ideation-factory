@@ -2,7 +2,7 @@
 // or a person's at /@riley (their ideas you can see).
 import { ApiError } from '@ideaf/api'
 import { useState } from 'react'
-import { Page, PageHeader, Section, SegmentedControl } from '@ideaf/ui'
+import { Page, PageHeader, Section } from '@ideaf/ui'
 import { type QueryClient, useInfiniteQuery, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, notFound, redirect } from '@tanstack/react-router'
 import { api, membershipsQuery, meQuery } from '../../api.ts'
@@ -12,7 +12,8 @@ import { MemberList } from '../../components/MemberList.tsx'
 import { WatchSelect } from '../../components/WatchSelect.tsx'
 import './-components/TeamPage.css'
 import { ideaInfo } from '../../ideas.ts'
-import { type IdeaState, ideasQuery, STATES } from '../../lists.ts'
+import { countQuery, type IdeaState, ideasQuery } from '../../lists.ts'
+import { StateTabs } from '../../components/StateTabs.tsx'
 import { membersQuery, useMembership } from '../../members.ts'
 import { personByHandleQuery, teamByHandleQuery } from '../../places.ts'
 import { plural } from '../../plural.ts'
@@ -64,6 +65,7 @@ function TeamPage({ handle }: { handle: string }) {
   const { data: me } = useSuspenseQuery(meQuery)
   const [state, setState] = useState<IdeaState>('open')
   const ideas = useInfiniteQuery(ideasQuery({ team: team.id, state }))
+  const counts = useQuery(countQuery({ team: team.id }))
   const members = useInfiniteQuery(membersQuery('team', team.handle))
   const membership = useMembership('team', team)
   const queryClient = useQueryClient()
@@ -96,17 +98,20 @@ function TeamPage({ handle }: { handle: string }) {
       />
       {team.description && <p>{team.description}</p>}
       <Section title="Ideas">
-        <SegmentedControl label="Open or closed" options={STATES} value={state} onChange={setState} />
-        <IdeaList
-          ideas={(ideas.data?.pages.flatMap((p) => p.items) ?? []).map((row) => ideaInfo(row, me.id))}
-          hide={{ team: true }}
-          empty={
-            state === 'closed' ? 'No closed ideas you can see in this team.' : 'No open ideas you can see in this team.'
-          }
-          more={
-            ideas.hasNextPage ? { loading: ideas.isFetchingNextPage, onMore: () => void ideas.fetchNextPage() } : null
-          }
-        />
+        <StateTabs value={state} onChange={setState} counts={counts.data}>
+          <IdeaList
+            ideas={(ideas.data?.pages.flatMap((p) => p.items) ?? []).map((row) => ideaInfo(row, me.id))}
+            hide={{ team: true }}
+            empty={
+              state === 'closed'
+                ? 'No closed ideas you can see in this team.'
+                : 'No open ideas you can see in this team.'
+            }
+            more={
+              ideas.hasNextPage ? { loading: ideas.isFetchingNextPage, onMore: () => void ideas.fetchNextPage() } : null
+            }
+          />
+        </StateTabs>
       </Section>
       <Section title="Members">
         <MemberList
@@ -127,26 +132,28 @@ function PersonPage({ handle }: { handle: string }) {
   const { data: me } = useSuspenseQuery(meQuery)
   const [state, setState] = useState<IdeaState>('open')
   const ideas = useInfiniteQuery(ideasQuery({ owner: person.id, state }))
+  const counts = useQuery(countQuery({ owner: person.id }))
   const yours = person.id === me.id
   return (
     <Page>
       <PageHeader title={person.name} sub={`@${person.handle}${person.inactive ? ' · inactive' : ''}`} />
       <Section title={yours ? 'Your ideas' : 'Their ideas you can see'}>
-        <SegmentedControl label="Open or closed" options={STATES} value={state} onChange={setState} />
-        <IdeaList
-          ideas={(ideas.data?.pages.flatMap((p) => p.items) ?? []).map((row) => ideaInfo(row, me.id))}
-          hide={{ author: true }}
-          empty={
-            state === 'closed'
-              ? 'No closed ideas.'
-              : yours
-                ? 'No open ideas. Start one with ideaf start.'
-                : 'None open that you can see.'
-          }
-          more={
-            ideas.hasNextPage ? { loading: ideas.isFetchingNextPage, onMore: () => void ideas.fetchNextPage() } : null
-          }
-        />
+        <StateTabs value={state} onChange={setState} counts={counts.data}>
+          <IdeaList
+            ideas={(ideas.data?.pages.flatMap((p) => p.items) ?? []).map((row) => ideaInfo(row, me.id))}
+            hide={{ author: true }}
+            empty={
+              state === 'closed'
+                ? 'No closed ideas.'
+                : yours
+                  ? 'No open ideas. Start one with ideaf start.'
+                  : 'None open that you can see.'
+            }
+            more={
+              ideas.hasNextPage ? { loading: ideas.isFetchingNextPage, onMore: () => void ideas.fetchNextPage() } : null
+            }
+          />
+        </StateTabs>
       </Section>
     </Page>
   )

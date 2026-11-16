@@ -466,6 +466,12 @@ export type TokenGrantInput = {
   limits?: { teams?: string[]; ideas?: string[]; noTeam?: boolean } | null
 }
 
+/** How many ideas a list has, open and closed (an idea in an archived team counts as closed). */
+export interface IdeaCounts {
+  open: number
+  closed: number
+}
+
 export interface IdeaFilter {
   team?: string
   owner?: string
@@ -663,6 +669,8 @@ export interface Directory {
    */
   moveIdea(actor: string, idea: string, to: string | null, adjustments?: MoveAdjustments): Promise<Result<MovePreview>>
   listIdeas(actor: string, filter?: IdeaFilter, token?: string | null): Promise<Page<IdeaListing>>
+  /** How many ideas listIdeas would list with this filter, open and closed (its state, cursor and limit aside). */
+  countIdeas(actor: string, filter?: IdeaFilter, token?: string | null): Promise<IdeaCounts>
   /**
    * Ideas the actor can see whose titles contain the query's terms (each at
    * least 3 characters; shorter ones are ignored). `incomplete` means more

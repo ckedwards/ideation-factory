@@ -222,6 +222,8 @@ export const directory = actor({
       directoryOf(c).moveIdea(by, idea, to, adjustments),
     listIdeas: (c, by: string, filter?: IdeaFilter, token?: string | null) =>
       directoryOf(c).listIdeas(by, filter, token),
+    countIdeas: (c, by: string, filter?: IdeaFilter, token?: string | null) =>
+      directoryOf(c).countIdeas(by, filter, token),
     searchIdeas: (c, by: string, query: string, limit?: number, token?: string | null) =>
       directoryOf(c).searchIdeas(by, query, limit, token),
   },

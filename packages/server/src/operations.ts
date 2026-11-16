@@ -806,6 +806,31 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         return { items: page.items.map(listed), next: page.next }
       }),
 
+    countIdeas: (input, { caller, token }) =>
+      read(async () => {
+        const [team, owner, reviewer] = await Promise.all([
+          input.team ? directory().team(input.team) : null,
+          input.owner ? directory().user(input.owner) : null,
+          input.reviewer ? directory().user(input.reviewer) : null,
+        ])
+        if (input.team && !team) {
+          return notFound(`no team ${input.team}`)
+        }
+        if ((input.owner && !owner) || (input.reviewer && !reviewer)) {
+          return notFound(`no one is called ${input.owner && !owner ? input.owner : input.reviewer}`)
+        }
+        return directory().countIdeas(
+          caller.user,
+          {
+            ...(team ? { team: team.id } : {}),
+            ...(owner ? { owner: owner.id } : {}),
+            ...(reviewer ? { reviewer: reviewer.id } : {}),
+            ...(input.status ? { status: input.status } : {}),
+          },
+          token?.id ?? null,
+        )
+      }),
+
     searchIdeas: (input, { caller, token }) =>
       read(async () => {
         const found = await directory().searchIdeas(caller.user, input.q, input.limit, token?.id ?? null)
