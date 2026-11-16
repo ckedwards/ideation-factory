@@ -47,6 +47,6 @@ export const Member: Story = {
 export const NoTeams: Story = {
   args: { teams: [] },
   play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).getByText('Design reviewers isn’t part of any team.')).toBeVisible()
+    await expect(within(canvasElement).getByText('No team has added Design reviewers as part of it.')).toBeVisible()
   },
 }

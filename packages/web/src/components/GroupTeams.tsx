@@ -27,7 +27,7 @@ export interface GroupTeamsProps {
 export function GroupTeams({ group, teams, admin, onLeave }: GroupTeamsProps) {
   const [leaving, setLeaving] = useState<GroupTeamInfo | null>(null)
   if (teams.length === 0) {
-    return <p className="member-none">{group.name} isn’t part of any team.</p>
+    return <p className="member-none">No team has added {group.name} as part of it.</p>
   }
   return (
     <Stack gap={3}>

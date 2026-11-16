@@ -14,6 +14,8 @@ export type IdeaFilters = {
   team?: string
   owner?: string
   reviewer?: string
+  /** A group asked to review it. */
+  reviewerGroup?: string
   status?: 'draft' | 'requesting-review'
 }
 

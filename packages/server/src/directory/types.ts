@@ -486,11 +486,22 @@ export interface IdeaCounts {
   closed: number
 }
 
+/** A team's approval rule that names a group. */
+export interface GroupRuleUse {
+  team: { id: string; handle: string; name: string }
+  mode: 'any' | 'each'
+  /** The groups are asked to review when an idea goes out. */
+  request: boolean
+  groups: Array<{ id: string; handle: string; name: string }>
+}
+
 export interface IdeaFilter {
   team?: string
   owner?: string
   /** Someone asked to review it, by name or through a group they're in (a user's ID). */
   reviewer?: string
+  /** A group asked to review it (its ID). */
+  reviewerGroup?: string
   status?: string
   /** Open, or closed: closed as accepted or rejected, or in an archived team. */
   state?: 'open' | 'closed'
@@ -606,6 +617,8 @@ export interface Directory {
   teamGroups(team: string): Promise<Result<TeamGroup[]>>
   /** The teams a group is in, by handle. */
   groupTeams(group: string): Promise<Result<GroupTeam[]>>
+  /** The teams' approval rules that name a group: each team, the rule, and the groups it names. */
+  groupRules(group: string): Promise<Result<GroupRuleUse[]>>
   /** Adds a group to a team, or changes its role there: the team's admins. */
   addTeamGroup(actor: string, team: string, group: string, role?: Exclude<Role, 'admin'>): Promise<Result<TeamGroup>>
   /** Takes a group out of a team: the team's admins, or the group's (its leaving). */

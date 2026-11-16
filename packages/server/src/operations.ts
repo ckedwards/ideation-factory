@@ -806,12 +806,17 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         if (input.reviewer && !reviewer) {
           return notFound(`no one is called ${input.reviewer}`)
         }
+        const reviewerGroup = input.reviewerGroup ? await directory().group(input.reviewerGroup) : null
+        if (input.reviewerGroup && !reviewerGroup) {
+          return notFound(`no group ${input.reviewerGroup}`)
+        }
         const page = await directory().listIdeas(
           caller.user,
           {
             ...(team ? { team: team.id } : {}),
             ...(owner ? { owner: owner.id } : {}),
             ...(reviewer ? { reviewer: reviewer.id } : {}),
+            ...(reviewerGroup ? { reviewerGroup: reviewerGroup.id } : {}),
             ...(input.status ? { status: input.status } : {}),
             ...(input.state ? { state: input.state } : {}),
             ...(input.cursor ? { cursor: input.cursor } : {}),
@@ -924,6 +929,10 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
     removeTeamGroup: async (input, { caller }) => {
       const removed = await directory().removeTeamGroup(caller.user, input.team, input.group)
       return removed.ok ? { ok: true as const, value: { removed: true } } : removed
+    },
+    listGroupRules: async (input) => {
+      const rules = await directory().groupRules(input.group)
+      return rules.ok ? { ok: true as const, value: { items: rules.value } } : rules
     },
     listGroupTeams: async (input) => {
       const teams = await directory().groupTeams(input.group)
