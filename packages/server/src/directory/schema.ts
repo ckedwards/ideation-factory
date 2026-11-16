@@ -39,6 +39,11 @@ export interface DB {
     deleted_at: number | null
   }
   memberships: { kind: ContainerKind; container: string; user: string; role: Role; created_at: number }
+  /**
+   * Groups in teams (architecture.md, Groups in teams): the group's members are the team's members,
+   * each at the lower of the group's role here and their own role in the group. Never admin.
+   */
+  team_groups: { team: string; group: string; role: Role; added_by: string; created_at: number }
   join_requests: { kind: ContainerKind; container: string; user: string; created_at: number }
   /** One row per idea: what lists and search show, kept up to date by the idea's actor. */
   ideas: {
@@ -194,6 +199,7 @@ export const COLUMNS = {
   ],
   groups: ['id', 'handle', 'name', 'description', 'created_by', 'created_at', 'deleted_at'],
   memberships: ['kind', 'container', 'user', 'role', 'created_at'],
+  team_groups: ['team', 'group', 'role', 'added_by', 'created_at'],
   join_requests: ['kind', 'container', 'user', 'created_at'],
   ideas: [
     'id',
@@ -272,6 +278,17 @@ const MIGRATIONS: Migration[] = [
       .addPrimaryKeyConstraint('memberships_pk', ['kind', 'container', 'user'])
       .execute()
     await db.schema.createIndex('memberships_user').on('memberships').columns(['user', 'kind', 'container']).execute()
+    await db.schema
+      .createTable('team_groups')
+      .addColumn('team', 'text', (c) => c.notNull())
+      .addColumn('group', 'text', (c) => c.notNull())
+      .addColumn('role', 'text', (c) => c.notNull())
+      .addColumn('added_by', 'text', (c) => c.notNull())
+      .addColumn('created_at', 'bigint', (c) => c.notNull())
+      .addPrimaryKeyConstraint('team_groups_pk', ['team', 'group'])
+      .execute()
+    // the teams a person's groups are in: from the group
+    await db.schema.createIndex('team_groups_group').on('team_groups').columns(['group', 'team']).execute()
     await db.schema
       .createTable('join_requests')
       .addColumn('kind', 'text', (c) => c.notNull())

@@ -869,6 +869,20 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
     listTeamMembers: team.members,
     addTeamMember: team.addMember,
     removeTeamMember: team.removeMember,
+    listTeamGroups: async (input) => {
+      const groups = await directory().teamGroups(input.team)
+      return groups.ok ? { ok: true as const, value: { items: groups.value } } : groups
+    },
+    addTeamGroup: async (input, { caller }) =>
+      fromResult(await directory().addTeamGroup(caller.user, input.team, input.group, input.role)),
+    removeTeamGroup: async (input, { caller }) => {
+      const removed = await directory().removeTeamGroup(caller.user, input.team, input.group)
+      return removed.ok ? { ok: true as const, value: { removed: true } } : removed
+    },
+    listGroupTeams: async (input) => {
+      const teams = await directory().groupTeams(input.group)
+      return teams.ok ? { ok: true as const, value: { items: teams.value } } : teams
+    },
     requestToJoinTeam: team.requestToJoin,
     listTeamJoinRequests: team.joinRequests,
     decideTeamJoinRequest: team.decide,

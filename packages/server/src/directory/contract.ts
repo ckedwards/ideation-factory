@@ -91,7 +91,13 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
           },
         })
         expect((await d.members('team', (team as { value: { id: string } }).value.id)).items).toEqual([
-          { user: expect.objectContaining({ handle: 'riley' }), role: 'admin', joined: expect.any(Number) },
+          {
+            user: expect.objectContaining({ handle: 'riley' }),
+            role: 'admin',
+            joined: expect.any(Number),
+            direct: 'admin',
+            through: [],
+          },
         ])
         expect(await d.createTeam('u-maya', { handle: 'platform', name: 'Again' })).toMatchObject({
           ok: false,
@@ -602,7 +608,15 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         await d.requestToJoin('u-maya', 'team', web)
         expect(await d.memberships('u-maya')).toEqual({
           teams: [
-            { id: core, handle: 'core', name: 'Core', archived: false, role: 'maintainer', watch: 'participating' },
+            {
+              id: core,
+              handle: 'core',
+              name: 'Core',
+              archived: false,
+              role: 'maintainer',
+              direct: 'maintainer',
+              watch: 'participating',
+            },
           ],
           groups: [{ id: sec, handle: 'sec', name: 'Security', role: 'member' }],
           requested: [{ kind: 'team', id: web }],
@@ -1391,6 +1405,152 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         ok: true,
         value: { role: 'maintainer', joined: joined.maya },
       })
+    })
+  })
+
+  describe('groups in teams', () => {
+    // Riley's team; Devon's group, with Maya a member and Sam a maintainer
+    async function setup() {
+      const d = await people()
+      const team = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
+        .value.id
+      const group = (
+        (await d.createGroup('u-devon', { handle: 'design', name: 'Design' })) as { value: { id: string } }
+      ).value.id
+      await d.addMember('u-devon', 'group', group, 'u-maya')
+      await d.addMember('u-devon', 'group', group, 'u-sam', 'maintainer')
+      return { d, team, group }
+    }
+    const teamOf = async (d: Directory, user: string) =>
+      (await d.memberships(user)).teams.find((t) => t.handle === 'core')
+
+    test("only the team's admins add a group, as a member or a maintainer, never an admin", async () => {
+      const { d, team, group } = await setup()
+      expect(await d.addTeamGroup('u-maya', team, group)).toMatchObject({ ok: false, error: { code: 'forbidden' } })
+      await d.addMember('u-riley', 'team', team, 'u-outsider', 'maintainer')
+      expect(await d.addTeamGroup('u-outsider', team, group)).toMatchObject({ ok: false, error: { code: 'forbidden' } })
+      expect(await d.addTeamGroup('u-riley', team, group, 'admin' as never)).toMatchObject({
+        ok: false,
+        error: { code: 'invalid' },
+      })
+      expect(await d.addTeamGroup('u-riley', 'core', 'design', 'maintainer')).toMatchObject({
+        ok: true,
+        value: {
+          group: { handle: 'design', members: 3 },
+          role: 'maintainer',
+          addedBy: { handle: 'riley' },
+          leaving: 3,
+        },
+      })
+      expect(await d.groupTeams('design')).toMatchObject({
+        ok: true,
+        value: [{ team: { handle: 'core' }, role: 'maintainer' }],
+      })
+      // adding it again changes its role
+      await d.addTeamGroup('u-riley', team, group, 'member')
+      expect(await d.teamGroups('core')).toMatchObject({
+        ok: true,
+        value: [{ group: { handle: 'design' }, role: 'member' }],
+      })
+    })
+
+    test("each person's role is the lower of the group's here and theirs in it, and the highest way in wins", async () => {
+      const { d, team, group } = await setup()
+      await d.addTeamGroup('u-riley', team, group, 'maintainer')
+      expect(await teamOf(d, 'u-maya')).toMatchObject({ role: 'member', direct: null })
+      expect(await teamOf(d, 'u-sam')).toMatchObject({ role: 'maintainer', direct: null })
+      // the group's admin is a maintainer here, never an admin
+      expect(await teamOf(d, 'u-devon')).toMatchObject({ role: 'maintainer', direct: null })
+      await d.addMember('u-riley', 'team', team, 'u-maya', 'maintainer')
+      expect(await teamOf(d, 'u-maya')).toMatchObject({ role: 'maintainer', direct: 'maintainer' })
+
+      const members = (await d.members('team', team)).items
+      expect(members.map((m) => m.user.handle)).toEqual(['devon', 'maya', 'riley', 'sam'])
+      expect(members.find((m) => m.user.handle === 'devon')).toMatchObject({
+        role: 'maintainer',
+        direct: null,
+        through: [{ group: { handle: 'design' }, role: 'maintainer' }],
+      })
+      expect(members.find((m) => m.user.handle === 'maya')).toMatchObject({
+        role: 'maintainer',
+        direct: 'maintainer',
+        through: [{ group: { handle: 'design' }, role: 'member' }],
+      })
+      expect(members.find((m) => m.user.handle === 'riley')).toMatchObject({
+        role: 'admin',
+        direct: 'admin',
+        through: [],
+      })
+      // counted once, however they're in it
+      expect((await d.team(team))!.members).toBe(4)
+      // searched and sorted with everyone else
+      expect((await d.members('team', team, { query: 'de' })).items.map((m) => m.user.handle)).toEqual(['devon'])
+      expect((await d.members('team', team, { sort: 'role' })).items.map((m) => m.user.handle)).toEqual([
+        'riley',
+        'devon',
+        'maya',
+        'sam',
+      ])
+    })
+
+    test('membership through a group gives what membership does, and ends with it', async () => {
+      const { d, team, group } = await setup()
+      await d.registerIdea(idea('i1', { team }))
+      expect((await d.permission('i1', 'u-maya')).view).toBe(false)
+      await d.addTeamGroup('u-riley', team, group, 'maintainer')
+      // the team's grant (its defaults), creating ideas, and lists and search
+      expect((await d.permission('i1', 'u-maya')).view).toBe(true)
+      expect(await d.canCreateIdea('u-maya', team)).toEqual({ ok: true, value: { team } })
+      expect((await d.listIdeas('u-maya')).items.map((i) => i.id)).toEqual(['i1'])
+      expect((await d.searchIdeas('u-maya', 'idea')).items.map((i) => i.id)).toEqual(['i1'])
+      // a maintainer through the group manages members, but has nothing only an admin has
+      expect(await d.addMember('u-sam', 'team', team, 'u-outsider')).toMatchObject({ ok: true })
+      expect(await d.updateTeam('u-sam', team, { name: 'Taken' })).toMatchObject({
+        ok: false,
+        error: { code: 'forbidden' },
+      })
+      expect((await d.permission('i1', 'u-sam')).share).toBe(false)
+      // leaving the group, or the group leaving the team, ends it at once
+      await d.removeMember('u-devon', 'group', group, 'u-maya')
+      expect((await d.permission('i1', 'u-maya')).view).toBe(false)
+      await d.removeTeamGroup('u-riley', team, group)
+      expect((await d.permission('i1', 'u-sam')).view).toBe(false)
+      expect(await teamOf(d, 'u-sam')).toBeUndefined()
+    })
+
+    test("a group's admins take their group out of a team; besides the team's admins, nobody else can", async () => {
+      const { d, team, group } = await setup()
+      await d.addTeamGroup('u-riley', team, group)
+      // who'd leave with it: those in the team only through it (Maya is in it herself too)
+      await d.addMember('u-riley', 'team', team, 'u-maya')
+      expect(await d.groupTeams(group)).toMatchObject({ ok: true, value: [{ team: { handle: 'core' }, leaving: 2 }] })
+      expect(await d.removeTeamGroup('u-sam', team, group)).toMatchObject({ ok: false, error: { code: 'forbidden' } })
+      expect(await d.removeTeamGroup('u-maya', team, group)).toMatchObject({ ok: false, error: { code: 'forbidden' } })
+      expect(await d.removeTeamGroup('u-devon', team, group)).toEqual({ ok: true, value: null })
+      expect(await d.teamGroups(team)).toEqual({ ok: true, value: [] })
+    })
+
+    test("someone in a team only through a group can't leave it on their own, but can ask to join it", async () => {
+      const { d, team, group } = await setup()
+      await d.addTeamGroup('u-riley', team, group)
+      expect(await d.removeMember('u-maya', 'team', team, 'u-maya')).toMatchObject({
+        ok: false,
+        error: { code: 'invalid', message: expect.stringContaining('through a group') },
+      })
+      expect(await d.requestToJoin('u-maya', 'team', team)).toEqual({ ok: true, value: { requested: true } })
+    })
+
+    test('moving an idea into the team counts the people in it through its groups', async () => {
+      const { d, team, group } = await setup()
+      await d.addTeamGroup('u-riley', team, group)
+      await d.registerIdea(idea('i9'))
+      const preview = await d.previewMove('u-riley', 'i9', team)
+      expect(preview.ok).toBe(true)
+      expect(
+        (preview as { value: { gaining: { people: Array<{ handle: string }> } } }).value.gaining.people
+          .map((u) => u.handle)
+          .toSorted(),
+      ).toEqual(['devon', 'maya', 'sam'])
     })
   })
 }

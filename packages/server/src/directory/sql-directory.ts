@@ -67,6 +67,8 @@ import {
   type TokenGrantInput,
   type User,
   type MemberListOptions,
+  type GroupTeam,
+  type TeamGroup,
 } from './types.ts'
 
 const HANDLE = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/
@@ -102,6 +104,12 @@ const RESERVED = new Set([
 ])
 const MAX_PAGE = 100
 const RANK: Record<Role, number> = { member: 0, maintainer: 1, admin: 2 }
+/** The lower of two roles: what a group in a team gives someone, from the group's role there and theirs in it. */
+const lowerRole = (a: Role, b: Role): Role => (RANK[a] <= RANK[b] ? a : b)
+const higherRole = (a: Role | null, b: Role | null): Role | null => (!a ? b : !b ? a : RANK[a] >= RANK[b] ? a : b)
+/** A role's place in a sort, admins first, as SQL: 0, 1, 2. */
+const roleOrder = (column: string) =>
+  raw<number>`CASE ${raw.ref(column)} WHEN 'admin' THEN 0 WHEN 'maintainer' THEN 1 ELSE 2 END`
 
 const ok = <T>(value: T): Result<T> => ({ ok: true, value })
 const fail = <T>(code: 'not_found' | 'exists' | 'invalid' | 'forbidden', message: string): Result<T> => ({
@@ -440,7 +448,12 @@ export class SqlDirectory implements Directory {
   }
 
   async #container(kind: ContainerKind, idOrHandle: string): Promise<Container | null> {
-    const members = (id: string) => Q.memberCount(this.#db, { kind, container: id }).then((r) => Number(r[0]?.n ?? 0))
+    // a team's people, each counted once however they're in it (directly, or through its groups)
+    const members = (id: string) =>
+      (kind === 'team'
+        ? Q.teamMemberCount(this.#db, { team: id })
+        : Q.memberCount(this.#db, { kind, container: id })
+      ).then((r) => Number(r[0]?.n ?? 0))
     const handle = idOrHandle.toLowerCase().replace(/^@/, '')
     if (kind === 'team') {
       const find = (id: string, byHandle: string | null) =>
@@ -1701,6 +1714,9 @@ export class SqlDirectory implements Directory {
   }
 
   async members(kind: ContainerKind, id: string, options: MemberListOptions = {}): Promise<Page<Member>> {
+    if (kind === 'team') {
+      return this.#teamMembers(id, options)
+    }
     const limit = pageSize(options.limit)
     const sort = options.sort ?? 'name'
     const desc = options.order === 'desc'
@@ -1745,9 +1761,224 @@ export class SqlDirectory implements Directory {
     const page = rows.slice(0, limit)
     const last = page.at(-1)
     return {
-      items: page.map((r) => ({ user: toUser(r), role: r.role, joined: r.created_at })),
+      items: page.map((r) => ({ user: toUser(r), role: r.role, joined: r.created_at, direct: r.role, through: [] })),
       next: rows.length > limit && last ? encodeCursor([last.sort_key as string | number, last.handle]) : null,
     }
+  }
+
+  /**
+   * A team's members, however they're in it: each person once, with the highest role any way gives
+   * them, the earliest they joined, their own membership's role, and the groups they're in it
+   * through. Searched, sorted and paged as members() is.
+   */
+  async #teamMembers(team: string, options: MemberListOptions): Promise<Page<Member>> {
+    const limit = pageSize(options.limit)
+    const sort = options.sort ?? 'name'
+    const desc = options.order === 'desc'
+    const q = likeEscape((options.query ?? '').trim().toLowerCase())
+    // each way in as a row (a group's at the lower of its role here and theirs in it), then per person
+    // the best role (0 admin, 1 maintainer, 2 member), the earliest date and their own role
+    const people = raw`
+      SELECT p.user AS user, min(p.rank) AS rank, min(p.since) AS joined, max(p.direct) AS direct
+      FROM (
+        SELECT m.user AS user, ${roleOrder('m.role')} AS rank, m.created_at AS since, m.role AS direct
+        FROM memberships m WHERE m.kind = 'team' AND m.container = ${team}
+        UNION ALL
+        SELECT gm.user, max(${roleOrder('tg.role')}, ${roleOrder('gm.role')}), max(tg.created_at, gm.created_at), NULL
+        FROM team_groups tg JOIN memberships gm ON gm.kind = 'group' AND gm.container = tg."group"
+        WHERE tg.team = ${team}
+      ) p
+      GROUP BY p.user`
+    const key = sort === 'joined' ? raw`e.joined` : sort === 'role' ? raw`e.rank` : raw`lower(u.name)`
+    const direction = raw.raw(desc ? 'DESC' : 'ASC')
+    const filters = [raw`1 = 1`]
+    if (q) {
+      filters.push(raw`(u.handle LIKE ${`${q}%`} OR lower(u.name) LIKE ${`%${q}%`})`)
+    }
+    const after = decodeCursor(options.cursor)
+    if (after && after.length === 2) {
+      const [k, h] = after
+      const past = raw.raw(desc ? '<' : '>')
+      filters.push(raw`(${key} ${past} ${k} OR (${key} = ${k} AND u.handle ${past} ${String(h)}))`)
+    }
+    const { rows } = await raw<{
+      id: string
+      handle: string
+      name: string
+      inactive: number
+      rank: number
+      joined: number
+      direct: Role | null
+      sort_key: string | number
+    }>`
+      SELECT u.id, u.handle, u.name, u.inactive, e.rank, e.joined, e.direct, ${key} AS sort_key
+      FROM (${people}) e JOIN users u ON u.id = e.user
+      WHERE ${raw.join(filters, raw` AND `)}
+      ORDER BY ${key} ${direction}, u.handle ${direction}
+      LIMIT ${limit + 1}`.execute(this.#db)
+    const page = rows.slice(0, limit)
+    // the groups each is in it through, for this page only
+    const through =
+      page.length > 0
+        ? await this.#db
+            .selectFrom('team_groups as tg')
+            .innerJoin('memberships as gm', (j) => j.onRef('gm.container', '=', 'tg.group').on('gm.kind', '=', 'group'))
+            .innerJoin('groups as g', 'g.id', 'tg.group')
+            .select(['gm.user', 'g.id', 'g.handle', 'g.name', 'tg.role as team_role', 'gm.role as group_role'])
+            .where('tg.team', '=', team)
+            .where(
+              'gm.user',
+              'in',
+              page.map((r) => r.id),
+            )
+            .orderBy('g.handle')
+            .execute()
+        : []
+    const ROLES: Role[] = ['admin', 'maintainer', 'member']
+    const last = page.at(-1)
+    return {
+      items: page.map((r) => ({
+        user: toUser(r),
+        role: ROLES[r.rank]!,
+        joined: r.joined,
+        direct: r.direct,
+        through: through
+          .filter((t) => t.user === r.id)
+          .map((t) => ({
+            group: { id: t.id, handle: t.handle, name: t.name },
+            role: lowerRole(t.team_role as Role, t.group_role as Role),
+          })),
+      })),
+      next: rows.length > limit && last ? encodeCursor([last.sort_key, last.handle]) : null,
+    }
+  }
+
+  async teamGroups(teamRef: string): Promise<Result<TeamGroup[]>> {
+    const team = await this.team(teamRef)
+    if (!team) {
+      return fail('not_found', `no team ${teamRef}`)
+    }
+    const rows = await this.#db
+      .selectFrom('team_groups as tg')
+      .innerJoin('groups as g', 'g.id', 'tg.group')
+      .leftJoin('users as u', 'u.id', 'tg.added_by')
+      .select([
+        'g.id',
+        'g.handle',
+        'g.name',
+        'tg.role',
+        'tg.created_at',
+        'u.id as by_id',
+        'u.handle as by_handle',
+        'u.name as by_name',
+        'u.inactive as by_inactive',
+      ])
+      .where('tg.team', '=', team.id)
+      .orderBy('g.handle')
+      .execute()
+    return ok(
+      await Promise.all(
+        rows.map(async (r) => ({
+          group: {
+            id: r.id,
+            handle: r.handle,
+            name: r.name,
+            members: Number((await Q.memberCount(this.#db, { kind: 'group', container: r.id }))[0]?.n ?? 0),
+          },
+          role: r.role as Exclude<Role, 'admin'>,
+          leaving: await this.#leaving(team.id, r.id),
+          addedBy: r.by_id
+            ? toUser({ id: r.by_id, handle: r.by_handle!, name: r.by_name!, inactive: r.by_inactive! })
+            : null,
+          added: r.created_at,
+        })),
+      ),
+    )
+  }
+
+  async groupTeams(groupRef: string): Promise<Result<GroupTeam[]>> {
+    const group = await this.group(groupRef)
+    if (!group) {
+      return fail('not_found', `no group ${groupRef}`)
+    }
+    const rows = await this.#db
+      .selectFrom('team_groups as tg')
+      .innerJoin('teams as t', 't.id', 'tg.team')
+      .select(['t.id', 't.handle', 't.name', 'tg.role', 'tg.created_at'])
+      .where('tg.group', '=', group.id)
+      .orderBy('t.handle')
+      .execute()
+    return ok(
+      await Promise.all(
+        rows.map(async (r) => ({
+          team: { id: r.id, handle: r.handle, name: r.name },
+          role: r.role as Exclude<Role, 'admin'>,
+          added: r.created_at,
+          leaving: await this.#leaving(r.id, group.id),
+        })),
+      ),
+    )
+  }
+
+  /** How many of a group's members are in a team only through it: not themselves, nor through another of its groups. */
+  async #leaving(team: string, group: string): Promise<number> {
+    const { rows } = await raw<{ n: number }>`
+      SELECT count(*) AS n FROM memberships gm
+      WHERE gm.kind = 'group' AND gm.container = ${group}
+        AND NOT EXISTS (SELECT 1 FROM memberships m WHERE m.kind = 'team' AND m.container = ${team} AND m.user = gm.user)
+        AND NOT EXISTS (
+          SELECT 1 FROM team_groups tg JOIN memberships other ON other.kind = 'group' AND other.container = tg."group"
+          WHERE tg.team = ${team} AND tg."group" <> ${group} AND other.user = gm.user
+        )`.execute(this.#db)
+    return Number(rows[0]?.n ?? 0)
+  }
+
+  async addTeamGroup(
+    actor: string,
+    teamRef: string,
+    groupRef: string,
+    role: Exclude<Role, 'admin'> = 'member',
+  ): Promise<Result<TeamGroup>> {
+    const team = await this.team(teamRef)
+    if (!team) {
+      return fail('not_found', `no team ${teamRef}`)
+    }
+    if ((await this.#directRole('team', team.id, actor)) !== 'admin') {
+      return fail('forbidden', 'only a team’s admins can add a group to it')
+    }
+    if ((role as Role) === 'admin' || !['member', 'maintainer'].includes(role)) {
+      return fail('invalid', 'a group in a team is a member or a maintainer, never an admin: admins are added directly')
+    }
+    const group = await this.group(groupRef)
+    if (!group || group.deleted) {
+      return fail('not_found', `no group ${groupRef}`)
+    }
+    await this.#db
+      .insertInto('team_groups')
+      .values({ team: team.id, group: group.id, role, added_by: actor, created_at: this.#now() })
+      .onConflict((oc) => oc.columns(['team', 'group']).doUpdateSet({ role }))
+      .execute()
+    const added = (await this.teamGroups(team.id)) as { ok: true; value: TeamGroup[] }
+    return ok(added.value.find((g) => g.group.id === group.id)!)
+  }
+
+  async removeTeamGroup(actor: string, teamRef: string, groupRef: string): Promise<Result<null>> {
+    const team = await this.team(teamRef)
+    if (!team) {
+      return fail('not_found', `no team ${teamRef}`)
+    }
+    const group = await this.group(groupRef)
+    if (!group) {
+      return fail('not_found', `no group ${groupRef}`)
+    }
+    // the team's admins take it out; the group's admins take their group out (it leaves)
+    const teamAdmin = (await this.#directRole('team', team.id, actor)) === 'admin'
+    const groupAdmin = (await this.#directRole('group', group.id, actor)) === 'admin'
+    if (!teamAdmin && !groupAdmin) {
+      return fail('forbidden', 'only the team’s admins, or the group’s, can take a group out of a team')
+    }
+    await this.#db.deleteFrom('team_groups').where('team', '=', team.id).where('group', '=', group.id).execute()
+    return ok(null)
   }
 
   async #admins(kind: ContainerKind, container: string): Promise<number> {
@@ -1762,7 +1993,7 @@ export class SqlDirectory implements Directory {
   }
 
   async memberships(user: string): Promise<Memberships> {
-    const [teams, groups, requested] = await Promise.all([
+    const [teams, through, groups, requested] = await Promise.all([
       this.#db
         .selectFrom('memberships as m')
         .innerJoin('teams as t', 't.id', 'm.container')
@@ -1771,6 +2002,23 @@ export class SqlDirectory implements Directory {
         .where('m.kind', '=', 'team')
         .where('m.user', '=', user)
         .orderBy('t.handle')
+        .execute(),
+      // the teams their groups are in
+      this.#db
+        .selectFrom('team_groups as tg')
+        .innerJoin('memberships as gm', (j) => j.onRef('gm.container', '=', 'tg.group').on('gm.kind', '=', 'group'))
+        .innerJoin('teams as t', 't.id', 'tg.team')
+        .leftJoin('watches as w', (j) => j.onRef('w.team', '=', 't.id').on('w.user', '=', user))
+        .select([
+          't.id',
+          't.handle',
+          't.name',
+          't.archived',
+          'tg.role as team_role',
+          'gm.role as group_role',
+          'w.level',
+        ])
+        .where('gm.user', '=', user)
         .execute(),
       this.#db
         .selectFrom('memberships as m')
@@ -1783,21 +2031,61 @@ export class SqlDirectory implements Directory {
         .execute(),
       this.#db.selectFrom('join_requests').select(['kind', 'container']).where('user', '=', user).execute(),
     ])
-    return {
-      teams: teams.map((t) => ({
+    // each team once: its role the highest of theirs and each group's, and whether they're in it themselves
+    const byTeam = new Map<string, Memberships['teams'][number]>()
+    for (const t of teams) {
+      byTeam.set(t.id, {
         id: t.id,
         handle: t.handle,
         name: t.name,
         archived: t.archived === 1,
         role: t.role,
+        direct: t.role,
         watch: (t.level as WatchLevel | null) ?? 'participating',
-      })),
+      })
+    }
+    for (const t of through) {
+      const role = lowerRole(t.team_role as Role, t.group_role as Role)
+      const known = byTeam.get(t.id)
+      if (known) {
+        known.role = higherRole(known.role, role)!
+      } else {
+        byTeam.set(t.id, {
+          id: t.id,
+          handle: t.handle,
+          name: t.name,
+          archived: t.archived === 1,
+          role,
+          direct: null,
+          watch: (t.level as WatchLevel | null) ?? 'participating',
+        })
+      }
+    }
+    return {
+      teams: [...byTeam.values()].toSorted((a, b) => (a.handle < b.handle ? -1 : a.handle > b.handle ? 1 : 0)),
       groups: groups.map((g) => ({ id: g.id, handle: g.handle, name: g.name, role: g.role })),
       requested: requested.map((r) => ({ kind: r.kind, id: r.container })),
     }
   }
 
+  /**
+   * Someone's role in a team or group, for what they may do: their own, or for a team the highest
+   * of it and what each of their groups in the team gives them (never admin: Groups in teams).
+   */
   async #role(kind: ContainerKind, container: string, user: string): Promise<Role | null> {
+    const direct = await this.#directRole(kind, container, user)
+    if (kind !== 'team' || direct === 'admin') {
+      return direct
+    }
+    let role: Role | null = direct
+    for (const path of await Q.groupRoles(this.#db, { team: container, user })) {
+      role = higherRole(role, lowerRole(path.team_role as Role, path.group_role as Role))
+    }
+    return role
+  }
+
+  /** Their own membership's role, for changing memberships: groups don't count. */
+  async #directRole(kind: ContainerKind, container: string, user: string): Promise<Role | null> {
     const row = (await Q.role(this.#db, { kind, container, user }))[0]
     return (row?.role as Role | undefined) ?? null
   }
@@ -1833,7 +2121,7 @@ export class SqlDirectory implements Directory {
     }
     // someone already in it: this changes their role, which only an admin can,
     // and never leaves it without an admin
-    const theirs = await this.#role(kind, container.id, person.id)
+    const theirs = await this.#directRole(kind, container.id, person.id)
     if (theirs && theirs !== role) {
       if (mine !== 'admin') {
         return fail('forbidden', `only a ${kind}’s admins can change roles`)
@@ -1863,7 +2151,8 @@ export class SqlDirectory implements Directory {
       .where('container', '=', container.id)
       .where('user', '=', user)
       .executeTakeFirstOrThrow()
-    return ok({ user: person, role, joined: joined.created_at })
+    const effective = (await this.#role(kind, container.id, person.id)) ?? role
+    return ok({ user: person, role: effective, joined: joined.created_at, direct: role, through: [] })
   }
 
   async removeMember(actor: string, kind: ContainerKind, id: string, user: string): Promise<Result<null>> {
@@ -1872,11 +2161,17 @@ export class SqlDirectory implements Directory {
       return fail('not_found', `no ${kind} ${id}`)
     }
     const mine = await this.#role(kind, container.id, actor)
-    const theirs = await this.#role(kind, container.id, user)
+    const theirs = await this.#directRole(kind, container.id, user)
+    const leaving = actor === user
     if (!theirs) {
+      if (leaving && kind === 'team' && mine) {
+        return fail(
+          'invalid',
+          `you're in ${container.handle} through a group: leave the group, or ask one of the team's admins to take the group out`,
+        )
+      }
       return ok(null)
     }
-    const leaving = actor === user
     if (
       !leaving &&
       (mine === null || mine === 'member' || RANK[mine] < RANK[theirs] || (theirs === 'admin' && mine !== 'admin'))
@@ -1911,7 +2206,8 @@ export class SqlDirectory implements Directory {
     if (!container) {
       return fail('not_found', `no ${kind} ${id}`)
     }
-    if (await this.#role(kind, container.id, actor)) {
+    // someone in a team through a group may still ask to join it themselves
+    if (await this.#directRole(kind, container.id, actor)) {
       return ok({ requested: false })
     }
     await this.#db
@@ -2644,6 +2940,16 @@ export class SqlDirectory implements Directory {
         .execute()) {
         users.add(r.user)
       }
+      if (c.kind === 'team') {
+        for (const r of await this.#db
+          .selectFrom('team_groups as tg')
+          .innerJoin('memberships as gm', (j) => j.onRef('gm.container', '=', 'tg.group').on('gm.kind', '=', 'group'))
+          .select('gm.user')
+          .where('tg.team', '=', c.id)
+          .execute()) {
+          users.add(r.user)
+        }
+      }
     }
     if (team) {
       for (const r of await this.#db
@@ -2776,7 +3082,7 @@ function grantAppliesTo(eb: ExpressionBuilder<DB, 'grants'>, user: string): Expr
     eb.and([eb('grants.kind', '=', 'user'), eb('grants.subject', '=', user)]),
     eb('grants.kind', '=', 'everyone'),
     eb.and([
-      eb('grants.kind', 'in', ['group', 'team']),
+      eb('grants.kind', '=', 'group'),
       eb(
         'grants.subject',
         'in',
@@ -2784,10 +3090,33 @@ function grantAppliesTo(eb: ExpressionBuilder<DB, 'grants'>, user: string): Expr
           .selectFrom('memberships')
           .select('memberships.container')
           .where('memberships.user', '=', user)
-          .whereRef('memberships.kind', '=', 'grants.kind'),
+          .where('memberships.kind', '=', 'group'),
       ),
     ]),
+    eb.and([eb('grants.kind', '=', 'team'), eb('grants.subject', 'in', teamsOf(eb, user))]),
   ])
+}
+
+/**
+ * The teams someone is in: their own memberships, and the teams their groups are in (Groups in
+ * teams). One join more than their memberships alone; their groups are few. A group's deletion,
+ * when there is one, must take its team_groups rows with it.
+ */
+function teamsOf(eb: ExpressionBuilder<DB, 'grants'>, user: string) {
+  return eb
+    .selectFrom('memberships')
+    .select('memberships.container as team')
+    .where('memberships.user', '=', user)
+    .where('memberships.kind', '=', 'team')
+    .union(
+      eb
+        .selectFrom('team_groups')
+        .innerJoin('memberships as gm', (j) =>
+          j.onRef('gm.container', '=', 'team_groups.group').on('gm.kind', '=', 'group'),
+        )
+        .select('team_groups.team as team')
+        .where('gm.user', '=', user),
+    )
 }
 
 /**
@@ -2817,6 +3146,17 @@ function visibleIdeas(db: QueryCreator<DB>, user: string) {
         .select('g.idea as id')
         .where('m.user', '=', user)
         .where('m.kind', 'in', ['team', 'group']),
+    )
+    .union(
+      // a team's grants, to the members of its groups
+      db
+        .selectFrom('memberships as gm')
+        .innerJoin('team_groups as tg', (join) =>
+          join.onRef('tg.group', '=', 'gm.container').on('gm.kind', '=', 'group'),
+        )
+        .innerJoin('grants as g', (join) => join.onRef('g.subject', '=', 'tg.team').on('g.kind', '=', 'team'))
+        .select('g.idea as id')
+        .where('gm.user', '=', user),
     )
     .union(
       db
@@ -3027,6 +3367,35 @@ const Q = {
       .selectFrom('groups')
       .selectAll()
       .where((eb) => eb.or([eb('id', '=', s.id), eb('handle', '=', s.handle)])),
+  ),
+  groupRoles: prepared<{ team: string; user: string }>()((db: Kysely<DB>, s) =>
+    db
+      .selectFrom('team_groups as tg')
+      .innerJoin('memberships as gm', (j) => j.onRef('gm.container', '=', 'tg.group').on('gm.kind', '=', 'group'))
+      .select(['tg.role as team_role', 'gm.role as group_role'])
+      .where('tg.team', '=', s.team)
+      .where('gm.user', '=', s.user),
+  ),
+  teamMemberCount: prepared<{ team: string }>()((db: Kysely<DB>, s) =>
+    db
+      .selectFrom((eb) =>
+        eb
+          .selectFrom('memberships')
+          .select('memberships.user')
+          .where('memberships.kind', '=', 'team')
+          .where('memberships.container', '=', s.team)
+          .union(
+            eb
+              .selectFrom('team_groups as tg')
+              .innerJoin('memberships as gm', (j) =>
+                j.onRef('gm.container', '=', 'tg.group').on('gm.kind', '=', 'group'),
+              )
+              .select('gm.user as user')
+              .where('tg.team', '=', s.team),
+          )
+          .as('people'),
+      )
+      .select((eb) => eb.fn.countAll<number>().as('n')),
   ),
   role: prepared<{ kind: ContainerKind; container: string; user: string }>()((db: Kysely<DB>, s) =>
     db
