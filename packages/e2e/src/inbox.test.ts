@@ -144,7 +144,7 @@ describe('the inbox', () => {
     const [email] = mail
     expect(email!.subject).toMatch(new RegExp(`^\\[@${h('riley')}\\] Mailed plan \\(@${h('riley')}/idea/\\d+\\)$`))
     expect(email!.text).toContain('asked you to review it')
-    expect(email!.text).toContain('commented: “Thoughts?”')
+    expect(email!.text).toContain('commented:\n> Thoughts?')
     expect(email!.headers['X-Ideaf-Reason']).toBe('review-requested')
     await Bun.sleep(500)
     expect(testEmail.to(`${h('kai')}@example.test`)).toEqual([])
