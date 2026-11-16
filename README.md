@@ -44,6 +44,8 @@ bun run engine:stop  # stop the local Rivet Engine
 
 **The web app** is http://localhost:8080. `bun run dev` runs Vite for it behind the server, which passes it the pages' requests, so the app, its API and sign-in share one address, as in production; changes show at once. Built (`bun run --filter @ideaf/web build`), the server serves it from `packages/web/dist`, or the folder in `web.dir`.
 
+**As people try it:** `scripts/test-ui.sh up` builds this checkout's app and engine and runs them as the [try-it Compose](deploy/compose/README.md) does, with Mailpit for the email, at http://localhost:28080 (email at http://localhost:28025; sign in as `admin@example.com`). It's for trying a change the way it will ship, beside the dev server; `down`, `wipe` and `logs` do the rest.
+
 **Signing in.** The web app sends you to the sign-in page, http://localhost:8080/login: enter any email, and use the code the dev server prints in its log (it emails codes only when SMTP is set up, below). The first time, pick a handle. Sign in with other emails to try several people.
 
 **Installing the cli.** Each release has it for Linux and macOS, on x64 and arm64, as one file with nothing else to install. With [mise](https://mise.jdx.dev):
