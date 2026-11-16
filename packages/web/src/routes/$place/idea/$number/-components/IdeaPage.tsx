@@ -74,7 +74,7 @@ export interface IdeaPageProps {
   canComment: boolean
   /** Accepting and rejecting suggestions: for people with edit access, on the latest version. */
   canDecide?: boolean
-  /** Offer "Add to review": comments, suggestions and replies kept pending until the review is submitted. */
+  /** Offer "Add to your review": comments, suggestions and replies kept pending until the review is submitted. */
   addToReview?: boolean
   /** `pending`: added to the review rather than sent now. */
   onComment?: (selection: TextSelection, body: string, pending: boolean) => void

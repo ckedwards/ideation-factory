@@ -16,6 +16,12 @@
   gap: var(--space-1);
   padding: var(--space-1);
 }
+.selection-menu-divider {
+  align-self: stretch;
+  width: var(--hairline);
+  margin: var(--space-1) var(--space-1);
+  background: var(--rule-strong);
+}
 .selection-menu-form {
   display: grid;
   gap: var(--space-2);
@@ -39,11 +45,14 @@
 }
 .selection-menu-buttons {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--space-2);
 }
+/* on its own line above the buttons */
 .selection-menu-hint {
-  flex: 1;
+  flex: 1 1 100%;
   color: var(--ink-2);
   font-size: var(--text-xs);
 }
