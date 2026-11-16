@@ -221,6 +221,32 @@ describe('lists and search', () => {
     ).toBe(0)
   })
 
+  test('show who approved the latest version, who is asked to review, and whether others can see it', async () => {
+    const riley = as('riley')
+    const maya = as('maya')
+    const mayaId = (await maya.me({})).id
+    const { idea } = await riley.createIdea({ title: 'Reviewed plan', files: [{ path: 'a.md', content: PLAN }] })
+    const listed = () =>
+      riley.listIdeas({ owner: handle('riley') }).then((page) => page.items.find((i) => i.id === idea))
+    expect(await listed()).toMatchObject({ approvals: [], reviewers: [], visibility: 'private' })
+
+    await riley.setReviewer({ idea, subject: { kind: 'user', id: mayaId }, reviewer: true })
+    await maya.reviewIdea({ idea, version: 1, verdict: 'approve' })
+    const approved = await eventually(listed, (r) => (r?.approvals.length ?? 0) > 0)
+    expect(approved).toMatchObject({
+      approvals: [{ id: mayaId, handle: handle('maya') }],
+      reviewers: [{ kind: 'user', user: { id: mayaId } }],
+      visibility: 'private',
+    })
+
+    // a new version: the approval was of the last one, so it no longer counts
+    await riley.edit({ idea, batch: { base: 1, steps: [{ command: 'insert', at: { end: 'f1' }, markdown: 'More.' }] } })
+    expect((await eventually(listed, (r) => r?.latest === 2))?.approvals).toEqual([])
+
+    await riley.setAccess({ idea, subject: { kind: 'everyone' }, access: { edit: false, share: false } })
+    expect((await listed())?.visibility).toBe('public')
+  })
+
   test("a team's idea is listed with its team and description", async () => {
     const riley = as('riley')
     const team = await riley.createTeam({ handle: handle('listed'), name: 'Listed' })

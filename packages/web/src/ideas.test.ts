@@ -15,6 +15,9 @@ const row = (extra: Partial<ListedIdea> = {}): ListedIdea => ({
   openComments: 2,
   team: { id: 't1', handle: 'mobile', name: 'Mobile', archived: false },
   owner: { id: 'u-riley', handle: 'riley', name: 'Riley Park', inactive: false },
+  approvals: [],
+  reviewers: [],
+  visibility: 'private',
   ...extra,
 })
 
@@ -27,6 +30,27 @@ test("a team's idea links to its address, and its team to the team's page", () =
     openThreads: 2,
     reviewers: [],
   })
+})
+
+test('approvals, reviewers (people and groups) and who can see it come from the row', () => {
+  const maya = { id: 'u-maya', handle: 'maya', name: 'Maya Patel', inactive: false }
+  const info = ideaInfo(
+    row({
+      approvals: [maya],
+      reviewers: [
+        { kind: 'user', user: maya },
+        { kind: 'group', group: { id: 'g1', handle: 'design', name: 'Design' } },
+      ],
+      visibility: 'public',
+    }),
+    'u-me',
+  )
+  expect(info.approvals).toEqual([maya])
+  expect(info.reviewers).toEqual([
+    { kind: 'person', person: maya },
+    { kind: 'group', id: 'g1', group: { name: 'Design' }, href: '/groups/design' },
+  ])
+  expect(info.visibility).toBe('public')
 })
 
 test("someone's own idea: yours, or theirs, linked to their page", () => {

@@ -932,7 +932,7 @@ function describeCheck(check: RequirementCheck): string {
   return check.mode === 'each' ? `an approval from each of ${names}` : `an approval from any of ${names}`
 }
 
-function listed({ teamInfo, ownerInfo, team: _team, owner: _owner, ...idea }: IdeaListing) {
+function listed({ teamInfo, ownerInfo, team: _team, owner: _owner, approvers: _approvers, ...idea }: IdeaListing) {
   // the index holds what ideas send it: one of their statuses
   return { ...idea, status: idea.status as IdeaStatus, team: teamInfo, owner: ownerInfo }
 }

@@ -143,7 +143,7 @@ describe('data survives migration', () => {
       "INSERT INTO memberships VALUES ('team', 't1', 'u-riley', 'admin', 1), ('team', 't1', 'u-maya', 'member', 1)",
     )
     await sql.execute(
-      "INSERT INTO ideas VALUES ('i1', 'Offline sync', 't1', 'u-riley', 'draft', 1, 1, 1, 't1', 1, 'Queue changes offline.', 2)",
+      "INSERT INTO ideas VALUES ('i1', 'Offline sync', 't1', 'u-riley', 'draft', 1, 1, 1, 't1', 1, 'Queue changes offline.', 2, '[]')",
     )
     await sql.execute("INSERT INTO numbering VALUES ('t1', 2)")
     await sql.execute("INSERT INTO grants VALUES ('i1', 'team', 't1', 0, 0, 0, 1)")

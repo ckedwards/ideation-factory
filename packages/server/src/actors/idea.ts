@@ -81,6 +81,8 @@ export const idea = actor({
       if (!summary) {
         return
       }
+      // the people whose approvals count, for lists: approvals of the latest version, so a new one clears them
+      const approvers = (await serviceOf(c).reviews(null)).reviews.flatMap((r) => (r.counts ? [r.by.user] : []))
       const update = {
         id: summary.id,
         title: summary.title,
@@ -88,6 +90,7 @@ export const idea = actor({
         status: summary.status,
         latest: summary.latest,
         openComments: await serviceOf(c).openComments(),
+        approvers,
         updatedAt: c.state.lastActivity || Date.now(),
       }
       // an index update is safe to send twice: the newest wins. Should it fail, it's sent again later

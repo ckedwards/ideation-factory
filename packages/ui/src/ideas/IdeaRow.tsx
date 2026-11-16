@@ -62,7 +62,7 @@ export function IdeaRow({ idea, query, extra, hide = {} }: IdeaRowProps) {
                 </>
               )}
             </span>
-            {!hide.team && idea.team.personal && (
+            {!hide.team && idea.team.personal && (idea.visibility ?? 'private') === 'private' && (
               <Tag tone="dashed" title="Only the author and people they ask to review can see this">
                 <span aria-hidden>🔒</span> Private
               </Tag>

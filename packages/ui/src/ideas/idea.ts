@@ -35,6 +35,9 @@ export interface IdeaInfo {
   // milliseconds since the epoch
   updatedAt: number
   openThreads: number
+  // who can see it beyond its author and its team: only those asked to review it, others too, or
+  // everyone; private unless said
+  visibility?: 'private' | 'shared' | 'public'
   // who approved the current version
   approvals: Person[]
   reviewers: Reviewer[]

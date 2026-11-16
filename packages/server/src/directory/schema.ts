@@ -63,6 +63,8 @@ export interface DB {
     description: string
     /** Comment threads not resolved yet. */
     open_comments: number
+    /** The people whose approval of the latest version counts, by ID in the order they approved: JSON. */
+    approvers: string
   }
   /** Each place's next idea number. */
   numbering: { place: string; next: number }
@@ -214,6 +216,7 @@ export const COLUMNS = {
     'number',
     'description',
     'open_comments',
+    'approvers',
   ],
   numbering: ['place', 'next'],
   idea_aliases: ['place', 'number', 'idea'],
@@ -311,6 +314,7 @@ const MIGRATIONS: Migration[] = [
       .addColumn('number', 'integer', (c) => c.notNull())
       .addColumn('description', 'text', (c) => c.notNull().defaultTo(''))
       .addColumn('open_comments', 'integer', (c) => c.notNull().defaultTo(0))
+      .addColumn('approvers', 'text', (c) => c.notNull().defaultTo('[]'))
       .execute()
     await db.schema.createIndex('ideas_place').on('ideas').columns(['place', 'number']).unique().execute()
     await db.schema

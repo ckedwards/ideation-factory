@@ -51,7 +51,7 @@ import type {
 } from '../directory/types.ts'
 
 /** A new idea's row for the directory's index, before it's numbered. */
-export type NewIdea = Omit<IdeaRow, 'number' | 'openComments'>
+export type NewIdea = Omit<IdeaRow, 'number' | 'openComments' | 'approvers'>
 
 export type { IndexUpdate }
 
@@ -198,7 +198,7 @@ export const directory = actor({
       directoryOf(c).canCreateIdea(by, team, token),
     tokenGrant: (c, id: string) => directoryOf(c).tokenGrant(id),
     revokeTokenGrant: (c, by: string, id: string) => directoryOf(c).revokeTokenGrant(by, id),
-    registerIdea: (c, row: Omit<IdeaRow, 'number' | 'openComments'>) => directoryOf(c).registerIdea(row),
+    registerIdea: (c, row: Omit<IdeaRow, 'number' | 'openComments' | 'approvers'>) => directoryOf(c).registerIdea(row),
     /** Sends every idea's title to the search actor again (admin.ts reindex-search): for a lost search index. */
     reindexSearch: (c) => directoryOf(c).reindexSearch(),
     updateIdea: (c, row: IndexUpdate) => directoryOf(c).updateIdea(row),

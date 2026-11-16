@@ -463,6 +463,20 @@ export const IdeaRow = z.object({
   openComments: z.number().int(),
   team: z.object({ id: z.string(), handle: z.string(), name: z.string(), archived: z.boolean() }).nullable(),
   owner: User,
+  /** The people whose approval of the latest version counts, in the order they approved. */
+  approvals: z.array(User),
+  /** The people and groups asked to review it. */
+  reviewers: z.array(
+    z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('user'), user: User }),
+      z.object({ kind: z.literal('group'), group: z.object({ id: z.string(), handle: z.string(), name: z.string() }) }),
+    ]),
+  ),
+  /**
+   * Who can see it beyond its owner and its team: only those asked to review it
+   * (private), others it's shared with too (shared), or everyone (public).
+   */
+  visibility: z.enum(['private', 'shared', 'public']),
 })
 
 /** Why you hear about an idea, most direct first; `watching`: through a team you watch. */
