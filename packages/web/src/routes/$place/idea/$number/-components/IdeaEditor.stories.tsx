@@ -72,7 +72,7 @@ export const EditingABlock: Story = {
     await expect(box).toHaveValue('Field technicians lose signal in basements and plant rooms.')
     await userEvent.clear(box)
     await userEvent.type(box, 'Signal drops underground.')
-    await userEvent.click(page.getByRole('button', { name: 'Keep' }))
+    await userEvent.click(page.getByRole('button', { name: 'Save to draft' }))
     await waitFor(() =>
       expect(args.onEdit).toHaveBeenCalledWith(expect.objectContaining({ id: 'b3' }), 'Signal drops underground.'),
     )

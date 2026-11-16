@@ -63,12 +63,12 @@ export function IdeaEditor({ units, onEdit, onAdd, onDelete }: IdeaEditorProps) 
                   onCancel={close}
                 />
                 <div className="idea-editor-buttons">
-                  <span className="idea-editor-hint">⌘↵ to keep · Esc to cancel</span>
+                  <span className="idea-editor-hint">⌘↵ to save to the draft · Esc to cancel</span>
                   <Button size="sm" variant="ghost" onClick={close}>
                     Cancel
                   </Button>
                   <Button size="sm" variant="primary" type="submit">
-                    Keep
+                    Save to draft
                   </Button>
                 </div>
               </form>

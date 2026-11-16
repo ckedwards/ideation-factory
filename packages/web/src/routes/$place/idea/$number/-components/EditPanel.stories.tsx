@@ -64,7 +64,7 @@ export const Empty: Story = {
   args: { changes: [], outcomes: [] },
   play: async ({ canvasElement }) => {
     const page = within(canvasElement)
-    await expect(page.getByText('Edit a block, or add text below one.')).toBeVisible()
+    await expect(page.getByText('Hover a block to edit it, add text below it or delete it.')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Commit as v4' })).toBeDisabled()
   },
 }
