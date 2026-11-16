@@ -723,11 +723,16 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
 
     listNotifications: (input, { caller, token }) =>
       read(async () => {
+        const team = input.team ? await directory().team(input.team) : null
+        if (input.team && !team) {
+          return notFound(`no team ${input.team}`)
+        }
         const page = await directory().inbox(
           caller.user,
           {
             ...(input.done ? { done: true } : {}),
             ...(input.reason ? { reason: input.reason } : {}),
+            ...(team ? { team: team.id } : {}),
             ...(input.unread ? { unread: true } : {}),
             ...(input.cursor ? { cursor: input.cursor } : {}),
             ...(input.limit ? { limit: input.limit } : {}),
@@ -736,6 +741,9 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         )
         return { items: page.items.map((row) => ({ ...row, idea: listed(row.idea) })), next: page.next }
       }),
+
+    countNotifications: (_input, { caller, token }) =>
+      read(() => directory().inboxCounts(caller.user, token?.id ?? null)),
 
     unreadNotifications: (_input, { caller, token }) =>
       read(async () => ({ count: await directory().unreadCount(caller.user, token?.id ?? null) })),

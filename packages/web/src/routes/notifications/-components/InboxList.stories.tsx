@@ -12,6 +12,8 @@ const rows: InboxRowView[] = [
     where: 'Payments',
     status: { status: 'requesting review' },
     reason: 'Review requested',
+    asked: true,
+    kind: 'comment',
     actor: maya,
     update: 'commented: “Which timeout?”',
     newCount: 3,
@@ -24,6 +26,7 @@ const rows: InboxRowView[] = [
     where: 'Mobile',
     status: { status: 'closed', reason: 'accepted' },
     reason: 'Author',
+    kind: 'review',
     actor: { kind: 'bot-for-person', bot: 'planbot', person: maya.person },
     update: 'approved it',
     newCount: 0,
@@ -74,3 +77,15 @@ export const Done: Story = {
 }
 
 export const Empty: Story = { args: { rows: [] } }
+
+// Grouped by day, each row's update shown by its icon, and a review asked of you standing out
+export const GroupedAndEmphasised: Story = {
+  play: async ({ canvasElement }) => {
+    const list = within(canvasElement)
+    // the second is a day or more ago: Yesterday or This week, by when the test runs
+    const days = list.getAllByRole('region')
+    await expect(days[0]).toHaveAccessibleName('Today')
+    await expect(days.length).toBeGreaterThan(1)
+    await expect(list.getByText('Review requested')).toHaveClass('is-asked')
+  },
+}
