@@ -18,7 +18,15 @@ import {
 import type { Client } from 'rivetkit/client'
 import { directoryOf, ideaOf as ideaActor } from './actors/pools.ts'
 import { nodeDeps } from './deps.ts'
-import type { ContainerKind, Grant, IdeaListing, Permission, RequirementCheck, Result } from './directory/types.ts'
+import type {
+  ContainerKind,
+  Grant,
+  IdeaListing,
+  MemberSort,
+  Permission,
+  RequirementCheck,
+  Result,
+} from './directory/types.ts'
 import { reviewerOf } from './idea/reviewer.ts'
 import type { IdeaWrite, WriteResult, WriteValue } from './idea/service.ts'
 import type { Registry } from './registry.ts'
@@ -172,6 +180,9 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         return directory().members(kind, c.id, {
           ...(input.cursor ? { cursor: String(input.cursor) } : {}),
           ...(input.limit ? { limit: Number(input.limit) } : {}),
+          ...(input.q ? { query: String(input.q) } : {}),
+          ...(input.sort ? { sort: input.sort as MemberSort } : {}),
+          ...(input.order ? { order: input.order as 'asc' | 'desc' } : {}),
         })
       }),
     addMember: async (input: Record<string, unknown>, context: Context) => {

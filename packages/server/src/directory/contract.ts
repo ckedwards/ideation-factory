@@ -91,7 +91,7 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
           },
         })
         expect((await d.members('team', (team as { value: { id: string } }).value.id)).items).toEqual([
-          { user: expect.objectContaining({ handle: 'riley' }), role: 'admin' },
+          { user: expect.objectContaining({ handle: 'riley' }), role: 'admin', joined: expect.any(Number) },
         ])
         expect(await d.createTeam('u-maya', { handle: 'platform', name: 'Again' })).toMatchObject({
           ok: false,
@@ -1345,6 +1345,51 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
           ['sam', false, [['draft', 'watching', ['comment']]]],
           ['sam', false, [['open', 'participating', ['version']]]],
         ])
+      })
+    })
+  })
+
+  describe('members lists', () => {
+    test('searched by handle or name, sorted by name, role or when they joined, either way, a page at a time', async () => {
+      let now = 5_000_000
+      const d = await people({ now: () => (now += 1000) })
+      const made = await d.createTeam('u-riley', { handle: 'core', name: 'Core' })
+      const id = (made as { value: { id: string } }).value.id
+      await d.addMember('u-riley', 'team', id, 'u-sam', 'maintainer')
+      await d.addMember('u-riley', 'team', id, 'u-maya')
+      await d.addMember('u-riley', 'team', id, 'u-devon')
+      const handles = async (options: Parameters<Directory['members']>[2]) =>
+        (await d.members('team', id, options)).items.map((m) => m.user.handle)
+
+      expect(await handles({})).toEqual(['devon', 'maya', 'riley', 'sam'])
+      expect(await handles({ order: 'desc' })).toEqual(['sam', 'riley', 'maya', 'devon'])
+      expect(await handles({ sort: 'role' })).toEqual(['riley', 'sam', 'devon', 'maya'])
+      expect(await handles({ sort: 'joined' })).toEqual(['riley', 'sam', 'maya', 'devon'])
+      expect(await handles({ sort: 'joined', order: 'desc' })).toEqual(['devon', 'maya', 'sam', 'riley'])
+      expect(await handles({ query: 'ma' })).toEqual(['maya'])
+      expect(await handles({ query: 'EV' })).toEqual(['devon'])
+      expect(await handles({ query: '%' })).toEqual(['devon', 'maya', 'riley', 'sam'])
+
+      // every sort, a page at a time, gives everyone once
+      for (const sort of ['name', 'role', 'joined'] as const) {
+        for (const order of ['asc', 'desc'] as const) {
+          const seen: string[] = []
+          let cursor: string | undefined
+          do {
+            const page = await d.members('team', id, { sort, order, limit: 1, ...(cursor ? { cursor } : {}) })
+            seen.push(...page.items.map((m) => m.user.handle))
+            cursor = page.next ?? undefined
+          } while (cursor)
+          expect(seen).toEqual(await handles({ sort, order }))
+        }
+      }
+
+      // each with when they joined; a role change keeps it
+      const joined = Object.fromEntries((await d.members('team', id)).items.map((m) => [m.user.handle, m.joined]))
+      expect(joined.riley! < joined.sam!).toBe(true)
+      expect(await d.addMember('u-riley', 'team', id, 'u-maya', 'maintainer')).toMatchObject({
+        ok: true,
+        value: { role: 'maintainer', joined: joined.maya },
       })
     })
   })

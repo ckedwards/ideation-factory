@@ -388,7 +388,8 @@ export const Team = z.object({
   requirements: TeamRequirements,
 })
 export const Group = z.object({ kind: z.literal('group'), ...ContainerFields, deleted: z.boolean() })
-export const Member = z.object({ user: User, role: Role })
+/** A team's or group's member: their role, and when they joined (ms). */
+export const Member = z.object({ user: User, role: Role, joined: z.number() })
 /**
  * How much of a team you hear about: only the ideas you're involved in (the
  * default), every idea once it's out of draft up to and including its close,
