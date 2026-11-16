@@ -11,6 +11,7 @@ import {
   ActorLabel,
   Button,
   CommentCard,
+  CopyText,
   Empty,
   Link,
   LinkButton,
@@ -75,6 +76,8 @@ export interface IdeaOverviewProps {
   startedAt: number
   /** Markdown; empty when there's none. */
   description: string
+  /** Its address, as people paste it and the cli takes it: mobile/idea/9. */
+  address?: string
   /** The idea's pages (IdeaTabs). */
   tabs: ReactNode
   /** Its reviews: status, reviewers and verdicts (ReviewPanel). */
@@ -104,6 +107,7 @@ export function IdeaOverview(props: IdeaOverviewProps) {
         }
         sub={
           <span className="idea-overview-sub">
+            {props.address && <CopyText text={props.address} label="The idea’s address" />}
             <TeamChip team={props.team} href={props.team.href} />
             {props.statusControl ?? (
               <StatusPill
