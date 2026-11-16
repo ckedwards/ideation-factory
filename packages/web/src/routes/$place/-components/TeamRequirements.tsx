@@ -158,8 +158,8 @@ function RuleAdd({ label, exclude, onAdd }: { label: string; exclude: string[]; 
 const each = (names: string[], word: 'or' | 'and') =>
   names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} ${word} ${names.at(-1)}`
 
-/** What the requirements will need of an idea, in a sentence. */
-export function requirementsSentence(r: RequirementsView): string {
+/** What the requirements need of an idea, in a sentence: as they stand (now), or once saved. */
+export function requirementsSentence(r: RequirementsView, now = false): string {
   const parts = [
     ...(r.approvals > 0
       ? [r.approvals === 1 ? '1 approval from a person' : `${r.approvals} approvals from people`]
@@ -181,7 +181,7 @@ export function requirementsSentence(r: RequirementsView): string {
   ]
   return parts.length === 0
     ? 'Ideas can be closed as accepted with no approvals.'
-    : `Closing an idea as accepted will need ${each(parts, 'and')}.`
+    : `Closing an idea as accepted ${now ? 'needs' : 'will need'} ${each(parts, 'and')}.`
 }
 
 export interface RequirementsDraftProps {
