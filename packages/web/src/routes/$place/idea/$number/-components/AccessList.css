@@ -43,3 +43,29 @@
   flex: 1;
   min-width: 14rem;
 }
+.access-who {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.access-who a {
+  color: var(--ink);
+  font-weight: 500;
+  text-decoration: none;
+}
+.access-who a:hover {
+  text-decoration: underline;
+}
+.access-kind {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
+.sharing-where {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+.sharing-where a {
+  color: var(--accent);
+}

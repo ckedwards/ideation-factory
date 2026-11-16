@@ -9,6 +9,8 @@ export const subjectKey = (s: Subject) => (s.kind === 'everyone' ? 'everyone' : 
 
 export interface Named {
   label: string
+  /** Just its name, where its kind is said apart. */
+  name?: string
   /** Its page, if it has one. */
   href?: string
 }
@@ -25,14 +27,14 @@ export function useSubjectNames(subjects: Subject[]): Map<string, Named> {
       queryFn: async (): Promise<Named> => {
         if (s.kind === 'user') {
           const p = await api.getUser({ user: s.id })
-          return { label: `${p.name} (@${p.handle})`, href: `/@${p.handle}` }
+          return { label: `${p.name} (@${p.handle})`, name: p.name, href: `/@${p.handle}` }
         }
         if (s.kind === 'group') {
           const g = await api.getGroup({ group: s.id })
-          return { label: `${g.name} (group)`, href: `/groups/${g.handle}` }
+          return { label: `${g.name} (group)`, name: g.name, href: `/groups/${g.handle}` }
         }
         const t = await api.getTeam({ team: s.id })
-        return { label: `${t.name}’s members`, href: `/${t.handle}` }
+        return { label: `${t.name}’s members`, name: `${t.name}’s members`, href: `/${t.handle}` }
       },
       staleTime: 5 * 60_000,
     })),

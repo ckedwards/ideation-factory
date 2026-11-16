@@ -4,10 +4,11 @@ import { useState } from 'react'
 import { ApiError } from '@ideaf/api'
 import { parseMarkdown } from '@ideaf/core'
 import { requirementWords } from '../../../../ideas.ts'
-import { Toast } from '@ideaf/ui'
+import { Dialog, Toast } from '@ideaf/ui'
+import { SharingPanel } from './-components/SharingPanel.tsx'
 import { useLiveSuspenseQuery } from '@tanstack/react-db'
 import { useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { api, meQuery, teamQuery } from '../../../../api.ts'
 import { type ActivityItem, IdeaOverview } from './-components/IdeaOverview.tsx'
 import { IdeaTabs } from './-components/IdeaTabs.tsx'
@@ -35,6 +36,9 @@ import { commentInfo, commentWrites, teamRef, usePeople } from './-components/sh
 import { actorOf, statusOf } from './-components/view.ts'
 
 export const Route = createFileRoute('/$place/idea/$number/')({
+  // ?sharing: its Sharing dialog open (what /sharing leads to)
+  validateSearch: (search: Record<string, unknown>): { sharing?: true } =>
+    search['sharing'] === true || search['sharing'] === 'true' ? { sharing: true } : {},
   loader: async ({ context: { queryClient, idea } }) => {
     // the page in one read, then anything it didn't fill (an idea loaded already)
     await Promise.all([loadIdeaPage(queryClient, idea), commentsOf(idea, queryClient).preload()])
@@ -50,6 +54,8 @@ export const Route = createFileRoute('/$place/idea/$number/')({
 
 function Overview() {
   const { idea: id, place, number } = Route.useRouteContext()
+  const { sharing } = Route.useSearch()
+  const navigate = useNavigate({ from: Route.fullPath })
   const queryClient = useQueryClient()
   const links = ideaLinks(place, number)
   const { data: idea } = useSuspenseQuery(ideaQuery(id))
@@ -258,7 +264,7 @@ function Overview() {
         statusControl={<IdeaStatus {...review} />}
         actions={<CloseOrReopen {...review} />}
         review={<ReviewPanel {...review} />}
-        sharingHref={links.sharing}
+        sharingHref={`${links.overview}?sharing=true`}
         subscribe={
           subscription.data && (
             <SubscribeButton
@@ -281,6 +287,13 @@ function Overview() {
         onReply={writes.reply}
         onResolve={writes.resolve}
       />
+      <Dialog
+        open={sharing === true}
+        title="Sharing"
+        onClose={() => void navigate({ to: '.', search: {}, replace: true })}
+      >
+        <SharingPanel id={id} links={links} />
+      </Dialog>
       <Toast message={note} onDismiss={() => setNote(null)} />
     </>
   )
