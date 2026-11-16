@@ -2949,9 +2949,23 @@ function likeEscape(text: string): string {
   return text.replace(/[%_\\]/g, '')
 }
 
+/**
+ * Whether a write failed on a unique constraint. Bun's SQLite says so in the error's message; in an
+ * actor, RivetKit's SQLite throws an internal RivetError whose message says only that, with SQLite's
+ * own words in its metadata ("UNIQUE constraint failed: teams.handle"), so those are read too, and
+ * any cause's.
+ */
 function isUniqueViolation(error: unknown): boolean {
-  const message = String((error as { message?: unknown })?.message ?? error)
-  return /UNIQUE constraint failed|SQLITE_CONSTRAINT_UNIQUE|duplicate key value/i.test(message)
+  const texts: string[] = []
+  for (let e: unknown = error, depth = 0; e !== undefined && e !== null && depth < 5; depth++) {
+    const err = e as { message?: unknown; metadata?: { error?: unknown }; cause?: unknown }
+    texts.push(String(err.message ?? e))
+    if (typeof err.metadata?.error === 'string') {
+      texts.push(err.metadata.error)
+    }
+    e = err.cause
+  }
+  return texts.some((text) => /UNIQUE constraint failed|SQLITE_CONSTRAINT_UNIQUE|duplicate key value/i.test(text))
 }
 
 // --- prepared queries ---------------------------------------------------------------
