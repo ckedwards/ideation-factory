@@ -188,6 +188,7 @@ export const directory = actor({
       directoryOf(c).removeMember(by, kind, id, user),
     teamGroups: (c, team: string) => directoryOf(c).teamGroups(team),
     groupTeams: (c, group: string) => directoryOf(c).groupTeams(group),
+    groupRules: (c, group: string) => directoryOf(c).groupRules(group),
     addTeamGroup: (c, by: string, team: string, group: string, role?: 'member' | 'maintainer') =>
       directoryOf(c).addTeamGroup(by, team, group, role),
     removeTeamGroup: (c, by: string, team: string, group: string) => directoryOf(c).removeTeamGroup(by, team, group),

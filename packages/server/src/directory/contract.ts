@@ -624,6 +624,40 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         expect((await d.inbox('u-sam')).items).toHaveLength(2)
       })
 
+      test("a group's uses: the teams' rules that name it, and the ideas asking it to review", async () => {
+        const { d, team } = await withTeam()
+        const security = (
+          (await d.createGroup('u-devon', { handle: 'security', name: 'Security' })) as { value: { id: string } }
+        ).value.id
+        const legal = (
+          (await d.createGroup('u-devon', { handle: 'legal', name: 'Legal' })) as { value: { id: string } }
+        ).value.id
+        expect(await d.groupRules('security')).toEqual({ ok: true, value: [] })
+        await d.setRequirements('u-riley', team, {
+          approvals: 0,
+          groups: [{ mode: 'each', groups: [security, legal], request: true }],
+          resolved: false,
+        })
+        expect(await d.groupRules('security')).toEqual({
+          ok: true,
+          value: [
+            {
+              team: { id: team, handle: 'core', name: 'Core' },
+              mode: 'each',
+              request: true,
+              groups: [
+                { id: security, handle: 'security', name: 'Security' },
+                { id: legal, handle: 'legal', name: 'Legal' },
+              ],
+            },
+          ],
+        })
+        await d.registerIdea(idea('asked', { team }))
+        await d.registerIdea(idea('not', { team }))
+        await d.setReviewer('u-riley', 'asked', { kind: 'group', id: 'security' }, true)
+        expect((await d.listIdeas('u-riley', { reviewerGroup: security })).items.map((i) => i.id)).toEqual(['asked'])
+      })
+
       test('people, groups and teams can be named by handle, and are stored by ID', async () => {
         const { d, team } = await withTeam()
         const group = (

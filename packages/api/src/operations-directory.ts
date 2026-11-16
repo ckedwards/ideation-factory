@@ -233,6 +233,8 @@ export const directoryOperations = {
       owner: Ref.optional(),
       /** Asking this person to review it, by name or through a group they're in. */
       reviewer: Ref.optional(),
+      /** Asking this group to review it. */
+      reviewerGroup: Ref.optional(),
       status: IdeaStatus.optional(),
       state: z.enum(['open', 'closed']).optional(),
       cursor: Cursor,
@@ -581,6 +583,26 @@ export const directoryOperations = {
     kind: 'read',
     input: z.strictObject({ group: Ref }),
     output: z.object({ items: z.array(GroupTeam) }),
+  }),
+  listGroupRules: defineOperation({
+    name: 'list_group_rules',
+    summary: "List the teams' approval rules that name a group",
+    description:
+      "Each team approval rule that names a group: the team, whether it needs an approval from any or each of its groups, whether they're asked to review, and the groups.",
+    method: 'GET',
+    path: '/groups/{group}/rules',
+    kind: 'read',
+    input: z.strictObject({ group: Ref }),
+    output: z.object({
+      items: z.array(
+        z.object({
+          team: z.object({ id: z.string(), handle: z.string(), name: z.string() }),
+          mode: z.enum(['any', 'each']),
+          request: z.boolean(),
+          groups: z.array(z.object({ id: z.string(), handle: z.string(), name: z.string() })),
+        }),
+      ),
+    }),
   }),
   requestToJoinTeam: team.requestToJoin,
   listTeamJoinRequests: team.joinRequests,

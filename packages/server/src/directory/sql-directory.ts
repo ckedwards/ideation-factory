@@ -45,6 +45,7 @@ import {
   type IdeaPage,
   type IdeaPlace,
   type IdeaAccess,
+  type GroupRuleUse,
   type IdeaCounts,
   type InboxCounts,
   type IdeaListing,
@@ -1939,6 +1940,38 @@ export class SqlDirectory implements Directory {
     )
   }
 
+  async groupRules(groupRef: string): Promise<Result<GroupRuleUse[]>> {
+    const group = await this.group(groupRef)
+    if (!group) {
+      return fail('not_found', `no group ${groupRef}`)
+    }
+    // rules are stored as JSON on the team: the few that mention the group's ID, then read
+    const teams = await this.#db
+      .selectFrom('teams')
+      .select(['id', 'handle', 'name', 'requirements'])
+      .where('archived', '=', 0)
+      .where('requirements', 'like', `%"${group.id}"%`)
+      .orderBy('name')
+      .execute()
+    const uses = teams.flatMap((t) =>
+      (JSON.parse(t.requirements) as TeamRequirements).groups
+        .filter((rule) => rule.groups.includes(group.id))
+        .map((rule) => ({ team: { id: t.id, handle: t.handle, name: t.name }, rule })),
+    )
+    const named = [...new Set(uses.flatMap((u) => u.rule.groups))]
+    const groups = named.length
+      ? await this.#db.selectFrom('groups').select(['id', 'handle', 'name']).where('id', 'in', named).execute()
+      : []
+    return ok(
+      uses.map(({ team, rule }) => ({
+        team,
+        mode: rule.mode,
+        request: rule.request,
+        groups: rule.groups.map((id) => groups.find((g) => g.id === id) ?? { id, handle: id, name: 'A group' }),
+      })),
+    )
+  }
+
   async groupTeams(groupRef: string): Promise<Result<GroupTeam[]>> {
     const group = await this.group(groupRef)
     if (!group) {
@@ -3056,6 +3089,7 @@ export class SqlDirectory implements Directory {
       ...(filter.team ? { team: filter.team } : {}),
       ...(filter.owner ? { owner: filter.owner } : {}),
       ...(filter.reviewer ? { reviewer: filter.reviewer } : {}),
+      ...(filter.reviewerGroup ? { reviewerGroup: filter.reviewerGroup } : {}),
       ...(filter.status ? { status: filter.status } : {}),
       ...(filter.state === 'open' ? { open: true as const } : {}),
       ...(filter.state === 'closed' ? { closed: true as const } : {}),
@@ -3796,6 +3830,7 @@ const Q = {
     team?: string
     owner?: string
     reviewer?: string
+    reviewerGroup?: string
     status?: string
     open?: true
     closed?: true
@@ -3824,9 +3859,19 @@ const Q = {
     if (s.owner !== undefined) {
       query = query.where('ideas.owner', '=', s.owner)
     }
-    const { reviewer } = s
+    const { reviewer, reviewerGroup } = s
     if (reviewer !== undefined) {
       query = query.where('ideas.id', 'in', askedToReview(db, reviewer))
+    }
+    if (reviewerGroup !== undefined) {
+      query = query.where('ideas.id', 'in', (eb) =>
+        eb
+          .selectFrom('grants')
+          .select('grants.idea')
+          .where('grants.reviewer', '=', 1)
+          .where('grants.kind', '=', 'group')
+          .where('grants.subject', '=', reviewerGroup),
+      )
     }
     if (s.status !== undefined) {
       query = query.where('ideas.status', '=', s.status)
