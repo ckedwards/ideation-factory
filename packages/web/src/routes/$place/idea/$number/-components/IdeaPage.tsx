@@ -25,11 +25,12 @@ import {
   redline,
   RelativeTime,
   renderMermaid,
-  Section,
+  Select,
   SelectionMenu,
   Stack,
   StatusPill,
   Tabs,
+  TextArea,
   type TeamRef,
   type TextSelection,
   Toc,
@@ -80,6 +81,8 @@ export interface IdeaPageProps {
   addToReview?: boolean
   /** `pending`: added to the review rather than sent now. */
   onComment?: (selection: TextSelection, body: string, pending: boolean) => void
+  /** A comment on the whole file: the box at the end of the comments. */
+  onFileComment?: (body: string, pending: boolean) => void
   /** What a suggestion on a selection replaces (whole formatting), or null where there can't be one. */
   suggestionOf?: (selection: TextSelection) => string | null
   onSuggest?: (selection: TextSelection, replacement: string, body: string, pending: boolean) => void
@@ -126,11 +129,19 @@ export function IdeaPage(props: IdeaPageProps) {
   )
   // what changed since the base: the sections the contents marks
   const changed = useMemo(() => (base ? changedRanges(redline(base, { source, tree })) : []), [base, source, tree])
-  // resolved comments aren't shown, for now
+  // the panel's filters: open, resolved or all, and by whom
+  const [showing, setShowing] = useState<'open' | 'resolved' | 'all'>('open')
+  const [author, setAuthor] = useState('')
   const open = props.comments.filter((comment) => !comment.info.resolved)
-  const inText = open.filter((c) => c.place.kind === 'text' || c.place.kind === 'section')
-  const onFile = open.filter((c) => c.place.kind === 'file')
-  const outdated = open.filter((c) => c.place.kind === 'outdated')
+  const authors = [...new Map(props.comments.map((c) => [actorKey(c.info.author), actorName(c.info.author)])).entries()]
+  const shown = props.comments.filter(
+    (c) =>
+      (showing === 'all' || (showing === 'open') === !c.info.resolved) &&
+      (!author || actorKey(c.info.author) === author),
+  )
+  const inText = shown.filter((c) => c.place.kind === 'text' || c.place.kind === 'section')
+  const onFile = shown.filter((c) => c.place.kind === 'file')
+  const outdated = shown.filter((c) => c.place.kind === 'outdated')
   // the suggestions that can be accepted now
   const acceptable = canDecide
     ? open.filter((c) => c.info.suggestion?.state === 'open' && !c.info.outdated && !c.pending).map((c) => c.info.id)
@@ -254,8 +265,40 @@ export function IdeaPage(props: IdeaPageProps) {
           </span>
         </div>
       )}
-      {onFile.length > 0 && <Section title="On the whole file">{list(onFile)}</Section>}
-      {outdated.length > 0 && <Section title="Not in this version">{list(outdated, true)}</Section>}
+      <div className="idea-comment-filters" role="group" aria-label="Which comments">
+        <Select
+          size="sm"
+          aria-label="Show"
+          options={[
+            { value: 'open', label: 'Open' },
+            { value: 'resolved', label: 'Resolved' },
+            { value: 'all', label: 'All' },
+          ]}
+          value={showing}
+          onChange={setShowing}
+        />
+        {authors.length > 1 && (
+          <Select
+            size="sm"
+            aria-label="By"
+            options={[{ value: '', label: 'Anyone' }, ...authors.map(([value, label]) => ({ value, label }))]}
+            value={author}
+            onChange={setAuthor}
+          />
+        )}
+      </div>
+      {onFile.length > 0 && (
+        <div className="idea-panel-group">
+          <h3 className="idea-panel-label">On the whole file</h3>
+          {list(onFile)}
+        </div>
+      )}
+      {outdated.length > 0 && (
+        <div className="idea-panel-group">
+          <h3 className="idea-panel-label">Not in this version</h3>
+          {list(outdated, true)}
+        </div>
+      )}
       <CommentGutter
         documentRef={document}
         active={active}
@@ -264,12 +307,17 @@ export function IdeaPage(props: IdeaPageProps) {
           onFile.length + outdated.length > 0
             ? undefined
             : props.comments.length > 0
-              ? 'No open comments.'
+              ? showing === 'resolved'
+                ? 'No resolved comments.'
+                : 'No open comments.'
               : canComment
                 ? 'No comments yet. Select some text to comment on it.'
                 : 'No comments yet.'
         }
       />
+      {canComment && props.onFileComment && (
+        <FileComment onComment={props.onFileComment} addToReview={props.addToReview ?? false} />
+      )}
     </Stack>
   )
 
@@ -355,6 +403,69 @@ export function IdeaPage(props: IdeaPageProps) {
         )
       }
     />
+  )
+}
+
+/** Who wrote a comment, as the author filter tells them apart: a person, or a bot. */
+function actorKey(actor: Actor): string {
+  return actor.kind === 'bot'
+    ? `bot:${actor.bot}`
+    : actor.kind === 'bot-for-person'
+      ? `bot:${actor.bot}:${actor.person.id}`
+      : actor.person.id
+}
+function actorName(actor: Actor): string {
+  return actor.kind === 'bot'
+    ? `${actor.bot} (bot)`
+    : actor.kind === 'bot-for-person'
+      ? `${actor.bot} for ${actor.person.name}`
+      : actor.person.name
+}
+
+/** A comment on the whole file, at the end of the comments. */
+function FileComment({
+  onComment,
+  addToReview,
+}: {
+  onComment: (body: string, pending: boolean) => void
+  addToReview: boolean
+}) {
+  const [body, setBody] = useState('')
+  const send = (pending: boolean) => {
+    if (body.trim()) {
+      onComment(body.trim(), pending)
+      setBody('')
+    }
+  }
+  return (
+    <form
+      className="idea-file-comment"
+      onSubmit={(event) => {
+        event.preventDefault()
+        send(false)
+      }}
+    >
+      <TextArea
+        rows={2}
+        value={body}
+        placeholder="Comment on the whole file"
+        aria-label="Comment on the whole file"
+        onChange={setBody}
+        onSubmit={() => send(false)}
+      />
+      {body.trim() && (
+        <div className="idea-file-comment-buttons">
+          {addToReview && (
+            <Button size="sm" onClick={() => send(true)}>
+              Add to your review
+            </Button>
+          )}
+          <Button size="sm" variant="primary" type="submit">
+            Comment
+          </Button>
+        </div>
+      )}
+    </form>
   )
 }
 

@@ -295,6 +295,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
         onAccept={(ids) => accept(ids)}
         onAddToDraft={(ids) => accept(ids, 'draft')}
         onReject={writes.reject}
+        onFileComment={(body, pending) => writes.comment({ kind: 'file', file: file.id }, body, pending)}
         onSectionComment={(heading, body, pending) => {
           const section = sectionAt(file.source, file.unitIds, heading)
           if (section) {

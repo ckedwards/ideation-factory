@@ -126,6 +126,22 @@ export const Comments: Story = {
 }
 
 // Replying from a comment
+// The panel's filters: open, resolved or all; and a comment on the whole file at its end
+export const FiltersAndAFileComment: Story = {
+  args: { onFileComment: fn() },
+  play: async ({ args, canvasElement, userEvent }) => {
+    const page = within(canvasElement)
+    // resolved comments wait behind the filter
+    await expect(page.queryByText('Done.')).toBeNull()
+    await userEvent.selectOptions(page.getByRole('combobox', { name: 'Show' }), 'resolved')
+    await expect(await page.findByText('Done.')).toBeVisible()
+    await userEvent.selectOptions(page.getByRole('combobox', { name: 'Show' }), 'open')
+    await userEvent.type(page.getByRole('textbox', { name: 'Comment on the whole file' }), 'Needs a summary.')
+    await userEvent.click(page.getByRole('button', { name: 'Comment' }))
+    await expect(args.onFileComment).toHaveBeenCalledWith('Needs a summary.', false)
+  },
+}
+
 export const Reply: Story = {
   play: async ({ args, canvasElement, userEvent }) => {
     const page = within(canvasElement)
