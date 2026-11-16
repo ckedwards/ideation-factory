@@ -2,7 +2,8 @@
 // title, team, status and description), then everything that happened to it,
 // oldest first: each version, each change of status, and each comment
 // thread, which can be replied to and resolved here. Its reviews (ReviewPanel)
-// come first.
+// are in a column beside them, as a pull request's reviewers and checks are,
+// and come after the description on a narrow screen.
 import type { ReactNode } from 'react'
 import { markdownTree } from '@ideaf/core'
 import {
@@ -11,6 +12,7 @@ import {
   CommentCard,
   Empty,
   Link,
+  LinkButton,
   MarkdownView,
   Page,
   PageHeader,
@@ -46,6 +48,10 @@ export interface IdeaOverviewProps {
   title: string
   team: TeamRef & { href?: string | undefined }
   status: ShownStatus
+  /** The status as a control that moves it, for someone who can (IdeaStatus); its pill otherwise. */
+  statusControl?: ReactNode
+  /** More of the header's actions, after Subscribe and Sharing: closing or reopening it (CloseOrReopen). */
+  actions?: ReactNode
   startedBy: Actor
   startedAt: number
   /** Markdown; empty when there's none. */
@@ -68,22 +74,25 @@ export interface IdeaOverviewProps {
 export function IdeaOverview(props: IdeaOverviewProps) {
   const { canComment } = props
   return (
-    <Page>
+    <Page width="wide">
       <PageHeader
         title={props.title}
         actions={
           <span className="idea-overview-actions">
             {props.subscribe}
-            <Link href={props.sharingHref}>Sharing</Link>
+            <LinkButton href={props.sharingHref}>Sharing</LinkButton>
+            {props.actions}
           </span>
         }
         sub={
           <span className="idea-overview-sub">
             <TeamChip team={props.team} href={props.team.href} />
-            <StatusPill
-              status={props.status.status}
-              {...(props.status.reason ? { reason: props.status.reason } : {})}
-            />
+            {props.statusControl ?? (
+              <StatusPill
+                status={props.status.status}
+                {...(props.status.reason ? { reason: props.status.reason } : {})}
+              />
+            )}
             <span>
               Started by <ActorLabel actor={props.startedBy} short /> <RelativeTime at={props.startedAt} />
             </span>
@@ -91,63 +100,67 @@ export function IdeaOverview(props: IdeaOverviewProps) {
         }
       />
       {props.tabs}
-      <div className="idea-overview">
-        {props.review}
-        <Section title="Description">
-          {props.description.trim() ? (
-            <MarkdownView tree={markdownTree(props.description)} variant="compact" />
-          ) : (
-            <p className="idea-overview-none">No description.</p>
-          )}
-        </Section>
-        <Section title="Activity">
-          {props.activity.length === 0 ? (
-            <Empty>Nothing yet.</Empty>
-          ) : (
-            <ol className="idea-activity">
-              {props.activity.map((item) =>
-                item.kind === 'version' ? (
-                  <li key={`v${item.number}`} className="idea-activity-version">
-                    <span>
-                      <Link href={item.href}>v{item.number}</Link> · {describe(item)} by{' '}
-                      <ActorLabel actor={item.by} short /> · <RelativeTime at={item.at} />
-                    </span>
-                    {item.changesHref && <Link href={item.changesHref}>What changed</Link>}
-                  </li>
-                ) : item.kind === 'status' ? (
-                  <li key={`s${item.at}`} className="idea-activity-version">
-                    <span>
-                      {statusWords(item)} by <ActorLabel actor={item.by} short /> · <RelativeTime at={item.at} />
-                      {item.note && <span className="idea-activity-note">: {item.note}</span>}
-                    </span>
-                  </li>
-                ) : (
-                  <li key={item.comment.info.id} className="idea-activity-comment">
-                    {item.file && (
-                      <div className="idea-activity-where">
-                        On <Link href={item.href}>{item.file}</Link>
-                      </div>
-                    )}
-                    <CommentCard
-                      comment={item.comment.info}
-                      onReply={
-                        canComment && !item.comment.pending && props.onReply
-                          ? (body) => props.onReply?.(item.comment.info.id, body)
-                          : undefined
-                      }
-                      onResolve={
-                        // one in your pending review goes out before it can be resolved
-                        canComment && !item.comment.pending && !item.comment.info.pending && props.onResolve
-                          ? (resolved) => props.onResolve?.(item.comment.info.id, resolved)
-                          : undefined
-                      }
-                    />
-                  </li>
-                ),
-              )}
-            </ol>
-          )}
-        </Section>
+      <div className={`idea-overview${props.review ? '' : ' idea-overview-alone'}`}>
+        <div className="idea-overview-description">
+          <Section title="Description">
+            {props.description.trim() ? (
+              <MarkdownView tree={markdownTree(props.description)} variant="compact" />
+            ) : (
+              <p className="idea-overview-none">No description.</p>
+            )}
+          </Section>
+        </div>
+        {props.review && <aside className="idea-overview-review">{props.review}</aside>}
+        <div className="idea-overview-activity">
+          <Section title="Activity">
+            {props.activity.length === 0 ? (
+              <Empty>Nothing yet.</Empty>
+            ) : (
+              <ol className="idea-activity">
+                {props.activity.map((item) =>
+                  item.kind === 'version' ? (
+                    <li key={`v${item.number}`} className="idea-activity-version">
+                      <span>
+                        <Link href={item.href}>v{item.number}</Link> · {describe(item)} by{' '}
+                        <ActorLabel actor={item.by} short /> · <RelativeTime at={item.at} />
+                      </span>
+                      {item.changesHref && <Link href={item.changesHref}>What changed</Link>}
+                    </li>
+                  ) : item.kind === 'status' ? (
+                    <li key={`s${item.at}`} className="idea-activity-version">
+                      <span>
+                        {statusWords(item)} by <ActorLabel actor={item.by} short /> · <RelativeTime at={item.at} />
+                        {item.note && <span className="idea-activity-note">: {item.note}</span>}
+                      </span>
+                    </li>
+                  ) : (
+                    <li key={item.comment.info.id} className="idea-activity-comment">
+                      {item.file && (
+                        <div className="idea-activity-where">
+                          On <Link href={item.href}>{item.file}</Link>
+                        </div>
+                      )}
+                      <CommentCard
+                        comment={item.comment.info}
+                        onReply={
+                          canComment && !item.comment.pending && props.onReply
+                            ? (body) => props.onReply?.(item.comment.info.id, body)
+                            : undefined
+                        }
+                        onResolve={
+                          // one in your pending review goes out before it can be resolved
+                          canComment && !item.comment.pending && !item.comment.info.pending && props.onResolve
+                            ? (resolved) => props.onResolve?.(item.comment.info.id, resolved)
+                            : undefined
+                        }
+                      />
+                    </li>
+                  ),
+                )}
+              </ol>
+            )}
+          </Section>
+        </div>
       </div>
     </Page>
   )

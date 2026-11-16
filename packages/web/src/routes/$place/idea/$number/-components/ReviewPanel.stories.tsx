@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, fn, within } from 'storybook/test'
-import { ReviewPanel, type ReviewRow } from './ReviewPanel.tsx'
+import { CloseOrReopen, IdeaStatus, ReviewPanel, type ReviewRow } from './ReviewPanel.tsx'
 
 const maya = { id: 'u-maya', name: 'Maya Chen' }
 const devon = { id: 'u-devon', name: 'Devon Ross' }
@@ -43,6 +43,16 @@ const botApproval: ReviewRow = {
 const meta = {
   title: 'Ideas/ReviewPanel',
   component: ReviewPanel,
+  // as the overview has them: the status and closing in its header, the panel beside the activity
+  render: (args) => (
+    <div style={{ display: 'grid', gap: '1rem', maxWidth: '20rem' }}>
+      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+        <IdeaStatus {...args} />
+        <CloseOrReopen {...args} />
+      </div>
+      <ReviewPanel {...args} />
+    </div>
+  ),
   args: {
     status: { status: 'requesting review' },
     latest: 3,
@@ -118,10 +128,15 @@ export const Reviewing: Story = {
   play: async ({ args, canvasElement, userEvent }) => {
     const page = within(canvasElement)
     await expect(page.queryByRole('button', { name: 'Close…' })).toBeNull()
-    await userEvent.click(page.getByRole('radio', { name: 'Request changes' }))
-    await userEvent.type(page.getByLabelText('Summary'), 'Name the risks')
-    await userEvent.click(page.getByRole('button', { name: 'Submit review' }))
+    // the form waits behind a button, so the idea is read first
+    await expect(page.queryByRole('radio', { name: 'Approve' })).toBeNull()
+    await userEvent.click(page.getByRole('button', { name: 'Give your review' }))
+    const dialog = within(canvasElement.ownerDocument.body)
+    await userEvent.click(dialog.getByRole('radio', { name: 'Request changes' }))
+    await userEvent.type(dialog.getByLabelText('Summary'), 'Name the risks')
+    await userEvent.click(dialog.getByRole('button', { name: 'Submit review' }))
     await expect(args.onReview).toHaveBeenCalledWith('request-changes', 'Name the risks')
+    await expect(dialog.queryByRole('dialog', { name: 'Your review of v3' })).toBeNull()
   },
 }
 
@@ -146,7 +161,7 @@ export const Closed: Story = {
   play: async ({ args, canvasElement, userEvent }) => {
     const page = within(canvasElement)
     await expect(page.getByText('Closed · accepted')).toBeVisible()
-    await expect(page.queryByRole('button', { name: 'Submit review' })).toBeNull()
+    await expect(page.queryByRole('button', { name: 'Give your review' })).toBeNull()
     await userEvent.click(page.getByRole('button', { name: 'Reopen' }))
     await expect(args.onReopen).toHaveBeenCalled()
   },
@@ -157,12 +172,15 @@ export const WithPending: Story = {
   args: { reviews: [approved], pending: 3, onDiscard: fn() },
   play: async ({ args, canvasElement, userEvent }) => {
     const page = within(canvasElement)
-    await expect(page.getByText(/3 pending comments go out with it/)).toBeVisible()
-    await userEvent.click(page.getByRole('radio', { name: 'Just my comments' }))
-    await expect(page.queryByLabelText('Summary')).toBeNull()
-    await userEvent.click(page.getByRole('button', { name: 'Publish my comments' }))
+    const dialog = within(canvasElement.ownerDocument.body)
+    await userEvent.click(page.getByRole('button', { name: 'Finish your review (3 pending)' }))
+    await expect(dialog.getByText(/3 pending comments go out with it/)).toBeVisible()
+    await userEvent.click(dialog.getByRole('radio', { name: 'Just my comments' }))
+    await expect(dialog.queryByLabelText('Summary')).toBeNull()
+    await userEvent.click(dialog.getByRole('button', { name: 'Publish my comments' }))
     await expect(args.onReview).toHaveBeenCalledWith(null, '')
-    await userEvent.click(page.getByRole('button', { name: 'Discard pending comments' }))
+    await userEvent.click(page.getByRole('button', { name: 'Finish your review (3 pending)' }))
+    await userEvent.click(dialog.getByRole('button', { name: 'Discard pending comments' }))
     await expect(args.onDiscard).toHaveBeenCalled()
   },
 }
@@ -172,8 +190,10 @@ export const OwnerWithPending: Story = {
   args: { canReview: false, reviews: [], pending: 1 },
   play: async ({ args, canvasElement, userEvent }) => {
     const page = within(canvasElement)
-    await expect(page.queryByRole('radio', { name: 'Approve' })).toBeNull()
-    await userEvent.click(page.getByRole('button', { name: 'Publish my comments' }))
+    const dialog = within(canvasElement.ownerDocument.body)
+    await userEvent.click(page.getByRole('button', { name: 'Finish your review (1 pending)' }))
+    await expect(dialog.queryByRole('radio', { name: 'Approve' })).toBeNull()
+    await userEvent.click(dialog.getByRole('button', { name: 'Publish my comments' }))
     await expect(args.onReview).toHaveBeenCalledWith(null, '')
   },
 }
@@ -189,7 +209,7 @@ export const Owner: Story = {
   play: async ({ canvasElement }) => {
     const page = within(canvasElement)
     await expect(page.getByText('Nobody’s been asked yet.')).toBeVisible()
-    await expect(page.queryByRole('button', { name: 'Submit review' })).toBeNull()
+    await expect(page.queryByRole('button', { name: 'Give your review' })).toBeNull()
   },
 }
 
@@ -200,6 +220,11 @@ export const Asking: Story = {
     const page = within(canvasElement)
     await userEvent.click(page.getAllByRole('button', { name: 'Take off the reviewers' })[0]!)
     await expect(args.onAsk).toHaveBeenCalledWith({ kind: 'user', id: 'u-devon' }, false)
+    // asking is behind a button, done once or twice an idea
+    await expect(page.queryByRole('button', { name: 'Ask to review' })).toBeNull()
+    await userEvent.click(page.getByRole('button', { name: '+ Ask for a review' }))
     await expect(page.getByRole('button', { name: 'Ask to review' })).toBeDisabled()
+    await userEvent.click(page.getByRole('button', { name: 'Cancel' }))
+    await expect(page.getByRole('button', { name: '+ Ask for a review' })).toBeVisible()
   },
 }

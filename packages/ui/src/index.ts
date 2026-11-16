@@ -34,7 +34,7 @@ export { IdeaHeading, type IdeaHeadingProps } from './ideas/IdeaHeading.tsx'
 
 export { NowProvider, RelativeTime, formatAgo, useNow, type RelativeTimeProps } from './time/RelativeTime.tsx'
 
-export { Button, type ButtonProps, type ButtonVariant } from './controls/Button.tsx'
+export { Button, type ButtonProps, type ButtonVariant, LinkButton, type LinkButtonProps } from './controls/Button.tsx'
 export { SegmentedControl, type Segment, type SegmentedControlProps } from './controls/SegmentedControl.tsx'
 export { ThemeToggle, applyTheme, type Theme, type ThemeToggleProps } from './controls/ThemeToggle.tsx'
 export { SearchInput, type SearchInputProps } from './controls/SearchInput.tsx'

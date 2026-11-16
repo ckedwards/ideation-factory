@@ -117,3 +117,7 @@
   margin: 0;
   color: var(--ink-2);
 }
+/* your review's button keeps its own width, in the column and stacked */
+.review-panel > .button {
+  justify-self: start;
+}

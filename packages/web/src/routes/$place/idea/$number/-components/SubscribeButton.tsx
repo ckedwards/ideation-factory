@@ -31,7 +31,7 @@ export function SubscribeButton({ subscribed, reason, busy = false, onChange }: 
   const why = subscribed && reason ? WHY[reason] : 'You don’t hear about it, unless someone asks you to review it.'
   return (
     <Tooltip content={why}>
-      <Button size="sm" disabled={busy} onClick={() => onChange(!subscribed)}>
+      <Button disabled={busy} onClick={() => onChange(!subscribed)}>
         {subscribed ? 'Unsubscribe' : 'Subscribe'}
       </Button>
     </Tooltip>
