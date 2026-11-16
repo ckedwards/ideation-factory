@@ -37,6 +37,24 @@ export type ActivityItem =
     })
   | { kind: 'status'; at: number; status: ShownStatus; by: Actor; note: string; reopened: boolean }
   | {
+      kind: 'requested'
+      at: number
+      /** Who asked; null when its team's rules did. */
+      by: Actor | null
+      /** Who was asked, by name. */
+      who: string
+    }
+  | {
+      kind: 'review'
+      at: number
+      by: Actor
+      verdict: 'approve' | 'request-changes' | 'reject'
+      version: number
+      body: string
+      /** Dismissed since: who, and why. */
+      dismissed: { by: Actor; reason: string } | null
+    }
+  | {
       kind: 'comment'
       at: number
       comment: PageComment
@@ -126,6 +144,33 @@ export function IdeaOverview(props: IdeaOverviewProps) {
                       </span>
                       {item.changesHref && <Link href={item.changesHref}>What changed</Link>}
                     </li>
+                  ) : item.kind === 'requested' ? (
+                    <li key={`q${item.at}${item.who}`} className="idea-activity-version">
+                      <span>
+                        {item.by ? (
+                          <>
+                            <ActorLabel actor={item.by} short /> asked {item.who} to review
+                          </>
+                        ) : (
+                          <>Its team’s rules asked {item.who} to review</>
+                        )}{' '}
+                        · <RelativeTime at={item.at} />
+                      </span>
+                    </li>
+                  ) : item.kind === 'review' ? (
+                    <li key={`r${item.at}`} className={`idea-activity-version idea-activity-review is-${item.verdict}`}>
+                      <span>
+                        <ActorLabel actor={item.by} short /> {VERDICT[item.verdict]} v{item.version} ·{' '}
+                        <RelativeTime at={item.at} />
+                        {item.dismissed && (
+                          <span className="idea-activity-note">
+                            {' '}
+                            · dismissed by <ActorLabel actor={item.dismissed.by} short />: {item.dismissed.reason}
+                          </span>
+                        )}
+                      </span>
+                      {item.body && <p className="idea-activity-said">{item.body}</p>}
+                    </li>
                   ) : item.kind === 'status' ? (
                     <li key={`s${item.at}`} className="idea-activity-version">
                       <span>
@@ -206,6 +251,8 @@ function summary(info: Extract<ActivityItem, { kind: 'comment' }>['comment']['in
         : 'the whole file'
   return `on “${on.length > 40 ? `${on.slice(0, 40)}…` : on}”`
 }
+
+const VERDICT = { approve: 'approved', 'request-changes': 'requested changes to', reject: 'rejected' } as const
 
 function statusWords(item: Extract<ActivityItem, { kind: 'status' }>): string {
   const { status, reason } = item.status

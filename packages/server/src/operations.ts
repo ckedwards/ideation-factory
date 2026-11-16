@@ -135,7 +135,15 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
   const reviewsWith = async (idea: string, viewer: string | null, grants: Grant[]) => {
     const { reviews, check } = await requirementsOf(idea, viewer)
     const { openThreads: _open, ...rest } = reviews
-    return { ...rest, reviewers: grants.filter((g) => g.reviewer).map((g) => g.subject), requirements: check }
+    return {
+      ...rest,
+      reviewers: grants.filter((g) => g.reviewer).map((g) => g.subject),
+      // when each was asked, and by whom, for the idea's activity
+      requests: grants.flatMap((g) =>
+        g.reviewer && g.asked ? [{ subject: g.subject, at: g.asked.at, by: g.asked.by }] : [],
+      ),
+      requirements: check,
+    }
   }
   /** A version's comments as show_blocks lists them: the open ones. */
   const openThreads = <C extends { resolved: boolean; state: string }>(comments: C[]) =>

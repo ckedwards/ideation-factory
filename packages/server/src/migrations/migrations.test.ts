@@ -146,7 +146,7 @@ describe('data survives migration', () => {
       "INSERT INTO ideas VALUES ('i1', 'Offline sync', 't1', 'u-riley', 'draft', 1, 1, 1, 't1', 1, 'Queue changes offline.', 2, '[]')",
     )
     await sql.execute("INSERT INTO numbering VALUES ('t1', 2)")
-    await sql.execute("INSERT INTO grants VALUES ('i1', 'team', 't1', 0, 0, 0, 1)")
+    await sql.execute("INSERT INTO grants VALUES ('i1', 'team', 't1', 0, 0, 0, 1, NULL, NULL)")
 
     await directory.migrate(sql)
     // the search index is in a database of its own (the search actor's)

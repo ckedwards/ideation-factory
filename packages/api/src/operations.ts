@@ -54,6 +54,8 @@ const IdeaReviews = z.object({
   history: z.array(StatusChange),
   /** The people and groups asked to review it (set_reviewer). */
   reviewers: z.array(GrantSubject),
+  /** When each was asked, and by whom (a user's ID; null when its team's rules asked). */
+  requests: z.array(z.object({ subject: GrantSubject, at: z.number(), by: z.string().nullable() })),
   /** How many comments you have pending: your review, not submitted yet. */
   pending: z.number().int(),
   reviews: z.array(Review),

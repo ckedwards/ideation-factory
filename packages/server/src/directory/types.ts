@@ -405,6 +405,8 @@ export interface Grant {
   share: boolean
   /** Asked to review it (a person or a group). */
   reviewer: boolean
+  /** When they were asked, and who asked (null: its team's rules). */
+  asked?: { at: number; by: string | null } | null
 }
 
 /** Who would lose or gain access: counts, with the first names. */
