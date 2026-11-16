@@ -206,8 +206,38 @@ function family(kind: containers.Kind): Family {
               },
               ' [--approvals <n>] [--rule any|each:<group>,…[:request]]… [--no-rules] [--resolved | --any-threads]',
             ),
+            sub(
+              'groups',
+              ['team'],
+              "The groups in a team: their members are the team's, at up to each group's role",
+              (ctx, [ref]) => containers.teamGroups(ctx, ref!),
+            ),
+            sub(
+              'add-group',
+              ['team', 'group'],
+              "Add a group to a team, or change its role there (the team's admins): its members become the team's, as members unless --role maintainer, never admins",
+              (ctx, [ref, group], f) => containers.addGroup(ctx, ref!, group!, str(f, 'role')),
+              { role: { type: 'string', description: 'member (the default) or maintainer' } },
+              ' [--role <role>]',
+            ),
+            sub(
+              'remove-group',
+              ['team', 'group'],
+              "Take a group out of a team (the team's admins, or the group's): those in the team only through it leave it",
+              (ctx, [ref, group]) => containers.removeGroup(ctx, ref!, group!),
+            ),
           ]
-        : []),
+        : [
+            sub('teams', ['group'], 'The teams a group is part of, with its role in each', (ctx, [ref]) =>
+              containers.groupTeams(ctx, ref!),
+            ),
+            sub(
+              'leave-team',
+              ['group', 'team'],
+              "Take your group out of a team (the group's admins): those in the team only through it leave it",
+              (ctx, [ref, team]) => containers.removeGroup(ctx, team!, ref!),
+            ),
+          ]),
     ],
   }
 }

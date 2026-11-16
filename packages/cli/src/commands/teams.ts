@@ -60,7 +60,8 @@ export function need(args: string[], names: string[], usage: string): string[] {
   return args
 }
 
-const handleOf = (ref: string) => ref.replace(/^@/, '')
+/** A team's or group's handle, as written: @core, team:core, group:design or plain. */
+const handleOf = (ref: string) => ref.replace(/^(@|team:|group:)/, '')
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 function table(rows: string[][]): string[] {
@@ -226,7 +227,11 @@ export async function create(ctx: Context, kind: Kind, handle: string, flags: { 
 
 export async function members(ctx: Context, kind: Kind, ref: string, cursor: string | undefined) {
   const page = await api(ctx, kind).members(ref, cursor)
-  for (const line of table(page.items.map((m) => [userLabel(m.user), m.role]))) {
+  // where each comes from, when anyone is in it through a group
+  const sources = page.items.some((m) => m.through.length > 0)
+  const source = (m: (typeof page.items)[number]) =>
+    [...(m.direct ? ['direct'] : []), ...m.through.map((t) => `through group:${t.group.handle}`)].join(', ')
+  for (const line of table(page.items.map((m) => [userLabel(m.user), m.role, ...(sources ? [source(m)] : [])]))) {
     ctx.say(line)
   }
   more(ctx, page.next, `${kind} members ${ref}`)
@@ -372,5 +377,75 @@ export async function watch(ctx: Context, ref: string, level: string | undefined
       : await ctx.api.setTeamWatch({ team: ref, level: level as keyof typeof WATCH })
   ctx.result({ team: ref, ...now })
   ctx.say(`You hear about ${WATCH[now.level]} in team:${handleOf(ref)} (${now.level}).`)
+  return EXIT.ok
+}
+
+const groupRole = (role: string) => (role === 'maintainer' ? 'maintainers' : 'members')
+const leaves = (n: number) => (n === 1 ? '1 person' : `${n} people`)
+
+/** The groups in a team. */
+export async function teamGroups(ctx: Context, team: string) {
+  const { items } = await ctx.api.listTeamGroups({ team: handleOf(team) })
+  if (items.length === 0) {
+    ctx.say(`No groups are part of team:${handleOf(team)}.`)
+  }
+  for (const line of table(
+    items.map((g) => [
+      `group:${g.group.handle}`,
+      g.group.name,
+      `its members are ${groupRole(g.role)}`,
+      `${g.group.members} in it`,
+    ]),
+  )) {
+    ctx.say(line)
+  }
+  ctx.result({ items })
+  return EXIT.ok
+}
+
+/** Adds a group to a team, or changes its role there. */
+export async function addGroup(ctx: Context, team: string, group: string, role: string | undefined) {
+  if (role !== undefined && !['member', 'maintainer'].includes(role)) {
+    throw new CliError(`--role is member or maintainer (never admin), not "${role}"`, EXIT.usage, 'invalid')
+  }
+  const added = await ctx.api.addTeamGroup({
+    team: handleOf(team),
+    group: handleOf(group),
+    ...(role ? { role: role as 'member' | 'maintainer' } : {}),
+  })
+  ctx.say(
+    `group:${added.group.handle} is part of team:${handleOf(team)}: its ${added.group.members} members are the team's ${groupRole(added.role)}.`,
+  )
+  ctx.result(added)
+  return EXIT.ok
+}
+
+/** Takes a group out of a team: the team's admins, or the group's (its leaving). */
+export async function removeGroup(ctx: Context, team: string, group: string) {
+  const before = (await ctx.api.listTeamGroups({ team: handleOf(team) })).items.find(
+    (g) => g.group.handle === handleOf(group) || g.group.id === group,
+  )
+  const result = await ctx.api.removeTeamGroup({ team: handleOf(team), group: handleOf(group) })
+  ctx.say(
+    before
+      ? `group:${handleOf(group)} is no longer part of team:${handleOf(team)}${before.leaving ? `: ${leaves(before.leaving)} left it with it` : ''}.`
+      : `group:${handleOf(group)} wasn't part of team:${handleOf(team)}.`,
+  )
+  ctx.result(result)
+  return EXIT.ok
+}
+
+/** The teams a group is part of. */
+export async function groupTeams(ctx: Context, group: string) {
+  const { items } = await ctx.api.listGroupTeams({ group: handleOf(group) })
+  if (items.length === 0) {
+    ctx.say(`group:${handleOf(group)} isn't part of any team.`)
+  }
+  for (const line of table(
+    items.map((t) => [`team:${t.team.handle}`, t.team.name, `its members are ${groupRole(t.role)}`]),
+  )) {
+    ctx.say(line)
+  }
+  ctx.result({ items })
   return EXIT.ok
 }
