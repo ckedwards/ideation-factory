@@ -5,6 +5,7 @@
 # Compose or the dev server; its settings and data stay until wipe.
 #
 #   scripts/test-ui.sh up      build this checkout and start it (again after changing the code)
+#   scripts/test-ui.sh seed    fill it with sample people, teams and ideas (scripts/test-ui-data.ts), once
 #   scripts/test-ui.sh down    stop it, keeping its data
 #   scripts/test-ui.sh wipe    stop it and delete its data, and its settings
 #   scripts/test-ui.sh logs    follow the app's log
@@ -60,6 +61,10 @@ case "${1:-}" in
     echo "the app didn't become healthy: scripts/test-ui.sh logs" >&2
     exit 1
     ;;
+  seed)
+    TEST_UI_URL="http://localhost:$PORT" TEST_UI_MAILPIT_URL="http://localhost:$MAILPIT" \
+      bun "$ROOT/scripts/test-ui-seed.ts"
+    ;;
   down)
     settings
     dc down
@@ -74,7 +79,7 @@ case "${1:-}" in
     dc logs -f app
     ;;
   *)
-    sed -n '2,15p' "$0"
+    sed -n '2,16p' "$0"
     exit 2
     ;;
 esac

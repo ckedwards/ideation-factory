@@ -5,6 +5,8 @@
     "": {
       "name": "ideation-factory",
       "devDependencies": {
+        "@ideaf/api": "workspace:*",
+        "@ideaf/core": "workspace:*",
         "@types/bun": "^1",
         "oxfmt": "0.73.0",
         "oxlint": "1.88.0",

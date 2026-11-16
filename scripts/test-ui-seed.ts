@@ -1,0 +1,343 @@
+// Development only: loads scripts/test-ui-data.ts into the app scripts/test-ui.sh runs, through its
+// public API, as the people in it: each signs in with a code emailed to Mailpit, then makes their
+// teams, groups and ideas, comments, suggests, reviews and closes, as they would in the app. It
+// takes under a minute, and once: run scripts/test-ui.sh wipe and up to start again.
+//
+//   scripts/test-ui.sh seed
+import { ApiError, createApiClient, type ApiClient } from '@ideaf/api'
+import { parseMarkdown } from '@ideaf/core'
+import { type Discussion, groups, type IdeaSeed, ideas, joinRequests, people, teams } from './test-ui-data.ts'
+
+const APP = process.env.TEST_UI_URL ?? 'http://localhost:28080'
+const MAILPIT = process.env.TEST_UI_MAILPIT_URL ?? 'http://localhost:28025'
+
+interface Person {
+  handle: string
+  id: string
+  api: ApiClient
+}
+
+/** Everyone, by their handle in the data (the site admin's own handle may differ, if they signed in first). */
+const everyone = new Map<string, Person>()
+const who = (handle: string) => {
+  const person = everyone.get(handle)
+  if (!person) {
+    throw new Error(`no one called ${handle} in test-ui-data.ts`)
+  }
+  return person
+}
+const groupIds = new Map<string, string>()
+
+/** Each person signs in from an address of their own, so sign-in's limits count them apart (test-ui.yaml trusts it). */
+const addressOf = (i: number) => `10.81.0.${i + 10}`
+
+async function auth(path: string, ip: string, body: unknown, cookie?: string): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetch(`${APP}/api/auth${path}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: APP,
+        'x-forwarded-for': ip,
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(body),
+    })
+    // without the trusted address, everyone shares one, and the limits make them wait their turn
+    if (response.status === 429 && attempt < 12) {
+      await Bun.sleep(5_000)
+      continue
+    }
+    if (!response.ok) {
+      throw new Error(`${path}: ${response.status} ${await response.text()}`)
+    }
+    return response
+  }
+}
+
+/** The sign-in code just sent to `email`; the email is deleted once read, so the next one is new. */
+async function emailedCode(email: string): Promise<string> {
+  for (let i = 0; i < 100; i++) {
+    const search = (await (
+      await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${email}"`)}`)
+    ).json()) as { messages: Array<{ ID: string; Subject: string }> }
+    const code = search.messages.map((m) => /\b(\d{6})\b/.exec(m.Subject)?.[1]).find(Boolean)
+    if (code) {
+      await fetch(`${MAILPIT}/api/v1/messages`, {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ IDs: search.messages.map((m) => m.ID) }),
+      })
+      return code
+    }
+    await Bun.sleep(100)
+  }
+  throw new Error(`no sign-in code reached ${email} in Mailpit (${MAILPIT})`)
+}
+
+async function signIn(i: number): Promise<void> {
+  const seed = people[i]!
+  const ip = addressOf(i)
+  await auth('/email-otp/send-verification-otp', ip, { email: seed.email, type: 'sign-in' })
+  const otp = await emailedCode(seed.email)
+  const session = await auth('/sign-in/email-otp', ip, {
+    email: seed.email,
+    otp,
+    username: seed.handle,
+    name: seed.name,
+  })
+  const cookie = session.headers
+    .getSetCookie()
+    .map((c) => c.split(';')[0])
+    .join('; ')
+  let jwt: { token: string; until: number } | null = null
+  const api = createApiClient({
+    baseUrl: APP,
+    // the session's short-lived token, as the web app gets it
+    token: async () => {
+      if (!jwt || jwt.until < Date.now()) {
+        const response = await fetch(`${APP}/api/auth/token`, { headers: { cookie, 'x-forwarded-for': ip } })
+        jwt = { token: ((await response.json()) as { token: string }).token, until: Date.now() + 10 * 60_000 }
+      }
+      return jwt.token
+    },
+    fetch: (request) => {
+      request.headers.set('x-forwarded-for', ip)
+      return fetch(request)
+    },
+  })
+  const me = await api.me({})
+  everyone.set(seed.handle, { handle: me.handle, id: me.id, api })
+}
+
+/** Runs `work` on each item, a few at a time. */
+async function each<T>(items: T[], work: (item: T, i: number) => Promise<void>, at = 6) {
+  let next = 0
+  await Promise.all(
+    Array.from({ length: Math.min(at, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++
+        await work(items[i]!, i)
+      }
+    }),
+  )
+}
+
+/** @person or group:handle as a grant's subject. */
+function subject(to: string) {
+  if (to === 'everyone') {
+    return { kind: 'everyone' as const }
+  }
+  if (to.startsWith('group:')) {
+    return { kind: 'group' as const, id: groupIds.get(to.slice('group:'.length))! }
+  }
+  return { kind: 'user' as const, id: who(to.replace(/^@/, '')).id }
+}
+
+/** The idea's latest version and its files, by path. */
+async function latest(api: ApiClient, idea: string) {
+  const pulled = await api.pull({ idea })
+  return { version: pulled.version, files: new Map(pulled.files.map((f) => [f.path, f])) }
+}
+
+/** Where a discussion is: a file, or text in it (its plain text, as the app counts it). */
+async function anchorOf(api: ApiClient, idea: string, seed: IdeaSeed, d: Discussion) {
+  const now = await latest(api, idea)
+  const path = d.file ?? Object.keys(seed.files)[0]!
+  const file = now.files.get(path)
+  if (!file) {
+    throw new Error(`${seed.title}: no file ${path}`)
+  }
+  if (!d.on) {
+    return { version: now.version, anchor: { kind: 'file' as const, file: file.file } }
+  }
+  const start = parseMarkdown(file.content).plain.text.indexOf(d.on)
+  if (start < 0) {
+    throw new Error(`${seed.title}: "${d.on}" isn't in ${path}`)
+  }
+  return {
+    version: now.version,
+    anchor: { kind: 'text' as const, file: file.file, start, end: start + d.on.length },
+  }
+}
+
+async function makeIdea(seed: IdeaSeed) {
+  const author = who(seed.by)
+  const created = await author.api.createIdea({
+    title: seed.title,
+    ...(seed.description ? { description: seed.description } : {}),
+    ...(seed.team ? { team: seed.team } : {}),
+    files: Object.entries(seed.files).map(([path, content]) => ({ path, content })),
+    ...(seed.review ? { status: 'requesting-review' as const } : {}),
+  })
+  const idea = created.idea
+  for (const share of seed.share ?? []) {
+    await author.api.setAccess({
+      idea,
+      subject: subject(share.to),
+      access: { edit: share.edit ?? false, share: false },
+    })
+  }
+  for (const reviewer of seed.reviewers ?? []) {
+    const s = subject(reviewer)
+    if (s.kind !== 'everyone') {
+      await author.api.setReviewer({ idea, subject: s, reviewer: true })
+    }
+  }
+
+  for (const d of seed.discussion ?? []) {
+    const person = who(d.by)
+    const { version, anchor } = await anchorOf(person.api, idea, seed, d)
+    let comment: string
+    if (d.suggest !== undefined && anchor.kind === 'text') {
+      comment = (
+        await person.api.suggestEdit({
+          idea,
+          version,
+          anchor,
+          new: d.suggest,
+          ...(d.body ? { body: d.body } : {}),
+          ...(d.pending ? { pending: true } : {}),
+        })
+      ).comment
+    } else {
+      comment = (
+        await person.api.addComment({ idea, version, anchor, body: d.body, ...(d.pending ? { pending: true } : {}) })
+      ).comment
+    }
+    for (const reply of d.replies ?? []) {
+      await who(reply.by).api.reply({ idea, comment, body: reply.body })
+    }
+    if (d.accepted) {
+      await author.api.acceptSuggestions({ idea, suggestions: [comment] })
+    }
+    if (d.resolved) {
+      await author.api.resolveComment({ idea, comment, resolved: true })
+    }
+  }
+
+  if (seed.revise) {
+    const now = await latest(author.api, idea)
+    const edited = new Map<string, string>()
+    for (const [old, replacement] of seed.revise) {
+      const path = [...now.files.keys()].find((p) => (edited.get(p) ?? now.files.get(p)!.content).includes(old))
+      if (!path) {
+        throw new Error(`${seed.title}: "${old}" isn't in any of its files`)
+      }
+      edited.set(path, (edited.get(path) ?? now.files.get(path)!.content).replace(old, replacement))
+    }
+    await author.api.sync({
+      idea,
+      files: [...edited].map(([path, content]) => {
+        const file = now.files.get(path)!
+        return { file: file.file, path, content, base: file.hash }
+      }),
+    })
+  }
+
+  for (const review of seed.reviews ?? []) {
+    const { version } = await latest(who(review.by).api, idea)
+    await who(review.by).api.reviewIdea({
+      idea,
+      version,
+      verdict: review.verdict,
+      ...(review.body ? { body: review.body } : {}),
+    })
+  }
+
+  if (seed.ends && 'status' in seed.ends) {
+    await author.api.setStatus({ idea, status: seed.ends.status, note: seed.ends.note })
+  } else if (seed.ends) {
+    await author.api.closeIdea({
+      idea,
+      reason: seed.ends.close,
+      ...(seed.ends.note ? { note: seed.ends.note } : {}),
+    })
+  }
+}
+
+const started = Date.now()
+const health = await fetch(`${APP}/health`).catch(() => null)
+if (!health?.ok) {
+  console.error(`the app isn't answering at ${APP}: scripts/test-ui.sh up`)
+  process.exit(1)
+}
+
+await each(people, (_, i) => signIn(i))
+console.log(`${people.length} people signed in`)
+
+// once only: what's made can't be made again
+const admin = who(teams[0]!.admin).api
+try {
+  await admin.getTeam({ team: teams[0]!.handle })
+  console.error(
+    `team:${teams[0]!.handle} is there already: it's been seeded. To start again, scripts/test-ui.sh wipe, then up and seed.`,
+  )
+  process.exit(1)
+} catch (error) {
+  if (!(error instanceof ApiError && error.code === 'not_found')) {
+    throw error
+  }
+}
+
+await each(groups, async (g) => {
+  const api = who(g.admin).api
+  const made = await api.createGroup({ handle: g.handle, name: g.name, description: g.description })
+  groupIds.set(g.handle, made.id)
+  for (const [handle, role] of Object.entries(g.members)) {
+    await api.addGroupMember({ group: g.handle, user: who(handle).id, role })
+  }
+})
+await each(teams, async (t) => {
+  const api = who(t.admin).api
+  await api.createTeam({ handle: t.handle, name: t.name, description: t.description })
+  for (const [handle, role] of Object.entries(t.members)) {
+    await api.addTeamMember({ team: t.handle, user: who(handle).id, role })
+  }
+  for (const [group, role] of Object.entries(t.groups ?? {})) {
+    await api.addTeamGroup({ team: t.handle, group, role })
+  }
+  await api.updateTeam({
+    team: t.handle,
+    defaults: {
+      members: 'edit',
+      public: false,
+      groups: (t.sharedWith ?? []).map((group) => ({ group: groupIds.get(group)!, edit: false })),
+    },
+  })
+  await api.setTeamRequirements({
+    team: t.handle,
+    requirements: {
+      approvals: t.requirements.approvals,
+      groups: t.requirements.anyOf ? [{ mode: 'any', groups: t.requirements.anyOf, request: true }] : [],
+      resolved: t.requirements.resolved,
+    },
+  })
+})
+console.log(`${groups.length} groups and ${teams.length} teams`)
+
+for (const r of joinRequests) {
+  const api = who(r.by).api
+  if (r.team) {
+    await api.requestToJoinTeam({ team: r.team })
+  }
+  if (r.group) {
+    await api.requestToJoinGroup({ group: r.group })
+  }
+}
+
+await each(ideas, async (seed) => {
+  try {
+    await makeIdea(seed)
+  } catch (error) {
+    throw new Error(`${seed.title}: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
+  }
+})
+const comments = ideas.reduce(
+  (n, i) => n + (i.discussion ?? []).reduce((m, d) => m + 1 + (d.replies?.length ?? 0), 0),
+  0,
+)
+console.log(`${ideas.length} ideas, with ${comments} comments and replies`)
+console.log(
+  `seeded in ${((Date.now() - started) / 1000).toFixed(0)} s: sign in as ${people[0]!.email} (${people[0]!.name}), or anyone in scripts/test-ui-data.ts`,
+)
