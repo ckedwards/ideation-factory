@@ -20,9 +20,26 @@ export interface AppNavProps {
   onSignOut: () => void
   /** Under the name: the quick search (QuickSearch), from the page, which has the router and the api. */
   search?: ReactNode
+  /** The teams watched above participating, member or not, with how much. */
+  watching?: { handle: string; name: string; level: 'participating' | 'active' | 'all' }[]
+  /** The team whose pages these are: marked in Your teams and Watching. */
+  currentTeam?: string | null
 }
 
-export function AppNav({ me, teams, current, unread = 0, theme, onThemeChange, onSignOut, search }: AppNavProps) {
+const LEVEL = { participating: null, active: 'Active', all: 'All' } as const
+
+export function AppNav({
+  me,
+  teams,
+  current,
+  unread = 0,
+  theme,
+  onThemeChange,
+  onSignOut,
+  search,
+  watching = [],
+  currentTeam = null,
+}: AppNavProps) {
   return (
     <SideNav
       search={search}
@@ -53,8 +70,7 @@ export function AppNav({ me, teams, current, unread = 0, theme, onThemeChange, o
           items: teams.map((team) => ({
             href: `/${team.handle}`,
             label: team.name,
-            // watching more than what you're involved in
-            ...(team.watch === 'all' ? { note: 'All' } : team.watch === 'active' ? { note: 'Active' } : {}),
+            current: team.handle === currentTeam,
           })),
           empty: (
             <Link className="app-nav-link" href="/teams">
@@ -62,6 +78,19 @@ export function AppNav({ me, teams, current, unread = 0, theme, onThemeChange, o
             </Link>
           ),
         },
+        ...(watching.length > 0
+          ? [
+              {
+                title: 'Watching',
+                items: watching.map((team) => ({
+                  href: `/${team.handle}`,
+                  label: team.name,
+                  current: team.handle === currentTeam,
+                  ...(LEVEL[team.level] ? { note: LEVEL[team.level]! } : {}),
+                })),
+              },
+            ]
+          : []),
       ]}
       footer={
         <AccountMenu

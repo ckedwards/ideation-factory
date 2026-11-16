@@ -439,6 +439,8 @@ export const Memberships = z.object({
       watch: WatchLevel,
     }),
   ),
+  /** The teams watched above participating, member or not. */
+  watching: z.array(z.object({ id: z.string(), handle: z.string(), name: z.string(), level: WatchLevel })),
   groups: z.array(z.object({ id: z.string(), handle: z.string(), name: z.string(), role: Role })),
   requested: z.array(z.object({ kind: z.enum(['team', 'group']), id: z.string() })),
 })

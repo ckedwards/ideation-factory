@@ -47,6 +47,13 @@ function Root() {
     select: (matches) => matches.findLast((m) => m.staticData.nav !== undefined)?.staticData.nav ?? null,
   })
   const wide = useMatches({ select: (matches) => matches.some((m) => m.staticData.wide) })
+  // the team whose pages these are (a person's are under @)
+  const currentTeam = useMatches({
+    select: (matches) => {
+      const place = (matches.findLast((m) => 'place' in m.params)?.params as { place?: string } | undefined)?.place
+      return place && !place.startsWith('@') ? place : null
+    },
+  })
   return (
     <AppShell
       bare={wide}
@@ -64,6 +71,8 @@ function Root() {
           }}
           onSignOut={() => void signOut()}
           search={<QuickSearch />}
+          watching={memberships.watching}
+          currentTeam={currentTeam}
         />
       }
     >
