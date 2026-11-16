@@ -3,14 +3,11 @@
 import { ApiError } from '@ideaf/api'
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, notFound, useNavigate } from '@tanstack/react-router'
-import { ContainerSettings, type SettingsTab } from '../../../components/ContainerSettings.tsx'
+import { ContainerSettings, type SettingsTab, settingsTabOf } from '../../../components/ContainerSettings.tsx'
 import { groupByHandleQuery } from '../../../places.ts'
 
 export const Route = createFileRoute('/groups/$group/settings')({
-  validateSearch: (search: Record<string, unknown>): { tab?: SettingsTab } =>
-    search['tab'] === 'groups' || search['tab'] === 'requests' || search['tab'] === 'settings'
-      ? { tab: search['tab'] }
-      : {},
+  validateSearch: (search: Record<string, unknown>): { tab?: SettingsTab } => settingsTabOf(search['tab']),
   staticData: { nav: 'groups' },
   loader: async ({ context: { queryClient }, params }) => {
     try {

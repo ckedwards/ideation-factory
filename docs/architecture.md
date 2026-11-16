@@ -394,7 +394,7 @@ Keeping admin direct also means everything only an admin may do is checked as it
 
 Folding the defaults' groups into this would make *Security review* team members and end per-idea control, so they stay. The app keeps them apart:
 - **The Groups tab** holds the groups that are part of the team.
-- **Settings → Its ideas** says "Also shared with" for the defaults' groups.
+- **Settings → Access** says "Also shared with" for the defaults' groups.
 - Each says in one line what the other is for.
 
 # Emails and messaging

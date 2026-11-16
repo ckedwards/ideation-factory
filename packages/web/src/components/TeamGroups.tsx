@@ -43,7 +43,7 @@ export function TeamGroups({ team, groups, admin, onAdd, onRole, onRemove }: Tea
       <div className="member-toolbar">
         <p className="member-none member-toolbar-search">
           A group’s members are part of the team, as members or maintainers. To share new ideas with a group without
-          making it part of the team, use Settings → Its ideas.
+          making it part of the team, use the Access tab.
         </p>
         {admin && (
           <Button variant="primary" onClick={() => setAdding(true)}>

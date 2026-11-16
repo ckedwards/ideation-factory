@@ -1,8 +1,9 @@
 // A team's or a group's settings page, for its maintainers and admins, in tabs: its members (a
-// table to search, sort and manage), people asking to join, and the rest of its settings (a team's
-// profile and rules for its ideas). Anyone else is told who can change them.
+// table to search, sort and manage), a team's groups, people asking to join, and the pages the
+// container brings (a team's approval requirements, its profile, and who can start ideas and what
+// they start with), each for whoever may change it. Anyone else is told who can change them.
 import { type ReactNode, useState } from 'react'
-import { Empty, Link, Page, PageHeader, Stack, Tabs, Toast } from '@ideaf/ui'
+import { Empty, Link, Page, PageHeader, Tabs, Toast } from '@ideaf/ui'
 import { keepPreviousData, useInfiniteQuery, useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { meQuery } from '../api.ts'
 import {
@@ -17,7 +18,23 @@ import { JoinRequests } from './JoinRequests.tsx'
 import { MemberTable, type MemberView } from './MemberTable.tsx'
 import { TeamGroups } from './TeamGroups.tsx'
 
-export type SettingsTab = 'members' | 'groups' | 'requests' | 'settings'
+export type SettingsTab = 'members' | 'groups' | 'requests' | 'requirements' | 'general' | 'access'
+
+/** A page of settings the container brings, for its admins or for its maintainers too. */
+export interface SettingsPage {
+  id: Exclude<SettingsTab, 'members' | 'groups' | 'requests'>
+  label: string
+  who: 'admin' | 'maintainer'
+  render: (tools: { onProblem: (message: string) => void }) => ReactNode
+}
+
+const PAGES: readonly SettingsTab[] = ['members', 'groups', 'requests', 'requirements', 'general', 'access']
+
+/** A tab from a page's address: one of the tabs, or none. */
+export const settingsTabOf = (value: unknown): { tab?: SettingsTab } =>
+  typeof value === 'string' && value !== 'members' && PAGES.includes(value as SettingsTab)
+    ? { tab: value as SettingsTab }
+    : {}
 
 export interface ContainerSettingsProps {
   kind: 'team' | 'group'
@@ -27,13 +44,11 @@ export interface ContainerSettingsProps {
   /** The tab shown, kept in the page's address. */
   tab: SettingsTab
   onTab: (tab: SettingsTab) => void
-  /** More settings, for its admins (a team's profile and rules for its ideas). */
-  children?: (tools: { onProblem: (message: string) => void }) => ReactNode
-  /** More settings, for its maintainers and admins (a team's approval requirements). */
-  managed?: (tools: { onProblem: (message: string) => void }) => ReactNode
+  /** Its own pages of settings, each a tab. */
+  pages?: SettingsPage[]
 }
 
-export function ContainerSettings({ kind, container, href, tab, onTab, children, managed }: ContainerSettingsProps) {
+export function ContainerSettings({ kind, container, href, tab, onTab, pages = [] }: ContainerSettingsProps) {
   const { data: me } = useSuspenseQuery(meQuery)
   const [problem, setProblem] = useState<string | null>(null)
   const [view, setView] = useState<MemberView>({})
@@ -48,7 +63,7 @@ export function ContainerSettings({ kind, container, href, tab, onTab, children,
   const teamGroups = useQuery({ ...teamGroupsQuery(container.handle), enabled: managing && kind === 'team' })
   const groupWrites = useTeamGroupWrites(setProblem)
   const writes = useMemberWrites(kind, container.handle, setProblem)
-  const settings = managed !== undefined || (role === 'admin' && children !== undefined)
+  const own = pages.filter((p) => p.who === 'maintainer' || role === 'admin')
   const tabs = [
     {
       id: 'members' as const,
@@ -57,7 +72,7 @@ export function ContainerSettings({ kind, container, href, tab, onTab, children,
     },
     ...(kind === 'team' ? [{ id: 'groups' as const, label: 'Groups', count: teamGroups.data?.items.length ?? 0 }] : []),
     { id: 'requests' as const, label: 'Requests', count: requests.data?.items.length ?? 0 },
-    ...(settings ? [{ id: 'settings' as const, label: 'Settings' }] : []),
+    ...own.map((p) => ({ id: p.id, label: p.label })),
   ]
   const shown = tabs.some((t) => t.id === tab) ? tab : 'members'
 
@@ -103,12 +118,7 @@ export function ContainerSettings({ kind, container, href, tab, onTab, children,
               onDecide={(person, approve) => writes.decide(person.id, approve)}
             />
           )}
-          {shown === 'settings' && (
-            <Stack gap={6}>
-              {managed?.({ onProblem: setProblem })}
-              {role === 'admin' && children?.({ onProblem: setProblem })}
-            </Stack>
-          )}
+          {own.map((p) => shown === p.id && <div key={p.id}>{p.render({ onProblem: setProblem })}</div>)}
         </Tabs>
       )}
       <Toast message={problem} onDismiss={() => setProblem(null)} />

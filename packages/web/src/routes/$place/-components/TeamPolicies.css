@@ -1,3 +1,8 @@
+/* a form's controls beside their labels: a long row loses the eye between them */
+.policy-form,
+.policy-form-wide {
+  max-width: 36rem;
+}
 .policy {
   display: flex;
   flex-wrap: wrap;
@@ -54,4 +59,17 @@
   margin: var(--space-2) 0 0;
   color: var(--ink-2);
   font-size: var(--text-sm);
+}
+.policy-summary {
+  margin: 0;
+  padding: var(--space-3);
+  border-left: var(--rail) solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: var(--text-sm);
+}
+.policy-save {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
