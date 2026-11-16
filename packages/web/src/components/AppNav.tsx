@@ -2,7 +2,7 @@
 // your teams, and at the bottom the signed-in person, the theme and signing
 // out.
 import type { ReactNode } from 'react'
-import { Button, Link, type Person, SideNav, ThemeToggle, type Theme, UserName } from '@ideaf/ui'
+import { AccountMenu, Link, type Person, SideNav, type Theme } from '@ideaf/ui'
 import './AppNav.css'
 
 /** The page being shown, so its link is marked. */
@@ -64,16 +64,13 @@ export function AppNav({ me, teams, current, unread = 0, theme, onThemeChange, o
         },
       ]}
       footer={
-        <>
-          <UserName person={me} withAvatar />
-          <Link className="app-nav-link" href="/settings" aria-current={current === 'settings' ? 'page' : undefined}>
-            Your settings
-          </Link>
-          <ThemeToggle value={theme} onChange={onThemeChange} />
-          <Button size="sm" variant="ghost" onClick={onSignOut}>
-            Sign out
-          </Button>
-        </>
+        <AccountMenu
+          person={me}
+          settingsHref="/settings"
+          theme={theme}
+          onThemeChange={onThemeChange}
+          onSignOut={onSignOut}
+        />
       }
     />
   )

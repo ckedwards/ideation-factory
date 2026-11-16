@@ -10,6 +10,7 @@ export { AvatarStack, type AvatarStackProps } from './people/AvatarStack.tsx'
 export { UserName, type UserNameProps } from './people/UserName.tsx'
 export { ActorLabel, type Actor, type ActorLabelProps } from './people/ActorLabel.tsx'
 
+export { AccountMenu, type AccountMenuProps } from './people/AccountMenu.tsx'
 export { CopyText, type CopyTextProps } from './labels/CopyText.tsx'
 export { Tag, type TagProps, type TagTone } from './labels/Tag.tsx'
 export { Highlight, findMatch, type HighlightProps } from './labels/Highlight.tsx'

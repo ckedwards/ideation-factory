@@ -40,13 +40,14 @@ export const Home: Story = {
 // A page the nav doesn't list: nothing marked
 export const ElsewhereInTheApp: Story = { args: { current: null } }
 
-// A long name doesn't push the theme picker out
+// A long name stays on one line in the account button
 export const LongName: Story = { args: { me: longName } }
 
-// Signing out
+// Signing out, from the account menu at the foot
 export const SignOut: Story = {
   play: async ({ args, canvasElement, userEvent }) => {
-    await userEvent.click(within(canvasElement).getByRole('button', { name: 'Sign out' }))
+    await userEvent.click(within(canvasElement).getByRole('button', { name: /settings, theme, sign out/ }))
+    await userEvent.click(await within(canvasElement.ownerDocument.body).findByRole('menuitem', { name: 'Sign out' }))
     await expect(args.onSignOut).toHaveBeenCalled()
   },
 }
