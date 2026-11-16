@@ -23,6 +23,11 @@
   padding: var(--space-6) var(--space-7) var(--space-8);
   outline: none;
 }
+/* a comfortable line length: about 70 characters of the reading face */
+.idea-page-measure {
+  max-width: 40rem;
+  margin-inline: auto;
+}
 .idea-page-document:focus-visible {
   box-shadow: inset 0 0 0 calc(var(--hairline) * 2) var(--accent);
 }

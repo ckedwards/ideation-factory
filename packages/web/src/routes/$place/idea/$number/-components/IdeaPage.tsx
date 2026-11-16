@@ -55,6 +55,8 @@ export interface IdeaPageProps {
   version: { number: number; by: Actor; at: number }
   /** The idea's pages (IdeaTabs), under its heading. */
   tabs?: ReactNode
+  /** The way home, where the site's navigation isn't shown. */
+  site?: ReactNode
   /** The idea's files; listed when there's more than one. `changed`: since the version compared against. */
   files: { path: string; href: string; current: boolean; changed?: boolean }[]
   /** The file shown, as Markdown. */
@@ -161,6 +163,7 @@ export function IdeaPage(props: IdeaPageProps) {
   const nav = (
     <div className="idea-nav">
       <Stack gap={5}>
+        {props.site}
         <IdeaHeading
           title={props.title}
           team={props.team}

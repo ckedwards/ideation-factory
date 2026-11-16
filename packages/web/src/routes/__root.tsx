@@ -44,8 +44,10 @@ function Root() {
   const current = useMatches({
     select: (matches) => matches.findLast((m) => m.staticData.nav !== undefined)?.staticData.nav ?? null,
   })
+  const wide = useMatches({ select: (matches) => matches.some((m) => m.staticData.wide) })
   return (
     <AppShell
+      bare={wide}
       nav={
         <AppNav
           me={me}
@@ -79,5 +81,7 @@ declare module '@tanstack/react-router' {
   interface StaticDataRouteOption {
     /** The nav link this page is under. */
     nav?: NavPage
+    /** The page needs the width: no site navigation, so it gives its own way home (an idea's document). */
+    wide?: boolean
   }
 }
