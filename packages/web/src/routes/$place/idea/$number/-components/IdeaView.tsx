@@ -32,6 +32,8 @@ export interface IdeaViewProps {
   /** Comparing: the version the changes are since. */
   base?: number | undefined
   file?: string | undefined
+  /** A comment to open where it is: active, and its text scrolled to. */
+  comment?: string | undefined
 }
 
 /** The version shown and the one compared against, as the idea has them: anything else is left out. */
@@ -40,7 +42,7 @@ export function versionsOf(at: { v?: number | undefined; base?: number | undefin
   return { version, base: at.base && at.base < version ? at.base : null }
 }
 
-export function IdeaView({ id, links, v, base: wantedBase, file: path }: IdeaViewProps) {
+export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: opened }: IdeaViewProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { data: idea } = useSuspenseQuery(ideaQuery(id))
@@ -172,6 +174,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path }: IdeaVie
     <>
       <IdeaPage
         site={<SiteLinks />}
+        opened={opened}
         editing={editor}
         title={idea.title}
         team={teamRef(idea, team.data, people, me.id)}

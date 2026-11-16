@@ -2,6 +2,7 @@
 // to it, with its comments, status and verdicts live.
 import { useState } from 'react'
 import { ApiError } from '@ideaf/api'
+import { parseMarkdown } from '@ideaf/core'
 import { requirementWords } from '../../../../ideas.ts'
 import { Toast } from '@ideaf/ui'
 import { useLiveSuspenseQuery } from '@tanstack/react-db'
@@ -95,6 +96,27 @@ function Overview() {
     outlines.flatMap((o) => o.entries.flatMap((e) => (e.kind === 'heading' ? [[e.id, e.path.at(-1) ?? '']] : []))),
   )
   const pathOf = (fileId: string | undefined) => pulled.files.find((f) => f.file === fileId)?.path ?? null
+  /** The sections some text is in ("Proposal › Conflicts"), from where it starts in the file's plain text. */
+  const sectionOf = (fileId: string, start: number): string | null => {
+    const source = pulled.files.find((f) => f.file === fileId)?.content
+    const entries = outlines.find((o) => o.id === fileId)?.entries
+    if (source === undefined || !entries) {
+      return null
+    }
+    const { unit } = parseMarkdown(source).plain
+    // the unit the text starts in (past the line breaks between units)
+    let index = -1
+    for (let i = start; i < unit.length && index < 0; i++) {
+      index = unit[i]!
+    }
+    let path = index >= 0 ? (entries[index]?.path ?? []) : []
+    // a document's own title (its level-one heading) says nothing the idea's doesn't
+    const title = entries.find((e) => e.kind === 'heading' && e.level === 1)
+    if (path.length > 1 && title && path[0] === title.path[0]) {
+      path = path.slice(1)
+    }
+    return path.length > 0 ? path.join(' › ') : null
+  }
   const first = idea.versions[0]
 
   const activity: ActivityItem[] = [
@@ -119,16 +141,23 @@ function Overview() {
     })),
     ...threads.map((thread): ActivityItem => {
       const file = pathOf(thread.anchor?.file)
+      const info = commentInfo(thread, people, titles)
+      // where the text is, while it's still there
+      const section =
+        info.target.kind === 'text' && thread.anchor?.kind === 'text' && thread.state !== 'outdated'
+          ? sectionOf(thread.anchor.file, thread.anchor.start)
+          : null
       return {
         kind: 'comment',
         at: thread.createdAt,
         comment: {
-          info: commentInfo(thread, people, titles),
+          info: section && info.target.kind === 'text' ? { ...info, target: { ...info.target, section } } : info,
           place: { kind: 'file' },
           pending: thread.id.startsWith('pending-'),
         },
         file,
-        href: links.files(file ? { file } : {}),
+        // the comment where it is, not the top of the file
+        href: links.files({ ...(file ? { file } : {}), comment: thread.id }),
       }
     }),
   ].sort((a, b) => a.at - b.at)

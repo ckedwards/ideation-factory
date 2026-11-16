@@ -31,7 +31,7 @@ const activity: ActivityItem[] = [
         author: { kind: 'person', person: maya },
         at: hours(50),
         body: body('What about a change made offline twice?'),
-        target: { kind: 'text', quote: 'oldest first' },
+        target: { kind: 'text', quote: 'oldest first', section: 'Sync › Conflicts' },
         resolved: false,
         replies: [{ id: 'c2', author: actors.person, at: hours(49), body: body('Last write wins, per field.') }],
       },
@@ -99,6 +99,21 @@ export const Activity: Story = {
     await expect(page.getByText('Edited with 3 commands', { exact: false })).toBeVisible()
     await expect(page.getByRole('link', { name: 'What changed' })).toHaveAttribute('href', '#changes-1-2')
     await expect(page.getByRole('link', { name: 'notes/risks.md' })).toHaveAttribute('href', '#risks')
+  },
+}
+
+// A thread says what it's on: the quoted text and its section. A resolved one is folded to a line until it's shown
+export const Context: Story = {
+  play: async ({ canvasElement, userEvent }) => {
+    const page = within(canvasElement)
+    await expect(canvasElement.querySelector('q.comment-quote')).toHaveTextContent('oldest first')
+    await expect(page.getByText('§ Sync › Conflicts')).toBeVisible()
+    await expect(page.queryByText('This contradicts the overview.')).toBeNull()
+    await expect(page.getByText(/resolved · 1 comment/)).toBeVisible()
+    await userEvent.click(page.getByRole('button', { name: 'Show the thread on “Rollout”' }))
+    await expect(page.getByText('This contradicts the overview.')).toBeVisible()
+    await userEvent.click(page.getByRole('button', { name: 'Hide' }))
+    await expect(page.queryByText('This contradicts the overview.')).toBeNull()
   },
 }
 

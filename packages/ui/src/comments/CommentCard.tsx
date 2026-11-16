@@ -52,6 +52,8 @@ export interface CommentCardProps {
   active?: boolean
   // with what it's on (the quote, the section) above the text
   showTarget?: boolean
+  // away from the document (an idea's activity): always quote the text it's on, and name its section
+  context?: boolean
   // the author can accept or reject suggested edits
   canDecide?: boolean
   onSelect?: (() => void) | undefined
@@ -75,6 +77,7 @@ export function CommentCard({
   comment,
   active = false,
   showTarget = true,
+  context = false,
   canDecide = false,
   onSelect,
   onReply,
@@ -128,7 +131,8 @@ export function CommentCard({
           )}
           {target.kind === 'file' && <Tag>Whole file</Tag>}
           {target.kind === 'section' && <Tag>§ {target.title}</Tag>}
-          {target.kind === 'text' && comment.outdated && <q className="comment-quote">{target.quote}</q>}
+          {target.kind === 'text' && context && target.section && <Tag>§ {target.section}</Tag>}
+          {target.kind === 'text' && (comment.outdated || context) && <q className="comment-quote">{target.quote}</q>}
           {comment.outdated && comment.lastSeenIn !== undefined && onViewInVersion && (
             <ViewInVersion version={comment.lastSeenIn} onView={() => onViewInVersion(comment.lastSeenIn!)} />
           )}

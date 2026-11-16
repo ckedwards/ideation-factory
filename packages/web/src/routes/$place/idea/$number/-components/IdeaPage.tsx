@@ -6,7 +6,7 @@
 // the page gives the document and the panel (IdeaEditor, EditPanel). Comparing shows the file as a redline against an earlier
 // version, with the comments as a list. The route loads the data and does the
 // writing.
-import { type ReactNode, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { markdownTree } from '@ideaf/core'
 import {
   type Actor,
@@ -57,6 +57,8 @@ export interface IdeaPageProps {
   tabs?: ReactNode
   /** The way home, where the site's navigation isn't shown. */
   site?: ReactNode
+  /** A comment to open where it is (a link from the overview): active, and its text scrolled to. */
+  opened?: string | undefined
   /** The idea's files; listed when there's more than one. `changed`: since the version compared against. */
   files: { path: string; href: string; current: boolean; changed?: boolean }[]
   /** The file shown, as Markdown. */
@@ -100,7 +102,19 @@ type Pane = 'comments' | 'versions'
 export function IdeaPage(props: IdeaPageProps) {
   const { source, canComment, compare, canDecide = false } = props
   const document = useRef<HTMLDivElement>(null)
-  const [active, setActive] = useState<string | null>(null)
+  const [active, setActive] = useState<string | null>(props.opened ?? null)
+  // a comment linked to: its text, in view
+  useEffect(() => {
+    const opened = props.opened
+    if (!opened) {
+      return
+    }
+    setActive(opened)
+    const frame = requestAnimationFrame(() =>
+      window.document.querySelector(`[data-comment-id="${CSS.escape(opened)}"]`)?.scrollIntoView({ block: 'center' }),
+    )
+    return () => cancelAnimationFrame(frame)
+  }, [props.opened])
   const [pane, setPane] = useState<Pane>(compare ? 'versions' : 'comments')
   const tree = useMemo(() => markdownTree(source), [source])
   const sections = useMemo(() => headings(tree), [tree])

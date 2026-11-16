@@ -4,11 +4,12 @@
 // thread, which can be replied to and resolved here. Its reviews (ReviewPanel)
 // are in a column beside them, as a pull request's reviewers and checks are,
 // and come after the description on a narrow screen.
-import type { ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 import { markdownTree } from '@ideaf/core'
 import {
   type Actor,
   ActorLabel,
+  Button,
   CommentCard,
   Empty,
   Link,
@@ -72,7 +73,6 @@ export interface IdeaOverviewProps {
 }
 
 export function IdeaOverview(props: IdeaOverviewProps) {
-  const { canComment } = props
   return (
     <Page width="wide">
       <PageHeader
@@ -140,20 +140,7 @@ export function IdeaOverview(props: IdeaOverviewProps) {
                           On <Link href={item.href}>{item.file}</Link>
                         </div>
                       )}
-                      <CommentCard
-                        comment={item.comment.info}
-                        onReply={
-                          canComment && !item.comment.pending && props.onReply
-                            ? (body) => props.onReply?.(item.comment.info.id, body)
-                            : undefined
-                        }
-                        onResolve={
-                          // one in your pending review goes out before it can be resolved
-                          canComment && !item.comment.pending && !item.comment.info.pending && props.onResolve
-                            ? (resolved) => props.onResolve?.(item.comment.info.id, resolved)
-                            : undefined
-                        }
-                      />
+                      <FeedThread item={item} {...props} />
                     </li>
                   ),
                 )}
@@ -164,6 +151,60 @@ export function IdeaOverview(props: IdeaOverviewProps) {
       </div>
     </Page>
   )
+}
+
+/** A thread in the activity, with what it's on; a resolved one folded to a line until it's opened. */
+function FeedThread({
+  item,
+  canComment,
+  onReply,
+  onResolve,
+}: IdeaOverviewProps & { item: Extract<ActivityItem, { kind: 'comment' }> }) {
+  const { info, pending } = item.comment
+  const [open, setOpen] = useState(!info.resolved)
+  const comments = 1 + info.replies.length
+  if (!open) {
+    return (
+      <div className="idea-activity-folded">
+        <ActorLabel actor={info.author} short />
+        <span>
+          · resolved · {comments === 1 ? '1 comment' : `${comments} comments`} · <RelativeTime at={info.at} />
+        </span>
+        <Button size="sm" variant="link" onClick={() => setOpen(true)} aria-label={`Show the thread ${summary(info)}`}>
+          Show
+        </Button>
+      </div>
+    )
+  }
+  return (
+    <CommentCard
+      comment={info}
+      context
+      onReply={canComment && !pending && onReply ? (body) => onReply(info.id, body) : undefined}
+      onResolve={
+        // one in your pending review goes out before it can be resolved
+        canComment && !pending && !info.pending && onResolve ? (resolved) => onResolve(info.id, resolved) : undefined
+      }
+      extra={
+        info.resolved ? (
+          <Button size="sm" variant="link" onClick={() => setOpen(false)}>
+            Hide
+          </Button>
+        ) : undefined
+      }
+    />
+  )
+}
+
+/** The start of what a thread's on, to tell folded threads apart. */
+function summary(info: Extract<ActivityItem, { kind: 'comment' }>['comment']['info']): string {
+  const on =
+    info.target.kind === 'text'
+      ? info.target.quote
+      : info.target.kind === 'section'
+        ? info.target.title
+        : 'the whole file'
+  return `on “${on.length > 40 ? `${on.slice(0, 40)}…` : on}”`
 }
 
 function statusWords(item: Extract<ActivityItem, { kind: 'status' }>): string {
