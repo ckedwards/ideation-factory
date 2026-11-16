@@ -341,7 +341,11 @@ Keeping admin direct also means everything only an admin may do is checked as it
 - **Someone in a team only through a group can't leave the team on its own.** They leave the group, or ask a team admin to remove the group, and the team's page says so. Anyone may still ask to join, or be added, directly. That's how someone in through a group as a member gets maintainer.
 - **Changes take effect on the next request:** removing someone from the group, removing the group from the team, or deleting the group. Access is worked out when it's read (below), so there's no copy to update. As with direct removal, the ideas it gave stop showing, and their notifications from it stop.
 
-**Who can add a group:** a team's admins, and any group, as groups are visible to everyone and admins can already add anyone directly. The group's admins get an inbox notice ("Design reviewers was added to Mobile, as members"). Whether to require more, as GitLab does, is an open question below.
+**Who decides.**
+
+- **A team's admins can add any group,** without asking it. Groups are visible to everyone, and team admins can already add anyone directly. The group's admins get an inbox notice: "Design reviewers was added to Mobile, as members".
+- **A group's admins can take their group out of a team:** the group leaves it, as a person can. That's the group's say, after the fact. Nothing waits on approval, and a group added somewhere it doesn't belong can be removed by the people who run it, without needing the team's admins. The team's admins get an inbox notice.
+- **Requiring more,** as GitLab does (only a member of a group may invite it) or an approval like a join request, was weighed and left out for now. If unwanted additions turn out to happen, requiring the team admin to be in the group is the next step.
 
 **What people see:**
 
@@ -353,14 +357,14 @@ Keeping admin direct also means everything only an admin may do is checked as it
   - **Each group in the team,** with its member count, its role, and who added it and when.
   - **Adding a group:** a group picker and its role.
   - **Removing a group** first shows who would leave the team: the people in it only through that group.
-- **The group's own page** lists, under "where it's used", the teams it's in, with its role in each.
+- **The group's own page** lists, under "where it's used", the teams it's in, with its role in each. For the group's admins, each has a **Leave team**, which first shows who'd leave the team with it.
 - **The team's member count** is people, counted once however they're in it.
 - **Deleting a group:** its report also lists the teams it's in, and the people who'd leave each.
 - **Moving an idea:** the move wizard counts the people in a team through its groups, when it lists who gains or loses access.
 - **The API, MCP and the cli:**
-  - `list_team_groups`, `add_team_group` (team, group, role), `remove_team_group`;
+  - `list_team_groups`, `add_team_group` (team, group, role), `remove_team_group` (by the team's admins, or the group's);
   - `list_team_members` gives each member's sources;
-  - `ideaf team group add|remove|list`.
+  - `ideaf team group add|remove|list`, and `ideaf group leave <group> --team <team>` for a group's admins.
 
 **Working out access.** Today "the teams someone is in" is one indexed lookup: their memberships of kind team. It's used where a grant to a team is matched (`grantAppliesTo`, behind lists, search and every permission check), in "your teams", in who may watch a team, and in the create and maintainer checks. With groups in teams it becomes those memberships, together with the teams their groups are in:
 
@@ -385,7 +389,6 @@ Keeping admin direct also means everything only an admin may do is checked as it
 
 **Open questions:**
 
-- **Consent.** GitLab lets only someone who's a member of the group invite it. Here, adding a group pulls its people into the team's ideas and notifications. Should a team admin need to be in the group, or the group's admins agree, rather than only hear about it?
 - **The overlap with the team's defaults for new ideas,** which can also name groups. Keep both? Defaults are per idea and editable, while a group in the team is all or nothing. Or fold the defaults' groups into this?
 
 # Emails and messaging
