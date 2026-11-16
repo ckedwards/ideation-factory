@@ -123,3 +123,35 @@ export const Bare: Story = {
     await expect(canvas.getByRole('main')).toHaveTextContent('The document has the whole width.')
   },
 }
+
+// A phone: a bar across the top, and the navigation behind Menu, over the page; a link in it closes it.
+// (The bar shows below 50rem: the test presses its buttons whatever the width.)
+export const Phone: Story = {
+  args: {
+    bar: <strong>✳ Ideation Factory</strong>,
+    children: (
+      <Page>
+        <PageHeader title="Home" />
+        <p>The page starts at the top, under the bar.</p>
+      </Page>
+    ),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const menu = canvas.getByRole('button', { name: 'Menu', hidden: true })
+    await expect(menu).toHaveAttribute('aria-expanded', 'false')
+    menu.click()
+    await expect(await canvas.findByRole('button', { name: 'Close', hidden: true })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+    // following a link closes it (the story's links go nowhere)
+    const teams = canvas.getByRole('link', { name: 'Teams', hidden: true })
+    teams.addEventListener('click', (event) => event.preventDefault())
+    teams.click()
+    await expect(await canvas.findByRole('button', { name: 'Menu', hidden: true })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+  },
+}

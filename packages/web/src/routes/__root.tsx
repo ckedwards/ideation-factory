@@ -7,6 +7,7 @@ import { createRootRouteWithContext, Outlet, redirect, useMatches } from '@tanst
 import { AppShell, Empty, Link, Page, PageHeader, type Theme } from '@ideaf/ui'
 import { membershipsQuery, meQuery, unreadQuery } from '../api.ts'
 import { AppNav, type NavPage } from '../components/AppNav.tsx'
+import { SiteLinks } from '../components/SiteLinks.tsx'
 import { accessToken, SignedOut, signInHref, signOut } from '../session.ts'
 import { savedTheme, setTheme } from '../theme.ts'
 
@@ -48,6 +49,7 @@ function Root() {
   return (
     <AppShell
       bare={wide}
+      bar={<SiteLinks bar />}
       nav={
         <AppNav
           me={me}
