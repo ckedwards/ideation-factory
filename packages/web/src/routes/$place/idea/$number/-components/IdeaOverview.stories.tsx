@@ -94,6 +94,7 @@ const meta = {
     startedBy: actors.person,
     startedAt: hours(72),
     description: 'Field technicians lose signal in basements. Queue their changes, and send them **oldest first**.',
+    address: 'mobile/idea/9',
     tabs: <IdeaTabs current="overview" overview="#" files="#files" />,
     sharingHref: '#sharing',
     activity,
@@ -111,6 +112,7 @@ export const Activity: Story = {
   play: async ({ canvasElement }) => {
     const page = within(canvasElement)
     await expect(page.getByRole('heading', { name: 'Offline-first sync for the field app' })).toBeVisible()
+    await expect(page.getByText('mobile/idea/9')).toBeVisible()
     await expect(page.getByText('Edited with 3 commands', { exact: false })).toBeVisible()
     await expect(page.getByRole('link', { name: 'What changed' })).toHaveAttribute('href', '#changes-1-2')
     await expect(page.getByRole('link', { name: 'notes/risks.md' })).toHaveAttribute('href', '#risks')

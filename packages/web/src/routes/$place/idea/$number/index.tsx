@@ -248,6 +248,7 @@ function Overview() {
     <>
       <IdeaOverview
         title={idea.title}
+        address={links.overview.replace(/^\//, '')}
         team={teamRef(idea, team.data, people, me.id)}
         status={statusOf(idea.status)}
         startedBy={actorOf(first?.by ?? { user: idea.owner, bot: null, purpose: 'me' }, people)}
