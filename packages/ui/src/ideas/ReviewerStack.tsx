@@ -15,7 +15,7 @@ export function ReviewerStack({ reviewers }: ReviewerStackProps) {
   }
   return (
     <span className="reviewers">
-      <span className="visually-hidden">Reviewers: </span>
+      <span className="reviewers-label">Review:</span>
       {reviewers.map((reviewer) =>
         reviewer.kind === 'person' ? (
           <Avatar key={reviewer.person.id} person={reviewer.person} size="sm" />

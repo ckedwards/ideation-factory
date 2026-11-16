@@ -3,7 +3,7 @@
 // someone's own. Reviews and requirements come with step 9; until then a row
 // has none.
 import { type IdeaStatus as ApiStatus, type Operations, type Output, ideaPath } from '@ideaf/api'
-import type { ClosedReason, IdeaInfo, IdeaStatus } from '@ideaf/ui'
+import type { ClosedReason, IdeaInfo, IdeaStatus, RequirementCheck } from '@ideaf/ui'
 
 export type ListedIdea = Output<Operations['listIdeas']>['items'][number]
 
@@ -59,7 +59,35 @@ export function ideaInfo(row: ListedIdea, me: string): IdeaInfo {
           },
     ),
     visibility: row.visibility,
-    // lists don't check the team's requirements: approvals show as a count
-    requirements: [],
+    requirements: row.requirements.checks.map(requirementWords),
+  }
+}
+
+type Check = ListedIdea['requirements']['checks'][number]
+
+/** A requirement, checked, as ui's RequirementList shows it. */
+export function requirementWords(check: Check): RequirementCheck {
+  if (check.kind === 'approvals') {
+    return {
+      text: check.need === 1 ? '1 approval from a person' : `${check.need} approvals from people`,
+      met: check.met,
+      ...(check.met ? {} : { progress: `${check.have} so far` }),
+    }
+  }
+  if (check.kind === 'resolved') {
+    return {
+      text: 'Every discussion resolved',
+      met: check.met,
+      ...(check.met ? {} : { progress: `${check.open} open` }),
+    }
+  }
+  const names = check.groups.map((g) => (g.deleted ? `${g.name} (deleted)` : g.name)).join(', ')
+  return {
+    text: `An approval from ${check.mode === 'each' ? 'each of' : 'any of'} ${names}`,
+    met: check.met,
+    ...(check.broken ? { broken: true } : {}),
+    ...(!check.met && check.mode === 'each' && !check.broken
+      ? { progress: `${check.groups.filter((g) => g.approvedBy.length > 0).length} of ${check.groups.length}` }
+      : {}),
   }
 }

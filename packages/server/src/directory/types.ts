@@ -351,6 +351,8 @@ export interface IdeaListing extends IdeaRow {
   approvals: User[]
   reviewers: ListedReviewer[]
   visibility: IdeaVisibility
+  /** Its team's requirements, checked against it: met with no checks when it has none. */
+  requirements: RequirementsCheck
 }
 
 /** What an idea's actor sends the index after it changes. */

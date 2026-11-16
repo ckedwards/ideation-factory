@@ -18,6 +18,7 @@ const row = (extra: Partial<ListedIdea> = {}): ListedIdea => ({
   approvals: [],
   reviewers: [],
   visibility: 'private',
+  requirements: { met: true, checks: [] },
   ...extra,
 })
 

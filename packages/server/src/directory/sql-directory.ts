@@ -676,54 +676,35 @@ export class SqlDirectory implements Directory {
     if (!team || team.archived) {
       return { met: true, checks: [] }
     }
-    const r = team.requirements
-    const checks: RequirementCheck[] = []
-    if (r.approvals > 0) {
-      checks.push({
-        kind: 'approvals',
-        need: r.approvals,
-        have: approvers.length,
-        met: approvers.length >= r.approvals,
-      })
-    }
-    const named = [...new Set(r.groups.flatMap((rule) => rule.groups))]
-    // who of the approvers is in each group the rules name
-    const members =
+    const { groups, members } = await this.#ruleGroups([team.requirements], approvers)
+    return checkWith(team.requirements, approvers, open, groups, members)
+  }
+
+  /** The groups some teams' rules name, and which of these approvers are in them: read once, for checkWith. */
+  async #ruleGroups(requirements: TeamRequirements[], approvers: string[]) {
+    const named = [...new Set(requirements.flatMap((r) => r.groups.flatMap((rule) => rule.groups)))]
+    const [groups, members] = await Promise.all([
+      named.length > 0
+        ? this.#db
+            .selectFrom('groups')
+            .select(['id', 'handle', 'name', 'deleted_at'])
+            .where('id', 'in', named)
+            .execute()
+        : [],
       named.length > 0 && approvers.length > 0
-        ? await this.#db
+        ? this.#db
             .selectFrom('memberships')
             .select(['container', 'user'])
             .where('kind', '=', 'group')
             .where('container', 'in', named)
             .where('user', 'in', approvers)
             .execute()
-        : []
-    for (const rule of r.groups) {
-      const groups = await Promise.all(
-        rule.groups.map(async (id) => {
-          const group = await this.group(id)
-          const deleted = !group || group.deleted
-          return {
-            id,
-            handle: group?.handle ?? id,
-            name: group?.name ?? id,
-            deleted,
-            // a deleted group's members' approvals don't count toward it
-            approvedBy: deleted ? [] : members.filter((m) => m.container === id).map((m) => m.user),
-          }
-        }),
-      )
-      const live = groups.filter((g) => !g.deleted)
-      const broken = rule.mode === 'each' ? live.length < groups.length : live.length === 0
-      const met =
-        !broken &&
-        (rule.mode === 'each' ? live.every((g) => g.approvedBy.length > 0) : live.some((g) => g.approvedBy.length > 0))
-      checks.push({ kind: 'groups', mode: rule.mode, groups, met, broken })
+        : [],
+    ])
+    return {
+      groups: new Map(groups.map((g) => [g.id, { handle: g.handle, name: g.name, deleted: g.deleted_at !== null }])),
+      members,
     }
-    if (r.resolved) {
-      checks.push({ kind: 'resolved', open, met: open === 0 })
-    }
-    return { met: checks.every((c) => c.met), checks }
   }
 
   async requestRuleGroups(ideaId: string): Promise<string[]> {
@@ -3094,7 +3075,11 @@ export class SqlDirectory implements Directory {
     const groupIds = [...new Set(reviewers.flatMap((g) => (g.kind === 'group' ? [g.subject] : [])))]
     const [teams, users, groups] = await Promise.all([
       teamIds.length
-        ? this.#db.selectFrom('teams').select(['id', 'handle', 'name', 'archived']).where('id', 'in', teamIds).execute()
+        ? this.#db
+            .selectFrom('teams')
+            .select(['id', 'handle', 'name', 'archived', 'requirements'])
+            .where('id', 'in', teamIds)
+            .execute()
         : [],
       this.#db.selectFrom('users').select(['id', 'handle', 'name', 'inactive']).where('id', 'in', userIds).execute(),
       groupIds.length
@@ -3103,6 +3088,15 @@ export class SqlDirectory implements Directory {
     ])
     const team = new Map(
       teams.map((t) => [t.id, { id: t.id, handle: t.handle, name: t.name, archived: t.archived === 1 }]),
+    )
+    // each team's requirements, checked against each idea's approvals and open threads, from one read of the
+    // groups they name and who of the page's approvers is in them
+    const requirements = new Map(
+      teams.flatMap((t) => (t.archived === 1 ? [] : [[t.id, JSON.parse(t.requirements) as TeamRequirements] as const])),
+    )
+    const ruled = await this.#ruleGroups(
+      [...requirements.values()],
+      [...new Set(rows.flatMap((r) => (r.team && requirements.has(r.team) ? r.approvers : [])))],
     )
     const user = new Map(users.map((u) => [u.id, toUser(u)]))
     const group = new Map(groups.map((g) => [g.id, g]))
@@ -3133,6 +3127,12 @@ export class SqlDirectory implements Directory {
           return g.kind === 'group' && named ? [{ kind: 'group', group: named }] : []
         }),
         visibility,
+        requirements: (() => {
+          const r = row.team ? requirements.get(row.team) : undefined
+          return r
+            ? checkWith(r, row.approvers, row.openComments, ruled.groups, ruled.members)
+            : { met: true, checks: [] }
+        })(),
       }
     })
   }
@@ -3223,6 +3223,49 @@ function teamsOf(eb: ExpressionBuilder<DB, 'grants'>, user: string) {
  * by idea). A deployment with most ideas shared with everyone makes this set
  * large: then walking ideas newest first would be the quicker plan.
  */
+/**
+ * A team's requirements checked against an idea: its approvers (people whose approval of the latest version
+ * counts), its open threads, and the groups the rules name with which approvers are in them.
+ */
+function checkWith(
+  r: TeamRequirements,
+  approvers: string[],
+  open: number,
+  groups: Map<string, { handle: string; name: string; deleted: boolean }>,
+  members: Array<{ container: string; user: string }>,
+): RequirementsCheck {
+  const checks: RequirementCheck[] = []
+  if (r.approvals > 0) {
+    checks.push({ kind: 'approvals', need: r.approvals, have: approvers.length, met: approvers.length >= r.approvals })
+  }
+  for (const rule of r.groups) {
+    const named = rule.groups.map((id) => {
+      const group = groups.get(id)
+      const deleted = !group || group.deleted
+      return {
+        id,
+        handle: group?.handle ?? id,
+        name: group?.name ?? id,
+        deleted,
+        // a deleted group's members' approvals don't count toward it
+        approvedBy: deleted
+          ? []
+          : members.filter((m) => m.container === id && approvers.includes(m.user)).map((m) => m.user),
+      }
+    })
+    const live = named.filter((g) => !g.deleted)
+    const broken = rule.mode === 'each' ? live.length < named.length : live.length === 0
+    const met =
+      !broken &&
+      (rule.mode === 'each' ? live.every((g) => g.approvedBy.length > 0) : live.some((g) => g.approvedBy.length > 0))
+    checks.push({ kind: 'groups', mode: rule.mode, groups: named, met, broken })
+  }
+  if (r.resolved) {
+    checks.push({ kind: 'resolved', open, met: open === 0 })
+  }
+  return { met: checks.every((c) => c.met), checks }
+}
+
 /** The ideas asking someone to review them: by name, or through a group they're in. */
 function askedToReview(db: QueryCreator<DB>, user: string) {
   return db

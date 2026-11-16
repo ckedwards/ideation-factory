@@ -5,6 +5,10 @@
   justify-content: flex-end;
   gap: var(--space-1);
 }
+.reviewers-label {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
 .reviewers-none {
   color: var(--ink-3);
   font-size: var(--text-xs);

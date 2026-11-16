@@ -523,6 +523,55 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         expect(await d.countIdeas('u-riley', { owner: 'u-maya' })).toEqual({ open: 0, closed: 0 })
       })
 
+      test("lists check each idea against its team's requirements", async () => {
+        const { d, team } = await withTeam()
+        const security = (
+          (await d.createGroup('u-devon', { handle: 'security', name: 'Security' })) as { value: { id: string } }
+        ).value.id
+        await d.setRequirements('u-riley', team, {
+          approvals: 1,
+          groups: [{ mode: 'any', groups: [security], request: false }],
+          resolved: true,
+        })
+        await d.registerIdea(idea('i1', { team }))
+        await d.registerIdea(idea('own', {}))
+        const listed = async (id: string) => (await d.listIdeas('u-riley')).items.find((i) => i.id === id)!
+        const update = (approvers: string[], openComments: number) =>
+          d.updateIdea({
+            id: 'i1',
+            title: 'Idea i1',
+            description: '',
+            status: 'requesting-review',
+            latest: 1,
+            openComments,
+            approvers,
+            updatedAt: clock++,
+          })
+        // Maya's approval, but nobody from Security's, and a thread open
+        await update(['u-maya'], 1)
+        expect((await listed('i1')).requirements).toEqual({
+          met: false,
+          checks: [
+            { kind: 'approvals', need: 1, have: 1, met: true },
+            {
+              kind: 'groups',
+              mode: 'any',
+              groups: [{ id: security, handle: 'security', name: 'Security', deleted: false, approvedBy: [] }],
+              met: false,
+              broken: false,
+            },
+            { kind: 'resolved', open: 1, met: false },
+          ],
+        })
+        // Devon is Security's: with his approval, and the thread resolved, it's met
+        await update(['u-maya', 'u-devon'], 0)
+        const met = (await listed('i1')).requirements
+        expect(met.met).toBe(true)
+        expect(met.checks[1]).toMatchObject({ met: true, groups: [{ approvedBy: ['u-devon'] }] })
+        // an idea outside any team has none
+        expect((await listed('own')).requirements).toEqual({ met: true, checks: [] })
+      })
+
       test('people, groups and teams can be named by handle, and are stored by ID', async () => {
         const { d, team } = await withTeam()
         const group = (
