@@ -32,11 +32,6 @@ const APPROVALS = Array.from({ length: 11 }, (_, n) => ({
   label: n === 0 ? 'No minimum' : n === 1 ? '1 approval' : `${n} approvals`,
 }))
 
-const MODES = [
-  { value: 'any', label: 'An approval from any of' },
-  { value: 'each', label: 'An approval from each of' },
-] as const
-
 export function TeamRequirements({ requirements: r, onChange }: TeamRequirementsProps) {
   const [adding, setAdding] = useState<GroupRef | null>(null)
   const setRule = (i: number, rule: GroupRuleView | null) =>
@@ -55,49 +50,64 @@ export function TeamRequirements({ requirements: r, onChange }: TeamRequirements
         />
       </label>
       {r.groups.map((rule, i) => (
-        <fieldset key={i} className="policy-defaults">
-          <legend>Group rule {i + 1}</legend>
-          <label className="policy">
-            <span>Needs</span>
-            <Select options={[...MODES]} value={rule.mode} onChange={(mode) => setRule(i, { ...rule, mode })} />
-          </label>
-          {rule.groups.map((group) => (
-            <div key={group.id} className="policy">
-              <span>{group.name}</span>
-              <Button
+        // the rule as a sentence: "One approval from any of [Security ×] or [Legal ×]  [+ group]"
+        <div key={i} className="policy-rule" role="group" aria-label={`Group rule ${i + 1}`}>
+          <p className="policy-rule-sentence">
+            <span>One approval from</span>
+            {rule.groups.length > 1 ? (
+              <Select
                 size="sm"
-                variant="ghost"
-                aria-label={`Remove ${group.name} from rule ${i + 1}`}
-                onClick={() =>
-                  setRule(
-                    i,
-                    rule.groups.length === 1 ? null : { ...rule, groups: rule.groups.filter((g) => g.id !== group.id) },
-                  )
-                }
-              >
-                Remove
-              </Button>
-            </div>
-          ))}
+                aria-label="Needs"
+                options={[
+                  { value: 'any', label: 'any of' },
+                  { value: 'each', label: 'each of' },
+                ]}
+                value={rule.mode}
+                onChange={(mode) => setRule(i, { ...rule, mode })}
+              />
+            ) : null}
+            {rule.groups.map((group, j) => (
+              <span key={group.id} className="policy-rule-group">
+                {j > 0 && <span className="policy-rule-join">{rule.mode === 'each' ? 'and' : 'or'}</span>}
+                <span className="policy-chip">
+                  {group.name}
+                  <button
+                    type="button"
+                    aria-label={`Remove ${group.name} from rule ${i + 1}`}
+                    onClick={() =>
+                      setRule(
+                        i,
+                        rule.groups.length === 1
+                          ? null
+                          : { ...rule, groups: rule.groups.filter((g) => g.id !== group.id) },
+                      )
+                    }
+                  >
+                    ×
+                  </button>
+                </span>
+              </span>
+            ))}
+          </p>
           <RuleAdd
             label={`Add a group to rule ${i + 1}`}
             exclude={rule.groups.map((g) => g.id)}
             onAdd={(group) => setRule(i, { ...rule, groups: [...rule.groups, group] })}
           />
-          <label className="policy-check">
-            <input
-              type="checkbox"
-              checked={rule.request}
-              onChange={(event) => setRule(i, { ...rule, request: event.target.checked })}
-            />
-            Ask these groups to review when an idea goes out for review
-          </label>
-          <div>
+          <div className="policy-rule-foot">
+            <label className="policy-check">
+              <input
+                type="checkbox"
+                checked={rule.request}
+                onChange={(event) => setRule(i, { ...rule, request: event.target.checked })}
+              />
+              Ask {rule.groups.length === 1 ? 'it' : 'them'} to review when an idea goes out for review
+            </label>
             <Button size="sm" variant="ghost" onClick={() => setRule(i, null)}>
               Remove this rule
             </Button>
           </div>
-        </fieldset>
+        </div>
       ))}
       <form
         className="policy-add"
