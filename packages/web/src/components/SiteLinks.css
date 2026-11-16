@@ -28,3 +28,8 @@
   font-size: var(--text-xs);
   font-weight: 700;
 }
+/* in the phone's bar: no rule under it, the bar has its own */
+.site-links-bar {
+  padding: 0;
+  border-bottom: none;
+}
