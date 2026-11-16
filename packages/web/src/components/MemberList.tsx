@@ -8,6 +8,10 @@ export interface MemberInfo {
   role: 'admin' | 'maintainer' | 'member'
   /** When they joined (ms). */
   joined?: number
+  /** Their own membership's role, or null when they're in only through groups. */
+  direct?: 'admin' | 'maintainer' | 'member' | null
+  /** The groups they're in it through (a team's), with the role each gives them. */
+  through?: Array<{ group: { id: string; handle: string; name: string }; role: 'admin' | 'maintainer' | 'member' }>
 }
 
 export interface MemberListProps {

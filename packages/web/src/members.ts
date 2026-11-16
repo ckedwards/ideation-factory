@@ -27,7 +27,16 @@ export const membersQuery = (kind: 'team' | 'group', handle: string, view: Membe
         kind === 'team'
           ? await api.listTeamMembers({ team: handle, ...input })
           : await api.listGroupMembers({ group: handle, ...input })
-      return { items: page.items.map((m) => ({ person: m.user, role: m.role, joined: m.joined })), next: page.next }
+      return {
+        items: page.items.map((m) => ({
+          person: m.user,
+          role: m.role,
+          joined: m.joined,
+          direct: m.direct,
+          through: m.through,
+        })),
+        next: page.next,
+      }
     },
     initialPageParam: null as string | null,
     getNextPageParam: (page) => page.next,
@@ -92,5 +101,33 @@ export function useMemberWrites(kind: 'team' | 'group', handle: string, onProble
           ? api.decideTeamJoinRequest({ team: handle, user, approve })
           : api.decideGroupJoinRequest({ group: handle, user, approve }),
       ),
+  }
+}
+
+/** The groups in a team (Groups in teams in architecture.md). */
+export const teamGroupsQuery = (handle: string) =>
+  queryOptions({ queryKey: ['team', handle, 'groups'], queryFn: () => api.listTeamGroups({ team: handle }) })
+
+/** The teams a group is in. */
+export const groupTeamsQuery = (handle: string) =>
+  queryOptions({ queryKey: ['group', handle, 'teams'], queryFn: () => api.listGroupTeams({ group: handle }) })
+
+/** Adding a group to a team, changing its role, and taking it out; each reads the team, the group and your teams again. */
+export function useTeamGroupWrites(onProblem: (message: string) => void) {
+  const queryClient = useQueryClient()
+  const write = useMutation({
+    mutationFn: (run: () => Promise<unknown>) => run(),
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['team'] }),
+        queryClient.invalidateQueries({ queryKey: ['group'] }),
+        queryClient.invalidateQueries({ queryKey: membershipsQuery.queryKey }),
+      ]),
+    onError: (error) => onProblem(error.message),
+  })
+  return {
+    add: (team: string, group: string, role: 'member' | 'maintainer') =>
+      write.mutate(() => api.addTeamGroup({ team, group, role })),
+    remove: (team: string, group: string) => write.mutate(() => api.removeTeamGroup({ team, group })),
   }
 }

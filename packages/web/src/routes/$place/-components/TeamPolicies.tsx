@@ -65,6 +65,10 @@ export function TeamPolicies({ createPolicy, defaults, onCreatePolicy, onDefault
             onChange={(v) => onDefaults({ ...defaults, public: v === 'yes' })}
           />
         </label>
+        <p className="policy-note">
+          <strong>Also shared with:</strong> groups that see each new idea without joining the team, and can be taken
+          off any one idea. To make a group part of the team, add it on the Groups tab.
+        </p>
         {defaults.groups.map(({ group, edit }) => (
           <div key={group.id} className="policy">
             <span>{group.name}</span>

@@ -3,7 +3,7 @@
 // sorted by name, role or when they joined. Maintainers remove members, admins anyone, and anyone
 // can leave; adding someone is a dialog.
 import { useEffect, useState } from 'react'
-import { Button, Dialog, type Person, SearchInput, Select, Stack, Tag, UserName } from '@ideaf/ui'
+import { Button, Dialog, Link, type Person, SearchInput, Select, Stack, Tag, UserName } from '@ideaf/ui'
 import type { MemberInfo } from './MemberList.tsx'
 import { PersonPicker } from './PersonPicker.tsx'
 import './MemberTable.css'
@@ -65,8 +65,12 @@ export function MemberTable({ members, you, view, onView, onRole, onRemove, onAd
     }, 250)
     return () => clearTimeout(timer)
   }, [text, view, onView])
+  // only someone's own membership can be changed or ended here: one through a group follows the group
+  const direct = (member: MemberInfo) => member.direct !== null
   const removable = (member: MemberInfo) =>
-    member.person.id === you.id || admin || (you.role === 'maintainer' && member.role === 'member')
+    direct(member) &&
+    (member.person.id === you.id || admin || (you.role === 'maintainer' && (member.direct ?? member.role) === 'member'))
+  const sources = members.some((m) => (m.through?.length ?? 0) > 0)
 
   return (
     <Stack gap={4}>
@@ -101,6 +105,7 @@ export function MemberTable({ members, you, view, onView, onRole, onRemove, onAd
           <thead>
             <tr>
               <th scope="col">Account</th>
+              {sources && <th scope="col">Source</th>}
               <th scope="col">Role</th>
               <th scope="col">Joined</th>
               <th scope="col">
@@ -113,22 +118,43 @@ export function MemberTable({ members, you, view, onView, onRole, onRemove, onAd
               const yours = member.person.id === you.id
               return (
                 <tr key={member.person.id}>
-                  <td className="member-account" data-label="Account">
-                    <UserName person={member.person} withAvatar />
-                    {yours && <Tag tone="ok">It’s you</Tag>}
-                    <span className="member-handle">@{member.person.handle}</span>
+                  <td data-label="Account">
+                    <div className="member-account">
+                      <UserName person={member.person} withAvatar />
+                      {yours && <Tag tone="ok">It’s you</Tag>}
+                      <span className="member-handle">@{member.person.handle}</span>
+                    </div>
                   </td>
+                  {sources && (
+                    <td data-label="Source">
+                      <div className="member-source">
+                        {direct(member) && <span>Direct</span>}
+                        {member.through?.map((t) => (
+                          <span key={t.group.id}>
+                            Through <Link href={`/groups/${t.group.handle}`}>{t.group.name}</Link>
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                  )}
                   <td data-label="Role">
-                    {admin ? (
+                    {admin && direct(member) ? (
                       <Select
                         size="sm"
                         aria-label={`${member.person.name}’s role`}
                         options={ROLES}
-                        value={member.role}
+                        // their own role, which is what this changes; a higher one through a group is noted
+                        value={member.direct ?? member.role}
                         onChange={(next) => onRole(member.person, next)}
                       />
                     ) : (
                       <span className="member-row-role">{ROLES.find((r) => r.value === member.role)?.label}</span>
+                    )}
+                    {admin && direct(member) && member.direct !== member.role && (
+                      <span className="member-row-role">
+                        {' '}
+                        ({ROLES.find((r) => r.value === member.role)?.label} through a group)
+                      </span>
                     )}
                   </td>
                   <td data-label="Joined" className="member-joined">

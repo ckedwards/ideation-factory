@@ -8,7 +8,9 @@ import { groupByHandleQuery } from '../../../places.ts'
 
 export const Route = createFileRoute('/groups/$group/settings')({
   validateSearch: (search: Record<string, unknown>): { tab?: SettingsTab } =>
-    search['tab'] === 'requests' || search['tab'] === 'settings' ? { tab: search['tab'] } : {},
+    search['tab'] === 'groups' || search['tab'] === 'requests' || search['tab'] === 'settings'
+      ? { tab: search['tab'] }
+      : {},
   staticData: { nav: 'groups' },
   loader: async ({ context: { queryClient }, params }) => {
     try {

@@ -14,7 +14,9 @@ import { type RequirementsView, TeamRequirements } from './-components/TeamRequi
 
 export const Route = createFileRoute('/$place/settings')({
   validateSearch: (search: Record<string, unknown>): { tab?: SettingsTab } =>
-    search['tab'] === 'requests' || search['tab'] === 'settings' ? { tab: search['tab'] } : {},
+    search['tab'] === 'groups' || search['tab'] === 'requests' || search['tab'] === 'settings'
+      ? { tab: search['tab'] }
+      : {},
   loader: async ({ context: { queryClient }, params }) => {
     if (params.place.startsWith('@')) {
       throw redirect({ to: '/settings', replace: true })
