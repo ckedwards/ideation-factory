@@ -2,8 +2,15 @@
 // or a person's at /@riley (their ideas you can see).
 import { ApiError } from '@ideaf/api'
 import { useState } from 'react'
-import { Page, PageHeader, Section } from '@ideaf/ui'
-import { type QueryClient, useInfiniteQuery, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
+import { Link, Page, PageHeader, Section } from '@ideaf/ui'
+import {
+  type QueryClient,
+  useInfiniteQuery,
+  useQueries,
+  useQuery,
+  useQueryClient,
+  useSuspenseQuery,
+} from '@tanstack/react-query'
 import { createFileRoute, notFound, redirect } from '@tanstack/react-router'
 import { api, membershipsQuery, meQuery } from '../../api.ts'
 import { IdeaList } from '../../components/IdeaList.tsx'
@@ -15,7 +22,8 @@ import { ideaInfo } from '../../ideas.ts'
 import { countQuery, type IdeaState, ideasQuery } from '../../lists.ts'
 import { StateTabs } from '../../components/StateTabs.tsx'
 import { membersQuery, useMembership } from '../../members.ts'
-import { personByHandleQuery, teamByHandleQuery } from '../../places.ts'
+import { groupByHandleQuery, personByHandleQuery, teamByHandleQuery } from '../../places.ts'
+import { requirementsSentence } from './-components/TeamRequirements.tsx'
 import { plural } from '../../plural.ts'
 
 /** A person's handle, from /@riley; null for a team's page. */
@@ -69,6 +77,22 @@ function TeamPage({ handle }: { handle: string }) {
   const members = useInfiniteQuery(membersQuery('team', team.handle))
   const membership = useMembership('team', team)
   const queryClient = useQueryClient()
+  // its approval requirements, with the groups they name by name, as a sentence
+  const ruleIds = [...new Set(team.requirements.groups.flatMap((r) => r.groups))]
+  const ruleGroups = useQueries({ queries: ruleIds.map((id) => groupByHandleQuery(id)) })
+  const approving = requirementsSentence(
+    {
+      approvals: team.requirements.approvals,
+      resolved: team.requirements.resolved,
+      groups: team.requirements.groups.map((r) => ({
+        mode: r.mode,
+        request: r.request,
+        groups: r.groups.map((id) => ruleGroups[ruleIds.indexOf(id)]?.data ?? { id, handle: id, name: 'a group' }),
+      })),
+    },
+    true,
+  )
+  const manages = membership.role === 'admin' || membership.role === 'maintainer'
   const watch = useQuery({
     queryKey: ['team', team.id, 'watch'],
     queryFn: () => api.getTeamWatch({ team: team.id }),
@@ -97,6 +121,12 @@ function TeamPage({ handle }: { handle: string }) {
         }
       />
       {team.description && <p>{team.description}</p>}
+      <Section
+        title="How ideas are approved"
+        action={manages ? <Link href={`/${team.handle}/settings?tab=requirements`}>Change</Link> : undefined}
+      >
+        <p className="team-approving">{approving}</p>
+      </Section>
       <Section title="Ideas">
         <StateTabs value={state} onChange={setState} counts={counts.data}>
           <IdeaList
