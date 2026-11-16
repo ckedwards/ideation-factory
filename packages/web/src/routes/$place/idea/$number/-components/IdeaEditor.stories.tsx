@@ -91,3 +91,31 @@ export const AddingBelow: Story = {
     await waitFor(() => expect(args.onAdd).toHaveBeenCalledWith(expect.objectContaining({ id: 'b3' }), 'More.'))
   },
 }
+
+const long = createIdea([
+  {
+    path: 'plan.md',
+    source: `# Offline sync\n\n${'Field technicians lose signal in basements and plant rooms, and the app loses what they typed. '.repeat(8)}\n`,
+  },
+])
+
+// A long paragraph is edited in a box as tall as it is, in the reading face: not three lines of monospace
+export const EditingALongBlock: Story = {
+  args: { units: buildDraft(long, [], []).files[0]!.units },
+  decorators: [
+    (Story) => (
+      <div style={{ maxWidth: '40rem' }}>
+        <Story />
+      </div>
+    ),
+  ],
+  play: async ({ canvasElement, userEvent }) => {
+    const page = within(canvasElement)
+    await userEvent.click(page.getAllByRole('button', { name: 'Edit' })[1]!)
+    const box = page.getByRole('textbox', { name: 'Markdown' })
+    const lineHeight = Number.parseFloat(getComputedStyle(box).lineHeight)
+    // about eight lines of text at this width, so well past three
+    await waitFor(() => expect(box.getBoundingClientRect().height).toBeGreaterThan(lineHeight * 6))
+    await expect(getComputedStyle(box).fontFamily).toMatch(/Literata|Georgia|serif/)
+  },
+}

@@ -1,9 +1,11 @@
-import type { TextareaHTMLAttributes } from 'react'
+import type { TextareaHTMLAttributes, Ref } from 'react'
 import './TextArea.css'
 
 export interface TextAreaProps extends Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'value' | 'onChange'> {
   value: string
   onChange: (value: string) => void
+  // the box itself (to size it to its content, say)
+  ref?: Ref<HTMLTextAreaElement>
   // ⌘↵ or Ctrl+↵: send it
   onSubmit?: () => void
   // Esc: give up
