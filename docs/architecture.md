@@ -304,9 +304,9 @@ Only a group's admins (or a site admin) can delete it. Before deleting, the sett
 - An idea that had the group as a reviewer shows it as a deleted reviewer.
 - Access given to the group ends, and the delete report lists the ideas it was shared with, so their owners can give access another way.
 
-## Groups in teams (proposed)
+## Groups in teams
 
-**Status:** a design, not built. Nothing below exists yet.
+**Status:** built, but without the inbox notices: the inbox holds only ideas, so notices about teams and groups come next. Until then, the team's Groups tab and the group's page show who added each group, and when.
 
 A team's admins can **add a group to the team**, the way GitLab shares a project with a group: the group's members become the team's members, with a role the team chooses, for as long as they're in the group. Organizations manage people in groups. Adding the same people to each team by hand, and keeping every team in step when someone joins or leaves, is what this saves.
 
@@ -356,15 +356,15 @@ Keeping admin direct also means everything only an admin may do is checked as it
 - **A Groups tab:**
   - **Each group in the team,** with its member count, its role, and who added it and when.
   - **Adding a group:** a group picker and its role.
-  - **Removing a group** first shows who would leave the team: the people in it only through that group.
-- **The group's own page** lists, under "where it's used", the teams it's in, with its role in each. For the group's admins, each has a **Leave team**, which first shows who'd leave the team with it.
+  - **Removing a group** first says how many would leave the team: the people in it only through that group (each group's `leaving`).
+- **The group's own page** lists, under "where it's used", the teams it's in, with its role in each. For the group's admins, each has a **Leave team**, which first says how many would leave the team with it.
 - **The team's member count** is people, counted once however they're in it.
 - **Deleting a group:** its report also lists the teams it's in, and the people who'd leave each.
 - **Moving an idea:** the move wizard counts the people in a team through its groups, when it lists who gains or loses access.
 - **The API, MCP and the cli:**
   - `list_team_groups`, `add_team_group` (team, group, role), `remove_team_group` (by the team's admins, or the group's);
   - `list_team_members` gives each member's sources;
-  - `ideaf team group add|remove|list`, and `ideaf group leave <group> --team <team>` for a group's admins.
+  - `ideaf team groups|add-group|remove-group`, and `ideaf group teams` and `ideaf group leave-team <group> <team>` for a group's admins (the cli's commands are flat, and `ideaf group leave` is a person leaving the group).
 
 **Working out access.** Today "the teams someone is in" is one indexed lookup: their memberships of kind team. It's used where a grant to a team is matched (`grantAppliesTo`, behind lists, search and every permission check), in "your teams", in who may watch a team, and in the create and maintainer checks. With groups in teams it becomes those memberships, together with the teams their groups are in:
 
@@ -372,7 +372,7 @@ Keeping admin direct also means everything only an admin may do is checked as it
 - **The lookup gains one join:** the person's group memberships, then `team_groups` by group. Everywhere that uses it gets the same widened set, in the same single query. Lists and search stay one indexed query each.
 - **Admin checks don't change,** as no one is an admin through a group.
 - **The members list** becomes direct members together with the members of the team's groups, merged per person (the highest role, and every source), and still paged on its sort key and then the handle.
-- **Watches** are kept as they are, but read only while the watcher is still in the team, so leaving a group ends what they hear from the team, with no cleanup.
+- **Watches don't change.** Watching a team isn't a member's right here: what a watch shows is filtered by what the watcher can see, so leaving the group ends what it showed them through the group, with no cleanup.
 - **No copy of who's in each team.** A table of everyone's team memberships, kept in step on every change, would make reads slightly cheaper. It would cost a write per person whenever a group joins a team (2,000 writes for a 2,000-person group), and it's another copy that could disagree with the groups. If the widened lookup turns out to be slow, that's a decision to make then, from measurements.
 
 **At the design scale** (10,000 people, 1,000 teams, 2,000 groups, 100,000 ideas):
