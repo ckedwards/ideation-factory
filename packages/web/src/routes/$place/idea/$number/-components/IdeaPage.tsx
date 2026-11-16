@@ -10,14 +10,12 @@ import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } 
 import { markdownTree } from '@ideaf/core'
 import {
   type Actor,
-  ActorLabel,
   Button,
   changedRanges,
   CommentCard,
   type CommentInfo,
   CommentGutter,
   headings,
-  IdeaHeading,
   IdeaPageLayout,
   Link,
   MarkdownView,
@@ -28,7 +26,6 @@ import {
   Select,
   SelectionMenu,
   Stack,
-  StatusPill,
   Tabs,
   TextArea,
   type TeamRef,
@@ -191,25 +188,24 @@ export function IdeaPage(props: IdeaPageProps) {
     <div className="idea-nav">
       <Stack gap={5}>
         {props.site}
-        <IdeaHeading
-          title={props.title}
-          team={props.team}
-          status={
-            <StatusPill
-              status={props.status.status}
-              {...(props.status.reason ? { reason: props.status.reason } : {})}
-            />
-          }
-          meta={
-            <>
-              v{props.version.number} · <ActorLabel actor={props.version.by} short /> ·{' '}
-              <RelativeTime at={props.version.at} />
-            </>
-          }
-        />
+        {/* one line: the status as a dot, and the title (whole on hover); then where it is and which version */}
+        <div className="idea-rail-head">
+          <p className="idea-rail-title" title={props.title}>
+            <span className={`idea-rail-dot status-${statusKey(props.status)}`} aria-hidden>
+              <span className="status-dot" />
+            </span>
+            <span>{props.title}</span>
+            <span className="visually-hidden">, {statusWords(props.status)}</span>
+          </p>
+          <p className="idea-rail-meta">
+            {props.team.href ? <Link href={props.team.href}>{props.team.name}</Link> : props.team.name} · v
+            {props.version.number} · <RelativeTime at={props.version.at} />
+          </p>
+        </div>
         {props.tabs}
         {props.files.length > 1 && (
           <nav aria-label="Files">
+            <h2 className="idea-rail-label">Files</h2>
             <ul className="idea-files">
               {props.files.map((file) => (
                 <li key={file.path}>
@@ -222,6 +218,7 @@ export function IdeaPage(props: IdeaPageProps) {
             </ul>
           </nav>
         )}
+        <h2 className="idea-rail-label">Contents</h2>
         <Toc
           entries={sections
             .filter((heading) => heading.level >= 2 && heading.level <= 4)
@@ -404,6 +401,15 @@ export function IdeaPage(props: IdeaPageProps) {
       }
     />
   )
+}
+
+/** The status, as the status pill's colour classes name it. */
+function statusKey(status: ShownStatus): string {
+  return status.status === 'closed' ? `closed-${status.reason ?? 'accepted'}` : status.status.replace(/ /g, '-')
+}
+
+function statusWords(status: ShownStatus): string {
+  return status.status === 'closed' ? `closed as ${status.reason ?? 'accepted'}` : status.status
 }
 
 /** Who wrote a comment, as the author filter tells them apart: a person, or a bot. */
