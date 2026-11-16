@@ -60,12 +60,12 @@ export const Menu: Story = {
     const menu = await page.findByRole('toolbar', { name: 'Selected text' })
     await expect(menu).toBeVisible()
     await expect(page.getByRole('button', { name: 'Comment on “Proposal”' })).toBeVisible()
-    // just below the selected text, starting where it starts
+    // just above the selected text, starting where it starts: the line under it stays readable
     await waitFor(() => {
       const text = window.getSelection()!.getRangeAt(0).getBoundingClientRect()
       const box = menu.getBoundingClientRect()
-      expect(box.top).toBeGreaterThan(text.bottom)
-      expect(box.top - text.bottom).toBeLessThan(16)
+      expect(box.bottom).toBeLessThan(text.top)
+      expect(text.top - box.bottom).toBeLessThan(16)
       expect(Math.abs(box.left - text.left)).toBeLessThan(1)
     })
   },
@@ -152,7 +152,7 @@ export const AddToReview: Story = {
     const page = within(document.body)
     await userEvent.click(await page.findByRole('button', { name: 'Comment' }))
     await userEvent.type(page.getByRole('textbox', { name: 'Comment' }), 'Later')
-    await userEvent.click(page.getByRole('button', { name: 'Add to review' }))
+    await userEvent.click(page.getByRole('button', { name: 'Add to your review' }))
     await waitFor(() =>
       expect(args.onComment).toHaveBeenCalledWith(expect.objectContaining({ quote: 'oldest first' }), 'Later', true),
     )

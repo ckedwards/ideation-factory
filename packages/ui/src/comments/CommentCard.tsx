@@ -59,7 +59,7 @@ export interface CommentCardProps {
   onSelect?: (() => void) | undefined
   // `pending`: added to your review rather than sent now
   onReply?: ((body: string, pending: boolean) => void) | undefined
-  // offer "Add to review" on a reply (a reply in your own pending thread always is)
+  // offer "Add to your review" on a reply (a reply in your own pending thread always is)
   addToReview?: boolean
   onResolve?: ((resolved: boolean) => void) | undefined
   onAccept?: (() => void) | undefined
@@ -219,7 +219,7 @@ export function CommentCard({
             </Button>
             {addToReview && !comment.pending && (
               <Button size="sm" disabled={!draft.trim()} onClick={() => send(true)}>
-                Add to review
+                Add to your review
               </Button>
             )}
             <Button variant="primary" size="sm" disabled={!draft.trim()} onClick={() => send()}>

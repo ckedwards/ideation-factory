@@ -161,7 +161,7 @@ export const ReplyingToReview: Story = {
   play: async ({ args, canvas, userEvent }) => {
     await userEvent.click(canvas.getByRole('button', { name: 'Reply' }))
     await userEvent.type(canvas.getByRole('textbox', { name: 'Reply' }), 'Later')
-    await userEvent.click(canvas.getByRole('button', { name: 'Add to review' }))
+    await userEvent.click(canvas.getByRole('button', { name: 'Add to your review' }))
     await expect(args.onReply).toHaveBeenCalledWith('Later', true)
   },
 }
@@ -180,7 +180,7 @@ export const Pending: Story = {
   play: async ({ args, canvas, userEvent }) => {
     await expect(canvas.getByText('Pending')).toBeVisible()
     await userEvent.click(canvas.getByRole('button', { name: 'Reply' }))
-    await expect(canvas.queryByRole('button', { name: 'Add to review' })).toBeNull()
+    await expect(canvas.queryByRole('button', { name: 'Add to your review' })).toBeNull()
     await userEvent.type(canvas.getByRole('textbox', { name: 'Reply' }), 'And this')
     await userEvent.click(canvas.getByRole('button', { name: 'Add reply' }))
     await expect(args.onReply).toHaveBeenCalledWith('And this', true)

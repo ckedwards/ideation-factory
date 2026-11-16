@@ -15,7 +15,7 @@ export interface SelectionMenuProps {
   suggestionOf?: (selection: TextSelection) => string | null
   // off on a version that isn't the latest, where nothing can be added
   enabled?: boolean
-  // offer "Add to review" too: kept pending, for only you to see until you submit your review
+  // offer "Add to your review" too: kept pending, for only you to see until you submit your review
   addToReview?: boolean
   // each action is offered only when the page handles it; `pending`: added to your review
   onComment?: (selection: TextSelection, body: string, pending: boolean) => void
@@ -37,8 +37,11 @@ interface Pending {
 // form there. A selection made with the keyboard moves focus to the menu; Esc
 // closes it, and so does a click elsewhere until something's been typed.
 //
-// Base UI's popover places it, against the selected text: below it, or above
-// when there's no room, and following it as the document scrolls.
+// Base UI's popover places it, following the document as it scrolls: the menu
+// above the selected text (below when there's no room), where it doesn't cover
+// the next line; a form beside the document, level with the text, in the
+// comments column where the finished comment will be (wherever there's room on
+// a narrow screen).
 export function SelectionMenu({
   documentRef,
   source,
@@ -118,6 +121,21 @@ export function SelectionMenu({
       },
     [pending, documentRef],
   )
+  // a form's place: the document's right edge, level with the selected text
+  const beside = useMemo(
+    () =>
+      pending && {
+        getBoundingClientRect: () => {
+          const text = pending.range.getBoundingClientRect()
+          const root = documentRef.current
+          const pane = root?.closest('.idea-page-document') ?? root
+          const right = pane?.getBoundingClientRect().right ?? text.right
+          return DOMRect.fromRect({ x: right, y: text.top, width: 0, height: text.height })
+        },
+        contextElement: documentRef.current ?? undefined,
+      },
+    [pending, documentRef],
+  )
 
   if (!pending || !anchor) {
     return null
@@ -160,10 +178,10 @@ export function SelectionMenu({
       <Popover.Portal>
         <Popover.Positioner
           className="selection-menu-positioner"
-          anchor={anchor}
-          side="bottom"
+          anchor={mode === 'menu' ? anchor : (beside ?? anchor)}
+          side={mode === 'menu' ? 'top' : 'right'}
           align="start"
-          sideOffset={remToPx(0.5)}
+          sideOffset={remToPx(mode === 'menu' ? 0.5 : 1)}
           collisionPadding={remToPx(0.75)}
         >
           <Popover.Popup
@@ -189,9 +207,13 @@ export function SelectionMenu({
                   </Button>
                 )}
                 {onSectionComment && selection.section && (
-                  <Button size="sm" variant="ghost" onClick={() => setMode('section')}>
-                    Comment on “{selection.section.title}”
-                  </Button>
+                  <>
+                    {/* the section, not the selection: set apart */}
+                    <span className="selection-menu-divider" aria-hidden />
+                    <Button size="sm" variant="ghost" onClick={() => setMode('section')}>
+                      Comment on “{selection.section.title}”
+                    </Button>
+                  </>
                 )}
               </div>
             ) : (
@@ -238,13 +260,15 @@ export function SelectionMenu({
                   aria-label={mode === 'suggest' ? 'Why' : 'Comment'}
                 />
                 <div className="selection-menu-buttons">
-                  <span className="selection-menu-hint">⌘↵ to send</span>
+                  <span className="selection-menu-hint">
+                    {mode === 'suggest' && !ready ? 'Change the text to suggest an edit' : '⌘↵ to send'}
+                  </span>
                   <Button size="sm" variant="ghost" onClick={close}>
                     Cancel
                   </Button>
                   {addToReview && (
                     <Button size="sm" disabled={!ready} onClick={() => submit(true)}>
-                      Add to review
+                      Add to your review
                     </Button>
                   )}
                   <Button size="sm" variant="primary" type="submit" disabled={!ready}>
