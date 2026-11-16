@@ -381,12 +381,12 @@ Keeping admin direct also means everything only an admin may do is checked as it
 - admin through a group;
 - expiry dates, as nothing records them;
 - different roles for different people within one group's membership of a team: anyone needing more is added directly.
+- teams following an identity provider's groups: SCIM brings people, not groups (Deprovisioning with SCIM, above), and that stays. An identity provider's groups bring a lot of baggage (nesting, naming, every group in the organization) for little here, so groups and teams stay ideaf's own.
 
 **Open questions:**
 
 - **Consent.** GitLab lets only someone who's a member of the group invite it. Here, adding a group pulls its people into the team's ideas and notifications. Should a team admin need to be in the group, or the group's admins agree, rather than only hear about it?
 - **The overlap with the team's defaults for new ideas,** which can also name groups. Keep both? Defaults are per idea and editable, while a group in the team is all or nothing. Or fold the defaults' groups into this?
-- **Single sign-on.** SCIM brings people, not groups: groups and teams stay ideaf's own (Deprovisioning with SCIM, above), and the server refuses the identity provider's group requests. Taking SCIM groups as ideaf groups the provider manages (members kept in step, not editable here) would reverse that decision. With it, this design would let a team follow an identity provider's group. Is that wanted?
 
 # Emails and messaging
 
