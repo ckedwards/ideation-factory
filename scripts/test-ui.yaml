@@ -1,0 +1,16 @@
+# scripts/test-ui.sh's additions to the try-it Compose (deploy/compose/compose.yaml): this checkout's
+# own builds of the app and the engine, in place of the published images. Paths are from the
+# repository's root, the project directory test-ui.sh gives Compose.
+services:
+  app:
+    image: ideaf-test-ui-app
+    build:
+      context: .
+      dockerfile: deploy/app.Dockerfile
+    pull_policy: build
+  engine:
+    image: ideaf-test-ui-engine
+    build:
+      context: .
+      dockerfile: deploy/engine.Dockerfile
+    pull_policy: build
