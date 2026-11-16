@@ -50,11 +50,15 @@ export function IdeaEditor({ units, onEdit, onAdd, onDelete }: IdeaEditorProps) 
               >
                 <TextArea
                   autoFocus
-                  className={heading ? 'idea-editor-title' : 'idea-editor-source'}
-                  rows={heading ? 1 : Math.min(16, Math.max(3, open.text.split('\n').length + 1))}
+                  ref={grow}
+                  className={heading ? 'idea-editor-title' : `idea-editor-source${code(open.text) ? ' is-code' : ''}`}
+                  rows={heading ? 1 : 3}
                   value={open.text}
                   aria-label={heading ? 'Heading' : 'Markdown'}
-                  onChange={set}
+                  onChange={(text) => {
+                    set(text)
+                    grow(document.activeElement as HTMLTextAreaElement | null)
+                  }}
                   onSubmit={save}
                   onCancel={close}
                 />
@@ -106,12 +110,16 @@ export function IdeaEditor({ units, onEdit, onAdd, onDelete }: IdeaEditorProps) 
               >
                 <TextArea
                   autoFocus
-                  className="idea-editor-source"
-                  rows={4}
+                  ref={grow}
+                  className={`idea-editor-source${code(open.text) ? ' is-code' : ''}`}
+                  rows={3}
                   value={open.text}
                   placeholder="Markdown: a paragraph, a list, a ## heading…"
                   aria-label="New text"
-                  onChange={set}
+                  onChange={(text) => {
+                    set(text)
+                    grow(document.activeElement as HTMLTextAreaElement | null)
+                  }}
                   onSubmit={save}
                   onCancel={close}
                 />
@@ -139,4 +147,19 @@ export function title(source: string): string {
     .replace(/^\s*#{1,6}\s+/, '')
     .replace(/\s+#+\s*$/, '')
     .trim()
+}
+
+/** A code block's source: edited in monospace, where prose is edited in the reading face. */
+const code = (text: string) => /^(```|~~~|    )/.test(text)
+
+/**
+ * The box as tall as what's in it, never less than the block it replaces: by CSS where the browser
+ * sizes a field to its content, measured where it doesn't.
+ */
+function grow(box: HTMLTextAreaElement | null) {
+  if (!box || box.tagName !== 'TEXTAREA' || CSS.supports('field-sizing', 'content')) {
+    return
+  }
+  box.style.height = 'auto'
+  box.style.height = `${box.scrollHeight + 2}px`
 }
