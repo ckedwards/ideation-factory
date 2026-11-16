@@ -245,14 +245,7 @@ function Overview() {
         startedBy={actorOf(first?.by ?? { user: idea.owner, bot: null, purpose: 'me' }, people)}
         startedAt={idea.createdAt}
         description={idea.description}
-        tabs={
-          <IdeaTabs
-            current="overview"
-            overview={links.overview}
-            files={links.files()}
-            changes={idea.latest > 1 ? links.changes(idea.latest - 1) : null}
-          />
-        }
+        tabs={<IdeaTabs current="overview" overview={links.overview} files={links.files()} />}
         statusControl={<IdeaStatus {...review} />}
         actions={<CloseOrReopen {...review} />}
         review={<ReviewPanel {...review} />}

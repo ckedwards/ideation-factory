@@ -1,39 +1,20 @@
-// Above the document when it isn't simply the latest version: an older one
-// (read only, with the way back), or the changes since an earlier one.
+// Above the document when it's an older version: read only, with the way back to the latest and to
+// what's changed since. (Comparing is the document's toolbar's: DocToolbar.)
 import { type Actor, ActorLabel, Link, RelativeTime } from '@ideaf/ui'
 import './VersionBanner.css'
 
-export type VersionBannerProps =
-  | {
-      kind: 'older'
-      version: number
-      latest: number
-      by: Actor
-      at: number
-      /** Back to the latest, and what changed since this one. */
-      latestHref: string
-      changesHref: string
-    }
-  | {
-      kind: 'compare'
-      version: number
-      base: number
-      /** Back to reading the version without the changes. */
-      stopHref: string
-    }
+export interface VersionBannerProps {
+  kind: 'older'
+  version: number
+  latest: number
+  by: Actor
+  at: number
+  /** Back to the latest, and what changed since this one. */
+  latestHref: string
+  changesHref: string
+}
 
 export function VersionBanner(props: VersionBannerProps) {
-  if (props.kind === 'compare') {
-    return (
-      <div className="version-banner is-compare" role="status">
-        <span>
-          <b>Changes since v{props.base}</b> · in v{props.version}: added text is underlined, removed text struck
-          through
-        </span>
-        <Link href={props.stopHref}>Stop comparing</Link>
-      </div>
-    )
-  }
   return (
     <div className="version-banner is-older" role="status">
       <span>

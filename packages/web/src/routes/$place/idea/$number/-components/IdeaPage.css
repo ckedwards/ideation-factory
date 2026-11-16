@@ -45,3 +45,13 @@
   color: var(--ink-2);
   font-size: var(--text-sm);
 }
+/* the file's Markdown, as it's written */
+.idea-source {
+  margin: 0;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

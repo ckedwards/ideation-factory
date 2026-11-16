@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '@ideaf/api'
 import { type Anchor, type DraftChange, parseMarkdown, suggestionSource } from '@ideaf/core'
-import { Button, Dialog, Link, Toast } from '@ideaf/ui'
+import { Button, Dialog, Toast } from '@ideaf/ui'
 import { useLiveSuspenseQuery } from '@tanstack/react-db'
 import { useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
@@ -22,6 +22,7 @@ import { commentsOf } from './live.ts'
 import { commentsQuery, draftQuery, filesQuery, ideaQuery, outlineQuery } from './queries.ts'
 import { commentInfo, commentWrites, teamRef, usePeople } from './shared.tsx'
 import { VersionBanner } from './VersionBanner.tsx'
+import { DocToolbar } from './DocToolbar.tsx'
 import { actorOf, type FileView, place, statusOf, type Thread } from './view.ts'
 
 export interface IdeaViewProps {
@@ -48,6 +49,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
   const { data: idea } = useSuspenseQuery(ideaQuery(id))
   const latest = idea.latest
   const [editing, setEditing] = useState(false)
+  const [showSource, setShowSource] = useState(false)
   const wanted = versionsOf({ v, base: wantedBase }, latest)
   const version = wanted.version
   const base = editing ? null : wanted.base
@@ -180,14 +182,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
         team={teamRef(idea, team.data, people, me.id)}
         status={statusOf(idea.status)}
         version={{ number: version, by, at }}
-        tabs={
-          <IdeaTabs
-            current={base !== null ? 'changes' : 'files'}
-            overview={links.overview}
-            files={links.files({ file: path })}
-            changes={latest > 1 ? links.changes(latest - 1, undefined, path) : null}
-          />
-        }
+        tabs={<IdeaTabs current="files" overview={links.overview} files={links.files({ file: path })} />}
         files={pulled.files.map((f) => {
           const before = baseFiles.data?.files.find((b) => b.file === f.file)
           return {
@@ -199,37 +194,44 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
         })}
         source={file.source}
         compare={base !== null && baseFiles.data ? { base, source: baseFile?.content ?? '' } : null}
+        showSource={showSource}
         banner={
           <>
-            {!older && pendingCount > 0 && (
-              <div className="idea-edit-start">
-                <span>
-                  Your review has {pendingCount === 1 ? '1 pending comment' : `${pendingCount} pending comments`}: only
-                  you see {pendingCount === 1 ? 'it' : 'them'} until you submit it.
-                </span>
-                <Link href={links.overview}>Submit your review</Link>
-              </div>
-            )}
-            {canEdit ? (
-              <div className="idea-edit-start">
-                {draftChanges.length > 0 && (
-                  <span>
-                    The draft has {draftChanges.length === 1 ? '1 change' : `${draftChanges.length} changes`}, by{' '}
-                    {drafters.join(', ')}.
-                  </span>
-                )}
-                <Button size="sm" onClick={() => setEditing(true)} disabled={!draft.data}>
-                  {draftChanges.length > 0 ? 'Open the draft' : 'Edit'}
-                </Button>
-              </div>
-            ) : base !== null ? (
-              <VersionBanner
-                kind="compare"
+            {!editing && (
+              <DocToolbar
+                path={file.path}
                 version={version}
-                base={base}
-                stopHref={links.files({ v: shownV, file: path })}
+                latest={latest}
+                compare={base !== null ? { base, stopHref: links.files({ v: shownV, file: path }) } : null}
+                compareWith={[...idea.versions]
+                  .reverse()
+                  .filter((n) => n.number !== version)
+                  .map((n) => ({ version: n.number, href: links.changes(n.number, shownV, path) }))}
+                onCompare={(href) => void navigate({ href })}
+                source={showSource}
+                onSource={setShowSource}
+                review={
+                  !older && (idea.owner !== me.id || pendingCount > 0)
+                    ? { href: links.overview, pending: pendingCount }
+                    : null
+                }
+                edit={
+                  canEdit
+                    ? {
+                        label: draftChanges.length > 0 ? 'Open the draft' : 'Edit',
+                        disabled: !draft.data,
+                        onEdit: () => setEditing(true),
+                      }
+                    : null
+                }
               />
-            ) : older ? (
+            )}
+            {canEdit && draftChanges.length > 0 ? (
+              <p className="idea-edit-start">
+                The draft has {draftChanges.length === 1 ? '1 change' : `${draftChanges.length} changes`}, by{' '}
+                {drafters.join(', ')}.
+              </p>
+            ) : base === null && older ? (
               <VersionBanner
                 kind="older"
                 version={version}

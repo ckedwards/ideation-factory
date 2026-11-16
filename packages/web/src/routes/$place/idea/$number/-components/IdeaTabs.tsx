@@ -1,21 +1,19 @@
-// An idea's pages, as tabs: its overview, its files, and what changed. Each
-// is its own address, so these are links, the one shown marked.
+// An idea's pages, as tabs: its overview and its files. Each is its own address, so these are links,
+// the one shown marked. Comparing versions is a way of looking at the files (the document's toolbar),
+// so it's under Files, and the tabs are the same for every idea.
 import { Link } from '@ideaf/ui'
 import './IdeaTabs.css'
 
 export interface IdeaTabsProps {
-  current: 'overview' | 'files' | 'changes'
+  current: 'overview' | 'files'
   overview: string
   files: string
-  /** What changed in the latest version; none while there's only one. */
-  changes: string | null
 }
 
-export function IdeaTabs({ current, overview, files, changes }: IdeaTabsProps) {
+export function IdeaTabs({ current, overview, files }: IdeaTabsProps) {
   const tabs = [
     { id: 'overview', label: 'Overview', href: overview },
     { id: 'files', label: 'Files', href: files },
-    ...(changes ? [{ id: 'changes', label: 'Changes', href: changes }] : []),
   ]
   return (
     <nav className="idea-tabs" aria-label="This idea">

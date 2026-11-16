@@ -57,6 +57,8 @@ export interface IdeaPageProps {
   tabs?: ReactNode
   /** The way home, where the site's navigation isn't shown. */
   site?: ReactNode
+  /** The file's Markdown as it's written, in place of the rendered document. */
+  showSource?: boolean
   /** A comment to open where it is (a link from the overview): active, and its text scrolled to. */
   opened?: string | undefined
   /** The idea's files; listed when there's more than one. `changed`: since the version compared against. */
@@ -279,6 +281,10 @@ export function IdeaPage(props: IdeaPageProps) {
           {props.banner}
           {props.editing ? (
             props.editing.document
+          ) : props.showSource ? (
+            <pre className="idea-source">
+              <code>{source}</code>
+            </pre>
           ) : base ? (
             <Redline base={base} current={{ source, tree }} renderCode={renderMermaid} />
           ) : (
@@ -301,7 +307,7 @@ export function IdeaPage(props: IdeaPageProps) {
           <SelectionMenu
             documentRef={document}
             source={source}
-            enabled={canComment && !base && !props.editing}
+            enabled={canComment && !base && !props.editing && !props.showSource}
             addToReview={props.addToReview ?? false}
             {...(props.onComment ? { onComment: props.onComment } : {})}
             {...(props.onSuggest ? { onSuggest: props.onSuggest } : {})}
