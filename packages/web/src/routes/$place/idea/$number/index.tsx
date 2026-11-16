@@ -21,7 +21,13 @@ import {
   subscriptionQuery,
 } from './-components/queries.ts'
 import { SubscribeButton } from './-components/SubscribeButton.tsx'
-import { ReviewPanel, type ReviewRow } from './-components/ReviewPanel.tsx'
+import {
+  CloseOrReopen,
+  IdeaStatus,
+  ReviewPanel,
+  type ReviewPanelProps,
+  type ReviewRow,
+} from './-components/ReviewPanel.tsx'
 import { type Subject, subjectKey, useSubjectNames } from './-components/subjects.ts'
 import { commentInfo, commentWrites, teamRef, usePeople } from './-components/shared.tsx'
 import { actorOf, statusOf } from './-components/view.ts'
@@ -126,6 +132,56 @@ function Overview() {
     }),
   ].sort((a, b) => a.at - b.at)
 
+  // the review: its panel, the status in the header, and closing it
+  const review: ReviewPanelProps = {
+    status: statusOf(reviews.status),
+    latest: reviews.latest,
+    reviewers: asked.map((s) => ({
+      key: subjectKey(s),
+      subject: s,
+      label: names.get(subjectKey(s))?.label ?? '…',
+    })),
+    reviews: reviews.reviews.map((r): ReviewRow => ({
+      ...r,
+      by: actorOf(r.by, people),
+      dismissed: r.dismissed ? { ...r.dismissed, by: actorOf(r.dismissed.by, people) } : null,
+    })),
+    requirements: reviews.requirements.checks.map(requirementWords),
+    canEdit: idea.you.edit,
+    canReview: idea.owner !== me.id,
+    onAsk: idea.you.share
+      ? (subject, ask) => send(() => api.setReviewer({ idea: id, subject, reviewer: ask }))
+      : undefined,
+    onStatus: (status) =>
+      noted(() =>
+        api.setStatus({
+          idea: id,
+          // ui's words, as the api's
+          status: status.replace(/ /g, '-') as 'draft' | 'requesting-review' | 'changes-in-progress',
+        }),
+      ),
+    onClose: (reason, note) => send(() => api.closeIdea({ idea: id, reason, ...(note ? { note } : {}) })),
+    onReopen: () => noted(() => api.reopenIdea({ idea: id })),
+    pending: reviews.pending,
+    onReview: (verdict, body) =>
+      send(async () => {
+        await api.reviewIdea({
+          idea: id,
+          version: reviews.latest,
+          ...(verdict ? { verdict } : {}),
+          ...(body ? { body } : {}),
+        })
+        // your pending comments are out now
+        await rereadComments(id)
+      }),
+    onDiscard: () =>
+      noted(async () => {
+        await api.discardReview({ idea: id })
+        await rereadComments(id)
+      }),
+    onDismiss: (reviewer, reason) => send(() => api.dismissReview({ idea: id, reviewer, reason })),
+  }
+
   return (
     <>
       <IdeaOverview
@@ -143,61 +199,9 @@ function Overview() {
             changes={idea.latest > 1 ? links.changes(idea.latest - 1) : null}
           />
         }
-        review={
-          <ReviewPanel
-            status={statusOf(reviews.status)}
-            latest={reviews.latest}
-            reviewers={asked.map((s) => ({
-              key: subjectKey(s),
-              subject: s,
-              label: names.get(subjectKey(s))?.label ?? '…',
-            }))}
-            reviews={reviews.reviews.map((r): ReviewRow => ({
-              ...r,
-              by: actorOf(r.by, people),
-              dismissed: r.dismissed ? { ...r.dismissed, by: actorOf(r.dismissed.by, people) } : null,
-            }))}
-            requirements={reviews.requirements.checks.map(requirementWords)}
-            canEdit={idea.you.edit}
-            canReview={idea.owner !== me.id}
-            onAsk={
-              idea.you.share
-                ? (subject, ask) => send(() => api.setReviewer({ idea: id, subject, reviewer: ask }))
-                : undefined
-            }
-            onStatus={(status) =>
-              noted(() =>
-                api.setStatus({
-                  idea: id,
-                  // ui's words, as the api's
-                  status: status.replace(/ /g, '-') as 'draft' | 'requesting-review' | 'changes-in-progress',
-                }),
-              )
-            }
-            onClose={(reason, note) => send(() => api.closeIdea({ idea: id, reason, ...(note ? { note } : {}) }))}
-            onReopen={() => noted(() => api.reopenIdea({ idea: id }))}
-            pending={reviews.pending}
-            onReview={(verdict, body) =>
-              send(async () => {
-                await api.reviewIdea({
-                  idea: id,
-                  version: reviews.latest,
-                  ...(verdict ? { verdict } : {}),
-                  ...(body ? { body } : {}),
-                })
-                // your pending comments are out now
-                await rereadComments(id)
-              })
-            }
-            onDiscard={() =>
-              noted(async () => {
-                await api.discardReview({ idea: id })
-                await rereadComments(id)
-              })
-            }
-            onDismiss={(reviewer, reason) => send(() => api.dismissReview({ idea: id, reviewer, reason }))}
-          />
-        }
+        statusControl={<IdeaStatus {...review} />}
+        actions={<CloseOrReopen {...review} />}
+        review={<ReviewPanel {...review} />}
         sharingHref={links.sharing}
         subscribe={
           subscription.data && (

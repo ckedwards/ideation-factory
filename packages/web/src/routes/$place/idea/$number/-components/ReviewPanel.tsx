@@ -1,6 +1,7 @@
-// An idea's reviews, on its overview: where it is and moving it (people do;
-// a verdict never moves it), closing and reopening it, who's asked to review,
-// each reviewer's latest verdict, and giving yours. A Request changes or
+// An idea's reviews, on its overview: who's asked to review, each reviewer's
+// latest verdict, and giving yours (behind a button: you read first). Its status
+// (IdeaStatus: people move it; a verdict never does) and closing and reopening
+// it (CloseOrReopen) go in the overview's header. A Request changes or
 // Reject stands through new versions until it's withdrawn or dismissed, and
 // stops the idea closing as accepted; an approval counts only on the latest
 // version, and only a person's.
@@ -85,34 +86,47 @@ const CHOICES = [
   { value: 'reject', label: 'Reject' },
 ] satisfies Array<{ value: Verdict; label: string }>
 
+/** The idea's status: the menu that moves it, for someone who can edit it while it's open, or its pill. */
+export function IdeaStatus(props: Pick<ReviewPanelProps, 'status' | 'canEdit' | 'onStatus'>) {
+  return props.canEdit && props.status.status !== 'closed' ? (
+    <StatusControl value={props.status.status as OpenStatus} onChange={props.onStatus} />
+  ) : (
+    <StatusPill status={props.status.status} {...(props.status.reason ? { reason: props.status.reason } : {})} />
+  )
+}
+
+/** Closing it (as accepted once nothing stands in the way), or reopening it: for someone who can edit it. */
+export function CloseOrReopen(props: ReviewPanelProps) {
+  if (!props.canEdit) {
+    return null
+  }
+  if (props.status.status === 'closed') {
+    return <Reopen onReopen={props.onReopen} />
+  }
+  return (
+    <Close
+      onClose={props.onClose}
+      blocked={props.reviews.filter((r) => r.standing)}
+      unmet={props.requirements.filter((c) => !c.met).length}
+    />
+  )
+}
+
 export function ReviewPanel(props: ReviewPanelProps) {
   const closed = props.status.status === 'closed'
   const standing = props.reviews.filter((r) => r.standing)
   const approvals = props.reviews.filter((r) => r.counts).length
-  const unmet = props.requirements.filter((c) => !c.met).length
   return (
     <Section title="Review">
       <div className="review-panel">
-        <div className="review-panel-status">
-          {props.canEdit && !closed ? (
-            <StatusControl value={props.status.status as OpenStatus} onChange={props.onStatus} />
-          ) : (
-            <StatusPill
-              status={props.status.status}
-              {...(props.status.reason ? { reason: props.status.reason } : {})}
-            />
-          )}
-          <span className="review-panel-count">
-            {approvals === 1 ? '1 approval' : `${approvals} approvals`} of v{props.latest}
-          </span>
-          {props.canEdit &&
-            (closed ? <Reopen onReopen={props.onReopen} /> : <Close {...props} blocked={standing} unmet={unmet} />)}
-        </div>
+        <span className="review-panel-count">
+          {approvals === 1 ? '1 approval' : `${approvals} approvals`} of v{props.latest}
+        </span>
 
         {props.requirements.length > 0 && (
           <div className="review-panel-requirements">
             <span className="review-panel-label">
-              {unmet === 0 ? 'Its team’s requirements are met' : 'Its team’s requirements'}
+              {props.requirements.every((c) => c.met) ? 'Its team’s requirements are met' : 'Its team’s requirements'}
             </span>
             <RequirementList checks={props.requirements} />
           </div>
@@ -166,7 +180,7 @@ export function ReviewPanel(props: ReviewPanelProps) {
         )}
 
         {((props.canReview && !closed) || (props.pending ?? 0) > 0) && (
-          <ReviewForm
+          <YourReview
             latest={props.latest}
             pending={props.pending ?? 0}
             // a verdict needs someone who may give one, on an open idea
@@ -280,19 +294,44 @@ function Row({
   )
 }
 
-function ReviewForm({
-  latest,
-  pending,
-  verdicts,
-  onReview,
-  onDiscard,
-}: {
+interface ReviewFormProps {
   latest: number
   pending: number
   verdicts: boolean
   onReview: ReviewPanelProps['onReview']
   onDiscard: ReviewPanelProps['onDiscard']
-}) {
+}
+
+/** Your review: a button, then the form in a dialog. */
+function YourReview(props: ReviewFormProps) {
+  const [open, setOpen] = useState(false)
+  const label = props.pending > 0 ? `Finish your review (${props.pending} pending)` : 'Give your review'
+  return (
+    <>
+      <Button variant={props.pending > 0 ? 'primary' : 'default'} onClick={() => setOpen(true)}>
+        {label}
+      </Button>
+      <Dialog open={open} title={`Your review of v${props.latest}`} onClose={() => setOpen(false)}>
+        <ReviewForm
+          {...props}
+          onReview={async (verdict, body) => {
+            await props.onReview(verdict, body)
+            setOpen(false)
+          }}
+          onDiscard={
+            props.onDiscard &&
+            (() => {
+              props.onDiscard?.()
+              setOpen(false)
+            })
+          }
+        />
+      </Dialog>
+    </>
+  )
+}
+
+function ReviewForm({ pending, verdicts, onReview, onDiscard }: ReviewFormProps) {
   // 'none': just your pending comments, with no verdict
   const [verdict, setVerdict] = useState<Verdict | 'none'>(verdicts ? 'approve' : 'none')
   const choices = [
@@ -322,7 +361,6 @@ function ReviewForm({
         void send()
       }}
     >
-      <span className="review-panel-label">Your review of v{latest}</span>
       {pending > 0 && (
         <p className="review-panel-pending">
           {pending === 1 ? '1 pending comment goes' : `${pending} pending comments go`} out with it: only you see{' '}
@@ -384,9 +422,7 @@ function Close({
   }
   return (
     <>
-      <Button size="sm" onClick={() => setOpen(true)}>
-        Close…
-      </Button>
+      <Button onClick={() => setOpen(true)}>Close…</Button>
       <Dialog
         open={open}
         title="Close this idea"
@@ -437,6 +473,21 @@ function Close({
 }
 
 function Ask({ onAsk }: { onAsk: NonNullable<ReviewPanelProps['onAsk']> }) {
+  // done once or twice an idea: behind a button until then
+  const [asking, setAsking] = useState(false)
+  if (!asking) {
+    return (
+      <div>
+        <Button size="sm" variant="link" onClick={() => setAsking(true)}>
+          + Ask for a review
+        </Button>
+      </div>
+    )
+  }
+  return <AskForm onAsk={onAsk} onDone={() => setAsking(false)} />
+}
+
+function AskForm({ onAsk, onDone }: { onAsk: NonNullable<ReviewPanelProps['onAsk']>; onDone: () => void }) {
   const [kind, setKind] = useState<'user' | 'group'>('user')
   const [person, setPerson] = useState<Person | null>(null)
   const [group, setGroup] = useState<GroupRef | null>(null)
@@ -455,6 +506,7 @@ function Ask({ onAsk }: { onAsk: NonNullable<ReviewPanelProps['onAsk']> }) {
           () => {
             setPerson(null)
             setGroup(null)
+            onDone()
           },
           (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
         )
@@ -479,15 +531,14 @@ function Ask({ onAsk }: { onAsk: NonNullable<ReviewPanelProps['onAsk']> }) {
       <Button size="sm" type="submit" disabled={!chosen}>
         Ask to review
       </Button>
+      <Button size="sm" variant="ghost" onClick={onDone}>
+        Cancel
+      </Button>
       {error && <p className="review-panel-error">{error}</p>}
     </form>
   )
 }
 
 function Reopen({ onReopen }: { onReopen: () => void }) {
-  return (
-    <Button size="sm" onClick={onReopen}>
-      Reopen
-    </Button>
-  )
+  return <Button onClick={onReopen}>Reopen</Button>
 }

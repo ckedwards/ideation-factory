@@ -1,13 +1,55 @@
+/* the team, the status and who started it, at one size */
 .idea-overview-sub {
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
 }
+/* the description and the activity, with the review beside them; on a narrow screen the review comes
+   after the description, so it's read first */
 .idea-overview {
   display: grid;
-  gap: var(--space-6);
+  grid-template-columns: minmax(0, 1fr) 20rem;
+  grid-template-areas:
+    'description review'
+    'activity review';
+  grid-template-rows: auto 1fr;
+  gap: var(--space-6) var(--space-7);
   margin-top: var(--space-5);
+}
+.idea-overview-alone {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'description'
+    'activity';
+}
+.idea-overview-description {
+  grid-area: description;
+  min-width: 0;
+}
+.idea-overview-activity {
+  grid-area: activity;
+  min-width: 0;
+}
+.idea-overview-review {
+  grid-area: review;
+  align-self: start;
+  position: sticky;
+  top: var(--space-5);
+}
+@media (max-width: 75rem) {
+  .idea-overview {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'description'
+      'review'
+      'activity';
+    grid-template-rows: none;
+  }
+  .idea-overview-review {
+    position: static;
+  }
 }
 .idea-overview-none {
   margin: 0;
