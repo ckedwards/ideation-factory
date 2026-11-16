@@ -70,3 +70,18 @@ test('teams, ideas, access, lists and search through the actor', async () => {
   expect(await d.idea('i1')).toMatchObject({ title: 'Offline sync rev5', latest: 5, openComments: 5 })
   expect(await found(d, 'u-maya', 'rev5', ['i1'])).toEqual(['i1'])
 })
+
+test("a team's or group's handle that's taken is refused as taken, through the actor's SQLite", async () => {
+  const d = actors.directory.getOrCreate([`test-${crypto.randomUUID()}`])
+  await d.ensureUser({ id: 'u-riley', handle: 'riley', name: 'Riley' })
+  expect((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })).ok).toBe(true)
+  expect(await d.createTeam('u-riley', { handle: 'core', name: 'Core again' })).toMatchObject({
+    ok: false,
+    error: { code: 'exists', message: 'the team handle "core" is taken' },
+  })
+  expect((await d.createGroup('u-riley', { handle: 'reviewers', name: 'Reviewers' })).ok).toBe(true)
+  expect(await d.createGroup('u-riley', { handle: 'reviewers', name: 'Reviewers again' })).toMatchObject({
+    ok: false,
+    error: { code: 'exists' },
+  })
+})
