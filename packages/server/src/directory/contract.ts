@@ -25,7 +25,7 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
     return d
   }
   let clock = 1_000_000
-  const idea = (id: string, extra: Partial<IdeaRow> = {}): Omit<IdeaRow, 'number' | 'openComments'> => ({
+  const idea = (id: string, extra: Partial<IdeaRow> = {}): Omit<IdeaRow, 'number' | 'openComments' | 'approvers'> => ({
     id,
     title: `Idea ${id}`,
     description: '',
@@ -443,6 +443,48 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         expect((await d.grants('i1')).filter((g) => g.reviewer).map((g) => g.subject)).toEqual([
           { kind: 'user', id: 'u-maya' },
         ])
+      })
+
+      test('lists show who approved an idea, who is asked to review it, and whether others can see it', async () => {
+        const { d, team } = await withTeam()
+        const group = (
+          (await d.createGroup('u-devon', { handle: 'security', name: 'Security' })) as { value: { id: string } }
+        ).value.id
+        await d.registerIdea(idea('own', { owner: 'u-riley' }))
+        await d.registerIdea(idea('teams', { owner: 'u-riley', team }))
+        const listed = async (id: string) => (await d.listIdeas('u-riley')).items.find((i) => i.id === id)!
+        expect(await listed('own')).toMatchObject({ approvals: [], reviewers: [], visibility: 'private' })
+        // its team seeing it makes a team's idea neither shared nor public
+        expect((await listed('teams')).visibility).toBe('private')
+
+        // those asked to review it see it, and it's still private
+        await d.setReviewer('u-riley', 'own', { kind: 'user', id: 'u-sam' }, true)
+        await d.setReviewer('u-riley', 'own', { kind: 'group', id: 'security' }, true)
+        await d.updateIdea({
+          id: 'own',
+          title: 'Idea own',
+          description: '',
+          status: 'requesting-review',
+          latest: 1,
+          openComments: 0,
+          approvers: ['u-sam', 'u-maya'],
+          updatedAt: clock++,
+        })
+        const own = await listed('own')
+        expect(own.approvals.map((u) => u.handle)).toEqual(['sam', 'maya'])
+        expect(own.reviewers).toHaveLength(2)
+        expect(own.reviewers).toEqual(
+          expect.arrayContaining([
+            { kind: 'user', user: { id: 'u-sam', handle: 'sam', name: 'Sam', inactive: false } },
+            { kind: 'group', group: { id: group, handle: 'security', name: 'Security' } },
+          ]),
+        )
+        expect(own.visibility).toBe('private')
+
+        await d.setGrant('u-riley', 'own', { kind: 'user', id: 'u-maya' }, { edit: false, share: false })
+        expect((await listed('own')).visibility).toBe('shared')
+        await d.setGrant('u-riley', 'own', { kind: 'everyone' }, { edit: false, share: false })
+        expect((await listed('own')).visibility).toBe('public')
       })
 
       test('people, groups and teams can be named by handle, and are stored by ID', async () => {
@@ -910,6 +952,7 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
           updatedAt: 300,
           description: 'Now with a plan.',
           openComments: 2,
+          approvers: [],
         })
         await d.updateIdea({
           id: 'i1',
@@ -919,6 +962,7 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
           updatedAt: 200,
           description: '',
           openComments: 5,
+          approvers: [],
         })
         expect(await d.idea('i1')).toMatchObject({
           title: 'Newer',
@@ -927,6 +971,7 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
           updatedAt: 300,
           description: 'Now with a plan.',
           openComments: 2,
+          approvers: [],
         })
       })
 
@@ -950,6 +995,7 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
           status: 'draft',
           latest: 2,
           openComments: 0,
+          approvers: [],
           updatedAt: clock++,
         })
         expect((await d.searchIdeas('u-riley', 'sync')).items.map((i) => i.id)).toEqual(['a'])

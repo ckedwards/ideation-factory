@@ -44,8 +44,22 @@ export function ideaInfo(row: ListedIdea, me: string): IdeaInfo {
     version: row.latest,
     updatedAt: row.updatedAt,
     openThreads: row.openComments,
-    approvals: [],
-    reviewers: [],
+    approvals: row.approvals.map((p) => ({ id: p.id, name: p.name, handle: p.handle, inactive: p.inactive })),
+    reviewers: row.reviewers.map((r) =>
+      r.kind === 'user'
+        ? {
+            kind: 'person' as const,
+            person: { id: r.user.id, name: r.user.name, handle: r.user.handle, inactive: r.user.inactive },
+          }
+        : {
+            kind: 'group' as const,
+            id: r.group.id,
+            group: { name: r.group.name },
+            href: `/groups/${r.group.handle}`,
+          },
+    ),
+    visibility: row.visibility,
+    // lists don't check the team's requirements: approvals show as a count
     requirements: [],
   }
 }

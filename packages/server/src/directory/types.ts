@@ -327,19 +327,36 @@ export interface IdeaRow {
   description: string
   /** Comment threads not resolved yet. */
   openComments: number
+  /** The people whose approval of the latest version counts, by ID, in the order they approved. */
+  approvers: string[]
 }
 
-/** An idea as lists show it: its row, its address, and its team and owner by name. */
+/** Someone asked to review an idea: a person or a group. */
+export type ListedReviewer =
+  | { kind: 'user'; user: User }
+  | { kind: 'group'; group: { id: string; handle: string; name: string } }
+
+/**
+ * Who can see an idea, beyond its owner and its team: no one but the people
+ * and groups asked to review it (private), others it's shared with too
+ * (shared), or everyone (public).
+ */
+export type IdeaVisibility = 'private' | 'shared' | 'public'
+
+/** An idea as lists show it: its row, its address, its team and owner by name, its approvals and reviewers. */
 export interface IdeaListing extends IdeaRow {
   place: string
   teamInfo: { id: string; handle: string; name: string; archived: boolean } | null
   ownerInfo: User
+  approvals: User[]
+  reviewers: ListedReviewer[]
+  visibility: IdeaVisibility
 }
 
 /** What an idea's actor sends the index after it changes. */
 export type IndexUpdate = Pick<
   IdeaRow,
-  'id' | 'title' | 'status' | 'latest' | 'updatedAt' | 'description' | 'openComments'
+  'id' | 'title' | 'status' | 'latest' | 'updatedAt' | 'description' | 'openComments' | 'approvers'
 >
 
 /** An idea as one reader may see it: what they can do, its team, and its address. */
@@ -589,9 +606,9 @@ export interface Directory {
    * default access. Safe to repeat. Where it is, so creating an idea needs no
    * further call.
    */
-  registerIdea(row: Omit<IdeaRow, 'number' | 'openComments'>): Promise<IdeaPlace>
+  registerIdea(row: Omit<IdeaRow, 'number' | 'openComments' | 'approvers'>): Promise<IdeaPlace>
   /** registerIdea for several at once, in one transaction: each commit costs far more than what's in it. */
-  registerIdeas(rows: Array<Omit<IdeaRow, 'number' | 'openComments'>>): Promise<IdeaPlace[]>
+  registerIdeas(rows: Array<Omit<IdeaRow, 'number' | 'openComments' | 'approvers'>>): Promise<IdeaPlace[]>
   /** Sends every idea's title to the search index again, the least recently updated first; how many. */
   reindexSearch(): Promise<number>
   /** Updates ideas' index rows (their team and owner don't change here): a queue's worth at once. */

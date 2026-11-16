@@ -46,6 +46,8 @@ import {
   type IdeaPlace,
   type IdeaAccess,
   type IdeaListing,
+  type IdeaVisibility,
+  type ListedReviewer,
   type Memberships,
   type IdeaRow,
   type IndexUpdate,
@@ -169,6 +171,7 @@ const toIdea = (r: DB['ideas']): IdeaRow => ({
   number: Number(r.number),
   description: r.description,
   openComments: Number(r.open_comments),
+  approvers: JSON.parse(r.approvers) as string[],
 })
 
 /** Where an idea is numbered: its team, or its owner's own ideas. */
@@ -2325,11 +2328,11 @@ export class SqlDirectory implements Directory {
     )
   }
 
-  async registerIdea(row: Omit<IdeaRow, 'number' | 'openComments'>): Promise<IdeaPlace> {
+  async registerIdea(row: Omit<IdeaRow, 'number' | 'openComments' | 'approvers'>): Promise<IdeaPlace> {
     return (await this.registerIdeas([row]))[0]!
   }
 
-  async registerIdeas(rows: Array<Omit<IdeaRow, 'number' | 'openComments'>>): Promise<IdeaPlace[]> {
+  async registerIdeas(rows: Array<Omit<IdeaRow, 'number' | 'openComments' | 'approvers'>>): Promise<IdeaPlace[]> {
     // what places are called, read once for the batch: a team's ideas are found under its handle, someone's own under theirs
     const teams = new Map<string, Awaited<ReturnType<SqlDirectory['team']>>>()
     const owners = new Map<string, string>()
@@ -2370,6 +2373,7 @@ export class SqlDirectory implements Directory {
             number,
             description: row.description,
             open_comments: 0,
+            approvers: '[]',
           })
           .execute()
         added.push({ id: row.id, title: row.title })
@@ -2433,6 +2437,7 @@ export class SqlDirectory implements Directory {
               updated_at: row.updatedAt,
               description: row.description,
               open_comments: row.openComments,
+              approvers: JSON.stringify(row.approvers),
             })
             .where('id', '=', row.id)
             .where('updated_at', '<=', row.updatedAt)
@@ -3011,32 +3016,82 @@ export class SqlDirectory implements Directory {
     }
   }
 
-  /** Rows as lists show them: with their address, and their teams and owners by name, read once per page. */
+  /**
+   * Rows as lists show them: with their address, their teams and owners by name, who approved them
+   * and who's asked to review them, and who else can see them, read once per page.
+   */
   async #listings(rows: IdeaRow[]): Promise<IdeaListing[]> {
+    if (rows.length === 0) {
+      return []
+    }
+    const ideaIds = rows.map((r) => r.id)
     const teamIds = [...new Set(rows.flatMap((r) => (r.team ? [r.team] : [])))]
-    const ownerIds = [...new Set(rows.map((r) => r.owner))]
-    const [teams, owners] = await Promise.all([
+    // each idea's grants, but not its team's own (a team's members seeing its ideas makes them neither shared nor public)
+    const grants = await this.#db
+      .selectFrom('grants')
+      .innerJoin('ideas', 'ideas.id', 'grants.idea')
+      .select(['grants.idea', 'grants.kind', 'grants.subject', 'grants.reviewer'])
+      .where('grants.idea', 'in', ideaIds)
+      .where((eb) =>
+        eb.or([
+          eb('grants.kind', '!=', 'team'),
+          eb('ideas.team', 'is', null),
+          eb('grants.subject', '!=', eb.ref('ideas.team')),
+        ]),
+      )
+      .orderBy('grants.created_at')
+      .execute()
+    const reviewers = grants.filter((g) => g.reviewer === 1)
+    const userIds = [
+      ...new Set([
+        ...rows.map((r) => r.owner),
+        ...rows.flatMap((r) => r.approvers),
+        ...reviewers.flatMap((g) => (g.kind === 'user' ? [g.subject] : [])),
+      ]),
+    ]
+    const groupIds = [...new Set(reviewers.flatMap((g) => (g.kind === 'group' ? [g.subject] : [])))]
+    const [teams, users, groups] = await Promise.all([
       teamIds.length
         ? this.#db.selectFrom('teams').select(['id', 'handle', 'name', 'archived']).where('id', 'in', teamIds).execute()
         : [],
-      ownerIds.length
-        ? this.#db
-            .selectFrom('users')
-            .select(['id', 'handle', 'name', 'inactive'])
-            .where('id', 'in', ownerIds)
-            .execute()
+      this.#db.selectFrom('users').select(['id', 'handle', 'name', 'inactive']).where('id', 'in', userIds).execute(),
+      groupIds.length
+        ? this.#db.selectFrom('groups').select(['id', 'handle', 'name']).where('id', 'in', groupIds).execute()
         : [],
     ])
     const team = new Map(
       teams.map((t) => [t.id, { id: t.id, handle: t.handle, name: t.name, archived: t.archived === 1 }]),
     )
-    const owner = new Map(
-      owners.map((u) => [u.id, { id: u.id, handle: u.handle, name: u.name, inactive: u.inactive === 1 }]),
-    )
+    const user = new Map(users.map((u) => [u.id, toUser(u)]))
+    const group = new Map(groups.map((g) => [g.id, g]))
+    const someone = (id: string): User => user.get(id) ?? { id, handle: id, name: id, inactive: false }
     return rows.map((row) => {
       const teamInfo = row.team ? (team.get(row.team) ?? null) : null
-      const ownerInfo = owner.get(row.owner) ?? { id: row.owner, handle: row.owner, name: row.owner, inactive: false }
-      return { ...row, place: teamInfo ? teamInfo.handle : `@${ownerInfo.handle}`, teamInfo, ownerInfo }
+      const ownerInfo = someone(row.owner)
+      const its = grants.filter((g) => g.idea === row.id)
+      const visibility: IdeaVisibility = its.some((g) => g.kind === 'everyone')
+        ? 'public'
+        : its.some((g) => g.reviewer === 0)
+          ? 'shared'
+          : 'private'
+      return {
+        ...row,
+        place: teamInfo ? teamInfo.handle : `@${ownerInfo.handle}`,
+        teamInfo,
+        ownerInfo,
+        approvals: row.approvers.map(someone),
+        reviewers: its.flatMap((g): ListedReviewer[] => {
+          if (g.reviewer !== 1) {
+            return []
+          }
+          if (g.kind === 'user') {
+            return [{ kind: 'user', user: someone(g.subject) }]
+          }
+          const named = group.get(g.subject)
+          return g.kind === 'group' && named ? [{ kind: 'group', group: named }] : []
+        }),
+        visibility,
+      }
     })
   }
 

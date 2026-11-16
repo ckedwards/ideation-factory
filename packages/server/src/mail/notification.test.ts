@@ -26,6 +26,10 @@ const listing = (extra: Partial<IdeaListing> = {}): IdeaListing => ({
   place: 'mobile',
   teamInfo: { id: 't1', handle: 'mobile', name: 'Mobile', archived: false },
   ownerInfo: { id: 'u-riley', handle: 'riley', name: 'Riley', inactive: false },
+  approvers: [],
+  approvals: [],
+  reviewers: [],
+  visibility: 'private',
   ...extra,
 })
 

@@ -82,6 +82,7 @@ test("an idea's search row is replaced, not added to, when its title changes, an
     status: 'draft',
     latest: 2,
     openComments: 0,
+    approvers: [],
     updatedAt: 2,
   })
   expect((await d.searchIdeas('u-a', 'offline')).items).toEqual([])

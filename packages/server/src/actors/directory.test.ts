@@ -61,6 +61,7 @@ test('teams, ideas, access, lists and search through the actor', async () => {
       status: 'draft',
       latest: n,
       openComments: n,
+      approvers: [],
       updatedAt: n,
     })
   }

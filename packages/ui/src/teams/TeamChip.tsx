@@ -18,8 +18,9 @@ export interface TeamChipProps {
 }
 
 function describe(team: TeamRef): string | undefined {
+  // who else can see someone's own idea is the idea's, not the chip's, to say
   if (team.personal) {
-    return 'Not in any team. Private.'
+    return 'Not in any team'
   }
   const facts = [
     team.locked && 'Locked team: only its members can see its ideas',
@@ -30,19 +31,15 @@ function describe(team: TeamRef): string | undefined {
 
 // The team an idea belongs to, as a small chip that links to the team.
 export function TeamChip({ team, href }: TeamChipProps) {
-  const className = [
-    'team-chip',
-    (team.personal || team.locked) && 'team-chip-private',
-    team.archived && 'team-chip-archived',
-  ]
+  const className = ['team-chip', team.locked && 'team-chip-private', team.archived && 'team-chip-archived']
     .filter(Boolean)
     .join(' ')
   const content = (
     <>
-      {(team.personal || team.locked) && (
+      {team.locked && (
         <>
           <span aria-hidden>🔒 </span>
-          <span className="visually-hidden">{team.personal ? 'Private: ' : 'Locked team: '}</span>
+          <span className="visually-hidden">Locked team: </span>
         </>
       )}
       {team.name}

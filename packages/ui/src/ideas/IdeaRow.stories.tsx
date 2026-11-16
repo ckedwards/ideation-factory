@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, within } from 'storybook/test'
 import { IdeaRow } from './IdeaRow.tsx'
 import { Tag } from '../labels/Tag.tsx'
 import { ideas } from '../stories/fixtures.ts'
@@ -29,7 +30,20 @@ export const NoRequirements: Story = { args: { idea: ideas.noRequirements } }
 
 export const Draft: Story = { args: { idea: ideas.draft } }
 
-export const Private: Story = { args: { idea: ideas.private } }
+export const Private: Story = {
+  args: { idea: ideas.private },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByText('Private')).toBeVisible()
+  },
+}
+
+// someone's own idea, shared with others (or everyone): not private, so no tag says it is
+export const SharedOwnIdea: Story = {
+  args: { idea: { ...ideas.private, visibility: 'shared' } },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).queryByText('Private')).toBeNull()
+  },
+}
 
 export const LockedTeam: Story = { args: { idea: ideas.locked } }
 
