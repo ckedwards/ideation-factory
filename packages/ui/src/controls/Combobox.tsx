@@ -49,6 +49,7 @@ export function Combobox({
   loading = false,
 }: ComboboxProps) {
   const [open, setOpen] = useState(false)
+  const [dialog, setDialog] = useState<HTMLDialogElement | null>(null)
   const typed = query.trim() !== ''
   const results = typed ? options : pinned
   const choose = (option: ComboboxOption | null) => {
@@ -89,8 +90,15 @@ export function Combobox({
       isItemEqualToValue={(a, b) => a.id === b.id}
       autoHighlight
     >
-      <Base.Input className="combo-input" aria-label={label} placeholder={placeholder} />
-      <Base.Portal>
+      <Base.Input
+        className="combo-input"
+        aria-label={label}
+        placeholder={placeholder}
+        // inside a modal <dialog>, the list goes in the dialog: the dialog is on the browser's top
+        // layer, so a list on the page behind it would be hidden and out of reach
+        ref={(input: HTMLInputElement | null) => setDialog(input?.closest('dialog') ?? null)}
+      />
+      <Base.Portal {...(dialog ? { container: dialog } : {})}>
         <Base.Positioner className="combo-positioner" side="bottom" align="start" sideOffset={4} collisionPadding={8}>
           <Base.Popup className="combo-popup">
             <Base.List className="combo-list" aria-label={label}>
