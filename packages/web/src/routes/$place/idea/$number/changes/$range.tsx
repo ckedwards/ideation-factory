@@ -8,6 +8,7 @@ import { commentsOf } from '../-components/live.ts'
 import { commentsQuery, filesQuery, ideaQuery, outlineQuery } from '../-components/queries.ts'
 
 export const Route = createFileRoute('/$place/idea/$number/changes/$range')({
+  staticData: { wide: true },
   validateSearch: (search: Record<string, unknown>): { file?: string } =>
     typeof search['file'] === 'string' ? { file: search['file'] } : {},
   loader: async ({ context: { queryClient, idea, place, number }, params }) => {

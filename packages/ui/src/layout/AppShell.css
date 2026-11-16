@@ -3,6 +3,9 @@
   grid-template-columns: 16rem minmax(0, 1fr);
   min-height: 100vh;
 }
+.app-shell-bare {
+  grid-template-columns: minmax(0, 1fr);
+}
 .app-shell-nav {
   position: sticky;
   top: 0;

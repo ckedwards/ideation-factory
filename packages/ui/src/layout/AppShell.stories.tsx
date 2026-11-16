@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { expect, within } from 'storybook/test'
 import { AppShell } from './AppShell.tsx'
 import { Page, Section } from './Page.tsx'
 import { SideNav } from './SideNav.tsx'
@@ -102,5 +103,23 @@ export const EmptyPage: Story = {
         <Empty>You’re all caught up.</Empty>
       </Page>
     ),
+  },
+}
+
+// A page that needs the width (an idea's document): no site navigation, the page gives its own way home
+export const Bare: Story = {
+  args: {
+    bare: true,
+    children: (
+      <Page>
+        <PageHeader title="Move background jobs to a queue" />
+        <p>The document has the whole width.</p>
+      </Page>
+    ),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.queryByRole('link', { name: 'Notifications' })).toBeNull()
+    await expect(canvas.getByRole('main')).toHaveTextContent('The document has the whole width.')
   },
 }

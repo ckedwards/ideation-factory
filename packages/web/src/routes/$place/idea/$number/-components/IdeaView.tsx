@@ -12,6 +12,7 @@ import { useLiveSuspenseQuery } from '@tanstack/react-db'
 import { useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { api, meQuery, teamQuery } from '../../../../../api.ts'
+import { SiteLinks } from '../../../../../components/SiteLinks.tsx'
 import { sectionAt, toPlain } from './anchors.ts'
 import { IdeaPage } from './IdeaPage.tsx'
 import { IdeaTabs } from './IdeaTabs.tsx'
@@ -170,6 +171,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path }: IdeaVie
   return (
     <>
       <IdeaPage
+        site={<SiteLinks />}
         editing={editor}
         title={idea.title}
         team={teamRef(idea, team.data, people, me.id)}

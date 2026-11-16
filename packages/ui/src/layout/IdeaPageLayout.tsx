@@ -23,7 +23,7 @@ export function IdeaPageLayout({ nav, document, panel }: IdeaPageLayoutProps) {
       </aside>
       {/* focusable, so the keyboard can scroll it */}
       <main className="idea-page-document" id="idea-document" tabIndex={0}>
-        {document}
+        <div className="idea-page-measure">{document}</div>
       </main>
       {panel && (
         <aside className="idea-page-panel" aria-label="Comments, versions and details">
