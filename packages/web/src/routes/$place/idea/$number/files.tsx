@@ -9,6 +9,8 @@ import { commentsQuery, filesQuery, ideaQuery, loadIdeaPage, outlineQuery } from
 interface Search {
   file?: string
   v?: number
+  /** A comment to open where it is. */
+  comment?: string
 }
 
 export const Route = createFileRoute('/$place/idea/$number/files')({
@@ -17,6 +19,7 @@ export const Route = createFileRoute('/$place/idea/$number/files')({
     const v = Number(search['v'])
     return {
       ...(typeof search['file'] === 'string' ? { file: search['file'] } : {}),
+      ...(typeof search['comment'] === 'string' ? { comment: search['comment'] } : {}),
       ...(Number.isInteger(v) && v > 0 ? { v } : {}),
     }
   },
@@ -38,6 +41,6 @@ export const Route = createFileRoute('/$place/idea/$number/files')({
 
 function Files() {
   const { idea, place, number } = Route.useRouteContext()
-  const { file, v } = Route.useSearch()
-  return <IdeaView id={idea} links={ideaLinks(place, number)} v={v} file={file} />
+  const { file, v, comment } = Route.useSearch()
+  return <IdeaView id={idea} links={ideaLinks(place, number)} v={v} file={file} comment={comment} />
 }

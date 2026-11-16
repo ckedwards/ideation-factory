@@ -2,13 +2,14 @@
 // /mobile/idea/9 (or /@riley/idea/3 for someone's own), its files at /files
 // (?v= for an older version), and what changed between two versions at
 // /changes/1..3, or /changes/1.. for everything since v1, following new
-// versions as they come. ?file= picks the file in either.
+// versions as they come. ?file= picks the file in either, and ?comment= a comment
+// on the files page, opened where it is.
 
 import { ideaPath } from '@ideaf/api'
 
 export interface IdeaLinks {
   overview: string
-  files(at?: { v?: number | undefined; file?: string | undefined }): string
+  files(at?: { v?: number | undefined; file?: string | undefined; comment?: string | undefined }): string
   /** From one version to another, or (without `to`) to the latest, whatever it becomes. */
   changes(from: number, to?: number | undefined, file?: string | undefined): string
   /** Who has access, and moving it to another team. */
@@ -30,7 +31,7 @@ export function ideaLinks(place: string, number: number): IdeaLinks {
   }
   return {
     overview,
-    files: ({ v, file } = {}) => `${overview}/files${query({ file, v })}`,
+    files: ({ v, file, comment } = {}) => `${overview}/files${query({ file, v, comment })}`,
     changes: (from, to, file) => `${overview}/changes/${from}..${to ?? ''}${query({ file })}`,
     sharing: `${overview}/sharing`,
     move: `${overview}/move`,
