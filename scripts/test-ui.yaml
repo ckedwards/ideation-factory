@@ -4,6 +4,10 @@
 services:
   app:
     image: ideaf-test-ui-app
+    environment:
+      # Docker's own networks, which connections from this machine come through: their
+      # X-Forwarded-For is believed, so test-ui.sh seed's people sign in from addresses of their own
+      IDEAF__TRUSTED_PROXIES: 172.16.0.0/12
     build:
       context: .
       dockerfile: deploy/app.Dockerfile
