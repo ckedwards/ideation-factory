@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect, screen } from 'storybook/test'
+import { expect, screen, within } from 'storybook/test'
 import { Combobox, type ComboboxOption } from './Combobox.tsx'
+import { Dialog } from '../overlays/Dialog.tsx'
 import { findMatch } from '../labels/Highlight.tsx'
 import { crowd, everyone, longName, riley } from '../stories/fixtures.ts'
 
@@ -102,5 +103,25 @@ export const Keyboard: Story = {
     await userEvent.keyboard('{Enter}')
     await expect(canvas.getByRole('button', { name: 'Clear Author' })).toBeVisible()
     await expect(canvas.getByText('Maya Ortiz')).toBeVisible()
+  },
+}
+
+// In a modal dialog, the list opens inside it, above the dialog, and can be picked from: a list on
+// the page behind the dialog's top layer would be hidden and out of reach
+export const InADialog: Story = {
+  decorators: [
+    (Story) => (
+      <Dialog open title="Add someone" onClose={() => undefined}>
+        <Story />
+      </Dialog>
+    ),
+  ],
+  play: async ({ userEvent }) => {
+    const dialog = await screen.findByRole('dialog', { name: 'Add someone' })
+    await userEvent.type(within(dialog).getByRole('combobox'), 'ma')
+    const option = await screen.findByRole('option', { name: /Maya/ })
+    await expect(dialog.contains(option)).toBe(true)
+    await userEvent.click(option)
+    await expect(within(dialog).getByText('Maya Ortiz')).toBeVisible()
   },
 }
