@@ -14,7 +14,6 @@ interface Search {
 }
 
 export const Route = createFileRoute('/$place/idea/$number/files')({
-  staticData: { wide: true },
   validateSearch: (search: Record<string, unknown>): Search => {
     const v = Number(search['v'])
     return {

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, fn, within } from 'storybook/test'
-import { CloseOrReopen, IdeaStatus, ReviewPanel, type ReviewRow } from './ReviewPanel.tsx'
+import { CloseOrReopen, IdeaStatus, ReviewButton, ReviewPanel, type ReviewRow } from './ReviewPanel.tsx'
 
 const maya = { id: 'u-maya', name: 'Maya Chen' }
 const devon = { id: 'u-devon', name: 'Devon Ross' }
@@ -49,6 +49,7 @@ const meta = {
       <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
         <IdeaStatus {...args} />
         <CloseOrReopen {...args} />
+        <ReviewButton {...args} />
       </div>
       <ReviewPanel {...args} />
     </div>
@@ -205,13 +206,13 @@ export const WithPending: Story = {
   play: async ({ args, canvasElement, userEvent }) => {
     const page = within(canvasElement)
     const dialog = within(canvasElement.ownerDocument.body)
-    await userEvent.click(page.getByRole('button', { name: 'Finish your review (3 pending)' }))
+    await userEvent.click(page.getByRole('button', { name: 'Finish your review (3)' }))
     await expect(dialog.getByText(/3 pending comments go out with it/)).toBeVisible()
     await userEvent.click(dialog.getByRole('radio', { name: 'Just my comments' }))
     await expect(dialog.queryByLabelText('Summary')).toBeNull()
     await userEvent.click(dialog.getByRole('button', { name: 'Publish my comments' }))
     await expect(args.onReview).toHaveBeenCalledWith(null, '')
-    await userEvent.click(page.getByRole('button', { name: 'Finish your review (3 pending)' }))
+    await userEvent.click(page.getByRole('button', { name: 'Finish your review (3)' }))
     await userEvent.click(dialog.getByRole('button', { name: 'Discard pending comments' }))
     await expect(args.onDiscard).toHaveBeenCalled()
   },
@@ -223,7 +224,7 @@ export const OwnerWithPending: Story = {
   play: async ({ args, canvasElement, userEvent }) => {
     const page = within(canvasElement)
     const dialog = within(canvasElement.ownerDocument.body)
-    await userEvent.click(page.getByRole('button', { name: 'Finish your review (1 pending)' }))
+    await userEvent.click(page.getByRole('button', { name: 'Finish your review (1)' }))
     await expect(dialog.queryByRole('radio', { name: 'Approve' })).toBeNull()
     await userEvent.click(dialog.getByRole('button', { name: 'Publish my comments' }))
     await expect(args.onReview).toHaveBeenCalledWith(null, '')

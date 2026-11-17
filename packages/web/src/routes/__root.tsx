@@ -10,6 +10,7 @@ import { AppNav, type NavPage } from '../components/AppNav.tsx'
 import { QuickSearch } from '../components/QuickSearch.tsx'
 import { SiteLinks } from '../components/SiteLinks.tsx'
 import { accessToken, SignedOut, signInHref, signOut } from '../session.ts'
+import { SiteProvider } from '../site.tsx'
 import { savedTheme, setTheme } from '../theme.ts'
 import './-root.css'
 
@@ -55,30 +56,37 @@ function Root() {
       return place && !place.startsWith('@') ? place : null
     },
   })
+  const site = {
+    theme,
+    onThemeChange: (next: Theme) => {
+      pickTheme(next)
+      setTheme(next)
+    },
+    onSignOut: () => void signOut(),
+  }
   return (
-    <AppShell
-      bare={wide}
-      bar={<SiteLinks bar />}
-      nav={
-        <AppNav
-          me={me}
-          teams={memberships.teams}
-          current={current}
-          unread={unread.data ?? 0}
-          theme={theme}
-          onThemeChange={(next) => {
-            pickTheme(next)
-            setTheme(next)
-          }}
-          onSignOut={() => void signOut()}
-          search={<QuickSearch />}
-          watching={memberships.watching}
-          currentTeam={currentTeam}
-        />
-      }
-    >
-      <Outlet />
-    </AppShell>
+    <SiteProvider value={site}>
+      <AppShell
+        bare={wide}
+        bar={<SiteLinks bar />}
+        nav={
+          <AppNav
+            me={me}
+            teams={memberships.teams}
+            current={current}
+            unread={unread.data ?? 0}
+            theme={theme}
+            onThemeChange={site.onThemeChange}
+            onSignOut={site.onSignOut}
+            search={<QuickSearch />}
+            watching={memberships.watching}
+            currentTeam={currentTeam}
+          />
+        }
+      >
+        <Outlet />
+      </AppShell>
+    </SiteProvider>
   )
 }
 

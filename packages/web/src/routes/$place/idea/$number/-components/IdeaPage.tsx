@@ -21,19 +21,16 @@ import {
   MarkdownView,
   Redline,
   redline,
-  RelativeTime,
   renderMermaid,
   Select,
   SelectionMenu,
   Stack,
   Tabs,
-  type TeamRef,
   type TextSelection,
   Toc,
 } from '@ideaf/ui'
 import { VersionList, type VersionListProps } from './VersionList.tsx'
 import type { Placement } from './view.ts'
-import type { ShownStatus } from '../../../../../ideas.ts'
 import { CommentBox } from './CommentBox.tsx'
 import './IdeaPage.css'
 
@@ -46,15 +43,6 @@ export interface PageComment {
 }
 
 export interface IdeaPageProps {
-  title: string
-  team: TeamRef & { href?: string | undefined }
-  status: ShownStatus
-  /** The version shown: its number, who made it and when. */
-  version: { number: number; by: Actor; at: number }
-  /** The idea's pages (IdeaTabs), under its heading. */
-  tabs?: ReactNode
-  /** The way home, where the site's navigation isn't shown. */
-  site?: ReactNode
   /** The file's Markdown as it's written, in place of the rendered document. */
   showSource?: boolean
   /** A comment to open where it is (a link from the overview): active, and its text scrolled to. */
@@ -191,28 +179,8 @@ export function IdeaPage(props: IdeaPageProps) {
   const nav = (
     <div className="idea-nav">
       <Stack gap={5}>
-        {props.site}
-        {/* back to its team; the status as a dot and the title (two lines at most, whole on hover); which version */}
-        <div className="idea-rail-head">
-          {props.team.href && (
-            <Link className="idea-rail-back" href={props.team.href}>
-              ← {props.team.name}
-            </Link>
-          )}
-          <p className="idea-rail-title" title={props.title}>
-            <span className={`idea-rail-dot status-${statusKey(props.status)}`} aria-hidden>
-              <span className="status-dot" />
-            </span>
-            <span>{props.title}</span>
-            <span className="visually-hidden">, {statusWords(props.status)}</span>
-          </p>
-          <p className="idea-rail-meta">
-            {!props.team.href && `${props.team.name} · `}v{props.version.number} ·{' '}
-            <RelativeTime at={props.version.at} />
-          </p>
-        </div>
-        {props.tabs}
-        {props.files.length > 1 && (
+        {/* every file, as the overview lists them: the same left slot on every page */}
+        {props.files.length > 0 && (
           <nav aria-label="Files">
             <h2 className="idea-rail-label">Files</h2>
             <ul className="idea-files">
@@ -435,15 +403,6 @@ export function IdeaPage(props: IdeaPageProps) {
       }
     />
   )
-}
-
-/** The status, as the status pill's colour classes name it. */
-function statusKey(status: ShownStatus): string {
-  return status.status === 'closed' ? `closed-${status.reason ?? 'accepted'}` : status.status.replace(/ /g, '-')
-}
-
-function statusWords(status: ShownStatus): string {
-  return status.status === 'closed' ? `closed as ${status.reason ?? 'accepted'}` : status.status
 }
 
 /** Who wrote a comment, as the author filter tells them apart: a person, or a bot. */
