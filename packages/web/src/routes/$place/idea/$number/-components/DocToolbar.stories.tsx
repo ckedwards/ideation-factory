@@ -56,7 +56,7 @@ export const Editing: Story = {
   args: { editing: true },
   play: async ({ canvasElement }) => {
     const bar = within(canvasElement)
-    await expect(bar.getByText('Editing the draft')).toBeVisible()
+    await expect(bar.getByText(/Hover a block to edit it/)).toBeVisible()
     await expect(bar.queryByRole('button', { name: 'Source' })).toBeNull()
     await expect(
       canvasElement.querySelector('.doc-toolbar-actions')!.getBoundingClientRect().height,

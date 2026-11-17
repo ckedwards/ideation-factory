@@ -56,3 +56,7 @@
 .doc-toolbar-chip a:hover {
   color: var(--ink);
 }
+.doc-toolbar-hint {
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}

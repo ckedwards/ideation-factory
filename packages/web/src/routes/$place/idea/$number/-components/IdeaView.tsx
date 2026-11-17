@@ -330,6 +330,8 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
           ))}
         </ul>
       </Dialog>
+      {/* the editor's words and actions, in the idea's bar while it's open */}
+      {editor?.bar}
       <Toast message={note} onDismiss={() => setNote(null)} />
     </>
   )

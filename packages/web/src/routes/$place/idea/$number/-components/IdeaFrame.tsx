@@ -5,8 +5,11 @@
 // your review, and the rest behind ⋯), then your notifications and account;
 // and its tabs under that. The site's navigation steps aside, as the idea's
 // pages have side columns of their own. Sharing, your review and closing open
-// as dialogs over whichever page is shown.
-import { type ReactNode, useState } from 'react'
+// as dialogs over whichever page is shown. A page can put the idea in a mode
+// (IdeaMode: editing its draft): the bar then says so and has the mode's
+// actions where its own were, and the tabs wait until the mode ends.
+import { createContext, type ReactNode, useContext, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AccountMenu, Button, Dialog, InboxLink, Link, RelativeTime, RowMenu, Toast } from '@ideaf/ui'
 import { useLiveSuspenseQuery } from '@tanstack/react-db'
 import { useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
@@ -36,8 +39,36 @@ export interface IdeaFrameProps {
   children: ReactNode
 }
 
+/** Where a mode's words and actions go in the bar, and saying one has begun or ended. */
+const ModeContext = createContext<{ slot: HTMLElement | null; setActive: (active: boolean) => void } | null>(null)
+
+/**
+ * The idea in a mode, while this is shown: its words (what's going on) and its
+ * actions (how to finish it) in the idea's bar, in place of the bar's own.
+ */
+export function IdeaMode({ label, actions }: { label: ReactNode; actions: ReactNode }) {
+  const mode = useContext(ModeContext)
+  const setActive = mode?.setActive
+  useEffect(() => {
+    setActive?.(true)
+    return () => setActive?.(false)
+  }, [setActive])
+  if (!mode?.slot) {
+    return null
+  }
+  return createPortal(
+    <>
+      <span className="idea-bar-mode-label">{label}</span>
+      {actions}
+    </>,
+    mode.slot,
+  )
+}
+
 export function IdeaFrame({ id, links, current, sharing, onSharing, children }: IdeaFrameProps) {
   const queryClient = useQueryClient()
+  const [slot, setSlot] = useState<HTMLElement | null>(null)
+  const [moded, setModed] = useState(false)
   const navigate = useNavigate()
   const site = useSite()
   const { data: idea } = useSuspenseQuery(ideaQuery(id))
@@ -90,45 +121,51 @@ export function IdeaFrame({ id, links, current, sharing, onSharing, children }: 
             )}
           </span>
         </div>
-        <div className="idea-bar-actions">
-          {subscription.data && (
-            <SubscribeButton
-              subscribed={subscription.data.subscribed}
-              reason={subscription.data.reason}
-              busy={subscribing}
-              onChange={(subscribed) => {
-                setSubscribing(true)
-                api
-                  .setSubscription({ idea: id, subscribed })
-                  .then((now) => queryClient.setQueryData(subscriptionQuery(id).queryKey, now))
-                  .catch((error: unknown) => setNote(error instanceof Error ? error.message : String(error)))
-                  .finally(() => setSubscribing(false))
-              }}
+        {/* a mode's words and actions, when a page has put the idea in one */}
+        <div className="idea-bar-mode" ref={setSlot} />
+        {!moded && (
+          <div className="idea-bar-actions">
+            {subscription.data && (
+              <SubscribeButton
+                subscribed={subscription.data.subscribed}
+                reason={subscription.data.reason}
+                busy={subscribing}
+                onChange={(subscribed) => {
+                  setSubscribing(true)
+                  api
+                    .setSubscription({ idea: id, subscribed })
+                    .then((now) => queryClient.setQueryData(subscriptionQuery(id).queryKey, now))
+                    .catch((error: unknown) => setNote(error instanceof Error ? error.message : String(error)))
+                    .finally(() => setSubscribing(false))
+                }}
+              />
+            )}
+            <Button onClick={() => onSharing(true)}>Sharing</Button>
+            <ReviewButton {...review} pending={pending} />
+            <RowMenu
+              label="This idea"
+              groups={[
+                {
+                  items: [
+                    ...(review.canEdit && !closed ? [{ label: 'Close…', onSelect: () => setClosing(true) }] : []),
+                    ...(review.canEdit && closed ? [{ label: 'Reopen', onSelect: review.onReopen }] : []),
+                    ...(idea.you.share
+                      ? [{ label: 'Move…', onSelect: () => void navigate({ href: links.move }) }]
+                      : []),
+                    {
+                      label: 'Copy its address',
+                      onSelect: () =>
+                        void navigator.clipboard
+                          .writeText(address)
+                          .then(() => setNote(`Copied ${address}`))
+                          .catch(() => setNote(`Its address is ${address}`)),
+                    },
+                  ],
+                },
+              ]}
             />
-          )}
-          <Button onClick={() => onSharing(true)}>Sharing</Button>
-          <ReviewButton {...review} pending={pending} />
-          <RowMenu
-            label="This idea"
-            groups={[
-              {
-                items: [
-                  ...(review.canEdit && !closed ? [{ label: 'Close…', onSelect: () => setClosing(true) }] : []),
-                  ...(review.canEdit && closed ? [{ label: 'Reopen', onSelect: review.onReopen }] : []),
-                  ...(idea.you.share ? [{ label: 'Move…', onSelect: () => void navigate({ href: links.move }) }] : []),
-                  {
-                    label: 'Copy its address',
-                    onSelect: () =>
-                      void navigator.clipboard
-                        .writeText(address)
-                        .then(() => setNote(`Copied ${address}`))
-                        .catch(() => setNote(`Its address is ${address}`)),
-                  },
-                ],
-              },
-            ]}
-          />
-        </div>
+          </div>
+        )}
         <div className="idea-bar-site">
           <InboxLink href="/notifications" unread={unread} />
           <AccountMenu
@@ -141,8 +178,13 @@ export function IdeaFrame({ id, links, current, sharing, onSharing, children }: 
           />
         </div>
       </header>
-      <IdeaTabs current={current} overview={links.overview} files={links.files()} fileCount={pulled.files.length} />
-      <div className="idea-frame-page">{children}</div>
+      {/* the tabs wait while a mode is on: leaving is the mode's to do */}
+      <div className={`idea-frame-tabs${moded ? ' is-waiting' : ''}`} inert={moded}>
+        <IdeaTabs current={current} overview={links.overview} files={links.files()} fileCount={pulled.files.length} />
+      </div>
+      <ModeContext.Provider value={{ slot, setActive: setModed }}>
+        <div className="idea-frame-page">{children}</div>
+      </ModeContext.Provider>
       <Dialog open={sharing} title="Sharing" onClose={() => onSharing(false)}>
         <SharingPanel id={id} links={links} />
       </Dialog>

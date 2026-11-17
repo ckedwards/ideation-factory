@@ -1,9 +1,11 @@
-// The panel beside the idea's draft: its changes, who made each, Undo, and why
-// one is outdated if it is; what committing would do to the comments; and
-// committing it as one version, or discarding it. The draft is everyone's who
-// can edit, so discarding asks first.
+// Editing the idea's draft, in two places. The panel beside the document: its
+// changes, who made each, Undo, and why one is outdated if it is; and what
+// committing would do to the comments. The actions, in the idea's bar while
+// the editor's open (IdeaMode): committing it as one version, previewing it,
+// discarding it, and closing the editor. The draft is everyone's who can edit,
+// so discarding asks first.
 import { useState } from 'react'
-import { Button, Section, Stack } from '@ideaf/ui'
+import { Button, Dialog, Section, Stack } from '@ideaf/ui'
 import './EditPanel.css'
 
 export interface ChangeRow {
@@ -47,20 +49,15 @@ const SAYS = {
 
 export function EditPanel(props: EditPanelProps) {
   const { changes } = props
-  const [discarding, setDiscarding] = useState(false)
   const outdated = changes.filter((c) => c.problem).length
   // comments the draft touches; the rest stay as they are
   const touched = props.outcomes.filter((o) => o.state !== 'exact')
   return (
     <div className="edit-panel">
       <Stack gap={4}>
-        <p className="edit-panel-lead">
-          You’re editing the draft, on v{props.version}. Everyone who can edit works on it together, and committing it
-          makes v{props.version + 1}.
-        </p>
         {changes.length === 0 ? (
-          // the instruction first: there's nothing to count yet
-          <p className="edit-panel-lead">Hover a block to edit it, add text below it or delete it.</p>
+          // how to edit is under the file's name; nothing to count yet
+          <p className="edit-panel-lead">No changes yet.</p>
         ) : (
           <Section title={changes.length === 1 ? '1 change' : `${changes.length} changes`}>
             {
@@ -98,48 +95,62 @@ export function EditPanel(props: EditPanelProps) {
             {outdated === 1 ? 'it' : 'them'} to commit.
           </p>
         )}
-        {discarding ? (
-          <div className="edit-panel-confirm" role="group" aria-label="Discard the draft">
-            <span>Discard every change in the draft, for everyone?</span>
-            <div className="edit-panel-buttons">
-              <Button
-                variant="danger"
-                onClick={() => {
-                  setDiscarding(false)
-                  props.onDiscard()
-                }}
-              >
-                Discard the draft
-              </Button>
-              <Button variant="ghost" onClick={() => setDiscarding(false)}>
-                Keep it
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="edit-panel-buttons">
-            <Button
-              variant="primary"
-              disabled={changes.length === 0 || outdated > 0 || props.committing}
-              onClick={props.onCommit}
-            >
-              {props.committing ? 'Committing…' : `Commit as v${props.version + 1}`}
-            </Button>
-            <Button disabled={changes.length === 0} onClick={() => props.onPreview(!props.previewing)}>
-              {props.previewing ? 'Back to editing' : 'Preview'}
-            </Button>
-            {changes.length > 0 && (
-              <Button variant="ghost" onClick={() => setDiscarding(true)}>
-                Discard
-              </Button>
-            )}
-            <Button variant="ghost" onClick={props.onClose}>
-              Close editor
-            </Button>
-            <span className="edit-panel-note edit-panel-stays">Your changes stay in the draft.</span>
-          </div>
-        )}
       </Stack>
     </div>
+  )
+}
+
+/** Finishing an edit, in the idea's bar: commit, preview, discard (asking first), or close the editor. */
+export function EditActions(props: EditPanelProps) {
+  const { changes } = props
+  const [discarding, setDiscarding] = useState(false)
+  const outdated = changes.filter((c) => c.problem).length
+  return (
+    <>
+      <Button
+        variant="primary"
+        disabled={changes.length === 0 || outdated > 0 || props.committing}
+        onClick={props.onCommit}
+      >
+        {props.committing ? 'Committing…' : `Commit as v${props.version + 1}`}
+      </Button>
+      <Button disabled={changes.length === 0} onClick={() => props.onPreview(!props.previewing)}>
+        {props.previewing ? 'Back to editing' : 'Preview'}
+      </Button>
+      {changes.length > 0 && (
+        <Button variant="ghost" onClick={() => setDiscarding(true)}>
+          Discard
+        </Button>
+      )}
+      <Button variant="ghost" title="Your changes stay in the draft" onClick={props.onClose}>
+        Close editor
+      </Button>
+      <Dialog
+        open={discarding}
+        title="Discard the draft?"
+        onClose={() => setDiscarding(false)}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setDiscarding(false)}>
+              Keep it
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                setDiscarding(false)
+                props.onDiscard()
+              }}
+            >
+              Discard the draft
+            </Button>
+          </>
+        }
+      >
+        <p className="edit-panel-lead">
+          Every change in the draft goes, for everyone who can edit it:{' '}
+          {changes.length === 1 ? '1 change' : `${changes.length} changes`}.
+        </p>
+      </Dialog>
+    </>
   )
 }

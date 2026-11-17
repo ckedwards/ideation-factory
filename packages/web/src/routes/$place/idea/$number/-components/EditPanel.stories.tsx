@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, fn, within } from 'storybook/test'
-import { EditPanel } from './EditPanel.tsx'
+import { EditActions, EditPanel } from './EditPanel.tsx'
 
 const changes = [
   { key: 'k1', label: 'Edited “Field technicians lose signal underground.”', by: 'Riley Park' },
@@ -11,6 +11,15 @@ const changes = [
 const meta = {
   title: 'Ideas/EditPanel',
   component: EditPanel,
+  // as the page has them: the actions in the idea's bar, the panel beside the document
+  render: (args) => (
+    <div style={{ display: 'grid', gap: '1rem', maxWidth: '24rem' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <EditActions {...args} />
+      </div>
+      <EditPanel {...args} />
+    </div>
+  ),
   args: {
     version: 3,
     changes,
@@ -52,9 +61,10 @@ export const Changes: Story = {
 export const Discarding: Story = {
   play: async ({ args, canvasElement, userEvent }) => {
     const page = within(canvasElement)
+    const body = within(canvasElement.ownerDocument.body)
     await userEvent.click(page.getByRole('button', { name: 'Discard' }))
-    await expect(page.getByText('Discard every change in the draft, for everyone?')).toBeVisible()
-    await userEvent.click(page.getByRole('button', { name: 'Discard the draft' }))
+    await expect(body.getByText(/Every change in the draft goes, for everyone who can edit it/)).toBeVisible()
+    await userEvent.click(body.getByRole('button', { name: 'Discard the draft' }))
     await expect(args.onDiscard).toHaveBeenCalled()
   },
 }
@@ -64,7 +74,7 @@ export const Empty: Story = {
   args: { changes: [], outcomes: [] },
   play: async ({ canvasElement }) => {
     const page = within(canvasElement)
-    await expect(page.getByText('Hover a block to edit it, add text below it or delete it.')).toBeVisible()
+    await expect(page.getByText('No changes yet.')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Commit as v4' })).toBeDisabled()
   },
 }
