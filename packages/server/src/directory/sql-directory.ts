@@ -3089,12 +3089,21 @@ export class SqlDirectory implements Directory {
     return { count: ids.length, people, everyone: false }
   }
 
-  async listIdeas(actor: string, filter: IdeaFilter = {}, token?: string | null): Promise<Page<IdeaListing>> {
+  async listIdeas(
+    actor: string,
+    filter: IdeaFilter = {},
+    token?: string | null,
+  ): Promise<Page<IdeaListing> & { incomplete?: boolean }> {
     const limit = pageSize(filter.limit)
     const after = decodeCursor(filter.cursor)
+    const search = await this.#matching(filter.q)
+    if (search?.ids.length === 0) {
+      return { items: [], next: null, incomplete: search.incomplete }
+    }
     const rows = await Q.list(this.#db, {
       actor,
       limit: limit + 1,
+      ...(search ? { matches: JSON.stringify(search.ids) } : {}),
       ...(token ? { token } : {}),
       ...(filter.team ? { team: filter.team } : {}),
       ...(filter.owner ? { owner: filter.owner } : {}),
@@ -3109,10 +3118,24 @@ export class SqlDirectory implements Directory {
     return {
       items: await this.#listings(page),
       next: rows.length > limit ? encodeCursor([page.at(-1)!.updatedAt, page.at(-1)!.id]) : null,
+      ...(search ? { incomplete: search.incomplete } : {}),
     }
   }
 
+  /** The ideas whose titles contain a search, from the search index (all of them, visible or not); null for no search. */
+  async #matching(q: string | undefined): Promise<{ ids: string[]; incomplete: boolean } | null> {
+    if (q === undefined) {
+      return null
+    }
+    const terms = searchTerms(q)
+    return terms.length === 0 ? { ids: [], incomplete: false } : this.#search.matches(terms, this.#searchCap)
+  }
+
   async countIdeas(actor: string, filter: IdeaFilter = {}, token?: string | null): Promise<IdeaCounts> {
+    const search = await this.#matching(filter.q)
+    if (search?.ids.length === 0) {
+      return { open: 0, closed: 0 }
+    }
     const closed = ['closed-accepted', 'closed-rejected']
     const archived = this.#db.selectFrom('teams').select('id').where('archived', '=', 1)
     let query = this.#db
@@ -3145,6 +3168,9 @@ export class SqlDirectory implements Directory {
     }
     if (filter.status !== undefined) {
       query = query.where('ideas.status', '=', filter.status)
+    }
+    if (search) {
+      query = query.where(raw<boolean>`ideas.id in (select value from json_each(${JSON.stringify(search.ids)}))`)
     }
     const row = await query.executeTakeFirst()
     const all = Number(row?.all ?? 0)
@@ -3846,6 +3872,8 @@ const Q = {
     closed?: true
     afterAt?: number
     afterId?: string
+    /** The search's matches, as a JSON array of IDs: one value, so the query is prepared once whatever they are. */
+    matches?: string
   }>()((db: Kysely<DB>, s) => {
     // From what the caller can see, not newest first through everything: walking all ideas by date and checking
     // each read thousands for a page at 100,000 ideas (48 ms); the ideas someone can see are a few hundred,
@@ -3885,6 +3913,9 @@ const Q = {
     }
     if (s.status !== undefined) {
       query = query.where('ideas.status', '=', s.status)
+    }
+    if (s.matches !== undefined) {
+      query = query.where(raw<boolean>`ideas.id in (select value from json_each(${s.matches}))`)
     }
     const closed = ['closed-accepted', 'closed-rejected']
     const archived = db.selectFrom('teams').select('id').where('archived', '=', 1)

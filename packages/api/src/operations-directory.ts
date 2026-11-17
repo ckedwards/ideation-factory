@@ -140,6 +140,13 @@ function membership<K extends 'team' | 'group'>(kind: K) {
 const team = membership('team')
 const group = membership('group')
 
+/** What a search of titles is: a word of at least 3 characters (search_ideas, and list_ideas's `q`). */
+const SearchText = z
+  .string()
+  .trim()
+  .max(200)
+  .refine((q) => q.split(/\s+/).some((t) => [...t].length >= 3), 'a search needs a word of at least 3 characters')
+
 export const directoryOperations = {
   me: defineOperation({
     name: 'whoami',
@@ -224,11 +231,12 @@ export const directoryOperations = {
     mcp: true,
     summary: 'List ideas',
     description:
-      "Ideas you can see, most recently updated first, 25 at a time, optionally in one team, by one owner, asking one person to review it (by name or through a group they're in), in one status, or open or closed (an idea in an archived team counts as closed, whatever its status).",
+      "Ideas you can see, most recently updated first, 25 at a time, optionally in one team, by one owner, asking one person to review it (by name or through a group they're in), in one status, open or closed (an idea in an archived team counts as closed, whatever its status), or whose titles contain a search (`q`, matched as search_ideas matches it; `incomplete` then says it matched more ideas than one search checks, so add a word to narrow it). The filters combine.",
     method: 'GET',
     path: '/ideas',
     kind: 'read',
     input: z.strictObject({
+      q: SearchText.optional(),
       team: Ref.optional(),
       owner: Ref.optional(),
       /** Asking this person to review it, by name or through a group they're in. */
@@ -240,7 +248,7 @@ export const directoryOperations = {
       cursor: Cursor,
       limit: Limit,
     }),
-    output: Page(IdeaRow),
+    output: Page(IdeaRow).extend({ incomplete: z.boolean().optional() }),
   }),
   countIdeas: defineOperation({
     name: 'count_ideas',
@@ -251,6 +259,7 @@ export const directoryOperations = {
     path: '/ideas/count',
     kind: 'read',
     input: z.strictObject({
+      q: SearchText.optional(),
       team: Ref.optional(),
       owner: Ref.optional(),
       reviewer: Ref.optional(),
@@ -268,14 +277,7 @@ export const directoryOperations = {
     path: '/search/ideas',
     kind: 'read',
     input: z.strictObject({
-      q: z
-        .string()
-        .trim()
-        .max(200)
-        .refine(
-          (q) => q.split(/\s+/).some((t) => [...t].length >= 3),
-          'a search needs a word of at least 3 characters',
-        ),
+      q: SearchText,
       limit: Limit,
     }),
     output: z.object({ items: z.array(IdeaRow), incomplete: z.boolean() }),
