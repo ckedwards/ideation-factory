@@ -1,12 +1,17 @@
 // Development only: loads scripts/test-ui-data.ts into the app scripts/test-ui.sh runs, through its
 // public API, as the people in it: each signs in with a code emailed to Mailpit, then makes their
-// teams, groups and ideas, comments, suggests, reviews and closes, as they would in the app. It
-// takes under a minute, and once: run scripts/test-ui.sh wipe and up to start again.
+// teams, groups and ideas, comments, suggests, reviews and closes, as they would in the app. With
+// `medium`, a generated company of about 150 people is added to it (scripts/test-ui-medium.ts). It
+// takes seconds, and once: run scripts/test-ui.sh wipe and up to start again.
 //
-//   scripts/test-ui.sh seed
+//   scripts/test-ui.sh seed [medium]
 import { ApiError, createApiClient, type ApiClient } from '@ideaf/api'
 import { parseMarkdown } from '@ideaf/core'
-import { type Discussion, groups, type IdeaSeed, ideas, joinRequests, people, teams } from './test-ui-data.ts'
+import * as small from './test-ui-data.ts'
+import type { Discussion, IdeaSeed } from './test-ui-data.ts'
+import { medium } from './test-ui-medium.ts'
+
+const { people, groups, teams, joinRequests, ideas } = process.argv.includes('medium') ? medium(small) : small
 
 const APP = process.env.TEST_UI_URL ?? 'http://localhost:28080'
 const MAILPIT = process.env.TEST_UI_MAILPIT_URL ?? 'http://localhost:28025'
@@ -29,7 +34,7 @@ const who = (handle: string) => {
 const groupIds = new Map<string, string>()
 
 /** Each person signs in from an address of their own, so sign-in's limits count them apart (test-ui.yaml trusts it). */
-const addressOf = (i: number) => `10.81.0.${i + 10}`
+const addressOf = (i: number) => `10.81.${Math.floor(i / 200)}.${(i % 200) + 10}`
 
 async function auth(path: string, ip: string, body: unknown, cookie?: string): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
@@ -218,17 +223,19 @@ async function makeIdea(seed: IdeaSeed) {
     }
   }
 
-  if (seed.revise) {
-    const now = await latest(author.api, idea)
+  // each a version of its own, in order
+  for (const version of seed.versions ?? []) {
+    const by = version.by ? who(version.by) : author
+    const now = await latest(by.api, idea)
     const edited = new Map<string, string>()
-    for (const [old, replacement] of seed.revise) {
+    for (const [old, replacement] of version.changes) {
       const path = [...now.files.keys()].find((p) => (edited.get(p) ?? now.files.get(p)!.content).includes(old))
       if (!path) {
         throw new Error(`${seed.title}: "${old}" isn't in any of its files`)
       }
       edited.set(path, (edited.get(path) ?? now.files.get(path)!.content).replace(old, replacement))
     }
-    await author.api.sync({
+    await by.api.sync({
       idea,
       files: [...edited].map(([path, content]) => {
         const file = now.files.get(path)!
@@ -265,7 +272,8 @@ if (!health?.ok) {
   process.exit(1)
 }
 
-await each(people, (_, i) => signIn(i))
+// each from an address of its own, so many at once
+await each(people, (_, i) => signIn(i), 24)
 console.log(`${people.length} people signed in`)
 
 // once only: what's made can't be made again
@@ -303,7 +311,7 @@ await each(teams, async (t) => {
     team: t.handle,
     defaults: {
       members: 'edit',
-      public: false,
+      public: t.public ?? false,
       groups: (t.sharedWith ?? []).map((group) => ({ group: groupIds.get(group)!, edit: false })),
     },
   })
@@ -328,13 +336,17 @@ for (const r of joinRequests) {
   }
 }
 
-await each(ideas, async (seed) => {
-  try {
-    await makeIdea(seed)
-  } catch (error) {
-    throw new Error(`${seed.title}: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
-  }
-})
+await each(
+  ideas,
+  async (seed) => {
+    try {
+      await makeIdea(seed)
+    } catch (error) {
+      throw new Error(`${seed.title}: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
+    }
+  },
+  12,
+)
 const comments = ideas.reduce(
   (n, i) => n + (i.discussion ?? []).reduce((m, d) => m + 1 + (d.replies?.length ?? 0), 0),
   0,

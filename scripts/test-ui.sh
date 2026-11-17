@@ -5,7 +5,8 @@
 # Compose or the dev server; its settings and data stay until wipe.
 #
 #   scripts/test-ui.sh up      build this checkout and start it (again after changing the code)
-#   scripts/test-ui.sh seed    fill it with sample people, teams and ideas (scripts/test-ui-data.ts), once
+#   scripts/test-ui.sh seed    fill it with sample people, teams and ideas (scripts/test-ui-data.ts), once;
+#                              seed medium adds a generated company of about 150 people (scripts/test-ui-medium.ts)
 #   scripts/test-ui.sh down    stop it, keeping its data
 #   scripts/test-ui.sh wipe    stop it and delete its data, and its settings
 #   scripts/test-ui.sh logs    follow the app's log
@@ -63,7 +64,7 @@ case "${1:-}" in
     ;;
   seed)
     TEST_UI_URL="http://localhost:$PORT" TEST_UI_MAILPIT_URL="http://localhost:$MAILPIT" \
-      bun "$ROOT/scripts/test-ui-seed.ts"
+      bun "$ROOT/scripts/test-ui-seed.ts" "${@:2}"
     ;;
   down)
     settings

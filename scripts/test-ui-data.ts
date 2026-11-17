@@ -1,7 +1,9 @@
 // The sample data scripts/test-ui.sh seed loads: a small organization a few weeks into using
 // Ideation Factory. Thirteen people in three teams and three groups (one of them part of a team),
-// and sixteen ideas at every stage, from private notes to closed, with discussions, suggested
-// edits, reviews and a join request or two. Everyone's email is @example.com, which Mailpit
+// and eighteen ideas at every stage, from private notes to closed, with discussions, suggested
+// edits, reviews and a join request or two: among them one with five versions by two people, and
+// a handbook page with eighteen threads. scripts/test-ui-medium.ts grows it into a medium-sized
+// company. Everyone's email is @example.com, which Mailpit
 // catches, so anyone can be signed in as.
 import type { Verdict } from '@ideaf/api'
 
@@ -74,6 +76,8 @@ export interface TeamSeed {
   groups?: Record<string, 'member' | 'maintainer'>
   /** The groups its new ideas are shared with, to view, without their joining it. */
   sharedWith?: string[]
+  /** Its new ideas can be seen by everyone, not only its members. */
+  public?: boolean
   requirements: {
     approvals: number
     /** One approval from any of these groups, which are asked to review. */
@@ -151,8 +155,11 @@ export interface IdeaSeed {
   /** Asked to review it: @person or group:handle. */
   reviewers?: string[]
   discussion?: Discussion[]
-  /** A new version from its author, after the discussion: each [old, new] replaced once. */
-  revise?: Array<[string, string]>
+  /**
+   * New versions, in order, after the discussion: each [old, new] replaced once, by its author unless
+   * `by` names someone else who can edit it.
+   */
+  versions?: Array<{ by?: string; changes: Array<[string, string]> }>
   reviews?: Array<{ by: string; verdict: Verdict; body?: string }>
   /** Where it ends up. */
   ends?: { status: 'changes-in-progress'; note: string } | { close: 'accepted' | 'rejected'; note?: string }
@@ -255,7 +262,7 @@ Log what the limit would have refused for two weeks, then turn it on. The owners
         resolved: true,
       },
     ],
-    revise: [['a burst of 50', 'a burst of 100']],
+    versions: [{ changes: [['a burst of 50', 'a burst of 100']] }],
     reviews: [
       { by: 'riley', verdict: 'approve' },
       { by: 'sam', verdict: 'approve', body: 'Retry-After makes this easy for clients to handle well.' },
@@ -660,4 +667,241 @@ CI spends about four minutes of every run restoring the cache. Try a remote cach
 `,
     },
   },
+  // five versions, from two people: the version list, comparing any two, and comments outdated along the way
+  {
+    by: 'sam',
+    team: 'platform',
+    title: 'Incident reviews within a week',
+    description: 'A short written review after every incident that paged someone, within a week.',
+    review: true,
+    files: {
+      'incident-reviews.md': `# Incident reviews within a week
+
+## Why
+
+We had nine incidents last quarter and wrote up two of them. The same expired certificate took the API down twice.
+
+## What we do
+
+After any incident that paged someone, the person on call writes a review within two weeks. It says what happened, when we noticed, and what we change so it doesn't happen again.
+
+## Who reads them
+
+The team that owns the service reads the review in its next planning meeting.
+`,
+    },
+    discussion: [
+      {
+        by: 'maya',
+        on: 'within two weeks',
+        body: 'Two weeks is long enough that people forget the details. A week?',
+        replies: [{ by: 'sam', body: 'Agreed, a week.' }],
+        resolved: true,
+      },
+      {
+        by: 'devon',
+        on: 'the person on call writes a review',
+        body: 'The person on call is the most tired person in the building. Could whoever leads the incident write it?',
+      },
+    ],
+    versions: [
+      { changes: [['within two weeks', 'within a week']] },
+      {
+        changes: [
+          ['the person on call writes a review', 'whoever led the incident writes a review'],
+          [
+            "and what we change so it doesn't happen again.",
+            "and what we change so it doesn't happen again. It never names who made a mistake: it says what made the mistake easy.",
+          ],
+        ],
+      },
+      {
+        by: 'maya',
+        changes: [
+          [
+            'The team that owns the service reads the review in its next planning meeting.',
+            'The team that owns the service reads the review in its next planning meeting, and the changes it lists go into that planning like any other work.',
+          ],
+        ],
+      },
+      {
+        changes: [
+          [
+            '## Who reads them',
+            '## Template\n\nWhat happened, in order, with times. How we noticed. What made it worse. What we change, with an owner and a date.\n\n## Who reads them',
+          ],
+        ],
+      },
+    ],
+    reviews: [{ by: 'kai', verdict: 'approve', body: 'The template makes this much easier to start.' }],
+  },
+  // a busy discussion: many threads, replies, resolved and open, a suggestion or two
+  busyIdea(),
 ]
+
+/** The handbook page everyone had an opinion on: eighteen threads across its sections. */
+function busyIdea(): IdeaSeed {
+  const said: Array<[string, string, string, Array<[string, string]>, boolean?]> = [
+    [
+      'kai',
+      'one week in six',
+      'Is that across the whole company, or per team?',
+      [['riley', 'Per team: each team has its own rotation.']],
+      true,
+    ],
+    [
+      'maya',
+      'one week in six',
+      'Teams of four would be on call one week in four. Should we say what happens then?',
+      [
+        ['riley', 'Yes: borrow from another team. Adding a line.'],
+        ['sam', 'Platform does this already and it works.'],
+      ],
+    ],
+    [
+      'devon',
+      'within five minutes',
+      'Five minutes at 3am is tight. Fifteen?',
+      [
+        ['riley', 'Fifteen to acknowledge, thirty to start working on it.'],
+        ['ben', 'Fifteen sounds right.'],
+        ['kai', '+1'],
+      ],
+      true,
+    ],
+    [
+      'zoe',
+      'A laptop and a phone',
+      'Does the company pay for the phone?',
+      [['riley', 'A stipend, yes. Linking the expense policy.']],
+    ],
+    [
+      'alex',
+      'the next working day off',
+      'Only if you were paged, or every week on call?',
+      [
+        ['riley', 'Only if you were paged after midnight.'],
+        ['alex', 'Thanks, that should be in the text.'],
+      ],
+    ],
+    [
+      'sam',
+      'hand over on Monday',
+      'Monday mornings are full of meetings. Tuesday?',
+      [
+        ['jordan', 'Monday works better for Mobile: releases go out on Tuesday.'],
+        ['sam', 'Fair. Monday it is.'],
+      ],
+      true,
+    ],
+    ['priya', 'a written handover', 'A template would help; the last few handovers were a sentence each.', []],
+    [
+      'ben',
+      'paged more than three times',
+      'Three times a night, or a week?',
+      [['riley', 'A night. Clarifying.']],
+      true,
+    ],
+    [
+      'lena',
+      'escalates to the team lead',
+      'And if the team lead is the one on call?',
+      [['riley', 'Then their manager. Good catch.']],
+    ],
+    [
+      'tomas',
+      'the runbook',
+      'Which runbook? We have three.',
+      [
+        ['sam', "The one in the service's repository. The wiki ones are out of date."],
+        ['tomas', 'Can we delete the wiki ones, then?'],
+        ['sam', 'On it.'],
+      ],
+      true,
+    ],
+    [
+      'noor',
+      'Customers are told',
+      'Who tells them? Support, or whoever is on call?',
+      [['riley', 'Support, from what the person on call posts in the incident channel.']],
+    ],
+    ['jordan', 'status page', 'The status page needs an owner. Today nobody updates it.', []],
+    [
+      'kai',
+      'a quiet week',
+      'Is "quiet" fewer than three pages?',
+      [
+        ['maya', 'I read it as no pages at all.'],
+        ['riley', 'Fewer than three. Making that explicit.'],
+      ],
+      true,
+    ],
+    [
+      'devon',
+      'swap with anyone',
+      'Anyone in the company, or anyone on the rotation?',
+      [['riley', 'Anyone on the rotation.']],
+      true,
+    ],
+    ['maya', 'reviewed every quarter', 'Who reviews it?', []],
+    [
+      'zoe',
+      'New joiners shadow',
+      'For how long?',
+      [
+        ['riley', 'Two rotations.'],
+        ['zoe', 'Two seems right.'],
+      ],
+    ],
+    [
+      'sam',
+      'alerts that page',
+      "Every alert that pages should have a runbook link. Ours mostly don't.",
+      [['ben', 'I can add a check for that.']],
+    ],
+    ['alex', 'The rotation is in', 'Which calendar? Mobile uses a different tool.', []],
+  ]
+  return {
+    by: 'riley',
+    title: 'Handbook: being on call',
+    // the whole company's to read and discuss
+    share: [{ to: 'everyone' }],
+    description: 'How on call works for every team: the rotation, what to do when paged, and what you get for it.',
+    review: true,
+    files: {
+      'on-call.md': `# Being on call
+
+## The rotation
+
+Each person is on call one week in six. You hand over on Monday morning, with a written handover. The rotation is in the shared calendar, and you can swap with anyone, as long as the calendar says so.
+
+## When you're paged
+
+Acknowledge within five minutes, and start working on it within fifteen. Follow the runbook for the alert. If you're paged more than three times, or you're stuck, it escalates to the team lead.
+
+## Talking to customers
+
+Customers are told within thirty minutes of an outage, on the status page and by email for the larger accounts.
+
+## What you need
+
+A laptop and a phone, with you, the whole week.
+
+## What you get
+
+A day's extra pay for each week on call, and the next working day off after a night you were paged. After a quiet week, nothing changes: that's the goal.
+
+## New joiners
+
+New joiners shadow before they're on call themselves. The rotation, and the alerts that page, are reviewed every quarter.
+`,
+    },
+    discussion: said.map(([by, on, body, replies, resolved]) => ({
+      by,
+      on,
+      body,
+      replies: replies.map(([who, text]) => ({ by: who, body: text })),
+      ...(resolved ? { resolved: true } : {}),
+    })),
+  }
+}
