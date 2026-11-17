@@ -1,6 +1,6 @@
-// A box for a comment on something as a whole: the whole file, under its
-// comments, or the idea, at the end of its activity. Its buttons show once
-// there's something to send.
+// A box for a comment on something as a whole: the whole file, at the top of
+// its comments, or the idea, at the end of its activity. Its buttons are there
+// from the start, so it's plain how to send, and work once there's something to.
 import { useState } from 'react'
 import { Button, TextArea } from '@ideaf/ui'
 import './CommentBox.css'
@@ -39,18 +39,16 @@ export function CommentBox({
         onChange={setBody}
         onSubmit={() => send(false)}
       />
-      {body.trim() && (
-        <div className="comment-box-buttons">
-          {addToReview && (
-            <Button size="sm" onClick={() => send(true)}>
-              Add to your review
-            </Button>
-          )}
-          <Button size="sm" variant="primary" type="submit">
-            Comment
+      <div className="comment-box-buttons">
+        {addToReview && (
+          <Button size="sm" onClick={() => send(true)} disabled={!body.trim()}>
+            Add to your review
           </Button>
-        </div>
-      )}
+        )}
+        <Button size="sm" variant="primary" type="submit" disabled={!body.trim()}>
+          Comment
+        </Button>
+      </div>
     </form>
   )
 }

@@ -84,6 +84,8 @@ export const Verdicts: Story = {
     await expect(page.getByText('a bot’s: doesn’t count')).toBeVisible()
     await expect(page.getByText('Stands')).toBeVisible()
     await expect(page.getByText(/An objection stands/)).toBeVisible()
+    // what each said is in the activity, not again here: the column is for where things stand
+    await expect(page.queryByText('Say what happens to a payment that times out twice.')).toBeNull()
     // each reviewer says where they are: Devon asked for changes on v2; Security hasn't approved
     const reviewers = page.getAllByRole('listitem').filter((li) => li.classList.contains('review-panel-reviewer'))
     await expect(reviewers[0]).toHaveTextContent('Changes requested v2')
@@ -157,6 +159,11 @@ export const Reviewing: Story = {
     await expect(page.queryByRole('radio', { name: 'Approve' })).toBeNull()
     await userEvent.click(page.getByRole('button', { name: 'Give your review' }))
     const dialog = within(canvasElement.ownerDocument.body)
+    // the verdicts are as wide as they are, not the dialog's width; and the dialog has a way out
+    const verdicts = dialog.getByRole('radiogroup', { name: 'Your verdict' })
+    const form = verdicts.closest('form')!
+    await expect(verdicts.getBoundingClientRect().width).toBeLessThan(form.getBoundingClientRect().width - 40)
+    await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeVisible()
     await userEvent.click(dialog.getByRole('radio', { name: 'Request changes' }))
     await userEvent.type(dialog.getByLabelText('Summary'), 'Name the risks')
     await userEvent.click(dialog.getByRole('button', { name: 'Submit review' }))
@@ -243,7 +250,9 @@ export const Asking: Story = {
   args: { onAsk: fn(async () => {}) },
   play: async ({ args, canvasElement, userEvent }) => {
     const page = within(canvasElement)
-    await userEvent.click(page.getAllByRole('button', { name: 'Take off the reviewers' })[0]!)
+    // taking someone off is in their row's menu, not a bare × beside their state
+    await userEvent.click(page.getByRole('button', { name: 'Devon Ross (@devon): actions' }))
+    await userEvent.click(await within(document.body).findByRole('menuitem', { name: 'Remove from the reviewers' }))
     await expect(args.onAsk).toHaveBeenCalledWith({ kind: 'user', id: 'u-devon' }, false)
     // asking is behind a button, done once or twice an idea
     await expect(page.queryByRole('button', { name: 'Ask to review' })).toBeNull()

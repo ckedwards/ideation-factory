@@ -16,6 +16,7 @@ import {
   RelativeTime,
   type RequirementCheck,
   RequirementList,
+  RowMenu,
   Section,
   SegmentedControl,
   StatusControl,
@@ -149,14 +150,20 @@ export function ReviewPanel(props: ReviewPanelProps) {
                   <span className="review-panel-reviewer-name">{r.label}</span>
                   <ReviewerState reviewer={r} reviews={props.reviews} latest={props.latest} />
                   {props.onAsk && (
-                    <Button
-                      size="sm"
-                      variant="link"
-                      aria-label="Take off the reviewers"
-                      onClick={() => void props.onAsk?.(r.subject, false)}
-                    >
-                      ×
-                    </Button>
+                    <RowMenu
+                      label={typeof r.label === 'string' ? r.label : 'This reviewer'}
+                      groups={[
+                        {
+                          items: [
+                            {
+                              label: 'Remove from the reviewers',
+                              danger: true,
+                              onSelect: () => void props.onAsk?.(r.subject, false),
+                            },
+                          ],
+                        },
+                      ]}
+                    />
                   )}
                 </li>
               ))}
@@ -310,12 +317,6 @@ function Row({
           </Button>
         )}
       </div>
-      {r.body && <p className="review-panel-body">{r.body}</p>}
-      {r.dismissed && (
-        <p className="review-panel-dismissed">
-          Dismissed by <ActorLabel actor={r.dismissed.by} short />: {r.dismissed.reason}
-        </p>
-      )}
       {dismissing && (
         <form
           className="review-panel-form"
@@ -377,6 +378,7 @@ export function ReviewDialog(props: ReviewFormProps & { open: boolean; onClose: 
     <Dialog open={props.open} title={`Your review of v${props.latest}`} onClose={props.onClose}>
       <ReviewForm
         {...props}
+        onCancel={props.onClose}
         onReview={async (verdict, body) => {
           await props.onReview(verdict, body)
           props.onClose()
@@ -393,7 +395,7 @@ export function ReviewDialog(props: ReviewFormProps & { open: boolean; onClose: 
   )
 }
 
-function ReviewForm({ pending, verdicts, onReview, onDiscard }: ReviewFormProps) {
+function ReviewForm({ pending, verdicts, onReview, onDiscard, onCancel }: ReviewFormProps & { onCancel: () => void }) {
   // 'none': just your pending comments, with no verdict
   const [verdict, setVerdict] = useState<Verdict | 'none'>(verdicts ? 'approve' : 'none')
   const choices = [
@@ -449,6 +451,9 @@ function ReviewForm({ pending, verdicts, onReview, onDiscard }: ReviewFormProps)
             Discard pending comments
           </Button>
         )}
+        <Button variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
         <Button variant="primary" type="submit" disabled={sending}>
           {sending ? 'Sending…' : verdict === 'none' ? 'Publish my comments' : 'Submit review'}
         </Button>

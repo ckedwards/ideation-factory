@@ -181,6 +181,8 @@ export const OnTheIdea: Story = {
     await expect(page.getByText('Worth trying with the Denver crew before it goes wider.')).toBeVisible()
     await expect(page.queryByText('Whole file')).toBeNull()
     const box = page.getByRole('textbox', { name: 'Comment on the idea' })
+    // how to send is plain from the start: the button's there, waiting for something to send
+    await expect(page.getByRole('button', { name: 'Comment' })).toBeDisabled()
     await userEvent.type(box, 'Agreed: Denver first.')
     await userEvent.click(page.getByRole('button', { name: 'Add to your review' }))
     await waitFor(() => expect(args.onComment).toHaveBeenCalledWith('Agreed: Denver first.', true))
