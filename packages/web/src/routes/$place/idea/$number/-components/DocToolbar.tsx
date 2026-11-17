@@ -18,7 +18,7 @@ export interface DocToolbarProps {
   onSource: (source: boolean) => void
   /** Editing: what it says (Edit, or Open the draft); null when you can't. */
   edit: { label: string; disabled: boolean; onEdit: () => void } | null
-  /** The editor's open: the bar stays, and says so in place of the reading actions (closing is in its panel). */
+  /** The editor's open: the toolbar stays, saying how to edit in place of the reading actions (the idea's bar has the rest). */
   editing?: boolean
 }
 
@@ -30,8 +30,9 @@ export function DocToolbar(props: DocToolbarProps) {
         {props.version !== props.latest && <span className="doc-toolbar-version">@ v{props.version}</span>}
       </span>
       {props.editing ? (
+        // the bar says it's being edited, and has how to finish: here, just how to edit
         <span className="doc-toolbar-actions">
-          <span className="doc-toolbar-chip">Editing the draft</span>
+          <span className="doc-toolbar-hint">Hover a block to edit it, add text below it, or delete it.</span>
         </span>
       ) : (
         <span className="doc-toolbar-actions">

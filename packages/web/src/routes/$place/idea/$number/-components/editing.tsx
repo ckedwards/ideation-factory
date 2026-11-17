@@ -9,7 +9,8 @@ import { type DraftChange, type DraftUnit, markdownTree, parseMarkdown, type Pos
 import { type Person, Redline, renderMermaid } from '@ideaf/ui'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../../../api.ts'
-import { type CommentOutcomeRow, EditPanel } from './EditPanel.tsx'
+import { type CommentOutcomeRow, EditActions, EditPanel, type EditPanelProps } from './EditPanel.tsx'
+import { IdeaMode } from './IdeaFrame.tsx'
 import { IdeaEditor, title } from './IdeaEditor.tsx'
 import { draftQuery } from './queries.ts'
 import type { Thread } from './view.ts'
@@ -32,7 +33,7 @@ export interface UseEditingArgs {
   onCommitted: (version: number) => void
 }
 
-export function useEditing(args: UseEditingArgs): { document: ReactNode; panel: ReactNode } | null {
+export function useEditing(args: UseEditingArgs): { document: ReactNode; panel: ReactNode; bar: ReactNode } | null {
   const { idea, draft } = args
   const queryClient = useQueryClient()
   const [previewing, setPreviewing] = useState(false)
@@ -79,6 +80,43 @@ export function useEditing(args: UseEditingArgs): { document: ReactNode; panel: 
     setPreviewing(false)
     args.setOpen(false)
   }
+  // the panel's and the bar's: the same draft, and the same ways of acting on it
+  const panelProps: EditPanelProps = {
+    version: draft.version,
+    changes: draft.changes.map((c) => ({
+      key: c.key,
+      label: describe(c.change),
+      by: args.people.get(c.by.user)?.name ?? 'someone',
+      problem: c.problem,
+    })),
+    outcomes: draft.comments.map((o): CommentOutcomeRow => {
+      const thread = args.threads.find((t) => t.id === o.id)
+      const anchor = thread?.anchor
+      return {
+        id: o.id,
+        state: o.state,
+        label: anchor?.kind === 'text' ? `“${anchor.quote}”` : thread ? excerpt(thread.body) : o.id,
+      }
+    }),
+    previewing,
+    committing,
+    onUndo: (key) =>
+      void api
+        .undoDraftChange({ idea, key })
+        .catch(failed)
+        .finally(() => void reread()),
+    onPreview: setPreviewing,
+    onCommit: () => void commit(),
+    onDiscard: () =>
+      void api
+        .discardDraft({ idea })
+        .then(() => {
+          args.onNote('The draft is discarded.')
+          setPreviewing(false)
+        }, failed)
+        .finally(() => void reread()),
+    onClose: close,
+  }
   return {
     document: previewing ? (
       <Redline
@@ -94,46 +132,9 @@ export function useEditing(args: UseEditingArgs): { document: ReactNode; panel: 
         onDelete={(unit) => change({ kind: 'delete', id: unit.id, was: unit.source })}
       />
     ),
-    panel: (
-      <EditPanel
-        version={draft.version}
-        changes={draft.changes.map((c) => ({
-          key: c.key,
-          label: describe(c.change),
-          by: args.people.get(c.by.user)?.name ?? 'someone',
-          problem: c.problem,
-        }))}
-        outcomes={draft.comments.map((o): CommentOutcomeRow => {
-          const thread = args.threads.find((t) => t.id === o.id)
-          const anchor = thread?.anchor
-          return {
-            id: o.id,
-            state: o.state,
-            label: anchor?.kind === 'text' ? `“${anchor.quote}”` : thread ? excerpt(thread.body) : o.id,
-          }
-        })}
-        previewing={previewing}
-        committing={committing}
-        onUndo={(key) =>
-          void api
-            .undoDraftChange({ idea, key })
-            .catch(failed)
-            .finally(() => void reread())
-        }
-        onPreview={setPreviewing}
-        onCommit={() => void commit()}
-        onDiscard={() =>
-          void api
-            .discardDraft({ idea })
-            .then(() => {
-              args.onNote('The draft is discarded.')
-              setPreviewing(false)
-            }, failed)
-            .finally(() => void reread())
-        }
-        onClose={close}
-      />
-    ),
+    panel: <EditPanel {...panelProps} />,
+    // the editor's words and actions in the idea's bar, while it's open
+    bar: <IdeaMode label={`Editing the draft, on v${draft.version}`} actions={<EditActions {...panelProps} />} />,
   }
 }
 

@@ -84,7 +84,7 @@ export interface IdeaPageProps {
   /** An outdated comment's "View in v3". */
   onViewInVersion?: (version: number) => void
   /** Editing: the document and the panel, in place of the file and its comments. */
-  editing?: { document: ReactNode; panel: ReactNode } | null
+  editing?: { document: ReactNode; panel: ReactNode; bar?: ReactNode } | null
 }
 
 type Pane = 'comments' | 'versions'
