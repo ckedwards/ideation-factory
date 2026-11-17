@@ -27,8 +27,10 @@ export interface IdeaRowProps {
   hide?: IdeaRowHide
 }
 
-// One idea in a list: title and description, team, author and age, and on the
-// right its status, how it stands against its requirements, and its reviewers.
+// One idea in a list: title and description, then team, author, version, age
+// and open threads on one line; on the right, its reviewers beside its status,
+// and how it stands against its requirements: two lines, not four, so more of
+// a list fits on a screen.
 export function IdeaRow({ idea, query, extra, hide = {} }: IdeaRowProps) {
   const closed = isClosed(idea)
   const active = !closed && idea.status !== 'draft'
@@ -61,6 +63,7 @@ export function IdeaRow({ idea, query, extra, hide = {} }: IdeaRowProps) {
                   <RelativeTime at={idea.updatedAt} />
                 </>
               )}
+              {!closed && !idea.archived && idea.openThreads > 0 && ` · ${plural(idea.openThreads, 'open thread')}`}
             </span>
             {!hide.team && idea.team.personal && (idea.visibility ?? 'private') === 'private' && (
               <Tag tone="dashed" title="Only the author and people they ask to review can see this">
@@ -71,11 +74,14 @@ export function IdeaRow({ idea, query, extra, hide = {} }: IdeaRowProps) {
           </div>
         </div>
         <div className="idea-row-side">
-          <StatusPill
-            status={idea.status}
-            {...(idea.closedReason ? { reason: idea.closedReason } : {})}
-            archived={Boolean(idea.archived)}
-          />
+          <span className="idea-row-state">
+            <ReviewerStack reviewers={idea.reviewers} />
+            <StatusPill
+              status={idea.status}
+              {...(idea.closedReason ? { reason: idea.closedReason } : {})}
+              archived={Boolean(idea.archived)}
+            />
+          </span>
           {idea.archived ? (
             <span className="idea-row-note">Team archived</span>
           ) : closed ? (
@@ -83,20 +89,14 @@ export function IdeaRow({ idea, query, extra, hide = {} }: IdeaRowProps) {
               Closed <RelativeTime at={idea.updatedAt} />
             </span>
           ) : (
-            <>
-              {active && (
-                <ApprovalProgress
-                  approvals={idea.approvals.length}
-                  requirements={idea.requirements}
-                  teamName={idea.team.name}
-                />
-              )}
-              <span className="idea-row-note">
-                {idea.openThreads > 0 ? `${plural(idea.openThreads, 'open thread')}` : 'No open threads'}
-              </span>
-            </>
+            active && (
+              <ApprovalProgress
+                approvals={idea.approvals.length}
+                requirements={idea.requirements}
+                teamName={idea.team.name}
+              />
+            )
           )}
-          <ReviewerStack reviewers={idea.reviewers} />
         </div>
       </div>
     </article>
