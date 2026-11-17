@@ -14,6 +14,11 @@
   text-align: left;
   cursor: pointer;
 }
+.account-menu-trigger.is-compact {
+  width: auto;
+  padding: var(--space-1);
+  border-radius: var(--radius-pill);
+}
 .account-menu-trigger:hover,
 .account-menu-trigger[data-popup-open] {
   background: var(--surface-3);

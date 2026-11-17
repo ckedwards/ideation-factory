@@ -10,8 +10,10 @@ export interface IdeaPageLayoutProps {
   panel?: ReactNode
 }
 
-// The idea page's three panes, each scrolling on its own. On a narrow screen
-// they stack and the page scrolls as one.
+// An idea's page in three slots, the same on every page of it: what's in the
+// idea (left), what you're reading (centre), and the people and discussion
+// (right). It fills the space it's given, each slot scrolling on its own; on a
+// narrow screen they stack and the page scrolls as one.
 export function IdeaPageLayout({ nav, document, panel }: IdeaPageLayoutProps) {
   return (
     <div className={`idea-page${panel ? '' : ' idea-page-no-panel'}`}>
