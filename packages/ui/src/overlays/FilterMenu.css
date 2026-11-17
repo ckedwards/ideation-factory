@@ -1,0 +1,53 @@
+.filter-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+  min-height: 2rem;
+  padding: var(--space-1) var(--space-3);
+  border: var(--hairline) solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.filter-menu-trigger:hover {
+  color: var(--ink);
+}
+/* set: it says to what, and stands out from the ones that aren't */
+.filter-menu-trigger.is-set {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+.filter-menu-value {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filter-menu-caret {
+  display: inline-flex;
+  color: var(--ink-3);
+}
+.filter-menu-positioner {
+  z-index: 40;
+}
+.filter-menu {
+  display: grid;
+  gap: var(--space-2);
+  width: min(18rem, calc(100vw - 2rem));
+  padding: var(--space-3);
+  border: var(--hairline) solid var(--rule-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+}
+.filter-menu > .button {
+  justify-self: start;
+}
