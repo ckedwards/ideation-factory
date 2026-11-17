@@ -56,3 +56,8 @@
   color: var(--ink-2);
   font-size: var(--text-xs);
 }
+/* the text a form is on, marked while the form has the focus */
+::highlight(selection-pending) {
+  background-color: var(--mark-active);
+  color: var(--mark-ink);
+}

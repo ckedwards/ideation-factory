@@ -38,8 +38,8 @@ interface Pending {
 // closes it, and so does a click elsewhere until something's been typed.
 //
 // Base UI's popover places it, following the document as it scrolls: the menu
-// above the selected text (below when there's no room), where it doesn't cover
-// the next line; a form beside the document, level with the text, in the
+// centred above the selected text (below when there's no room), where it
+// doesn't cover the next line or the start of the one before; a form beside the document, level with the text, in the
 // comments column where the finished comment will be (wherever there's room on
 // a narrow screen).
 export function SelectionMenu({
@@ -111,6 +111,19 @@ export function SelectionMenu({
     }
   }, [enabled, documentRef, source, suggestionOf])
 
+  // while a form is open, the text it's on stays marked: the browser's own
+  // selection goes as soon as the form takes focus (a highlight, not a change
+  // to the document, so nothing else is disturbed)
+  useEffect(() => {
+    if (!pending || mode === 'menu' || typeof CSS === 'undefined' || !('highlights' in CSS)) {
+      return
+    }
+    CSS.highlights.set(HIGHLIGHT, new Highlight(pending.range))
+    return () => {
+      CSS.highlights.delete(HIGHLIGHT)
+    }
+  }, [pending, mode])
+
   // the selected text, for the popover to be placed against; the document is
   // where it looks for what scrolls
   const anchor = useMemo(
@@ -180,7 +193,7 @@ export function SelectionMenu({
           className="selection-menu-positioner"
           anchor={mode === 'menu' ? anchor : (beside ?? anchor)}
           side={mode === 'menu' ? 'top' : 'right'}
-          align="start"
+          align={mode === 'menu' ? 'center' : 'start'}
           sideOffset={remToPx(mode === 'menu' ? 0.5 : 1)}
           collisionPadding={remToPx(0.75)}
         >
@@ -287,6 +300,9 @@ export function SelectionMenu({
 function remToPx(rem: number): number {
   return rem * parseFloat(getComputedStyle(document.documentElement).fontSize || '16')
 }
+
+/** The name of the highlight that marks the text a form is on (SelectionMenu.css). */
+const HIGHLIGHT = 'selection-pending'
 
 function formTitle(mode: Mode): string {
   return mode === 'suggest' ? 'Suggest an edit' : mode === 'section' ? 'Comment on the section' : 'Comment'
