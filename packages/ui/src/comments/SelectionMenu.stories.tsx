@@ -60,13 +60,17 @@ export const Menu: Story = {
     const menu = await page.findByRole('toolbar', { name: 'Selected text' })
     await expect(menu).toBeVisible()
     await expect(page.getByRole('button', { name: 'Comment on “Proposal”' })).toBeVisible()
-    // just above the selected text, starting where it starts: the line under it stays readable
+    // just above the selected text and centred on it: the line under it stays readable, and so does
+    // the start of the line above, which is often the sentence being read
     await waitFor(() => {
       const text = window.getSelection()!.getRangeAt(0).getBoundingClientRect()
       const box = menu.getBoundingClientRect()
       expect(box.bottom).toBeLessThan(text.top)
       expect(text.top - box.bottom).toBeLessThan(16)
-      expect(Math.abs(box.left - text.left)).toBeLessThan(1)
+      // (unless that would put it off the window's edge, where it stops short of it)
+      const centred = Math.abs(box.left + box.width / 2 - (text.left + text.width / 2)) < 1
+      expect(centred || Math.round(box.left) === 12).toBe(true)
+      expect(box.left).toBeLessThan(text.left)
     })
   },
 }
@@ -106,8 +110,11 @@ export const Comment: Story = {
     select(canvasElement, 'oldest first')
     const page = within(document.body)
     await userEvent.click(await page.findByRole('button', { name: 'Comment' }))
+    // the text stays marked while the form has the focus, and not after
+    await expect(CSS.highlights.has('selection-pending')).toBe(true)
     await userEvent.type(page.getByRole('textbox', { name: 'Comment' }), 'Oldest by device clock?')
     await userEvent.click(page.getByRole('button', { name: 'Comment' }))
+    await waitFor(() => expect(CSS.highlights.has('selection-pending')).toBe(false))
     const start = sample.indexOf('oldest first')
     await waitFor(() =>
       expect(args.onComment).toHaveBeenCalledWith(
