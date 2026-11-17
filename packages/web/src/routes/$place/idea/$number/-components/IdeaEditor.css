@@ -2,8 +2,14 @@
   display: grid;
   gap: var(--space-1);
 }
+/*
+ * Each block's hover box and change rail sit outside the text, not inside it:
+ * the text keeps the measure and place it has when reading, so its lines break
+ * in the same places when the editor opens.
+ */
 .idea-editor-unit {
   position: relative;
+  margin: 0 calc((var(--space-3) + var(--rail)) * -1);
   padding: var(--space-1) var(--space-3);
   border-left: var(--rail) solid transparent;
   border-radius: var(--radius);
@@ -58,7 +64,16 @@
   padding-top: var(--space-3);
   border-top: var(--hairline) dashed var(--rule-strong);
 }
-/* prose is edited as it reads: in the reading face, at reading size, as tall as it is */
+/*
+ * prose is edited as it reads: in the reading face, at reading size, as tall
+ * as it is, and with its box drawn outside the text, so the words stay where
+ * they were and wrap the same way
+ */
+.idea-editor-source,
+.idea-editor-title {
+  width: calc(100% + (var(--space-3) + var(--hairline)) * 2);
+  margin: 0 calc((var(--space-3) + var(--hairline)) * -1);
+}
 .idea-editor-source {
   field-sizing: content;
   max-height: 70vh;

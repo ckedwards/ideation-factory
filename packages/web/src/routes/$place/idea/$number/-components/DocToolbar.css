@@ -32,6 +32,8 @@
 }
 .doc-toolbar-actions {
   display: inline-flex;
+  /* as tall with a chip as with buttons, so the document doesn't move when the editor opens */
+  min-height: 2rem;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);

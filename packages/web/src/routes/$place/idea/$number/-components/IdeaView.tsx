@@ -209,35 +209,34 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
         showSource={showSource}
         banner={
           <>
-            {!editing && (
-              <DocToolbar
-                path={file.path}
-                version={version}
-                latest={latest}
-                compare={base !== null ? { base, stopHref: links.files({ v: shownV, file: path }) } : null}
-                compareWith={[...idea.versions]
-                  .reverse()
-                  .filter((n) => n.number !== version)
-                  .map((n) => ({ version: n.number, href: links.changes(n.number, shownV, path) }))}
-                onCompare={(href) => void navigate({ href })}
-                source={showSource}
-                onSource={setShowSource}
-                review={
-                  !older && (idea.owner !== me.id || pendingCount > 0)
-                    ? { onReview: () => setReviewing(true), pending: pendingCount }
-                    : null
-                }
-                edit={
-                  canEdit
-                    ? {
-                        label: draftChanges.length > 0 ? 'Open the draft' : 'Edit',
-                        disabled: !draft.data,
-                        onEdit: () => setEditing(true),
-                      }
-                    : null
-                }
-              />
-            )}
+            <DocToolbar
+              path={file.path}
+              version={version}
+              latest={latest}
+              compare={base !== null ? { base, stopHref: links.files({ v: shownV, file: path }) } : null}
+              compareWith={[...idea.versions]
+                .reverse()
+                .filter((n) => n.number !== version)
+                .map((n) => ({ version: n.number, href: links.changes(n.number, shownV, path) }))}
+              onCompare={(href) => void navigate({ href })}
+              source={showSource}
+              onSource={setShowSource}
+              review={
+                !older && (idea.owner !== me.id || pendingCount > 0)
+                  ? { onReview: () => setReviewing(true), pending: pendingCount }
+                  : null
+              }
+              edit={
+                canEdit
+                  ? {
+                      label: draftChanges.length > 0 ? 'Open the draft' : 'Edit',
+                      disabled: !draft.data,
+                      onEdit: () => setEditing(true),
+                    }
+                  : null
+              }
+              editing={editing}
+            />
             {canEdit && draftChanges.length > 0 ? (
               <p className="idea-edit-start">
                 The draft has {draftChanges.length === 1 ? '1 change' : `${draftChanges.length} changes`}, by{' '}

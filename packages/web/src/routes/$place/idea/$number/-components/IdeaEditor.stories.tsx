@@ -50,6 +50,12 @@ export const Blocks: Story = {
     const page = within(canvasElement)
     await expect(page.getAllByRole('button', { name: 'Edit' })).toHaveLength(unchanged.length)
     await expect(page.getAllByRole('button', { name: 'Delete section' })).toHaveLength(2)
+    // the text keeps the measure it has when reading: each block's hover box sits outside it
+    const column = canvasElement.querySelector('.idea-editor')!.getBoundingClientRect()
+    const text = canvasElement.querySelector('.idea-editor-view p')!.getBoundingClientRect()
+    await expect(Math.abs(text.left - column.left)).toBeLessThan(1)
+    const unit = canvasElement.querySelector('.idea-editor-unit')!.getBoundingClientRect()
+    await expect(unit.left).toBeLessThan(column.left)
   },
 }
 

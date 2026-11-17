@@ -64,10 +64,10 @@ export function IdeaEditor({ units, onEdit, onAdd, onDelete }: IdeaEditorProps) 
                 />
                 <div className="idea-editor-buttons">
                   <span className="idea-editor-hint">⌘↵ to save to the draft · Esc to cancel</span>
-                  <Button size="sm" variant="ghost" onClick={close}>
+                  <Button variant="ghost" onClick={close}>
                     Cancel
                   </Button>
-                  <Button size="sm" variant="primary" type="submit">
+                  <Button variant="primary" type="submit">
                     Save to draft
                   </Button>
                 </div>
@@ -125,10 +125,10 @@ export function IdeaEditor({ units, onEdit, onAdd, onDelete }: IdeaEditorProps) 
                 />
                 <div className="idea-editor-buttons">
                   <span className="idea-editor-hint">⌘↵ to add · Esc to cancel</span>
-                  <Button size="sm" variant="ghost" onClick={close}>
+                  <Button variant="ghost" onClick={close}>
                     Cancel
                   </Button>
-                  <Button size="sm" variant="primary" type="submit" disabled={!open.text.trim()}>
+                  <Button variant="primary" type="submit" disabled={!open.text.trim()}>
                     Add
                   </Button>
                 </div>

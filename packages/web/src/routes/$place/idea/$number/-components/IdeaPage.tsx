@@ -407,7 +407,16 @@ export function IdeaPage(props: IdeaPageProps) {
       }
       panel={
         props.editing ? (
-          props.editing.panel
+          // what to do, then the open threads: what an edit is usually answering
+          <Stack gap={5}>
+            {props.editing.panel}
+            {open.length > 0 && (
+              <div className="idea-panel-group">
+                <h3 className="idea-panel-label">Open comments</h3>
+                {list(open, true)}
+              </div>
+            )}
+          </Stack>
         ) : (
           <div id="idea-comments">
             <Tabs
