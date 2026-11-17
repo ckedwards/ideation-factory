@@ -6,7 +6,8 @@ export interface AppShellProps {
   nav: ReactNode
   // on a narrow screen, the bar across the top beside the Menu button: the site's name and what's new
   bar?: ReactNode
-  // the page has the width to itself: no site navigation (it gives its own way home)
+  // the page has the width to itself: no site navigation (it gives its own way home), except on a phone,
+  // where every page has the bar and its Menu
   bare?: boolean
   children: ReactNode
 }
@@ -35,34 +36,30 @@ export function AppShell({ nav, bar, bare = false, children }: AppShellProps) {
       <a className="skip-link" href="#main">
         Skip to content
       </a>
-      {!bare && (
-        <>
-          <header className="app-shell-bar">
-            <div className="app-shell-bar-content">{bar}</div>
-            <button
-              type="button"
-              className="app-shell-menu"
-              aria-expanded={open}
-              aria-controls={navId}
-              onClick={() => setOpen(!open)}
-            >
-              {open ? 'Close' : 'Menu'}
-            </button>
-          </header>
-          <div
-            className="app-shell-nav"
-            id={navId}
-            // a link followed closes the menu on a narrow screen
-            onClick={(event) => {
-              if ((event.target as HTMLElement).closest('a')) {
-                setOpen(false)
-              }
-            }}
-          >
-            {nav}
-          </div>
-        </>
-      )}
+      <header className="app-shell-bar">
+        <div className="app-shell-bar-content">{bar}</div>
+        <button
+          type="button"
+          className="app-shell-menu"
+          aria-expanded={open}
+          aria-controls={navId}
+          onClick={() => setOpen(!open)}
+        >
+          {open ? 'Close' : 'Menu'}
+        </button>
+      </header>
+      <div
+        className="app-shell-nav"
+        id={navId}
+        // a link followed closes the menu on a narrow screen
+        onClick={(event) => {
+          if ((event.target as HTMLElement).closest('a')) {
+            setOpen(false)
+          }
+        }}
+      >
+        {nav}
+      </div>
       <main className="app-shell-main" id="main" tabIndex={-1}>
         {children}
       </main>

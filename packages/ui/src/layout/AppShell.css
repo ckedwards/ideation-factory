@@ -6,6 +6,9 @@
 .app-shell-bare {
   grid-template-columns: minmax(0, 1fr);
 }
+.app-shell-bare > .app-shell-nav {
+  display: none;
+}
 .app-shell-nav {
   position: sticky;
   top: 0;
@@ -66,7 +69,8 @@
     border-right: none;
     box-shadow: var(--shadow);
   }
-  .app-shell-open .app-shell-nav {
+  .app-shell-open .app-shell-nav,
+  .app-shell-bare.app-shell-open > .app-shell-nav {
     display: block;
   }
   /* the bar already has the site's name */

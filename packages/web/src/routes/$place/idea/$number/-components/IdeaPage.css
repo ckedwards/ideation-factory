@@ -69,16 +69,24 @@
 .change-summary > span {
   margin-right: auto;
 }
+/* where the comments come after the document: a link down to them, in one line */
 .idea-narrow-note {
   display: none;
+  justify-self: start;
   margin: 0 0 var(--space-4);
-  color: var(--ink-3);
+  color: var(--ink-2);
   font-family: var(--font-ui);
   font-size: var(--text-sm);
 }
 @media (max-width: 62.5rem) {
   .idea-narrow-note {
-    display: block;
+    display: inline-block;
+  }
+}
+/* a phone has the site's bar across the top, with its Menu: the rail doesn't repeat it */
+@media (max-width: 50rem) {
+  .idea-nav .site-links {
+    display: none;
   }
 }
 /* the comments panel: its filters, its small group labels, and the whole-file box at the end */
