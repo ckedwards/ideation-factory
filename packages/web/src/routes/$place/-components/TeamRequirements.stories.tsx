@@ -76,7 +76,9 @@ export const Draft: Story = {
         'Closing an idea as accepted will need 2 approvals from people and an approval from each of Security and Legal.',
       ),
     ).toBeVisible()
-    await expect(page.queryByRole('button', { name: 'Save requirements' })).toBeNull()
+    // Save is there from the start, so it's plain a change needs saving, and waits for one
+    await expect(page.getByRole('button', { name: 'Save requirements' })).toBeDisabled()
+    await expect(page.queryByRole('button', { name: 'Discard' })).toBeNull()
     await userEvent.selectOptions(page.getByRole('combobox', { name: /Approvals from people/ }), '1')
     await expect(page.getByText(/will need 1 approval from a person and/)).toBeVisible()
     await expect(args.onChange).not.toHaveBeenCalled()

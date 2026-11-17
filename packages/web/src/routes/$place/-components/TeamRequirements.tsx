@@ -218,23 +218,24 @@ export function RequirementsDraft({ saved, onSave }: RequirementsDraftProps) {
         <p className="policy-summary" aria-live="polite">
           {requirementsSentence(draft)}
         </p>
-        {changed && (
-          <div className="policy-save">
+        {/* Save is there from the start, so it's plain changes need saving; it works once there are some */}
+        <div className="policy-save">
+          {changed && (
             <Button variant="ghost" onClick={() => setDraft(saved)} disabled={saving}>
               Discard
             </Button>
-            <Button
-              variant="primary"
-              disabled={saving}
-              onClick={() => {
-                setSaving(true)
-                void onSave(draft).finally(() => setSaving(false))
-              }}
-            >
-              {saving ? 'Saving…' : 'Save requirements'}
-            </Button>
-          </div>
-        )}
+          )}
+          <Button
+            variant="primary"
+            disabled={saving || !changed}
+            onClick={() => {
+              setSaving(true)
+              void onSave(draft).finally(() => setSaving(false))
+            }}
+          >
+            {saving ? 'Saving…' : 'Save requirements'}
+          </Button>
+        </div>
       </Stack>
     </div>
   )

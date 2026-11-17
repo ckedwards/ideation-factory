@@ -64,7 +64,7 @@ const STYLE = `<style>
   label > input:not([type=checkbox]):not([type=radio]) { display: block; width: 100%; margin-top: 0.375rem; }
   input:not([type=checkbox]):not([type=radio]) {
     padding: 0.5rem 0.75rem; border: 0.0625rem solid var(--rule-strong); border-radius: 0.5rem;
-    background: var(--bg); color: var(--ink); font: inherit; font-size: 0.9375rem;
+    background: var(--surface); color: var(--ink); font: inherit; font-size: 0.9375rem;
   }
   input[type=checkbox], input[type=radio] { accent-color: var(--accent); margin-right: 0.375rem; }
   fieldset { margin: 1rem 0 0; padding: 0.5rem 1rem 1rem; border: 0.0625rem solid var(--rule); border-radius: 0.5rem; }
