@@ -1,0 +1,40 @@
+/* a 32px target, the envelope drawn at 20px in its middle */
+.inbox-link {
+  position: relative;
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius);
+  color: var(--ink-2);
+  font-size: 1.25rem;
+}
+.inbox-link:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.inbox-link[aria-current='page'] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+/* fixed by its left edge on the envelope's corner, growing to the right, so the envelope never moves */
+.inbox-link-count {
+  position: absolute;
+  top: 1px;
+  left: 1.05rem;
+  min-width: 1rem;
+  height: 1rem;
+  padding: 0 0.25rem;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--bg);
+  color: var(--accent-ink);
+  font-family: var(--font-ui);
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1rem;
+  text-align: center;
+}

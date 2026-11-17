@@ -47,6 +47,13 @@ const PATHS = {
   update: <circle cx="8" cy="8" r="2.5" />,
   // a chevron down: a menu opens here
   menu: <path d="M4 6.5l4 4 4-4" />,
+  // an envelope: your notifications
+  inbox: (
+    <>
+      <rect x="1.75" y="3.25" width="12.5" height="9.5" rx="1.5" />
+      <path d="M2.25 4.5 8 9l5.75-4.5" />
+    </>
+  ),
 } satisfies Record<string, ReactNode>
 
 export type IconName = keyof typeof PATHS

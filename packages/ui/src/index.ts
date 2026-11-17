@@ -15,6 +15,7 @@ export { RowMenu, type RowMenuItem, type RowMenuProps } from './controls/RowMenu
 export { CopyText, type CopyTextProps } from './labels/CopyText.tsx'
 export { Tag, type TagProps, type TagTone } from './labels/Tag.tsx'
 export { Icon, ICON_NAMES, type IconName, type IconProps } from './labels/Icon.tsx'
+export { InboxLink, type InboxLinkProps } from './labels/InboxLink.tsx'
 export { Highlight, findMatch, type HighlightProps } from './labels/Highlight.tsx'
 export { TeamChip, type TeamChipProps, type TeamRef } from './teams/TeamChip.tsx'
 export { GroupTag, type GroupRef, type GroupTagProps } from './teams/GroupTag.tsx'

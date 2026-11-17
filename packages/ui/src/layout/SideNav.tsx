@@ -29,6 +29,8 @@ export interface SideNavProps {
   // the site's name, linking home
   brand: ReactNode
   brandHref?: string
+  // beside the name, in the column's top corner: your notifications (InboxLink)
+  corner?: ReactNode
   // under the name: a quick search
   search?: ReactNode
   groups: NavGroup[]
@@ -38,12 +40,15 @@ export interface SideNavProps {
 
 // The site's navigation: its name, a quick search, the main links, your
 // teams, and you at the bottom.
-export function SideNav({ brand, brandHref = '/', search, groups, footer }: SideNavProps) {
+export function SideNav({ brand, brandHref = '/', corner, search, groups, footer }: SideNavProps) {
   return (
     <div className="side-nav">
-      <Link href={brandHref} className="side-nav-brand">
-        {brand}
-      </Link>
+      <div className="side-nav-head">
+        <Link href={brandHref} className="side-nav-brand">
+          {brand}
+        </Link>
+        {corner}
+      </div>
       {search}
       {groups.map((group, i) => (
         <nav key={group.title ?? i} className="side-nav-group" aria-label={group.title ?? 'Main'}>
