@@ -346,8 +346,10 @@ export function IdeaPage(props: IdeaPageProps) {
         <div ref={document}>
           {props.banner}
           {!props.editing && (
-            // shown only where the comments can't sit beside the text (IdeaPage.css)
-            <p className="idea-narrow-note">On a screen this narrow, the comments are listed after the document.</p>
+            // shown only where the comments can't sit beside the text, and come after it (IdeaPage.css)
+            <a className="idea-narrow-note" href="#idea-comments">
+              {open.length === 0 ? 'Comments' : open.length === 1 ? '1 comment' : `${open.length} comments`} ↓
+            </a>
           )}
           {base && !props.editing && !props.showSource && (
             <ChangeSummary
@@ -407,17 +409,19 @@ export function IdeaPage(props: IdeaPageProps) {
         props.editing ? (
           props.editing.panel
         ) : (
-          <Tabs
-            label="Panel"
-            tabs={[
-              { id: 'comments', label: 'Comments', count: open.length },
-              { id: 'versions', label: 'Versions' },
-            ]}
-            value={pane}
-            onChange={setPane}
-          >
-            {pane === 'comments' ? comments : <VersionList {...props.versions} />}
-          </Tabs>
+          <div id="idea-comments">
+            <Tabs
+              label="Panel"
+              tabs={[
+                { id: 'comments', label: 'Comments', count: open.length },
+                { id: 'versions', label: 'Versions' },
+              ]}
+              value={pane}
+              onChange={setPane}
+            >
+              {pane === 'comments' ? comments : <VersionList {...props.versions} />}
+            </Tabs>
+          </div>
         )
       }
     />
