@@ -144,9 +144,18 @@ function saidIn(event: InboxEvent): string | null {
   return typeof event.detail.body === 'string' && event.detail.body.trim() ? event.detail.body.trim() : null
 }
 
+/** A suggestion's change, as the app shows it: the old text struck through, the new underlined. */
+function changeOf(event: InboxEvent): { old: string; new: string } | null {
+  const { old, new: replacement } = event.detail
+  return event.kind === 'suggestion' && typeof old === 'string' && typeof replacement === 'string'
+    ? { old, new: replacement }
+    : null
+}
+
 /**
- * One idea's updates: its title (a link) and team first, then each update: who did what, and what
- * they wrote quoted in full under it, then a link that says where it goes.
+ * One idea's updates: its title (a link) and team first, then each update: who did what, what they
+ * wrote quoted in full under it, and a suggestion's change; updates with nothing to show (a new
+ * version, a suggestion accepted) are one quiet line between them; then a button to the idea.
  */
 function ideaBlock(item: DueEmail['ideas'][number], people: DueEmail['people'], site: Site) {
   const { idea } = item
@@ -155,17 +164,23 @@ function ideaBlock(item: DueEmail['ideas'][number], people: DueEmail['people'], 
   const where = idea.teamInfo ? idea.teamInfo.name : idea.place
   const updates = item.events.map((e) => {
     const said = saidIn(e)
+    const change = changeOf(e)
     // the line without what was said, which is quoted under it
     const line = updateLine(said ? { ...e, detail: { ...e.detail, body: '' } } : e, people)
-    return { line: said ? `${line}:` : line, said: said ? clip(said, 2000) : null }
+    return { line: said || change ? `${line}:` : line, said: said ? clip(said, 2000) : null, change }
   })
-  const view = `View ${idea.title}`
+  const view = 'Open the idea'
   return {
     text: [
       `${idea.title} · ${where}`,
       '',
       ...(earlier ? [earlier, ''] : []),
-      ...updates.flatMap((u) => [u.line, ...(u.said ? u.said.split('\n').map((l) => `> ${l}`) : []), '']),
+      ...updates.flatMap((u) => [
+        u.line,
+        ...(u.change ? [`- ${u.change.old}`, `+ ${u.change.new}`] : []),
+        ...(u.said ? u.said.split('\n').map((l) => `> ${l}`) : []),
+        '',
+      ]),
       `${view}: ${url}`,
       '',
     ].join('\n'),
@@ -173,13 +188,19 @@ function ideaBlock(item: DueEmail['ideas'][number], people: DueEmail['people'], 
 <p style="color:#6f685e;font-size:13px;margin:0 0 12px">${escape(where)} · ${escape(WHY[item.reason])}</p>
 ${earlier ? `<p style="color:#6f685e;margin:4px 0">${escape(earlier)}</p>` : ''}
 ${updates
-  .map(
-    (u) =>
-      `<p style="margin:10px 0 4px">${escape(u.line)}</p>${
-        u.said
-          ? `<blockquote style="margin:0 0 8px;padding:6px 12px;border-left:3px solid #cfc8ba;color:#1f1d1a;white-space:pre-wrap">${escape(u.said)}</blockquote>`
-          : ''
-      }`,
+  .map((u) =>
+    !u.said && !u.change
+      ? // nothing to show: a quiet line, as the app's activity has it
+        `<p style="margin:6px 0;color:#6f685e;font-size:13px">${escape(u.line)}</p>`
+      : `<p style="margin:10px 0 4px">${escape(u.line)}</p>${
+          u.change
+            ? `<p style="margin:0 0 6px;padding:6px 12px;border-radius:6px;background:#f3efe7;white-space:pre-wrap"><del style="background:#fbe1dc;color:#8a2a1f">${escape(u.change.old)}</del> <ins style="background:#dcefe3;color:#1d5c3a">${escape(u.change.new)}</ins></p>`
+            : ''
+        }${
+          u.said
+            ? `<blockquote style="margin:0 0 8px;padding:6px 12px;border-left:3px solid #cfc8ba;color:#1f1d1a;white-space:pre-wrap">${escape(u.said)}</blockquote>`
+            : ''
+        }`,
   )
   .join('\n')}
 <p style="margin:14px 0 18px"><a href="${escape(url)}" style="display:inline-block;padding:6px 14px;border-radius:6px;background:#2b6b5a;color:#ffffff;text-decoration:none;font-weight:600">${escape(view)}</a></p>`,
@@ -189,6 +210,6 @@ ${updates
 function page(body: string, footer: string): string {
   return `<!doctype html><html><body style="font:15px/1.5 system-ui,sans-serif;color:#1f1d1a;max-width:40rem">
 ${body}
-<p style="color:#666;font-size:13px;border-top:1px solid #ddd;padding-top:8px">${footer}</p>
+<p style="color:#666;font-size:13px;border-top:1px solid #ddd;padding-top:8px">${footer.replaceAll('<a href=', '<a style="color:#2b6b5a" href=')}</p>
 </body></html>`
 }

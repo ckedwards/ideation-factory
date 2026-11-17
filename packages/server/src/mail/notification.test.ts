@@ -69,16 +69,37 @@ describe('a notification email', () => {
     expect(email.text).toContain('Riley (@riley) asked you to review it')
     // a comment: who, then what they said, in full, quoted
     expect(email.text).toContain('planbot for Riley (@riley) commented:\n> Shall we <b>drop</b> passwords?')
-    expect(email.text).toContain('View Faster sign-in: https://ideas.example.test/mobile/idea/9')
+    // the button says where it goes in two words: the title is at the top
+    expect(email.text).toContain('Open the idea: https://ideas.example.test/mobile/idea/9')
     expect(email.html).toContain('<blockquote')
-    expect(email.html).toContain('>View Faster sign-in</a>')
-    expect(email.html).not.toContain('Open it')
+    expect(email.html).toContain('>Open the idea</a>')
+    // nothing quoted: one quiet line; the footer's links in the app's colours, not the browser's blue
+    expect(email.html).toContain('color:#6f685e;font-size:13px">Riley (@riley) asked you to review it</p>')
+    expect(email.html).toContain('<a style="color:#2b6b5a" href=')
     expect(email.text).toContain('You’re getting this because you were asked to review it.')
     // escaped in the HTML
     expect(email.html).toContain('Shall we &lt;b&gt;drop&lt;/b&gt; passwords?')
     expect(email.html).not.toContain('<b>drop')
     expect(email.references).toBe('<id1@ideas.example.test>')
     expect(email.messageId).toMatch(/^<id1\.11\.u-maya@ideas\.example\.test>$/)
+  })
+
+  test('a suggested edit shows its change, struck through and underlined, with why', () => {
+    const suggested = due()
+    suggested.ideas[0]!.events = [
+      {
+        kind: 'suggestion',
+        actor: { user: 'u-riley', bot: null, purpose: 'me' },
+        at: 12,
+        detail: { body: 'Clearer.', old: 'sign in quickly', new: 'sign in with a <passkey>' },
+      },
+    ]
+    const email = notificationEmail(suggested, site)
+    expect(email.text).toContain(
+      'Riley (@riley) suggested an edit:\n- sign in quickly\n+ sign in with a <passkey>\n> Clearer.',
+    )
+    expect(email.html).toContain('>sign in quickly</del>')
+    expect(email.html).toContain('>sign in with a &lt;passkey&gt;</ins>')
   })
 
   test('carries headers for mail rules, and a one-click unsubscribe for that idea', () => {
