@@ -1,16 +1,18 @@
-// The lists of ideas pages load: the ideas you can see (optionally in one
-// team, or one person's, and open or closed), 25 at a time with "Show more",
-// or a search.
+// The lists of ideas pages load: the ideas you can see (optionally searched,
+// in one team, or one person's, and open or closed), 25 at a time with "Show
+// more"; and the quick search's results.
 import { type InfiniteData, infiniteQueryOptions, queryOptions } from '@tanstack/react-query'
 import { api } from './api.ts'
 import type { ListedIdea } from './ideas.ts'
 
-type Page = { items: ListedIdea[]; next: string | null }
+type Page = { items: ListedIdea[]; next: string | null; incomplete?: boolean | undefined }
 
 export type IdeaState = 'open' | 'closed'
 
-/** What a list can be narrowed to: a team, an author, who's asked to review, a status (by ID or handle). */
+/** What a list can be narrowed to: a search, a team, an author, who's asked to review, a status (by ID or handle). */
 export type IdeaFilters = {
+  /** Titles containing it: a word of at least 3 letters (searchable). */
+  q?: string
   team?: string
   owner?: string
   reviewer?: string
@@ -40,10 +42,3 @@ export const searchable = (q: string) =>
     .trim()
     .split(/\s+/)
     .some((word) => [...word].length >= 3)
-
-export const searchQuery = (q: string) =>
-  queryOptions({
-    queryKey: ['ideas', 'search', q.trim()],
-    queryFn: () => api.searchIdeas({ q: q.trim() }),
-    enabled: searchable(q),
-  })
