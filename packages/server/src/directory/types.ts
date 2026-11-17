@@ -498,6 +498,8 @@ export interface GroupRuleUse {
 }
 
 export interface IdeaFilter {
+  /** Titles containing this search, matched as searchIdeas matches them. */
+  q?: string
   team?: string
   owner?: string
   /** Someone asked to review it, by name or through a group they're in (a user's ID). */
@@ -699,7 +701,12 @@ export interface Directory {
    * new place (its old address still finds it).
    */
   moveIdea(actor: string, idea: string, to: string | null, adjustments?: MoveAdjustments): Promise<Result<MovePreview>>
-  listIdeas(actor: string, filter?: IdeaFilter, token?: string | null): Promise<Page<IdeaListing>>
+  /** `incomplete`: a search (`q`) matched more ideas than one search checks, so only the best-ranked were. */
+  listIdeas(
+    actor: string,
+    filter?: IdeaFilter,
+    token?: string | null,
+  ): Promise<Page<IdeaListing> & { incomplete?: boolean }>
   /** How many ideas listIdeas would list with this filter, open and closed (its state, cursor and limit aside). */
   countIdeas(actor: string, filter?: IdeaFilter, token?: string | null): Promise<IdeaCounts>
   /**

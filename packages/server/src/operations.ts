@@ -826,6 +826,7 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         const page = await directory().listIdeas(
           caller.user,
           {
+            ...(input.q ? { q: input.q } : {}),
             ...(team ? { team: team.id } : {}),
             ...(owner ? { owner: owner.id } : {}),
             ...(reviewer ? { reviewer: reviewer.id } : {}),
@@ -837,7 +838,11 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
           },
           token?.id ?? null,
         )
-        return { items: page.items.map(listed), next: page.next }
+        return {
+          items: page.items.map(listed),
+          next: page.next,
+          ...(page.incomplete !== undefined ? { incomplete: page.incomplete } : {}),
+        }
       }),
 
     countIdeas: (input, { caller, token }) =>
@@ -856,6 +861,7 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         return directory().countIdeas(
           caller.user,
           {
+            ...(input.q ? { q: input.q } : {}),
             ...(team ? { team: team.id } : {}),
             ...(owner ? { owner: owner.id } : {}),
             ...(reviewer ? { reviewer: reviewer.id } : {}),

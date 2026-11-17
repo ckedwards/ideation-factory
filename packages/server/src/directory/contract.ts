@@ -1152,6 +1152,31 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         })
       })
 
+      test('a list can be narrowed by a search, with its other filters, and counted that way', async () => {
+        const d = await people()
+        await d.registerIdea(idea('a', { title: 'Offline-first sync for the field app' }))
+        await d.registerIdea(idea('b', { title: 'Sync', status: 'closed-accepted' }))
+        await d.registerIdea(idea('c', { title: 'Billing: online invoices' }))
+        await d.registerIdea(idea('d', { title: 'Sync the calendars', owner: 'u-maya' }))
+        await d.registerIdea(idea('hidden', { title: 'Sync secrets', owner: 'u-maya' }))
+        await d.setGrant('u-maya', 'd', { kind: 'user', id: 'u-riley' }, { edit: false, share: false })
+        // newest first, as a list always is, and only what you can see
+        expect((await d.listIdeas('u-riley', { q: 'sync' })).items.map((i) => i.id)).toEqual(['d', 'b', 'a'])
+        expect(await d.listIdeas('u-riley', { q: 'sync' })).toMatchObject({ incomplete: false })
+        expect((await d.listIdeas('u-riley', { q: 'sync', state: 'open' })).items.map((i) => i.id)).toEqual(['d', 'a'])
+        expect((await d.listIdeas('u-riley', { q: 'sync', owner: 'u-riley' })).items.map((i) => i.id)).toEqual([
+          'b',
+          'a',
+        ])
+        expect(await d.countIdeas('u-riley', { q: 'sync' })).toEqual({ open: 2, closed: 1 })
+        expect(await d.countIdeas('u-riley', { q: 'sync', owner: 'u-maya' })).toEqual({ open: 1, closed: 0 })
+        // nothing matches: nothing listed, nothing counted
+        expect((await d.listIdeas('u-riley', { q: 'nothing like it' })).items).toEqual([])
+        expect(await d.countIdeas('u-riley', { q: 'of' })).toEqual({ open: 0, closed: 0 })
+        // without a search, no word on whether one was complete
+        expect(await d.listIdeas('u-riley')).not.toHaveProperty('incomplete')
+      })
+
       test('search finds text anywhere in a title, ranks closer matches first, and respects access', async () => {
         const d = await people()
         await d.registerIdea(idea('a', { title: 'Offline-first sync for the field app' }))
