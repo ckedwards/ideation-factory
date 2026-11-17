@@ -17,7 +17,7 @@ const meta = {
     onCompare: fn(),
     source: false,
     onSource: fn(),
-    review: { href: '/mobile/idea/9', pending: 0 },
+    review: { onReview: fn(), pending: 0 },
     edit: { label: 'Edit', disabled: false, onEdit: fn() },
   },
 } satisfies Meta<typeof DocToolbar>
@@ -34,7 +34,13 @@ export const Latest: Story = {
     await expect(args.onCompare).toHaveBeenCalledWith('/mobile/idea/9/changes/1..?file=notes/plan.md')
     await userEvent.click(bar.getByRole('button', { name: 'Source' }))
     await expect(args.onSource).toHaveBeenCalledWith(true)
-    await expect(bar.getByRole('link', { name: 'Review' })).toHaveAttribute('href', '/mobile/idea/9')
+    // Review opens its dialog here, over the document, and leads: it's the main thing for a reviewer
+    const review = bar.getByRole('button', { name: 'Review' })
+    await expect(review).toHaveClass(/primary/)
+    await userEvent.click(review)
+    await expect(args.review!.onReview).toHaveBeenCalled()
+    // the toolbar's buttons are the medium size: big enough for a finger
+    await expect(review.getBoundingClientRect().height).toBeGreaterThanOrEqual(28)
   },
 }
 
@@ -51,8 +57,16 @@ export const ComparingAnOlderVersion: Story = {
 
 // Comments waiting in your review: Review says so, and leads
 export const PendingReview: Story = {
-  args: { review: { href: '/mobile/idea/9', pending: 2 } },
+  args: { review: { onReview: fn(), pending: 2 } },
   play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).getByRole('link', { name: 'Finish your review (2)' })).toBeVisible()
+    await expect(within(canvasElement).getByRole('button', { name: 'Finish your review (2)' })).toBeVisible()
+  },
+}
+
+// The author, who can't review it: Edit leads instead
+export const Author: Story = {
+  args: { review: null },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByRole('button', { name: 'Edit' })).toHaveClass(/primary/)
   },
 }
