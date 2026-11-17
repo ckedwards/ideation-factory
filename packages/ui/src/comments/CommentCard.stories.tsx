@@ -118,7 +118,14 @@ export const WithReplies: Story = { args: { comment: comments.withReplies } }
 
 export const AutomatedBot: Story = { args: { comment: comments.bot } }
 
-export const SuggestedEdit: Story = { args: { comment: comments.suggestion, canDecide: true, onAddToDraft: fn() } }
+// Its three buttons wrap in a column as narrow as the comments pane, rather than push out of the card
+export const SuggestedEdit: Story = {
+  args: { comment: comments.suggestion, canDecide: true, onAddToDraft: fn() },
+  play: async ({ canvasElement }) => {
+    const card = canvasElement.querySelector<HTMLElement>('.comment-card')!
+    await expect(card.scrollWidth).toBeLessThanOrEqual(card.clientWidth)
+  },
+}
 
 // accepted into the idea's draft, waiting to be committed
 export const SuggestionInDraft: Story = {
