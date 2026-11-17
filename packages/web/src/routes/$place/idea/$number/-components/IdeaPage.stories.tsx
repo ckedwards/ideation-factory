@@ -122,8 +122,8 @@ export const Comments: Story = {
 }
 
 // Replying from a comment
-// The panel's filters: open, resolved or all; and a comment on the whole file at its top, above the
-// comments level with their text
+// The panel's filters: open, resolved or all; and a comment on the whole file at its top, one line until
+// it's opened, above the comments level with their text
 export const FiltersAndAFileComment: Story = {
   args: { onFileComment: fn() },
   play: async ({ args, canvasElement, userEvent }) => {
@@ -133,9 +133,14 @@ export const FiltersAndAFileComment: Story = {
     await userEvent.selectOptions(page.getByRole('combobox', { name: 'Show' }), 'resolved')
     await expect(await page.findByText('Done.')).toBeVisible()
     await userEvent.selectOptions(page.getByRole('combobox', { name: 'Show' }), 'open')
-    const box = page.getByRole('textbox', { name: 'Comment on the whole file' })
+    // one line until it's opened, so the column starts with its comments
+    const open = page.getByRole('button', { name: 'Comment on the whole file' })
     const gutter = canvasElement.querySelector('.comment-gutter')!
-    await expect(box.getBoundingClientRect().top).toBeLessThan(gutter.getBoundingClientRect().top)
+    await expect(open.getBoundingClientRect().top).toBeLessThan(gutter.getBoundingClientRect().top)
+    await expect(open.getBoundingClientRect().height).toBeLessThan(32)
+    await userEvent.click(open)
+    const box = page.getByRole('textbox', { name: 'Comment on the whole file' })
+    await expect(box).toHaveFocus()
     await userEvent.type(box, 'Needs a summary.')
     await userEvent.click(page.getByRole('button', { name: 'Comment' }))
     await expect(args.onFileComment).toHaveBeenCalledWith('Needs a summary.', false)
