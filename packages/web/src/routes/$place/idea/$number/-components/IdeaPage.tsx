@@ -128,6 +128,10 @@ export function IdeaPage(props: IdeaPageProps) {
   const changed = useMemo(() => (base ? changedRanges(redline(base, { source, tree })) : []), [base, source, tree])
   // the panel's filters: open, resolved or all, and by whom
   const [showing, setShowing] = useState<'open' | 'resolved' | 'all'>('open')
+  // the contents start open only where the rail is a column of its own (IdeaPageLayout's widest layout)
+  const [contentsOpen, setContentsOpen] = useState(
+    () => typeof window === 'undefined' || window.matchMedia('(min-width: 75.0625rem)').matches,
+  )
   const [author, setAuthor] = useState('')
   const open = props.comments.filter((comment) => !comment.info.resolved)
   const authors = [...new Map(props.comments.map((c) => [actorKey(c.info.author), actorName(c.info.author)])).entries()]
@@ -188,8 +192,13 @@ export function IdeaPage(props: IdeaPageProps) {
     <div className="idea-nav">
       <Stack gap={5}>
         {props.site}
-        {/* one line: the status as a dot, and the title (whole on hover); then where it is and which version */}
+        {/* back to its team; the status as a dot and the title (two lines at most, whole on hover); which version */}
         <div className="idea-rail-head">
+          {props.team.href && (
+            <Link className="idea-rail-back" href={props.team.href}>
+              ← {props.team.name}
+            </Link>
+          )}
           <p className="idea-rail-title" title={props.title}>
             <span className={`idea-rail-dot status-${statusKey(props.status)}`} aria-hidden>
               <span className="status-dot" />
@@ -198,8 +207,8 @@ export function IdeaPage(props: IdeaPageProps) {
             <span className="visually-hidden">, {statusWords(props.status)}</span>
           </p>
           <p className="idea-rail-meta">
-            {props.team.href ? <Link href={props.team.href}>{props.team.name}</Link> : props.team.name} · v
-            {props.version.number} · <RelativeTime at={props.version.at} />
+            {!props.team.href && `${props.team.name} · `}v{props.version.number} ·{' '}
+            <RelativeTime at={props.version.at} />
           </p>
         </div>
         {props.tabs}
@@ -218,22 +227,29 @@ export function IdeaPage(props: IdeaPageProps) {
             </ul>
           </nav>
         )}
-        <h2 className="idea-rail-label">Contents</h2>
-        <Toc
-          entries={sections
-            .filter((heading) => heading.level >= 2 && heading.level <= 4)
-            .map((heading) => {
-              const end = sectionEnd(sections, heading)
-              return {
-                id: heading.id,
-                title: heading.title,
-                level: heading.level,
-                changed: changed.some((range) => range.start < end && heading.offset < range.end),
-                openComments: inText.filter((c) => within(c.place, heading.offset, end)).length,
-              }
-            })}
-          onJump={(entry) => window.document.getElementById(entry.id)?.scrollIntoView({ block: 'start' })}
-        />
+        {/* open beside the document; a disclosure, closed to start, where the rail is a band across the top */}
+        <details
+          className="idea-contents"
+          open={contentsOpen}
+          onToggle={(event) => setContentsOpen(event.currentTarget.open)}
+        >
+          <summary className="idea-rail-label">Contents</summary>
+          <Toc
+            entries={sections
+              .filter((heading) => heading.level >= 2 && heading.level <= 4)
+              .map((heading) => {
+                const end = sectionEnd(sections, heading)
+                return {
+                  id: heading.id,
+                  title: heading.title,
+                  level: heading.level,
+                  changed: changed.some((range) => range.start < end && heading.offset < range.end),
+                  openComments: inText.filter((c) => within(c.place, heading.offset, end)).length,
+                }
+              })}
+            onJump={(entry) => window.document.getElementById(entry.id)?.scrollIntoView({ block: 'start' })}
+          />
+        </details>
       </Stack>
     </div>
   )
@@ -284,6 +300,14 @@ export function IdeaPage(props: IdeaPageProps) {
           />
         )}
       </div>
+      {/* at the top, in what's often empty space above the first comment level with its text */}
+      {canComment && props.onFileComment && (
+        <CommentBox
+          label="Comment on the whole file"
+          onComment={props.onFileComment}
+          addToReview={props.addToReview ?? false}
+        />
+      )}
       {onFile.length > 0 && (
         <div className="idea-panel-group">
           <h3 className="idea-panel-label">On the whole file</h3>
@@ -312,15 +336,6 @@ export function IdeaPage(props: IdeaPageProps) {
                 : 'No comments yet.'
         }
       />
-      {canComment && props.onFileComment && (
-        <div className="idea-file-comment">
-          <CommentBox
-            label="Comment on the whole file"
-            onComment={props.onFileComment}
-            addToReview={props.addToReview ?? false}
-          />
-        </div>
-      )}
     </Stack>
   )
 

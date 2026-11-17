@@ -126,7 +126,8 @@ export const Comments: Story = {
 }
 
 // Replying from a comment
-// The panel's filters: open, resolved or all; and a comment on the whole file at its end
+// The panel's filters: open, resolved or all; and a comment on the whole file at its top, above the
+// comments level with their text
 export const FiltersAndAFileComment: Story = {
   args: { onFileComment: fn() },
   play: async ({ args, canvasElement, userEvent }) => {
@@ -136,7 +137,10 @@ export const FiltersAndAFileComment: Story = {
     await userEvent.selectOptions(page.getByRole('combobox', { name: 'Show' }), 'resolved')
     await expect(await page.findByText('Done.')).toBeVisible()
     await userEvent.selectOptions(page.getByRole('combobox', { name: 'Show' }), 'open')
-    await userEvent.type(page.getByRole('textbox', { name: 'Comment on the whole file' }), 'Needs a summary.')
+    const box = page.getByRole('textbox', { name: 'Comment on the whole file' })
+    const gutter = canvasElement.querySelector('.comment-gutter')!
+    await expect(box.getBoundingClientRect().top).toBeLessThan(gutter.getBoundingClientRect().top)
+    await userEvent.type(box, 'Needs a summary.')
     await userEvent.click(page.getByRole('button', { name: 'Comment' }))
     await expect(args.onFileComment).toHaveBeenCalledWith('Needs a summary.', false)
   },
