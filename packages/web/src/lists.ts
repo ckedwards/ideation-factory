@@ -1,6 +1,6 @@
 // The lists of ideas pages load: the ideas you can see (optionally searched,
 // in one team, or one person's, and open or closed), 25 at a time with "Show
-// more"; and the quick search's results.
+// more".
 import { type InfiniteData, infiniteQueryOptions, queryOptions } from '@tanstack/react-query'
 import { api } from './api.ts'
 import type { ListedIdea } from './ideas.ts'

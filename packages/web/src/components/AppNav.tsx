@@ -1,7 +1,6 @@
 // The app's navigation, beside every page: the site's name, the main pages,
 // your teams, and at the bottom the signed-in person, the theme and signing
 // out.
-import type { ReactNode } from 'react'
 import { AccountMenu, InboxLink, Link, type Person, SideNav, type Theme } from '@ideaf/ui'
 import './AppNav.css'
 
@@ -18,8 +17,6 @@ export interface AppNavProps {
   theme: Theme
   onThemeChange: (theme: Theme) => void
   onSignOut: () => void
-  /** Under the name: the quick search (QuickSearch), from the page, which has the router and the api. */
-  search?: ReactNode
   /** The teams watched above participating, member or not, with how much. */
   watching?: { handle: string; name: string; level: 'participating' | 'active' | 'all' }[]
   /** The team whose pages these are: marked in Your teams and Watching. */
@@ -36,13 +33,11 @@ export function AppNav({
   theme,
   onThemeChange,
   onSignOut,
-  search,
   watching = [],
   currentTeam = null,
 }: AppNavProps) {
   return (
     <SideNav
-      search={search}
       brand={
         <>
           <span aria-hidden>✳</span> Ideation Factory
