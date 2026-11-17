@@ -70,3 +70,16 @@ export const Author: Story = {
     await expect(within(canvasElement).getByRole('button', { name: 'Edit' })).toHaveClass(/primary/)
   },
 }
+
+// The editor's open: the bar stays, as tall as before so the document doesn't move, and says so
+export const Editing: Story = {
+  args: { editing: true },
+  play: async ({ canvasElement }) => {
+    const bar = within(canvasElement)
+    await expect(bar.getByText('Editing the draft')).toBeVisible()
+    await expect(bar.queryByRole('button', { name: 'Source' })).toBeNull()
+    await expect(
+      canvasElement.querySelector('.doc-toolbar-actions')!.getBoundingClientRect().height,
+    ).toBeGreaterThanOrEqual(28)
+  },
+}

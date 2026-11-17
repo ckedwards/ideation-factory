@@ -75,6 +75,10 @@ export function useEditing(args: UseEditingArgs): { document: ReactNode; panel: 
 
   const before = args.latestFiles.find((f) => f.file === file?.file)?.content ?? ''
   const after = file?.content ?? ''
+  const close = () => {
+    setPreviewing(false)
+    args.setOpen(false)
+  }
   return {
     document: previewing ? (
       <Redline
@@ -127,10 +131,7 @@ export function useEditing(args: UseEditingArgs): { document: ReactNode; panel: 
             }, failed)
             .finally(() => void reread())
         }
-        onClose={() => {
-          setPreviewing(false)
-          args.setOpen(false)
-        }}
+        onClose={close}
       />
     ),
   }
