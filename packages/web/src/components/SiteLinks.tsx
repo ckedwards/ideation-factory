@@ -1,6 +1,7 @@
 // The way home on pages that leave out the site's navigation for the width (an idea's files), and the
-// phone's bar across the top: the site's name, leading home, and your notifications with how many are new.
-import { Link } from '@ideaf/ui'
+// phone's bar across the top: the site's name, leading home, and your notifications (the envelope, with how
+// many are unread).
+import { InboxLink, Link } from '@ideaf/ui'
 import { useQuery } from '@tanstack/react-query'
 import { unreadQuery } from '../api.ts'
 import './SiteLinks.css'
@@ -12,15 +13,7 @@ export function SiteLinks({ bar = false }: { bar?: boolean }) {
       <Link className="site-links-home" href="/">
         <span aria-hidden>✳</span> Ideation Factory
       </Link>
-      <Link className="site-links-inbox" href="/notifications">
-        Notifications
-        {unread > 0 && (
-          <span className="site-links-count">
-            {unread}
-            <span className="visually-hidden"> new</span>
-          </span>
-        )}
-      </Link>
+      <InboxLink href="/notifications" unread={unread} />
     </nav>
   )
 }
