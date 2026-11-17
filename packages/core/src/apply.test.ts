@@ -40,7 +40,11 @@ const source = (result: BatchResult, file = 'f1') => ok(result).idea.files.find(
 const ids = (result: BatchResult, file = 'f1') => ok(result).idea.files.find((f) => f.id === file)!.unitIds
 const outcome = (result: BatchResult, id: string) => {
   const c = ok(result).comments.find((x) => x.id === id)!
-  return { state: c.state, quote: c.anchor?.kind === 'text' ? c.anchor.quote : null, file: c.anchor?.file ?? null }
+  return {
+    state: c.state,
+    quote: c.anchor?.kind === 'text' ? c.anchor.quote : null,
+    file: c.anchor && 'file' in c.anchor ? c.anchor.file : null,
+  }
 }
 
 test('the fixture has the IDs the tests rely on', () => {
@@ -348,6 +352,7 @@ describe('files', () => {
     const comments: Comment[] = [
       { id: 'on-a', anchor: { kind: 'file', file: 'f1' } },
       { id: 'on-b', anchor: { kind: 'file', file: 'f3' } },
+      { id: 'on-idea', anchor: { kind: 'idea' } },
     ]
     const r = ok(
       run(
@@ -365,6 +370,8 @@ describe('files', () => {
     expect(r.comments).toEqual([
       { id: 'on-a', state: 'exact', anchor: { kind: 'file', file: 'f1' } },
       { id: 'on-b', state: 'outdated', anchor: null },
+      // on the idea as a whole: whatever happens to its files
+      { id: 'on-idea', state: 'exact', anchor: { kind: 'idea' } },
     ])
   })
 

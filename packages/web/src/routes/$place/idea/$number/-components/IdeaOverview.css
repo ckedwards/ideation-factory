@@ -118,3 +118,7 @@
   font-family: var(--font-prose);
   font-size: var(--text-md);
 }
+/* the box for a comment on the idea, after everything that happened */
+.idea-activity-comment-box {
+  margin-top: var(--space-4);
+}

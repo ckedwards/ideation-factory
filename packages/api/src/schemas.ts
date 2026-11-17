@@ -19,6 +19,7 @@ export const Caller = z.object({
 export type Caller = z.infer<typeof Caller>
 
 export const Anchor = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('idea') }),
   z.object({ kind: z.literal('file'), file: z.string() }),
   z.object({ kind: z.literal('section'), file: z.string(), section: z.string() }),
   z.object({
@@ -31,6 +32,7 @@ export const Anchor = z.discriminatedUnion('kind', [
 ])
 
 export const AnchorInput = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('idea') }),
   z.strictObject({ kind: z.literal('file'), file: FileId }),
   z.strictObject({ kind: z.literal('section'), section: z.string() }),
   z.strictObject({

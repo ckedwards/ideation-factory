@@ -138,7 +138,8 @@ function runStep(idea: Idea, ids: Ids, plan: Plan, tracked: Map<string, Tracked>
   const mapper = sourceMapper(map, oldParsed, newParsed)
   for (const entry of tracked.values()) {
     const anchor = entry.anchor
-    if (!anchor) {
+    // on the idea as a whole, it stays as it is
+    if (!anchor || anchor.kind === 'idea') {
       continue
     }
     if (!touched(anchor.file)) {

@@ -23,7 +23,9 @@ export function describeOutcomes(outcomes: Outcome[]): string[] {
           ? `section ${o.anchor.section}`
           : o.anchor?.kind === 'file'
             ? `file ${o.anchor.file}`
-            : ''
+            : o.anchor?.kind === 'idea'
+              ? 'the idea'
+              : ''
     lines.push(`  ${o.id}  ${o.state}${where ? `, now on ${where}` : ''}`)
   }
   return lines

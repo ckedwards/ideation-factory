@@ -170,7 +170,8 @@ function Overview() {
       reopened: !h.status.startsWith('closed') && (reviews.history[i]?.status.startsWith('closed') ?? false),
     })),
     ...threads.map((thread): ActivityItem => {
-      const file = pathOf(thread.anchor?.file)
+      const onIdea = thread.anchor?.kind === 'idea'
+      const file = thread.anchor && thread.anchor.kind !== 'idea' ? pathOf(thread.anchor.file) : null
       const info = commentInfo(thread, people, titles)
       // where the text is, while it's still there
       const section =
@@ -186,8 +187,8 @@ function Overview() {
           pending: thread.id.startsWith('pending-'),
         },
         file,
-        // the comment where it is, not the top of the file
-        href: links.files({ ...(file ? { file } : {}), comment: thread.id }),
+        // the comment where it is, not the top of the file; one on the idea is here already
+        href: onIdea ? null : links.files({ ...(file ? { file } : {}), comment: thread.id }),
       }
     }),
   ].sort((a, b) => a.at - b.at)
@@ -286,6 +287,8 @@ function Overview() {
         canComment={idea.you.view}
         onReply={writes.reply}
         onResolve={writes.resolve}
+        onComment={(body, pending) => writes.comment({ kind: 'idea' }, body, pending)}
+        addToReview={idea.owner !== me.id}
       />
       <Dialog
         open={sharing === true}

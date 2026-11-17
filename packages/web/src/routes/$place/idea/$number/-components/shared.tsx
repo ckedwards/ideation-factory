@@ -56,7 +56,9 @@ export function commentInfo(
         ? { kind: 'text', quote: anchor.quote }
         : anchor?.kind === 'section'
           ? { kind: 'section', title: titles.get(anchor.section) ?? 'A section' }
-          : { kind: 'file' },
+          : anchor?.kind === 'idea'
+            ? { kind: 'idea' }
+            : { kind: 'file' },
     resolved: thread.resolved,
     ...(thread.pending ? { pending: true } : {}),
     outdated: thread.state === 'outdated',

@@ -23,6 +23,8 @@ export interface Idea {
 }
 
 export type Anchor =
+  /** The idea as a whole, not any one file: it stays as it is through every version. */
+  | { kind: 'idea' }
   | { kind: 'file'; file: string }
   | { kind: 'section'; file: string; section: string }
   /** A range of the file's plain-text form [start, end), and the text it covered. */
@@ -134,6 +136,7 @@ export function locate(idea: Idea, id: string): { file: IdeaFile; parsed: Parsed
 
 /** What a client sends to anchor a new comment; the server fills in the quote. */
 export type AnchorInput =
+  | { kind: 'idea' }
   | { kind: 'file'; file: string }
   | { kind: 'section'; section: string }
   | { kind: 'text'; file: string; start: number; end: number }
@@ -143,6 +146,9 @@ export function checkAnchor(
   idea: Idea,
   input: AnchorInput,
 ): { ok: true; anchor: Anchor } | { ok: false; message: string } {
+  if (input.kind === 'idea') {
+    return { ok: true, anchor: { kind: 'idea' } }
+  }
   if (input.kind === 'section') {
     const at = locate(idea, input.section)
     if (!at || !input.section.startsWith('s')) {

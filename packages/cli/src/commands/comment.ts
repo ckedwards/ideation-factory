@@ -1,6 +1,6 @@
 // ideaf comment …: reading and writing comment threads, mostly for agents and
-// skills. A comment goes on a file, a section (by its ID, from show --blocks),
-// or a passage of text given as a quote: the cli finds the quote in the file's
+// skills. A comment goes on the idea as a whole, a file, a section (by its ID,
+// from show --blocks), or a passage of text given as a quote: the cli finds the quote in the file's
 // plain text (the form comments are matched in), so no one counts characters.
 // A suggested edit is a comment on a quote with a replacement for its text.
 import { ApiError, type Input, type Operations, type Output } from '@ideaf/api'
@@ -91,17 +91,32 @@ export async function show(ctx: Context, flags: { idea?: string; version?: strin
 
 export async function add(
   ctx: Context,
-  flags: { idea?: string; file?: string; section?: string; quote?: string; occurrence?: string; pending?: boolean },
+  flags: {
+    idea?: string
+    wholeIdea?: boolean
+    file?: string
+    section?: string
+    quote?: string
+    occurrence?: string
+    pending?: boolean
+  },
   body: string,
   stdin: () => Promise<string>,
 ): Promise<number> {
   const idea = await ctx.ideaId(flags.idea)
+  if (flags.wholeIdea && (flags.section !== undefined || flags.quote !== undefined || flags.file !== undefined)) {
+    throw new CliError(
+      '--whole-idea is on the idea as a whole: leave out --file, --section and --quote',
+      EXIT.usage,
+      'usage',
+    )
+  }
   if (flags.section !== undefined && (flags.quote !== undefined || flags.file !== undefined)) {
     throw new CliError('--section names the whole section: leave out --file and --quote', EXIT.usage, 'usage')
   }
-  if (flags.section === undefined && flags.quote === undefined && flags.file === undefined) {
+  if (!flags.wholeIdea && flags.section === undefined && flags.quote === undefined && flags.file === undefined) {
     throw new CliError(
-      'say what the comment is on: --quote "<text>" [--file <file>], --section <id>, or --file <file>',
+      'say what the comment is on: --quote "<text>" [--file <file>], --section <id>, --file <file>, or --whole-idea',
       EXIT.usage,
       'usage',
     )
@@ -118,8 +133,10 @@ export async function add(
   // comments go on the latest version; if the idea moves on in between, find the anchor again
   for (let attempt = 0; ; attempt++) {
     const latest = await ctx.api.pull({ idea })
-    const { occurrence: _, pending, ...target } = flags
-    const anchor = anchorFor(ctx, latest.files, { ...target, ...(occurrence ? { occurrence } : {}) })
+    const { occurrence: _, pending, wholeIdea, ...target } = flags
+    const anchor: AnchorInput = wholeIdea
+      ? { kind: 'idea' }
+      : anchorFor(ctx, latest.files, { ...target, ...(occurrence ? { occurrence } : {}) })
     try {
       const { comment } = await ctx.api.addComment({
         idea,
@@ -424,6 +441,9 @@ function where(thread: Thread, view: View): string {
   const anchor = thread.anchor
   if (!anchor) {
     return `outdated: its text is gone${thread.lastVersion ? ` (last attached in v${thread.lastVersion})` : ''}`
+  }
+  if (anchor.kind === 'idea') {
+    return 'on the idea'
   }
   const file = view.files.find((f) => f.id === anchor.file)
   const path = file?.path ?? anchor.file

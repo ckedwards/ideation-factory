@@ -1,7 +1,8 @@
 // An idea's overview, like a pull request's conversation: what it is (its
 // title, team, status and description), then everything that happened to it,
 // oldest first: each version, each change of status, and each comment
-// thread, which can be replied to and resolved here. Its reviews (ReviewPanel)
+// thread, which can be replied to and resolved here, and at the end a box for
+// a comment on the idea as a whole. Its reviews (ReviewPanel)
 // are in a column beside them, as a pull request's reviewers and checks are,
 // and come after the description on a narrow screen.
 import { type ReactNode, useState } from 'react'
@@ -26,6 +27,7 @@ import {
 } from '@ideaf/ui'
 import type { ShownStatus } from '../../../../../ideas.ts'
 import type { PageComment } from './IdeaPage.tsx'
+import { CommentBox } from './CommentBox.tsx'
 import { describe, type VersionInfo } from './VersionList.tsx'
 import './IdeaOverview.css'
 
@@ -59,9 +61,9 @@ export type ActivityItem =
       kind: 'comment'
       at: number
       comment: PageComment
-      /** The file it's on, and where to read it there. */
+      /** The file it's on, and where to read it there; neither for one on the idea as a whole. */
       file: string | null
-      href: string
+      href: string | null
     }
 
 export interface IdeaOverviewProps {
@@ -91,6 +93,10 @@ export interface IdeaOverviewProps {
   canComment: boolean
   onReply?: (comment: string, body: string) => void
   onResolve?: (comment: string, resolved: boolean) => void
+  /** A comment on the idea as a whole, or (`pending`) one in your review. */
+  onComment?: (body: string, pending: boolean) => void
+  /** Whether a comment can go in your review instead. */
+  addToReview?: boolean
 }
 
 export function IdeaOverview(props: IdeaOverviewProps) {
@@ -184,7 +190,7 @@ export function IdeaOverview(props: IdeaOverviewProps) {
                     </li>
                   ) : (
                     <li key={item.comment.info.id} className="idea-activity-comment">
-                      {item.file && (
+                      {item.file && item.href && (
                         <div className="idea-activity-where">
                           On <Link href={item.href}>{item.file}</Link>
                         </div>
@@ -194,6 +200,15 @@ export function IdeaOverview(props: IdeaOverviewProps) {
                   ),
                 )}
               </ol>
+            )}
+            {props.canComment && props.onComment && (
+              <div className="idea-activity-comment-box">
+                <CommentBox
+                  label="Comment on the idea"
+                  onComment={props.onComment}
+                  addToReview={props.addToReview ?? false}
+                />
+              </div>
             )}
           </Section>
         </div>
@@ -252,7 +267,9 @@ function summary(info: Extract<ActivityItem, { kind: 'comment' }>['comment']['in
       ? info.target.quote
       : info.target.kind === 'section'
         ? info.target.title
-        : 'the whole file'
+        : info.target.kind === 'idea'
+          ? 'the idea'
+          : 'the whole file'
   return `on “${on.length > 40 ? `${on.slice(0, 40)}…` : on}”`
 }
 

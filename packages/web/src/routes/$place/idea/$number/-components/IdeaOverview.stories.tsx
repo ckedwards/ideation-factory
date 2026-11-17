@@ -101,6 +101,8 @@ const meta = {
     canComment: true,
     onReply: fn(),
     onResolve: fn(),
+    onComment: fn(),
+    addToReview: true,
   },
 } satisfies Meta<typeof IdeaOverview>
 
@@ -149,6 +151,46 @@ export const Reply: Story = {
   },
 }
 
+// A comment on the idea as a whole: no file to link to, and a box at the end of the activity for another
+export const OnTheIdea: Story = {
+  args: {
+    activity: [
+      ...activity,
+      {
+        kind: 'comment',
+        at: hours(1),
+        file: null,
+        href: null,
+        comment: {
+          info: {
+            id: 'c4',
+            author: { kind: 'person', person: maya },
+            at: hours(1),
+            body: body('Worth trying with the Denver crew before it goes wider.'),
+            target: { kind: 'idea' },
+            resolved: false,
+            replies: [],
+          },
+          place: { kind: 'file' },
+        },
+      },
+    ],
+  },
+  play: async ({ args, canvasElement, userEvent }) => {
+    const page = within(canvasElement)
+    await expect(page.getByText('Worth trying with the Denver crew before it goes wider.')).toBeVisible()
+    await expect(page.queryByText('Whole file')).toBeNull()
+    const box = page.getByRole('textbox', { name: 'Comment on the idea' })
+    await userEvent.type(box, 'Agreed: Denver first.')
+    await userEvent.click(page.getByRole('button', { name: 'Add to your review' }))
+    await waitFor(() => expect(args.onComment).toHaveBeenCalledWith('Agreed: Denver first.', true))
+    await expect(box).toHaveValue('')
+    await userEvent.type(box, 'And Austin after.')
+    await userEvent.click(page.getByRole('button', { name: 'Comment' }))
+    await waitFor(() => expect(args.onComment).toHaveBeenCalledWith('And Austin after.', false))
+  },
+}
+
 // A new idea: no description, created and nothing since
 export const New: Story = {
   args: { description: '', activity: activity.slice(0, 1) },
@@ -162,5 +204,6 @@ export const ReadOnly: Story = {
   args: { canComment: false },
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).queryByRole('button', { name: 'Reply' })).toBeNull()
+    await expect(within(canvasElement).queryByRole('textbox', { name: 'Comment on the idea' })).toBeNull()
   },
 }

@@ -102,7 +102,9 @@ export function applyUpload(idea: Idea, comments: Comment[], upload: Upload): Up
   const outcomes = comments.map((comment): CommentOutcome => {
     const anchor = comment.anchor
     let out: { state: AnchorState; anchor: Anchor | null }
-    if (anchor.kind === 'file') {
+    if (anchor.kind === 'idea') {
+      out = { state: 'exact', anchor }
+    } else if (anchor.kind === 'file') {
       out = fileById(result, anchor.file) ? { state: 'exact', anchor } : { state: 'outdated', anchor: null }
     } else if (anchor.kind === 'section') {
       const at = locate(result, anchor.section)
