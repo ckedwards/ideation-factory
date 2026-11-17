@@ -19,6 +19,8 @@ import { IdeaTabs } from './IdeaTabs.tsx'
 import type { IdeaLinks } from './links.ts'
 import { describe, useEditing } from './editing.tsx'
 import { commentsOf } from './live.ts'
+import { rereadComments } from './comments.ts'
+import { ReviewDialog } from './ReviewPanel.tsx'
 import { commentsQuery, draftQuery, filesQuery, ideaQuery, outlineQuery, reviewsQuery } from './queries.ts'
 import { commentInfo, commentWrites, teamRef, usePeople } from './shared.tsx'
 import { VersionBanner } from './VersionBanner.tsx'
@@ -71,6 +73,8 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
   const { data: me } = useSuspenseQuery(meQuery)
   const team = useQuery({ ...teamQuery(idea.team ?? ''), enabled: idea.team !== null })
   const [note, setNote] = useState<string | null>(null)
+  // your review's dialog, over the document, so the reader keeps their place
+  const [reviewing, setReviewing] = useState(false)
 
   // a new version arriving while the latest is shown: the page moves on to it, and says so,
   // unless it's one this page made (accepting suggestions, committing the draft), which says so itself
@@ -220,7 +224,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
                 onSource={setShowSource}
                 review={
                   !older && (idea.owner !== me.id || pendingCount > 0)
-                    ? { href: links.overview, pending: pendingCount }
+                    ? { onReview: () => setReviewing(true), pending: pendingCount }
                     : null
                 }
                 edit={
@@ -347,6 +351,32 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
           ))}
         </ul>
       </Dialog>
+      <ReviewDialog
+        open={reviewing}
+        onClose={() => setReviewing(false)}
+        latest={latest}
+        pending={pendingCount}
+        // a verdict needs someone who may give one, on an open idea
+        verdicts={idea.owner !== me.id && !idea.status.startsWith('closed')}
+        onReview={async (verdict, body) => {
+          await api.reviewIdea({
+            idea: id,
+            version: latest,
+            ...(verdict ? { verdict } : {}),
+            ...(body ? { body } : {}),
+          })
+          // your pending comments are out now, and the review has a new verdict
+          await rereadComments(id)
+          void queryClient.invalidateQueries({ queryKey: reviewsQuery(id).queryKey, exact: true })
+          setNote(verdict ? 'Your review is in.' : 'Your comments are out.')
+        }}
+        onDiscard={() =>
+          void api
+            .discardReview({ idea: id })
+            .then(() => rereadComments(id))
+            .catch((error: unknown) => setNote(error instanceof ApiError ? error.message : String(error)))
+        }
+      />
       <Toast message={note} onDismiss={() => setNote(null)} />
     </>
   )

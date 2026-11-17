@@ -349,7 +349,7 @@ function Row({
   )
 }
 
-interface ReviewFormProps {
+export interface ReviewFormProps {
   latest: number
   pending: number
   verdicts: boolean
@@ -366,23 +366,30 @@ function YourReview(props: ReviewFormProps) {
       <Button variant={props.pending > 0 ? 'primary' : 'default'} onClick={() => setOpen(true)}>
         {label}
       </Button>
-      <Dialog open={open} title={`Your review of v${props.latest}`} onClose={() => setOpen(false)}>
-        <ReviewForm
-          {...props}
-          onReview={async (verdict, body) => {
-            await props.onReview(verdict, body)
-            setOpen(false)
-          }}
-          onDiscard={
-            props.onDiscard &&
-            (() => {
-              props.onDiscard?.()
-              setOpen(false)
-            })
-          }
-        />
-      </Dialog>
+      <ReviewDialog {...props} open={open} onClose={() => setOpen(false)} />
     </>
+  )
+}
+
+/** The review form in a dialog: from the overview's button, or over the document from its toolbar. */
+export function ReviewDialog(props: ReviewFormProps & { open: boolean; onClose: () => void }) {
+  return (
+    <Dialog open={props.open} title={`Your review of v${props.latest}`} onClose={props.onClose}>
+      <ReviewForm
+        {...props}
+        onReview={async (verdict, body) => {
+          await props.onReview(verdict, body)
+          props.onClose()
+        }}
+        onDiscard={
+          props.onDiscard &&
+          (() => {
+            props.onDiscard?.()
+            props.onClose()
+          })
+        }
+      />
+    </Dialog>
   )
 }
 
