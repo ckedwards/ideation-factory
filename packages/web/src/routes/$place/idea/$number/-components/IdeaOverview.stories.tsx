@@ -4,7 +4,6 @@ import { MarkdownView } from '@ideaf/ui'
 import { actors, maya, NOW } from '@ideaf/ui/fixtures'
 import { expect, fn, waitFor, within } from 'storybook/test'
 import { type ActivityItem, IdeaOverview } from './IdeaOverview.tsx'
-import { IdeaTabs } from './IdeaTabs.tsx'
 
 const hours = (n: number) => NOW - n * 3_600_000
 const body = (text: string) => <MarkdownView tree={markdownTree(text)} variant="compact" />
@@ -88,15 +87,16 @@ const meta = {
   component: IdeaOverview,
   parameters: { layout: 'fullscreen' },
   args: {
-    title: 'Offline-first sync for the field app',
+    files: [
+      { path: 'plan.md', href: '#plan' },
+      { path: 'notes/risks.md', href: '#risks' },
+    ],
     team: { name: 'Mobile' },
-    status: { status: 'draft' },
     startedBy: actors.person,
     startedAt: hours(72),
+    latest: { number: 2, at: hours(26) },
     description: 'Field technicians lose signal in basements. Queue their changes, and send them **oldest first**.',
     address: 'mobile/idea/9',
-    tabs: <IdeaTabs current="overview" overview="#" files="#files" />,
-    sharingHref: '#sharing',
     activity,
     canComment: true,
     onReply: fn(),
@@ -113,11 +113,13 @@ type Story = StoryObj<typeof meta>
 export const Activity: Story = {
   play: async ({ canvasElement }) => {
     const page = within(canvasElement)
-    await expect(page.getByRole('heading', { name: 'Offline-first sync for the field app' })).toBeVisible()
+    // its files, each a link to read it, and its details, on the left
+    await expect(page.getByRole('navigation', { name: 'Files' })).toHaveTextContent('plan.md')
     await expect(page.getByText('mobile/idea/9')).toBeVisible()
     await expect(page.getByText('Edited with 3 commands', { exact: false })).toBeVisible()
     await expect(page.getByRole('link', { name: 'What changed' })).toHaveAttribute('href', '#changes-1-2')
-    await expect(page.getByRole('link', { name: 'notes/risks.md' })).toHaveAttribute('href', '#risks')
+    const feed = within(canvasElement.querySelector<HTMLElement>('.idea-activity')!)
+    await expect(feed.getByRole('link', { name: 'notes/risks.md' })).toHaveAttribute('href', '#risks')
     // reviews are in the timeline too, with what they said
     await expect(page.getByText(/requested changes to v1/)).toBeVisible()
     await expect(page.getByText(/asked Maya Chen \(@maya\) to review/)).toBeVisible()

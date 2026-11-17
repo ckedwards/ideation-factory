@@ -1,10 +1,11 @@
-// An idea's overview, like a pull request's conversation: what it is (its
-// title, team, status and description), then everything that happened to it,
-// oldest first: each version, each change of status, and each comment
-// thread, which can be replied to and resolved here, and at the end a box for
-// a comment on the idea as a whole. Its reviews (ReviewPanel)
-// are in a column beside them, as a pull request's reviewers and checks are,
-// and come after the description on a narrow screen.
+// An idea's overview, like a pull request's conversation, in the idea's three
+// slots (IdeaPageLayout), inside its frame: on the left its files, each a link
+// to read it, and its details (team, who started it, its latest version, its
+// address); in the centre what it is (its description), then everything that
+// happened to it, oldest first: each version, each change of status, each
+// review and each comment thread, which can be replied to and resolved here,
+// and at the end a box for a comment on the idea as a whole; on the right its
+// review (ReviewPanel).
 import { type ReactNode, useState } from 'react'
 import { markdownTree } from '@ideaf/core'
 import {
@@ -14,14 +15,11 @@ import {
   CommentCard,
   CopyText,
   Empty,
+  IdeaPageLayout,
   Link,
-  LinkButton,
   MarkdownView,
-  Page,
-  PageHeader,
   RelativeTime,
   Section,
-  StatusPill,
   TeamChip,
   type TeamRef,
 } from '@ideaf/ui'
@@ -67,27 +65,19 @@ export type ActivityItem =
     }
 
 export interface IdeaOverviewProps {
-  title: string
+  /** Its files, each a link straight to it: reading it is one obvious click away. */
+  files: Array<{ path: string; href: string }>
+  /** What used to crowd the title: its team, who started it and when, its latest version, its address. */
   team: TeamRef & { href?: string | undefined }
-  status: ShownStatus
-  /** The status as a control that moves it, for someone who can (IdeaStatus); its pill otherwise. */
-  statusControl?: ReactNode
-  /** More of the header's actions, after Subscribe and Sharing: closing or reopening it (CloseOrReopen). */
-  actions?: ReactNode
   startedBy: Actor
   startedAt: number
+  latest: { number: number; at: number }
+  /** Its address, as people paste it and the cli takes it: mobile/idea/9. */
+  address: string
   /** Markdown; empty when there's none. */
   description: string
-  /** Its address, as people paste it and the cli takes it: mobile/idea/9. */
-  address?: string
-  /** The idea's pages (IdeaTabs). */
-  tabs: ReactNode
-  /** Its reviews: status, reviewers and verdicts (ReviewPanel). */
+  /** Its reviews: requirements, reviewers and verdicts (ReviewPanel). */
   review?: ReactNode
-  /** Who has access, and moving it. */
-  sharingHref: string
-  /** Subscribe / Unsubscribe (SubscribeButton). */
-  subscribe?: ReactNode
   /** Oldest first. */
   activity: ActivityItem[]
   canComment: boolean
@@ -99,37 +89,47 @@ export interface IdeaOverviewProps {
   addToReview?: boolean
 }
 
+/** The overview, in the idea's three slots: its files and details, what it is and what happened, its review. */
 export function IdeaOverview(props: IdeaOverviewProps) {
   return (
-    <Page width="wide">
-      <PageHeader
-        title={props.title}
-        actions={
-          <span className="idea-overview-actions">
-            {props.subscribe}
-            <LinkButton href={props.sharingHref}>Sharing</LinkButton>
-            {props.actions}
-          </span>
-        }
-        sub={
-          <span className="idea-overview-sub">
-            {props.address && <CopyText text={props.address} label="The idea’s address" />}
-            <TeamChip team={props.team} href={props.team.href} />
-            {props.statusControl ?? (
-              <StatusPill
-                status={props.status.status}
-                {...(props.status.reason ? { reason: props.status.reason } : {})}
-              />
-            )}
-            <span>
-              Started by <ActorLabel actor={props.startedBy} short /> <RelativeTime at={props.startedAt} />
-            </span>
-          </span>
-        }
-      />
-      {props.tabs}
-      <div className={`idea-overview${props.review ? '' : ' idea-overview-alone'}`}>
-        <div className="idea-overview-description">
+    <IdeaPageLayout
+      nav={
+        <div className="idea-overview-nav">
+          <nav aria-label="Files">
+            <h2 className="idea-overview-label">Files</h2>
+            <ul className="idea-overview-files">
+              {props.files.map((f) => (
+                <li key={f.path}>
+                  <Link href={f.href}>{f.path}</Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+          <div>
+            <h2 className="idea-overview-label">Details</h2>
+            <dl className="idea-overview-details">
+              <dt>Team</dt>
+              <dd>
+                <TeamChip team={props.team} href={props.team.href} />
+              </dd>
+              <dt>Started by</dt>
+              <dd>
+                <ActorLabel actor={props.startedBy} short /> <RelativeTime at={props.startedAt} />
+              </dd>
+              <dt>Latest</dt>
+              <dd>
+                v{props.latest.number} · <RelativeTime at={props.latest.at} />
+              </dd>
+              <dt>Address</dt>
+              <dd>
+                <CopyText text={props.address} label="The idea’s address" />
+              </dd>
+            </dl>
+          </div>
+        </div>
+      }
+      document={
+        <div className="idea-overview">
           <Section title="Description">
             {props.description.trim() ? (
               <MarkdownView tree={markdownTree(props.description)} variant="compact" />
@@ -137,68 +137,14 @@ export function IdeaOverview(props: IdeaOverviewProps) {
               <p className="idea-overview-none">No description.</p>
             )}
           </Section>
-        </div>
-        {props.review && <aside className="idea-overview-review">{props.review}</aside>}
-        <div className="idea-overview-activity">
           <Section title="Activity">
             {props.activity.length === 0 ? (
               <Empty>Nothing yet.</Empty>
             ) : (
               <ol className="idea-activity">
-                {props.activity.map((item) =>
-                  item.kind === 'version' ? (
-                    <li key={`v${item.number}`} className="idea-activity-version">
-                      <span>
-                        <Link href={item.href}>v{item.number}</Link> · {describe(item)} by{' '}
-                        <ActorLabel actor={item.by} short /> · <RelativeTime at={item.at} />
-                      </span>
-                      {item.changesHref && <Link href={item.changesHref}>What changed</Link>}
-                    </li>
-                  ) : item.kind === 'requested' ? (
-                    <li key={`q${item.at}${item.who}`} className="idea-activity-version">
-                      <span>
-                        {item.by ? (
-                          <>
-                            <ActorLabel actor={item.by} short /> asked {item.who} to review
-                          </>
-                        ) : (
-                          <>Its team’s rules asked {item.who} to review</>
-                        )}{' '}
-                        · <RelativeTime at={item.at} />
-                      </span>
-                    </li>
-                  ) : item.kind === 'review' ? (
-                    <li key={`r${item.at}`} className={`idea-activity-version idea-activity-review is-${item.verdict}`}>
-                      <span>
-                        <ActorLabel actor={item.by} short /> {VERDICT[item.verdict]} v{item.version} ·{' '}
-                        <RelativeTime at={item.at} />
-                        {item.dismissed && (
-                          <span className="idea-activity-note">
-                            {' '}
-                            · dismissed by <ActorLabel actor={item.dismissed.by} short />: {item.dismissed.reason}
-                          </span>
-                        )}
-                      </span>
-                      {item.body && <p className="idea-activity-said">{item.body}</p>}
-                    </li>
-                  ) : item.kind === 'status' ? (
-                    <li key={`s${item.at}`} className="idea-activity-version">
-                      <span>
-                        {statusWords(item)} by <ActorLabel actor={item.by} short /> · <RelativeTime at={item.at} />
-                        {item.note && <span className="idea-activity-note">: {item.note}</span>}
-                      </span>
-                    </li>
-                  ) : (
-                    <li key={item.comment.info.id} className="idea-activity-comment">
-                      {item.file && item.href && (
-                        <div className="idea-activity-where">
-                          On <Link href={item.href}>{item.file}</Link>
-                        </div>
-                      )}
-                      <FeedThread item={item} {...props} />
-                    </li>
-                  ),
-                )}
+                {props.activity.map((item) => (
+                  <ActivityRow key={keyOf(item)} item={item} {...props} />
+                ))}
               </ol>
             )}
             {props.canComment && props.onComment && (
@@ -212,8 +158,75 @@ export function IdeaOverview(props: IdeaOverviewProps) {
             )}
           </Section>
         </div>
-      </div>
-    </Page>
+      }
+      panel={props.review}
+    />
+  )
+}
+
+const keyOf = (item: ActivityItem): string =>
+  item.kind === 'version'
+    ? `v${item.number}`
+    : item.kind === 'requested'
+      ? `q${item.at}${item.who}`
+      : item.kind === 'review'
+        ? `r${item.at}`
+        : item.kind === 'status'
+          ? `s${item.at}`
+          : item.comment.info.id
+
+/** One thing that happened, as the activity lists it. */
+function ActivityRow({ item, ...props }: IdeaOverviewProps & { item: ActivityItem }) {
+  return item.kind === 'version' ? (
+    <li className="idea-activity-version">
+      <span>
+        <Link href={item.href}>v{item.number}</Link> · {describe(item)} by <ActorLabel actor={item.by} short /> ·{' '}
+        <RelativeTime at={item.at} />
+      </span>
+      {item.changesHref && <Link href={item.changesHref}>What changed</Link>}
+    </li>
+  ) : item.kind === 'requested' ? (
+    <li className="idea-activity-version">
+      <span>
+        {item.by ? (
+          <>
+            <ActorLabel actor={item.by} short /> asked {item.who} to review
+          </>
+        ) : (
+          <>Its team’s rules asked {item.who} to review</>
+        )}{' '}
+        · <RelativeTime at={item.at} />
+      </span>
+    </li>
+  ) : item.kind === 'review' ? (
+    <li className={`idea-activity-version idea-activity-review is-${item.verdict}`}>
+      <span>
+        <ActorLabel actor={item.by} short /> {VERDICT[item.verdict]} v{item.version} · <RelativeTime at={item.at} />
+        {item.dismissed && (
+          <span className="idea-activity-note">
+            {' '}
+            · dismissed by <ActorLabel actor={item.dismissed.by} short />: {item.dismissed.reason}
+          </span>
+        )}
+      </span>
+      {item.body && <p className="idea-activity-said">{item.body}</p>}
+    </li>
+  ) : item.kind === 'status' ? (
+    <li className="idea-activity-version">
+      <span>
+        {statusWords(item)} by <ActorLabel actor={item.by} short /> · <RelativeTime at={item.at} />
+        {item.note && <span className="idea-activity-note">: {item.note}</span>}
+      </span>
+    </li>
+  ) : (
+    <li className="idea-activity-comment">
+      {item.file && item.href && (
+        <div className="idea-activity-where">
+          On <Link href={item.href}>{item.file}</Link>
+        </div>
+      )}
+      <FeedThread item={item} {...props} />
+    </li>
   )
 }
 
