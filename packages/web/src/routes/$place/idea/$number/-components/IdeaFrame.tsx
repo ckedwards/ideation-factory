@@ -86,6 +86,14 @@ export function IdeaFrame({ id, links, current, sharing, onSharing, children }: 
   const { data: threads } = useLiveSuspenseQuery((q) => q.from({ thread: commentsOf(id, queryClient) }))
   const pending = threads.flatMap((t) => [t, ...t.replies]).filter((c) => c.pending).length
   const where = teamRef(idea, team.data, people, me.id)
+  // the browser's tab names the idea, so several open can be told apart
+  useEffect(() => {
+    const before = document.title
+    document.title = `${idea.title} · ${where.name}`
+    return () => {
+      document.title = before
+    }
+  }, [idea.title, where.name])
   const latest = idea.versions.find((v) => v.number === idea.latest)
   const closed = review.status.status === 'closed'
   const address = links.overview.replace(/^\//, '')
