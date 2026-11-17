@@ -47,8 +47,17 @@ export type ReviewerSubject = { kind: 'user' | 'group'; id: string }
 export interface ReviewPanelProps {
   status: ShownStatus
   latest: number
-  /** People and groups asked to review, as they show; a group's approval, when one of its members' counts. */
-  reviewers: Array<{ key: string; subject: ReviewerSubject; label: ReactNode; approved?: boolean }>
+  /**
+   * People and groups asked to review, as they show; a group's approval, when one of its members' counts;
+   * and the latest version a person has opened (null when they haven't).
+   */
+  reviewers: Array<{
+    key: string
+    subject: ReviewerSubject
+    label: ReactNode
+    approved?: boolean
+    seen?: number | null
+  }>
   reviews: ReviewRow[]
   /** Its team's approval requirements, checked; empty when it has none. */
   requirements: RequirementCheck[]
@@ -210,14 +219,32 @@ function ReviewerState({
     )
   }
   const theirs = reviews.find((r) => r.reviewer === `u:${reviewer.subject.id}` && !r.dismissed)
+  // what they've read since, while their verdict isn't on the latest version
+  const seen =
+    reviewer.seen === undefined || theirs?.version === latest ? null : (
+      <span className="review-panel-seen">
+        {' · '}
+        {reviewer.seen === null
+          ? 'hasn’t opened it'
+          : reviewer.seen === latest
+            ? 'seen the latest'
+            : `seen v${reviewer.seen}`}
+      </span>
+    )
   if (!theirs) {
-    return <span className="review-panel-state">Not yet</span>
+    return (
+      <span className="review-panel-state">
+        Not yet
+        {seen}
+      </span>
+    )
   }
   const on = theirs.version !== latest ? ` v${theirs.version}` : ''
   return (
     <span className={`review-panel-state is-${theirs.verdict}`}>
       {theirs.verdict === 'approve' ? 'Approved' : theirs.verdict === 'reject' ? 'Rejected' : 'Changes requested'}
       {on}
+      {seen}
     </span>
   )
 }

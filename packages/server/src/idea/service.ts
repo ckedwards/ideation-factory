@@ -140,6 +140,8 @@ export const IdeaWrite = z.discriminatedUnion('type', [
   /** Deletes every pending comment of yours: the review isn't sent. */
   z.strictObject({ type: z.literal('unreview') }),
   z.strictObject({ type: z.literal('resolve'), comment: z.string(), resolved: z.boolean() }),
+  /** The caller opened this version's document: kept if it's the latest they have. */
+  z.strictObject({ type: z.literal('seen'), version: z.number().int().positive() }),
   /** `outdateDraft`: make the version even though it makes changes in the draft outdated. */
   z.strictObject({ type: z.literal('edit'), batch: Batch, outdateDraft: z.boolean().optional() }),
   z.strictObject({
@@ -189,6 +191,8 @@ export type WriteValue =
   /** Suggestions accepted into the draft, and those left out. */
   | { kind: 'drafted'; accepted: string[]; skipped: Skipped[] }
   | { kind: 'resolved'; comment: string; resolved: boolean }
+  /** The latest version the caller has seen, now; null for a bot, whose reading isn't kept. */
+  | { kind: 'seen'; version: number | null }
   | { kind: 'status'; status: IdeaStatus; from: IdeaStatus }
   /** A review submitted (its verdict, if it had one, and the pending comments it published), or a verdict dismissed. */
   | { kind: 'review'; review: ReviewShape | null; published: string[] }
@@ -393,6 +397,8 @@ export class IdeaService {
           return await this.#reply(request, write)
         case 'resolve':
           return await this.#resolve(request, write)
+        case 'seen':
+          return await this.#seen(request, write)
         case 'edit':
           return await this.#edit(request, write)
         case 'upload':
@@ -970,6 +976,32 @@ export class IdeaService {
     }
   }
 
+  /**
+   * Keeps the latest version a person has opened. It tells no one and changes
+   * nothing anyone else sees but reviewers' state, so it isn't remembered as a
+   * write: sending it again is harmless. A bot's reading isn't kept.
+   */
+  async #seen(request: WriteRequest, write: Extract<IdeaWrite, { type: 'seen' }>) {
+    const meta = await this.#requireMeta()
+    if (write.version > meta.latest) {
+      refuse('not_found', `there's no v${write.version}: the latest is v${meta.latest}`)
+    }
+    if (request.caller.purpose !== 'me') {
+      return { result: { ok: true, value: { kind: 'seen', version: null } } satisfies WriteResult, events: [] }
+    }
+    const user = request.caller.user
+    const before = await this.#db.selectFrom('seen').select('version').where('user', '=', user).executeTakeFirst()
+    const version = Math.max(before?.version ?? 0, write.version)
+    if (version !== before?.version) {
+      await this.#db
+        .insertInto('seen')
+        .values({ user, version, at: this.#now() })
+        .onConflict((oc) => oc.column('user').doUpdateSet({ version, at: this.#now() }))
+        .execute()
+    }
+    return { result: { ok: true, value: { kind: 'seen', version } } satisfies WriteResult, events: [] }
+  }
+
   async #accept(request: WriteRequest, write: Extract<IdeaWrite, { type: 'accept' }>) {
     const meta = await this.#requireMeta()
     const latest = await this.#loadLatest()
@@ -1539,6 +1571,8 @@ export class IdeaService {
         note: h.note,
       })),
       reviews: await this.#latestReviews(meta),
+      /** The latest version each person has opened, for reviewers' state: who's shown is the caller's choice. */
+      seen: await this.#db.selectFrom('seen').selectAll().orderBy('user').execute(),
       /** Comment threads not resolved, for the "all discussions resolved" requirement. */
       openThreads: await this.openComments(),
       pending: viewer

@@ -19,7 +19,7 @@ import { IdeaTabs } from './IdeaTabs.tsx'
 import type { IdeaLinks } from './links.ts'
 import { describe, useEditing } from './editing.tsx'
 import { commentsOf } from './live.ts'
-import { commentsQuery, draftQuery, filesQuery, ideaQuery, outlineQuery } from './queries.ts'
+import { commentsQuery, draftQuery, filesQuery, ideaQuery, outlineQuery, reviewsQuery } from './queries.ts'
 import { commentInfo, commentWrites, teamRef, usePeople } from './shared.tsx'
 import { VersionBanner } from './VersionBanner.tsx'
 import { DocToolbar } from './DocToolbar.tsx'
@@ -83,6 +83,14 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
     }
     seenLatest.current = latest
   }, [latest, v])
+
+  // you've opened this version's document: reviewers' state says which version each has seen
+  useEffect(() => {
+    api
+      .markSeen({ idea: id, version })
+      .then(() => queryClient.invalidateQueries({ queryKey: reviewsQuery(id).queryKey, exact: true }))
+      .catch(() => {})
+  }, [id, version, queryClient])
 
   const shown = pulled.files.find((f) => f.path === path) ?? pulled.files[0]!
   const entries = outlines.find((o) => o.id === shown.file)?.entries ?? []

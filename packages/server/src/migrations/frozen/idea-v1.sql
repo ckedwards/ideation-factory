@@ -10,6 +10,7 @@ CREATE INDEX anchors_version ON anchors (version);
 CREATE TABLE status_changes ( seq INTEGER PRIMARY KEY, status TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL, note TEXT NOT NULL );
 CREATE TABLE reviews ( seq INTEGER PRIMARY KEY, reviewer TEXT NOT NULL, by TEXT NOT NULL, verdict TEXT NOT NULL CHECK (verdict IN ('approve', 'request-changes', 'reject')), version INTEGER NOT NULL REFERENCES versions (number), body TEXT NOT NULL, at INTEGER NOT NULL, dismissed TEXT );
 CREATE INDEX reviews_reviewer ON reviews (reviewer, seq);
+CREATE TABLE seen ( user TEXT PRIMARY KEY, version INTEGER NOT NULL REFERENCES versions (number), at INTEGER NOT NULL );
 CREATE TABLE draft ( key TEXT PRIMARY KEY, seq INTEGER NOT NULL UNIQUE, change TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL );
 CREATE TABLE writes (key TEXT PRIMARY KEY, result TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE INDEX writes_at ON writes (at);

@@ -91,6 +91,27 @@ export const Verdicts: Story = {
   },
 }
 
+// What each person asked has opened since their verdict, or at all: Devon read v3 after asking for changes on v2,
+// Sam hasn't opened it, and Ana has read the latest. A group says nothing of it
+export const Seen: Story = {
+  args: {
+    reviewers: [
+      { key: 'user:u-devon', subject: { kind: 'user', id: 'u-devon' }, label: 'Devon Ross (@devon)', seen: 3 },
+      { key: 'user:u-sam', subject: { kind: 'user', id: 'u-sam' }, label: 'Sam Ortiz (@sam)', seen: null },
+      { key: 'user:u-ana', subject: { kind: 'user', id: 'u-ana' }, label: 'Ana Lima (@ana)', seen: 3 },
+      { key: 'group:g1', subject: { kind: 'group', id: 'g1' }, label: 'Security (group)' },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    const reviewers = [...canvasElement.querySelectorAll('.review-panel-reviewer')]
+    await expect(reviewers[0]).toHaveTextContent('Changes requested v2 · seen the latest')
+    await expect(reviewers[1]).toHaveTextContent('Not yet · hasn’t opened it')
+    await expect(reviewers[2]).toHaveTextContent('Not yet · seen the latest')
+    await expect(reviewers[3]).toHaveTextContent('Not yet')
+    await expect(reviewers[3]).not.toHaveTextContent('seen')
+  },
+}
+
 // The team's requirements, checked: closing as accepted waits for them
 export const Requirements: Story = {
   args: {

@@ -41,6 +41,11 @@ describe('reviews from the cli', () => {
 
     const maya = await repoAs('maya')
     const sam = await repoAs('sam')
+    // pulling it says which version she's seen; sam hasn't opened it
+    expect(await maya.ideaf('pull', '--idea', idea)).toMatchObject({ exit: 0 })
+    const seen = (await riley.ideaf('review', 'show')).out
+    expect(seen).toMatch(new RegExp(`@${h('maya')}[^,]* · seen v1`))
+    expect(seen).toMatch(new RegExp(`@${h('sam')}[^,]* · hasn’t opened it`))
     expect((await maya.ideaf('review', 'approve', '--idea', idea, '-m', 'Looks right')).exit).toBe(0)
     expect((await sam.ideaf('review', 'request-changes', '--idea', idea, '-m', 'Which fox?')).exit).toBe(0)
 

@@ -59,6 +59,8 @@ const IdeaReviews = z.object({
   /** How many comments you have pending: your review, not submitted yet. */
   pending: z.number().int(),
   reviews: z.array(Review),
+  /** The latest version each person asked by name has opened (mark_seen), if they have. */
+  seen: z.array(z.object({ user: z.string(), version: z.number().int(), at: z.number() })),
   /** Its team's approval requirements, checked: closing as accepted needs them met. */
   requirements: RequirementsCheck,
 })
@@ -457,6 +459,18 @@ export const operations = {
     kind: 'read',
     input: z.strictObject({ idea: IdeaId }),
     output: IdeaReviews,
+  }),
+
+  markSeen: defineOperation({
+    name: 'mark_seen',
+    summary: 'Say you’ve opened a version',
+    description:
+      "Records that you've opened this version's document, so its reviewers' state can say which version each has seen (list_reviews). The latest you've opened is kept: an older one changes nothing. Only people's own reading is kept: for a bot, it does nothing and gives null.",
+    method: 'POST',
+    path: '/ideas/{idea}/seen',
+    kind: 'write',
+    input: z.strictObject({ idea: IdeaId, version: z.number().int().positive() }),
+    output: z.object({ version: z.number().int().nullable() }),
   }),
 
   setStatus: defineOperation({
