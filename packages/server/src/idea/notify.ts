@@ -24,6 +24,8 @@ export function inboxEvents(events: IdeaEvent[], at: number): InboxEvent[] {
               comment: thread.id,
               ...(anchor?.kind === 'text' ? { quote: anchor.quote } : {}),
               body: excerpt(thread.body),
+              // a suggestion's change, so an email can show what it would change, not only why
+              ...(thread.suggestion ? change(thread.suggestion.old, thread.suggestion.new) : {}),
             },
           },
         ]
@@ -85,9 +87,26 @@ export function publishedInboxEvents(
           kind: r.suggestion ? 'suggestion' : 'comment',
           actor: by,
           at,
-          detail: { comment: r.id, ...(r.quote ? { quote: r.quote } : {}), body: excerpt(r.body) },
+          detail: {
+            comment: r.id,
+            ...(r.quote ? { quote: r.quote } : {}),
+            body: excerpt(r.body),
+            ...(r.suggestion ? suggested(r.suggestion) : {}),
+          },
         },
   )
+}
+
+/** A suggestion's change, its old and new text cut short if they're long. */
+function change(old: string, replacement: string): { old: string; new: string } {
+  const cut = (text: string) => (text.length > 500 ? `${text.slice(0, 500)}…` : text)
+  return { old: cut(old), new: cut(replacement) }
+}
+
+/** A pending suggestion's change, from its row's JSON. */
+function suggested(json: string): { old: string; new: string } | Record<string, never> {
+  const parsed = JSON.parse(json) as { old?: unknown; new?: unknown }
+  return typeof parsed.old === 'string' && typeof parsed.new === 'string' ? change(parsed.old, parsed.new) : {}
 }
 
 /** The start of what was said, for the inbox row. */
