@@ -1,9 +1,10 @@
 // Your notifications (/notifications): the ideas you hear about, one row per
 // idea, newest first; the inbox, or (?done) the ones you've cleared. A column
 // beside them filters, each with how many: the inbox, what's unread, done, why
-// you hear about them, and which team they're in.
+// you hear about them, and which team they're in. In a narrower window the
+// same filters are a row above the list (InboxBar), so the list keeps its room.
 import { type Caller, ideaPath, type Notification } from '@ideaf/api'
-import { Link, Page, PageHeader } from '@ideaf/ui'
+import { Link, Page, PageHeader, SegmentedControl, Select } from '@ideaf/ui'
 import {
   infiniteQueryOptions,
   queryOptions,
@@ -116,6 +117,7 @@ function Notifications() {
     <Page width="wide">
       <PageHeader title="Notifications" sub="What’s happened to the ideas you hear about, one row each." />
       <div className="inbox-layout">
+        <InboxBar filter={filter} counts={counts} go={go} />
         <nav className="inbox-side" aria-label="Show">
           <ul>
             <Choice
@@ -175,6 +177,74 @@ function Notifications() {
         />
       </div>
     </Page>
+  )
+}
+
+/** The filters as a row: which list as tabs, then why and which team as selects, each with how many. */
+function InboxBar({
+  filter,
+  counts,
+  go,
+}: {
+  filter: Filter
+  counts: Awaited<ReturnType<typeof api.countNotifications>> | undefined
+  go: (next: Partial<Filter>) => void
+}) {
+  const count = (n: number | undefined) => (n ? ` ${n}` : '')
+  const list = filter.done ? 'done' : filter.unread ? 'unread' : 'inbox'
+  const reasons = (Object.entries(WHY) as Array<[Reason, string]>).filter(
+    ([reason]) => (counts?.reasons[reason] ?? 0) > 0 || filter.reason === reason,
+  )
+  return (
+    <div className="inbox-bar" role="group" aria-label="Show">
+      <SegmentedControl
+        label="Which"
+        options={[
+          { value: 'inbox', label: `Inbox${count(counts?.all)}` },
+          { value: 'unread', label: `Unread${count(counts?.unread)}` },
+          { value: 'done', label: 'Done' },
+        ]}
+        value={list}
+        onChange={(next) =>
+          go(
+            next === 'done'
+              ? { done: true, unread: false }
+              : next === 'unread'
+                ? { done: false, unread: true }
+                : { done: false, unread: false },
+          )
+        }
+      />
+      <label className="inbox-bar-field">
+        <span>Why</span>
+        <Select
+          size="sm"
+          value={filter.reason ?? ''}
+          onChange={(reason) => go({ reason: reason ? (reason as Reason) : undefined })}
+          options={[
+            { value: '', label: 'Any reason' },
+            ...reasons.map(([reason, label]) => ({
+              value: reason,
+              label: `${label}${counts?.reasons[reason] ? ` (${counts.reasons[reason]})` : ''}`,
+            })),
+          ]}
+        />
+      </label>
+      {(counts?.teams.length ?? 0) > 0 && (
+        <label className="inbox-bar-field">
+          <span>Team</span>
+          <Select
+            size="sm"
+            value={filter.team ?? ''}
+            onChange={(team) => go({ team: team || undefined })}
+            options={[
+              { value: '', label: 'Any team' },
+              ...counts!.teams.map((t) => ({ value: t.handle, label: `${t.name} (${t.count})` })),
+            ]}
+          />
+        </label>
+      )}
+    </div>
   )
 }
 

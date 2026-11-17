@@ -89,3 +89,34 @@ export const GroupedAndEmphasised: Story = {
     await expect(list.getByText('Review requested')).toHaveClass('is-asked')
   },
 }
+
+// Unread has a dot and a bold title, said to screen readers too; read is plain. Each update's kind is drawn
+export const UnreadAndRead: Story = {
+  play: async ({ canvasElement }) => {
+    const [unread, read] = [...canvasElement.querySelectorAll('.inbox-row')]
+    await expect(unread!.querySelector('.inbox-dot')).toHaveTextContent('Unread:')
+    await expect(read!.querySelector('.inbox-dot')).toBeNull()
+    await expect(unread!.querySelector('.inbox-icon svg')).toBeTruthy()
+  },
+}
+
+// In a list as narrow as a phone's, the title keeps the width: when goes top right, and where it
+// stands and why share the line under it
+export const Narrow: Story = {
+  decorators: [
+    (Story) => (
+      <div style={{ width: '22rem' }}>
+        <Story />
+      </div>
+    ),
+  ],
+  play: async ({ canvasElement }) => {
+    const row = canvasElement.querySelector('.inbox-row')!
+    const title = row.querySelector('.inbox-title a')!.getBoundingClientRect()
+    const time = row.querySelector('.inbox-time')!.getBoundingClientRect()
+    const meta = row.querySelector('.inbox-meta')!.getBoundingClientRect()
+    await expect(title.width).toBeGreaterThan(150)
+    await expect(time.top).toBeLessThan(meta.top)
+    await expect(meta.top).toBeGreaterThan(title.bottom)
+  },
+}
