@@ -20,18 +20,25 @@ export function usePeople(ids: string[]): Map<string, Person> {
   )
 }
 
-/** The idea's team as its chip shows it; someone's own idea is "Your ideas" or "Riley Park's ideas". */
+/**
+ * The idea's team as its chip shows it, with its page; someone's own idea is "Your ideas" or "Riley
+ * Park's ideas", and their page.
+ */
 export function teamRef(
   idea: { team: string | null; owner: string },
-  team: { name: string; archived: boolean } | undefined,
+  team: { name: string; archived: boolean; handle: string } | undefined,
   people: Map<string, Person>,
   me: string,
-): TeamRef {
+): TeamRef & { href?: string } {
   if (idea.team === null) {
     const owner = people.get(idea.owner)
-    return { name: idea.owner === me ? 'Your ideas' : `${owner?.name ?? 'Someone'}’s ideas`, personal: true }
+    return {
+      name: idea.owner === me ? 'Your ideas' : `${owner?.name ?? 'Someone'}’s ideas`,
+      personal: true,
+      ...(owner?.handle ? { href: `/@${owner.handle}` } : {}),
+    }
   }
-  return team ? { name: team.name, archived: team.archived } : { name: 'Team' }
+  return team ? { name: team.name, archived: team.archived, href: `/${team.handle}` } : { name: 'Team' }
 }
 
 /**

@@ -82,15 +82,14 @@
   }
 }
 /* the comments panel: its filters, its small group labels, and the whole-file box at the end */
+/* fixed widths, side by side: they don't stack, or change width with what's chosen */
 .idea-comment-filters {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 12rem);
   gap: var(--space-2);
 }
 .idea-comment-filters > * {
-  flex: 0 1 auto;
-  width: auto;
-  max-width: 12rem;
+  width: 100%;
 }
 .idea-panel-group {
   display: grid;
@@ -105,20 +104,22 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.idea-file-comment {
-  padding-top: var(--space-3);
-  border-top: var(--hairline) solid var(--rule);
-}
-/* the rail's head: the title on one line with its status as a dot, then where it is */
+/* the rail's head: back to the team, the title with its status as a dot, then which version */
 .idea-rail-head {
   display: grid;
   gap: var(--space-1);
   /* so the title can be cut short, not push the rail wider */
   min-width: 0;
 }
+.idea-rail-back {
+  justify-self: start;
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}
 .idea-rail-title {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: var(--space-2);
   min-width: 0;
   margin: 0;
@@ -126,11 +127,14 @@
   font-size: var(--text-lg);
   font-weight: 600;
 }
+/* two lines at most: a long title wraps once, then is cut short */
 .idea-rail-title > span:nth-child(2) {
+  display: -webkit-box;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 .idea-rail-dot {
   display: inline-flex;
@@ -153,4 +157,31 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+/* Contents: a disclosure whose summary is the rail's label */
+.idea-contents > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  cursor: pointer;
+  list-style: none;
+}
+.idea-contents > summary::-webkit-details-marker {
+  display: none;
+}
+.idea-contents > summary::before {
+  content: '▸';
+  font-size: 0.9em;
+  transition: transform 0.1s;
+}
+.idea-contents[open] > summary::before {
+  transform: rotate(90deg);
+}
+.idea-contents:not([open]) > summary {
+  margin-bottom: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .idea-contents > summary::before {
+    transition: none;
+  }
 }

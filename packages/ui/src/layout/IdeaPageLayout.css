@@ -52,11 +52,6 @@
     border-right: none;
     border-bottom: var(--hairline) solid var(--rule);
   }
-  /* the contents are the rail's to show, and there's no room for them here */
-  .idea-page-nav .toc,
-  .idea-page-nav .toc-empty {
-    display: none;
-  }
   .idea-page-document {
     --idea-document-top: var(--space-5);
     padding: var(--idea-document-top) var(--space-5) var(--space-7);
