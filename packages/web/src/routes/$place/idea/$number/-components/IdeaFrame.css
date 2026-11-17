@@ -1,0 +1,108 @@
+/* the bar, the tabs, then the page: as tall as the window, the page filling what's left */
+.idea-frame {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  height: 100vh;
+  font-family: var(--font-ui);
+}
+.idea-frame-page {
+  min-height: 0;
+  /* a page in three slots scrolls each on its own; any other (moving it) scrolls here */
+  overflow-y: auto;
+}
+.idea-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: var(--hairline) solid var(--rule);
+  background: var(--surface-2);
+}
+.idea-bar-where {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.idea-bar-mark {
+  flex: none;
+  color: var(--ok);
+  font-size: 1.25rem;
+  text-decoration: none;
+}
+.idea-bar-team {
+  flex: none;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+.idea-bar-slash {
+  color: var(--ink-3);
+}
+.idea-bar-title {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.idea-bar-version {
+  flex: none;
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.idea-bar-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+}
+.idea-bar-site {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  padding-left: var(--space-3);
+  border-left: var(--hairline) solid var(--rule);
+}
+.idea-frame > .idea-tabs {
+  padding: 0 var(--space-4);
+  background: var(--surface-2);
+}
+/* a tablet: the title gets a row of its own, the actions the row under it, rather than cut it short */
+@media (max-width: 75rem) {
+  .idea-bar {
+    flex-wrap: wrap;
+  }
+  .idea-bar-where {
+    flex-basis: 100%;
+  }
+  .idea-bar-actions {
+    margin-left: auto;
+  }
+}
+/* a narrow window: the title wraps too, and the page scrolls as one */
+@media (max-width: 62.5rem) {
+  .idea-frame {
+    height: auto;
+  }
+  .idea-bar-where {
+    flex-wrap: wrap;
+  }
+  .idea-bar-title {
+    white-space: normal;
+  }
+}
+/* a phone: the site's own bar has the way home, notifications and the menu */
+@media (max-width: 50rem) {
+  .idea-bar-mark,
+  .idea-bar-site {
+    display: none;
+  }
+}

@@ -91,10 +91,6 @@ const meta = {
   component: IdeaPage,
   parameters: { layout: 'fullscreen' },
   args: {
-    title: 'Offline-first sync for the field app',
-    team: { name: 'Mobile' },
-    status: { status: 'draft' },
-    version: { number: 3, by: actors.person, at: NOW - 2 * 3_600_000 },
     files: [{ path: 'plan.md', href: '#plan', current: true }],
     source,
     comments,
@@ -239,7 +235,6 @@ export const SeveralFiles: Story = {
 // An older version: read only, with the way back to the latest
 export const OlderVersion: Story = {
   args: {
-    version: { number: 1, by: actors.person, at: NOW - 72 * 3_600_000 },
     source: earlier,
     canComment: false,
     comments: [],
@@ -280,7 +275,6 @@ export const Compare: Story = {
         onCompare={() => {}}
         source={false}
         onSource={() => {}}
-        review={null}
         edit={null}
       />
     ),

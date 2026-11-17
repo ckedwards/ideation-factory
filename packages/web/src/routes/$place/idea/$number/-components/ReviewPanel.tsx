@@ -192,17 +192,6 @@ export function ReviewPanel(props: ReviewPanelProps) {
             as accepted until {standing.length === 1 ? 'it’s' : 'they’re'} withdrawn or dismissed.
           </p>
         )}
-
-        {((props.canReview && !closed) || (props.pending ?? 0) > 0) && (
-          <YourReview
-            latest={props.latest}
-            pending={props.pending ?? 0}
-            // a verdict needs someone who may give one, on an open idea
-            verdicts={props.canReview && !closed}
-            onReview={props.onReview}
-            onDiscard={props.onDiscard}
-          />
-        )}
       </div>
     </Section>
   )
@@ -358,16 +347,33 @@ export interface ReviewFormProps {
   onDiscard: ReviewPanelProps['onDiscard']
 }
 
-/** Your review: a button, then the form in a dialog. */
-function YourReview(props: ReviewFormProps) {
+/**
+ * Your review, the idea's main action for someone asked to give one: a button (in the idea's bar,
+ * the one place it is), then the form in a dialog. Nothing for someone who can't review and has
+ * nothing pending.
+ */
+export function ReviewButton(props: ReviewPanelProps) {
   const [open, setOpen] = useState(false)
-  const label = props.pending > 0 ? `Finish your review (${props.pending} pending)` : 'Give your review'
+  const closed = props.status.status === 'closed'
+  const pending = props.pending ?? 0
+  if (!(props.canReview && !closed) && pending === 0) {
+    return null
+  }
   return (
     <>
-      <Button variant={props.pending > 0 ? 'primary' : 'default'} onClick={() => setOpen(true)}>
-        {label}
+      <Button variant="primary" onClick={() => setOpen(true)}>
+        {pending > 0 ? `Finish your review (${pending})` : 'Give your review'}
       </Button>
-      <ReviewDialog {...props} open={open} onClose={() => setOpen(false)} />
+      <ReviewDialog
+        open={open}
+        onClose={() => setOpen(false)}
+        latest={props.latest}
+        pending={pending}
+        // a verdict needs someone who may give one, on an open idea
+        verdicts={props.canReview && !closed}
+        onReview={props.onReview}
+        onDiscard={props.onDiscard}
+      />
     </>
   )
 }
@@ -462,17 +468,31 @@ function ReviewForm({ pending, verdicts, onReview, onDiscard, onCancel }: Review
   )
 }
 
-function Close({
+function Close(props: { onClose: ReviewPanelProps['onClose']; blocked: ReviewRow[]; unmet: number }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <Button onClick={() => setOpen(true)}>Close…</Button>
+      <CloseDialog {...props} open={open} onOpenChange={setOpen} />
+    </>
+  )
+}
+
+/** Closing an idea: as accepted once nothing stands in the way, or as rejected, with a note. */
+export function CloseDialog({
   onClose,
   blocked,
   unmet,
+  open,
+  onOpenChange: setOpen,
 }: {
   onClose: ReviewPanelProps['onClose']
   blocked: ReviewRow[]
   /** Requirements not met yet. */
   unmet: number
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }) {
-  const [open, setOpen] = useState(false)
   const stopped = blocked.length > 0 || unmet > 0
   const [reason, setReason] = useState<ClosedReason>(stopped ? 'rejected' : 'accepted')
   const [note, setNote] = useState('')
@@ -489,7 +509,6 @@ function Close({
   }
   return (
     <>
-      <Button onClick={() => setOpen(true)}>Close…</Button>
       <Dialog
         open={open}
         title="Close this idea"

@@ -112,51 +112,6 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-/* the rail's head: back to the team, the title with its status as a dot, then which version */
-.idea-rail-head {
-  display: grid;
-  gap: var(--space-1);
-  /* so the title can be cut short, not push the rail wider */
-  min-width: 0;
-}
-.idea-rail-back {
-  justify-self: start;
-  color: var(--ink-2);
-  font-family: var(--font-ui);
-  font-size: var(--text-xs);
-}
-.idea-rail-title {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  min-width: 0;
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: var(--text-lg);
-  font-weight: 600;
-}
-/* two lines at most: a long title wraps once, then is cut short */
-.idea-rail-title > span:nth-child(2) {
-  display: -webkit-box;
-  min-width: 0;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-}
-.idea-rail-dot {
-  display: inline-flex;
-  flex: none;
-}
-.idea-rail-meta {
-  margin: 0;
-  color: var(--ink-2);
-  font-family: var(--font-ui);
-  font-size: var(--text-xs);
-}
-.idea-rail-meta a {
-  color: var(--ink-2);
-}
 .idea-rail-label {
   margin: 0 0 var(--space-2);
   color: var(--ink-3);
