@@ -176,6 +176,19 @@ export function IdeaPage(props: IdeaPageProps) {
     </Stack>
   )
 
+  // the file's sections, for its contents
+  const contents = sections
+    .filter((heading) => heading.level >= 2 && heading.level <= 4)
+    .map((heading) => {
+      const end = sectionEnd(sections, heading)
+      return {
+        id: heading.id,
+        title: heading.title,
+        level: heading.level,
+        changed: changed.some((range) => range.start < end && heading.offset < range.end),
+        openComments: inText.filter((c) => within(c.place, heading.offset, end)).length,
+      }
+    })
   const nav = (
     <div className="idea-nav">
       <Stack gap={5}>
@@ -195,29 +208,21 @@ export function IdeaPage(props: IdeaPageProps) {
             </ul>
           </nav>
         )}
-        {/* open beside the document; a disclosure, closed to start, where the rail is a band across the top */}
-        <details
-          className="idea-contents"
-          open={contentsOpen}
-          onToggle={(event) => setContentsOpen(event.currentTarget.open)}
-        >
-          <summary className="idea-rail-label">Contents</summary>
-          <Toc
-            entries={sections
-              .filter((heading) => heading.level >= 2 && heading.level <= 4)
-              .map((heading) => {
-                const end = sectionEnd(sections, heading)
-                return {
-                  id: heading.id,
-                  title: heading.title,
-                  level: heading.level,
-                  changed: changed.some((range) => range.start < end && heading.offset < range.end),
-                  openComments: inText.filter((c) => within(c.place, heading.offset, end)).length,
-                }
-              })}
-            onJump={(entry) => window.document.getElementById(entry.id)?.scrollIntoView({ block: 'start' })}
-          />
-        </details>
+        {/* open beside the document; a disclosure, closed to start, where the rail is a band across the top;
+            left out for a file with no headings, rather than a heading over nothing */}
+        {contents.length > 0 && (
+          <details
+            className="idea-contents"
+            open={contentsOpen}
+            onToggle={(event) => setContentsOpen(event.currentTarget.open)}
+          >
+            <summary className="idea-rail-label">Contents</summary>
+            <Toc
+              entries={contents}
+              onJump={(entry) => window.document.getElementById(entry.id)?.scrollIntoView({ block: 'start' })}
+            />
+          </details>
+        )}
       </Stack>
     </div>
   )
@@ -274,6 +279,7 @@ export function IdeaPage(props: IdeaPageProps) {
           label="Comment on the whole file"
           onComment={props.onFileComment}
           addToReview={props.addToReview ?? false}
+          folded
         />
       )}
       {onFile.length > 0 && (
