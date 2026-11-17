@@ -281,11 +281,10 @@ export const Compare: Story = {
   },
   play: async ({ canvasElement }) => {
     const page = within(canvasElement)
-    await expect(page.getByText('Changes v1 → v3')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Comparing: v1 → v3' })).toBeVisible()
     // how much changed, and the way through it
     await expect(page.getByText(/^\d+ changes? in \d+ sections?$/)).toBeVisible()
     await expect(page.getByRole('button', { name: 'Next change' })).toBeVisible()
-    await expect(page.getByRole('link', { name: 'Stop comparing' })).toHaveAttribute('href', '#stop')
     await expect(canvasElement.querySelector('ins')).not.toBeNull()
     await expect(canvasElement.querySelector('del')).not.toBeNull()
     // the versions panel is open, the range from v1 to v3 marked

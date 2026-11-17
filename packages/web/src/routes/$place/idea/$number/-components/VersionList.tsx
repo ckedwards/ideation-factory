@@ -1,9 +1,8 @@
 // An idea's versions, newest first: who made each and when, and how (with
-// edit commands, an upload, or when it was created). Two pickers above them say
-// which is shown and what it's compared with, and change either; each version
-// can be viewed, and an earlier one compared against: the document then shows
-// what changed since.
-import { type Actor, ActorLabel, Link, RelativeTime, Select, Tag } from '@ideaf/ui'
+// edit commands, an upload, or when it was created). Each version can be
+// viewed, and an earlier one compared against: the document then shows what
+// changed since, and the toolbar's Comparing menu changes either version.
+import { type Actor, ActorLabel, Link, RelativeTime, Tag } from '@ideaf/ui'
 import { plural } from '../../../../../plural.ts'
 import './VersionList.css'
 
@@ -26,44 +25,11 @@ export interface VersionListProps {
   /** Where viewing a version goes, and comparing the one viewed against an earlier one. */
   viewHref: (version: number) => string
   compareHref: (base: number) => string
-  /** Showing one version compared with another (or nothing): the pickers above the list. */
-  onRange?: (version: number, base: number | null) => void
 }
 
-export function VersionList({ versions, viewing, latest, base, viewHref, compareHref, onRange }: VersionListProps) {
-  const options = versions.map((v) => ({
-    value: String(v.number),
-    label: v.number === latest ? `v${v.number} (latest)` : `v${v.number}`,
-  }))
+export function VersionList({ versions, viewing, latest, base, viewHref, compareHref }: VersionListProps) {
   return (
     <>
-      {onRange && versions.length > 1 && (
-        <div className="version-range" role="group" aria-label="Which versions">
-          <label>
-            Show
-            <Select
-              size="sm"
-              aria-label="Show version"
-              options={options}
-              value={String(viewing)}
-              onChange={(v) => onRange(Number(v), base !== null && base < Number(v) ? base : null)}
-            />
-          </label>
-          <label>
-            compared with
-            <Select
-              size="sm"
-              aria-label="Compared with"
-              options={[
-                { value: '', label: 'nothing' },
-                ...options.filter((o) => Number(o.value) < viewing).map((o) => ({ ...o, label: `v${o.value}` })),
-              ]}
-              value={base === null ? '' : String(base)}
-              onChange={(b) => onRange(viewing, b ? Number(b) : null)}
-            />
-          </label>
-        </div>
-      )}
       <ol className="version-list" aria-label="Versions">
         {versions.map((v) => {
           const classes = [

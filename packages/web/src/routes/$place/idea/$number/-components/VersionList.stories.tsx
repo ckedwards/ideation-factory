@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { actors, NOW } from '@ideaf/ui/fixtures'
-import { expect, fn, within } from 'storybook/test'
+import { expect, within } from 'storybook/test'
 import { VersionList } from './VersionList.tsx'
 
 const hours = (n: number) => NOW - n * 3_600_000
@@ -39,19 +39,6 @@ export const Latest: Story = {
 
 // Comparing v4 against v2: the range between them marked
 export const Comparing: Story = { args: { base: 2 } }
-
-// The pickers above the list: which version is shown, and what it's compared with
-export const Pickers: Story = {
-  args: { base: 2, onRange: fn() },
-  play: async ({ args, canvasElement, userEvent }) => {
-    const list = within(canvasElement)
-    await expect(list.getByRole('combobox', { name: 'Compared with' })).toHaveValue('2')
-    await userEvent.selectOptions(list.getByRole('combobox', { name: 'Compared with' }), '1')
-    await expect(args.onRange).toHaveBeenCalledWith(args.viewing, 1)
-    await userEvent.selectOptions(list.getByRole('combobox', { name: 'Compared with' }), 'nothing')
-    await expect(args.onRange).toHaveBeenCalledWith(args.viewing, null)
-  },
-}
 
 // Reading an older version: the latest marked as such, nothing after it to compare
 export const Older: Story = {
