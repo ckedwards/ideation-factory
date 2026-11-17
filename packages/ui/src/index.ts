@@ -49,6 +49,7 @@ export { TextField, type TextFieldProps } from './controls/TextField.tsx'
 
 export { Tooltip, type TooltipProps } from './overlays/Tooltip.tsx'
 export { Dialog, type DialogProps } from './overlays/Dialog.tsx'
+export { FilterMenu, type FilterMenuProps } from './overlays/FilterMenu.tsx'
 export { Toast, type ToastProps } from './overlays/Toast.tsx'
 
 export { PageHeader, type PageHeaderProps } from './page/PageHeader.tsx'

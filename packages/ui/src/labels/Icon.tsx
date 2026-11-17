@@ -45,6 +45,8 @@ const PATHS = {
   ),
   // a dot: anything else
   update: <circle cx="8" cy="8" r="2.5" />,
+  // a chevron down: a menu opens here
+  menu: <path d="M4 6.5l4 4 4-4" />,
 } satisfies Record<string, ReactNode>
 
 export type IconName = keyof typeof PATHS
