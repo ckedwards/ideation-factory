@@ -17,9 +17,11 @@ export interface FilterMenuProps {
   /** The way to choose; `close` closes the menu once a choice is made. */
   children: (close: () => void) => ReactNode
   onClear: () => void
+  /** What its Clear says, when "Clear author" isn't it: "Stop comparing". */
+  clearLabel?: string
 }
 
-export function FilterMenu({ label, value, children, onClear }: FilterMenuProps) {
+export function FilterMenu({ label, value, children, onClear, clearLabel }: FilterMenuProps) {
   const [open, setOpen] = useState(false)
   const close = () => setOpen(false)
   return (
@@ -47,7 +49,7 @@ export function FilterMenu({ label, value, children, onClear }: FilterMenuProps)
                   close()
                 }}
               >
-                Clear {label.toLowerCase()}
+                {clearLabel ?? `Clear ${label.toLowerCase()}`}
               </Button>
             )}
           </Popover.Popup>
