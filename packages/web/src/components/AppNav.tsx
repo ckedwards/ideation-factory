@@ -2,7 +2,7 @@
 // your teams, and at the bottom the signed-in person, the theme and signing
 // out.
 import type { ReactNode } from 'react'
-import { AccountMenu, Link, type Person, SideNav, type Theme } from '@ideaf/ui'
+import { AccountMenu, InboxLink, Link, type Person, SideNav, type Theme } from '@ideaf/ui'
 import './AppNav.css'
 
 /** The page being shown, so its link is marked. */
@@ -49,16 +49,11 @@ export function AppNav({
         </>
       }
       brandHref="/"
+      corner={<InboxLink href="/notifications" unread={unread} current={current === 'notifications'} />}
       groups={[
         {
           items: [
             { href: '/', label: 'Home', current: current === 'home' },
-            {
-              href: '/notifications',
-              label: 'Notifications',
-              current: current === 'notifications',
-              ...(unread > 0 ? { count: unread } : {}),
-            },
             { href: '/ideas', label: 'Ideas', current: current === 'ideas' },
             { href: `/@${me.handle}`, label: 'Your ideas' },
             { href: '/teams', label: 'Teams', current: current === 'teams' },
