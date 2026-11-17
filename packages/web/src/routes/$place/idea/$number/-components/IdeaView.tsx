@@ -204,6 +204,13 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
                 .filter((n) => n.number !== version)
                 .map((n) => ({ version: n.number, href: links.changes(n.number, shownV, path) }))}
               onCompare={(href) => void navigate({ href })}
+              range={{
+                versions: [...idea.versions].reverse().map((n) => n.number),
+                onRange: (v, b) => {
+                  const at = v === latest ? undefined : v
+                  void navigate({ href: b === null ? links.files({ v: at, file: path }) : links.changes(b, at, path) })
+                },
+              }}
               source={showSource}
               onSource={setShowSource}
               edit={
@@ -248,10 +255,6 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
           base,
           viewHref: (n) => links.files({ v: n === latest ? undefined : n, file: path }),
           compareHref: (b) => links.changes(b, shownV, path),
-          onRange: (v, b) => {
-            const at = v === latest ? undefined : v
-            void navigate({ href: b === null ? links.files({ v: at, file: path }) : links.changes(b, at, path) })
-          },
         }}
         comments={threads.flatMap((thread) => {
           const where = place(thread, file)

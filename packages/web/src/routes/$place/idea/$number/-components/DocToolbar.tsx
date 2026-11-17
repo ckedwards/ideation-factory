@@ -2,7 +2,7 @@
 // with it: compare it with another version (or stop), read its Markdown source, and edit it. Comparing
 // lives here, a way of looking at the file, not a page of its own. Your review is of the idea, not one
 // file, so its button is in the idea's bar.
-import { Button, Link, Select } from '@ideaf/ui'
+import { Button, FilterMenu, Select } from '@ideaf/ui'
 import './DocToolbar.css'
 
 export interface DocToolbarProps {
@@ -18,6 +18,11 @@ export interface DocToolbarProps {
   onSource: (source: boolean) => void
   /** Editing: what it says (Edit, or Open the draft); null when you can't. */
   edit: { label: string; disabled: boolean; onEdit: () => void } | null
+  /**
+   * Comparing's one control: which version is shown and what it's compared with, chosen in the
+   * "Comparing: v1 → v3" menu (the versions, newest first).
+   */
+  range?: { versions: number[]; onRange: (version: number, base: number | null) => void }
   /** The editor's open: the toolbar stays, saying how to edit in place of the reading actions (the idea's bar has the rest). */
   editing?: boolean
 }
@@ -37,12 +42,52 @@ export function DocToolbar(props: DocToolbarProps) {
       ) : (
         <span className="doc-toolbar-actions">
           {props.compare ? (
-            <span className="doc-toolbar-chip">
-              Changes v{props.compare.base} → v{props.version}
-              <Link href={props.compare.stopHref} aria-label="Stop comparing" title="Stop comparing">
-                ✕
-              </Link>
-            </span>
+            // the one control for comparing: which versions, and stopping
+            <FilterMenu
+              label="Comparing"
+              value={`v${props.compare.base} → v${props.version}`}
+              clearLabel="Stop comparing"
+              onClear={() => props.onCompare(props.compare!.stopHref)}
+            >
+              {(close) =>
+                props.range && (
+                  <div className="doc-toolbar-range">
+                    <label>
+                      Show
+                      <Select
+                        size="sm"
+                        aria-label="Show version"
+                        options={props.range.versions.map((n) => ({
+                          value: String(n),
+                          label: n === props.latest ? `v${n} (latest)` : `v${n}`,
+                        }))}
+                        value={String(props.version)}
+                        onChange={(v) => {
+                          const next = Number(v)
+                          props.range!.onRange(next, props.compare!.base < next ? props.compare!.base : null)
+                          close()
+                        }}
+                      />
+                    </label>
+                    <label>
+                      compared with
+                      <Select
+                        size="sm"
+                        aria-label="Compared with"
+                        options={props.range.versions
+                          .filter((n) => n < props.version)
+                          .map((n) => ({ value: String(n), label: `v${n}` }))}
+                        value={String(props.compare!.base)}
+                        onChange={(b) => {
+                          props.range!.onRange(props.version, Number(b))
+                          close()
+                        }}
+                      />
+                    </label>
+                  </div>
+                )
+              }
+            </FilterMenu>
           ) : (
             props.compareWith.length > 0 && (
               <Select
