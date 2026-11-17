@@ -255,7 +255,7 @@ export const operations = {
     mcp: true,
     summary: 'Comment',
     description:
-      "Comments on a file, a section (by its ID) or a range of a file's plain text (from show_blocks), on the latest version. With `pending`, it's part of your review: only you see it until you submit the review with review_idea, so the author gets one review instead of a stream of comments. If the idea has moved on, it's refused with stale_version: read it again.",
+      "Comments on the idea as a whole, a file, a section (by its ID) or a range of a file's plain text (from show_blocks), on the latest version. With `pending`, it's part of your review: only you see it until you submit the review with review_idea, so the author gets one review instead of a stream of comments. If the idea has moved on, it's refused with stale_version: read it again.",
     method: 'POST',
     path: '/ideas/{idea}/comments',
     kind: 'write',

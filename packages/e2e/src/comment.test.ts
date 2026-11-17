@@ -1,4 +1,4 @@
-// ideaf comment, end to end: comments on quotes, sections and files, threads,
+// ideaf comment, end to end: comments on quotes, sections, files and the idea, threads,
 // replies and resolving, as the owner and as a reviewer.
 import { beforeAll, describe, expect, test } from 'bun:test'
 import { api, repo, server, token } from './harness.ts'
@@ -84,14 +84,19 @@ describe('ideaf comment add', () => {
     expect((await r.ideaf('comment', 'add', 'Expand these', '--section', risks)).out).toBe('Added c1 on v1.')
     expect((await r.ideaf('comment', 'add', 'Whole plan', '--file', 'docs/plan.md')).exit).toBe(0)
     expect((await r.ideaf('comment', 'add', 'By ID', '--file', plan)).exit).toBe(0)
+    expect((await r.ideaf('comment', 'add', 'Worth a pilot', '--whole-idea')).out).toBe('Added c4 on v1.')
     expect((await api(h('riley')).listComments({ idea })).map((c) => c.anchor?.kind)).toEqual([
       'section',
       'file',
       'file',
+      'idea',
     ])
+    expect((await r.ideaf('comment', 'list')).out).toContain('on the idea')
+    expect((await r.ideaf('show', '--blocks')).out).toContain('comments on the idea:')
 
     expect((await r.ideaf('comment', 'add', 'On what?')).exit).toBe(2)
     expect((await r.ideaf('comment', 'add', 'x', '--section', risks, '--quote', 'Risks')).exit).toBe(2)
+    expect((await r.ideaf('comment', 'add', 'x', '--whole-idea', '--file', plan)).exit).toBe(2)
     expect((await r.ideaf('comment', 'add', 'x', '--file', 'nope.md')).exit).toBe(5)
     expect((await r.ideaf('comment', 'add', '  ', '--file', plan)).exit).toBe(2)
     expect((await r.ideaf('comment', 'add', '--file', plan)).exit).toBe(2) // no body

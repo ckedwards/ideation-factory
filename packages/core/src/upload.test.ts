@@ -30,7 +30,11 @@ function upload(idea: Idea, comments: Comment[], files: Upload['files'], deleted
 
 const outcome = (r: ReturnType<typeof upload>, id: string) => {
   const c = r.comments.find((x) => x.id === id)!
-  return { state: c.state, quote: c.anchor?.kind === 'text' ? c.anchor.quote : null, file: c.anchor?.file ?? null }
+  return {
+    state: c.state,
+    quote: c.anchor?.kind === 'text' ? c.anchor.quote : null,
+    file: c.anchor && 'file' in c.anchor ? c.anchor.file : null,
+  }
 }
 const ids = (r: ReturnType<typeof upload>, file = 'f1') => r.idea.files.find((f) => f.id === file)!.unitIds
 
@@ -216,6 +220,7 @@ describe('files', () => {
       [
         { id: 'renamed', anchor: { kind: 'file', file: 'f1' } },
         { id: 'deleted', anchor: { kind: 'file', file: 'f3' } },
+        { id: 'on-idea', anchor: { kind: 'idea' } },
       ],
       [
         { file: 'f1', path: 'docs/a.md', content: '# A\n' },
@@ -229,6 +234,11 @@ describe('files', () => {
     ])
     expect(outcome(r, 'renamed').state).toBe('exact')
     expect(outcome(r, 'deleted').state).toBe('outdated')
+    expect(r.comments.find((c) => c.id === 'on-idea')).toEqual({
+      id: 'on-idea',
+      state: 'exact',
+      anchor: { kind: 'idea' },
+    })
   })
 
   test('problems are reported, and nothing applies', () => {

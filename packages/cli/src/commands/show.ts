@@ -19,13 +19,20 @@ export async function show(
   }
 
   ctx.say(`${id} v${view.version}`)
+  const onIdea = view.comments.filter((c) => c.anchor?.kind === 'idea')
+  if (onIdea.length) {
+    ctx.say('\ncomments on the idea:')
+  }
+  for (const c of onIdea) {
+    ctx.say(`  ${c.id.padEnd(4)} ${truncate(c.body, 90)}${replies(c.replies.length)}`)
+  }
   for (const file of view.files) {
     ctx.say(`\n${file.id}  ${file.path}`)
     for (const entry of file.entries) {
       const depth = Math.max(0, entry.path.length - (entry.kind === 'heading' ? 1 : 0))
       ctx.say(`  ${entry.id.padEnd(5)} ${'  '.repeat(depth)}${truncate(entry.source, 100 - depth * 2)}`)
     }
-    const comments = view.comments.filter((c) => c.anchor?.file === file.id)
+    const comments = view.comments.filter((c) => c.anchor && 'file' in c.anchor && c.anchor.file === file.id)
     if (comments.length) {
       ctx.say('  comments:')
     }
@@ -36,10 +43,10 @@ export async function show(
           : c.anchor?.kind === 'section'
             ? `on section ${c.anchor.section}`
             : 'on the file'
-      ctx.say(
-        `    ${c.id.padEnd(4)} ${on}: ${truncate(c.body, 70)}${c.replies.length ? ` (${c.replies.length} repl${c.replies.length === 1 ? 'y' : 'ies'})` : ''}`,
-      )
+      ctx.say(`    ${c.id.padEnd(4)} ${on}: ${truncate(c.body, 70)}${replies(c.replies.length)}`)
     }
   }
   return EXIT.ok
 }
+
+const replies = (n: number) => (n ? ` (${n} repl${n === 1 ? 'y' : 'ies'})` : '')

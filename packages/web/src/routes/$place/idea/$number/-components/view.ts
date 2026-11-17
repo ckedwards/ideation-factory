@@ -29,7 +29,8 @@ export function place(thread: Thread, file: FileView): Placement | null {
     // its text isn't in this version: listed with every file, under "not in this version"
     return { kind: 'outdated' }
   }
-  if (thread.anchor.file !== file.id) {
+  // one on the idea as a whole is in its activity, not on any file
+  if (thread.anchor.kind === 'idea' || thread.anchor.file !== file.id) {
     return null
   }
   switch (thread.anchor.kind) {

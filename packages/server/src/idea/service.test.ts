@@ -375,6 +375,20 @@ describe('comments', () => {
       replies: [{ id: 'c2', body: 'Thanks', author: REVIEWER }],
     })
   })
+  test('a comment on the idea as a whole stays as it is through edits, uploads and deleted files', async () => {
+    const { service, write } = await created()
+    value(await write({ type: 'comment', version: 1, anchor: { kind: 'idea' }, body: 'Worth a pilot' }, REVIEWER))
+    await write({ type: 'edit', batch: { base: 1, steps: [{ command: 'delete', target: 'b3' }] } })
+    await write({
+      type: 'edit',
+      batch: { base: 2, steps: [{ command: 'create-file', path: 'notes.md', markdown: 'Hi.' }] },
+    })
+    await write({ type: 'edit', batch: { base: 3, steps: [{ command: 'delete-file', file: 'f1' }] } })
+    for (const version of [1, 2, 3, 4]) {
+      const [c] = await service.comments(version)
+      expect(c).toMatchObject({ id: 'c1', state: 'exact', anchor: { kind: 'idea' }, body: 'Worth a pilot' })
+    }
+  })
 })
 
 describe('suggested edits', () => {

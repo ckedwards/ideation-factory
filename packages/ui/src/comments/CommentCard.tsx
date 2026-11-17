@@ -7,8 +7,9 @@ import { RelativeTime } from '../time/RelativeTime.tsx'
 import { ViewInVersion } from './ViewInVersion.tsx'
 import './CommentCard.css'
 
-// What a comment is on: the whole file, a section, or some text.
+// What a comment is on: the idea as a whole, the whole file, a section, or some text.
 export type CommentTarget =
+  | { kind: 'idea' }
   | { kind: 'file' }
   | { kind: 'section'; title: string }
   | { kind: 'text'; quote: string; section?: string }

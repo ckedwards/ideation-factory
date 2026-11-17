@@ -86,6 +86,7 @@ export const IdeaWrite = z.discriminatedUnion('type', [
     /** The version the anchor refers to; it must be the latest. */
     version: z.number().int().positive(),
     anchor: z.discriminatedUnion('kind', [
+      z.strictObject({ kind: z.literal('idea') }),
       z.strictObject({ kind: z.literal('file'), file: z.string() }),
       z.strictObject({ kind: z.literal('section'), section: z.string() }),
       z.strictObject({ kind: z.literal('text'), file: z.string(), start: z.number().int(), end: z.number().int() }),

@@ -27,7 +27,6 @@ import {
   SelectionMenu,
   Stack,
   Tabs,
-  TextArea,
   type TeamRef,
   type TextSelection,
   Toc,
@@ -35,6 +34,7 @@ import {
 import { VersionList, type VersionListProps } from './VersionList.tsx'
 import type { Placement } from './view.ts'
 import type { ShownStatus } from '../../../../../ideas.ts'
+import { CommentBox } from './CommentBox.tsx'
 import './IdeaPage.css'
 
 /** A comment, as shown, and where it goes in the file shown. */
@@ -313,7 +313,13 @@ export function IdeaPage(props: IdeaPageProps) {
         }
       />
       {canComment && props.onFileComment && (
-        <FileComment onComment={props.onFileComment} addToReview={props.addToReview ?? false} />
+        <div className="idea-file-comment">
+          <CommentBox
+            label="Comment on the whole file"
+            onComment={props.onFileComment}
+            addToReview={props.addToReview ?? false}
+          />
+        </div>
       )}
     </Stack>
   )
@@ -429,52 +435,6 @@ function actorName(actor: Actor): string {
 }
 
 /** A comment on the whole file, at the end of the comments. */
-function FileComment({
-  onComment,
-  addToReview,
-}: {
-  onComment: (body: string, pending: boolean) => void
-  addToReview: boolean
-}) {
-  const [body, setBody] = useState('')
-  const send = (pending: boolean) => {
-    if (body.trim()) {
-      onComment(body.trim(), pending)
-      setBody('')
-    }
-  }
-  return (
-    <form
-      className="idea-file-comment"
-      onSubmit={(event) => {
-        event.preventDefault()
-        send(false)
-      }}
-    >
-      <TextArea
-        rows={2}
-        value={body}
-        placeholder="Comment on the whole file"
-        aria-label="Comment on the whole file"
-        onChange={setBody}
-        onSubmit={() => send(false)}
-      />
-      {body.trim() && (
-        <div className="idea-file-comment-buttons">
-          {addToReview && (
-            <Button size="sm" onClick={() => send(true)}>
-              Add to your review
-            </Button>
-          )}
-          <Button size="sm" variant="primary" type="submit">
-            Comment
-          </Button>
-        </div>
-      )}
-    </form>
-  )
-}
-
 /** When comparing: how much changed, and a way from one change to the next. */
 function ChangeSummary({
   sections,

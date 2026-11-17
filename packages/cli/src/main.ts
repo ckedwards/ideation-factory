@@ -248,7 +248,7 @@ const stdin = () => Bun.stdin.text()
 const comment: Family = {
   name: 'comment',
   summary:
-    'Comments: list and read threads, comment on a file, section or quote, reply, resolve, and suggest edits, accept or reject them',
+    'Comments: list and read threads, comment on the idea, a file, section or quote, reply, resolve, and suggest edits, accept or reject them',
   subcommands: [
     {
       name: 'list',
@@ -283,9 +283,10 @@ const comment: Family = {
     },
     {
       name: 'add',
-      usage: 'ideaf comment add <body | -> (--quote <text> [--file <file>] | --section <id> | --file <file>)',
+      usage:
+        'ideaf comment add <body | -> (--quote <text> [--file <file>] | --section <id> | --file <file> | --whole-idea)',
       summary:
-        'Comment on the latest version: on a quote from the text, a section (IDs from `ideaf show --blocks`), or a whole file. "-" reads the body from stdin',
+        'Comment on the latest version: on a quote from the text, a section (IDs from `ideaf show --blocks`), a whole file, or the idea as a whole. "-" reads the body from stdin',
       flags: {
         idea: IDEA,
         quote: {
@@ -295,6 +296,7 @@ const comment: Family = {
         occurrence: { type: 'string', description: 'which match of --quote, from 1' },
         section: { type: 'string', description: 'the section it’s on, by its heading’s ID' },
         file: { type: 'string', description: 'the file it’s on (ID or path), or where to look for --quote' },
+        'whole-idea': { type: 'boolean', description: 'on the idea as a whole, not any one file' },
         pending: { type: 'boolean', description: 'part of your review: only you see it until you submit the review' },
       },
       run: (ctx, f, a) =>
@@ -306,6 +308,7 @@ const comment: Family = {
             ...(str(f, 'occurrence') ? { occurrence: str(f, 'occurrence')! } : {}),
             ...(str(f, 'section') ? { section: str(f, 'section')! } : {}),
             ...(str(f, 'file') ? { file: str(f, 'file')! } : {}),
+            ...(f['whole-idea'] === true ? { wholeIdea: true } : {}),
             ...(f.pending === true ? { pending: true } : {}),
           },
           containers.need(a, ['body'], 'ideaf comment add <body> --quote <text>')[0]!,
