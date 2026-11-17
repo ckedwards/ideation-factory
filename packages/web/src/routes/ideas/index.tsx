@@ -1,10 +1,11 @@
 // Every idea you can see, open ones by default (?state=closed for the closed),
-// newest change first, 25 at a time, with how many there are; narrowed by
-// author, team, who's asked to review it, or to drafts (each in the address, so
-// a filtered list can be linked to: Home's review list, say); or a search of
-// their titles (?q=), closest first.
+// newest change first, 25 at a time, with how many there are; narrowed by a
+// search of their titles (?q=), author, team, who's asked to review it, or to
+// drafts, in any combination, as GitHub's lists are. Each is in the address,
+// so a filtered list can be linked to (Home's review list, say). The filters
+// are one bar of menus that say what they're set to.
 import { useState } from 'react'
-import { Button, Page, PageHeader, type Person, SearchInput, Stack } from '@ideaf/ui'
+import { Button, FilterMenu, Page, PageHeader, type Person, SearchInput, Stack } from '@ideaf/ui'
 import { useInfiniteQuery, useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { api, meQuery } from '../../api.ts'
@@ -13,7 +14,7 @@ import { PersonPicker } from '../../components/PersonPicker.tsx'
 import { StateTabs } from '../../components/StateTabs.tsx'
 import { TeamPicker, type TeamRefLite } from '../../components/TeamPicker.tsx'
 import { ideaInfo } from '../../ideas.ts'
-import { countQuery, type IdeaFilters, type IdeaState, ideasQuery, searchable, searchQuery } from '../../lists.ts'
+import { countQuery, type IdeaFilters, type IdeaState, ideasQuery, searchable } from '../../lists.ts'
 import { plural } from '../../plural.ts'
 import './-ideas.css'
 
@@ -29,8 +30,9 @@ interface Search {
 
 const text = (value: unknown) => (typeof value === 'string' && value ? value : undefined)
 
-/** The filters, as the api takes them: handles are refs too. */
+/** The filters, as the api takes them: handles are refs too; a search too short to run is left out. */
 const filtersOf = (search: Search): IdeaFilters => ({
+  ...(search.q && searchable(search.q) ? { q: search.q.trim() } : {}),
   ...(search.author ? { owner: search.author } : {}),
   ...(search.team ? { team: search.team } : {}),
   ...(search.reviewer ? { reviewer: search.reviewer } : {}),
@@ -70,12 +72,12 @@ function Ideas() {
   const filters = filtersOf(search)
   const all = useInfiniteQuery(ideasQuery({ ...filters, state }))
   const counts = useQuery(countQuery(filters))
-  const found = useQuery(searchQuery(q))
-  const searching = searchable(q)
-  const rows = searching ? (found.data?.items ?? []) : (all.data?.pages.flatMap((p) => p.items) ?? [])
-  const filtered = Object.keys(filters).length > 0
+  const rows = all.data?.pages.flatMap((p) => p.items) ?? []
+  const incomplete = all.data?.pages.some((p) => p.incomplete) ?? false
+  const narrowed = Boolean(search.author || search.team || search.reviewer || search.drafts)
+  const tooShort = q.trim() !== '' && !searchable(q)
 
-  // the pickers show who and which team, from the handles in the address
+  // the menus say who and which team, from the handles in the address
   const author = useQuery({
     queryKey: ['person', search.author],
     queryFn: () => api.getUser({ user: search.author! }),
@@ -102,6 +104,9 @@ function Ideas() {
     void navigate({ search: merged as Search, replace: true })
   }
   const person = (p: Person | null) => (p ? p.handle : undefined)
+  /** How a person reads in a menu: you, or by name. */
+  const named = (handle: string | undefined, p: Person | undefined) =>
+    !handle ? null : handle === me.handle ? 'You' : (p?.name ?? `@${handle}`)
   const total = counts.data ? counts.data[state] : null
 
   return (
@@ -117,105 +122,132 @@ function Ideas() {
             set({ q: value.trim() ? value : undefined })
           }}
         />
-        {searching ? (
-          found.isPending ? (
-            <p>Searching…</p>
-          ) : (
-            <IdeaList
-              ideas={rows.map((row) => ideaInfo(row, me.id))}
-              query={q}
-              empty={`No ideas you can see match “${q.trim()}”.`}
-            />
-          )
-        ) : (
-          <>
-            <div className="ideas-filters" role="group" aria-label="Filters">
-              <div className="ideas-filter">
-                <span className="ideas-filter-label" aria-hidden>
-                  Author
-                </span>
+        <div className="ideas-filters" role="group" aria-label="Filters">
+          <FilterMenu
+            label="Author"
+            value={named(search.author, author.data)}
+            onClear={() => set({ author: undefined })}
+          >
+            {(close) => (
+              <>
+                {search.author !== me.handle && (
+                  <Button
+                    size="sm"
+                    variant="link"
+                    onClick={() => {
+                      set({ author: me.handle })
+                      close()
+                    }}
+                  >
+                    Mine
+                  </Button>
+                )}
                 <PersonPicker
                   label="Author"
                   value={author.data && search.author ? author.data : null}
-                  onChange={(p) => set({ author: person(p) })}
+                  onChange={(p) => {
+                    set({ author: person(p) })
+                    close()
+                  }}
                 />
-              </div>
-              <div className="ideas-filter">
-                <span className="ideas-filter-label" aria-hidden>
-                  Team
-                </span>
-                <TeamPicker
-                  label="Team"
-                  value={team.data && search.team ? (team.data as TeamRefLite) : null}
-                  onChange={(t) => set({ team: t ? t.handle : undefined })}
-                />
-              </div>
-              <div className="ideas-filter">
-                <div className="ideas-filter-label">
-                  <span aria-hidden>Reviewer</span>
-                  {search.reviewer !== me.handle && (
-                    <Button size="sm" variant="link" onClick={() => set({ reviewer: me.handle })}>
-                      Asked of me
-                    </Button>
-                  )}
-                </div>
+              </>
+            )}
+          </FilterMenu>
+          <FilterMenu
+            label="Team"
+            value={search.team ? (team.data?.name ?? search.team) : null}
+            onClear={() => set({ team: undefined })}
+          >
+            {(close) => (
+              <TeamPicker
+                label="Team"
+                value={team.data && search.team ? (team.data as TeamRefLite) : null}
+                onChange={(t) => {
+                  set({ team: t ? t.handle : undefined })
+                  close()
+                }}
+              />
+            )}
+          </FilterMenu>
+          <FilterMenu
+            label="Reviewer"
+            value={named(search.reviewer, reviewer.data)}
+            onClear={() => set({ reviewer: undefined })}
+          >
+            {(close) => (
+              <>
+                {search.reviewer !== me.handle && (
+                  <Button
+                    size="sm"
+                    variant="link"
+                    onClick={() => {
+                      set({ reviewer: me.handle })
+                      close()
+                    }}
+                  >
+                    Asked of me
+                  </Button>
+                )}
                 <PersonPicker
                   label="Reviewer"
                   value={reviewer.data && search.reviewer ? reviewer.data : null}
-                  onChange={(p) => set({ reviewer: person(p) })}
+                  onChange={(p) => {
+                    set({ reviewer: person(p) })
+                    close()
+                  }}
                 />
-              </div>
-              <label className="ideas-filters-check">
-                <input
-                  type="checkbox"
-                  checked={Boolean(search.drafts)}
-                  onChange={(event) => set({ drafts: event.target.checked ? true : undefined })}
-                />{' '}
-                Drafts only
-              </label>
-              {filtered && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => set({ author: undefined, team: undefined, reviewer: undefined, drafts: undefined })}
-                >
-                  Clear filters
-                </Button>
-              )}
-            </div>
-            <StateTabs
-              value={state}
-              onChange={(next) => set({ state: next === 'closed' ? 'closed' : undefined })}
-              counts={counts.data}
+              </>
+            )}
+          </FilterMenu>
+          <Button
+            className="ideas-drafts"
+            aria-pressed={Boolean(search.drafts)}
+            variant={search.drafts ? 'primary' : 'default'}
+            onClick={() => set({ drafts: search.drafts ? undefined : true })}
+          >
+            Drafts only
+          </Button>
+          {narrowed && (
+            <Button
+              variant="ghost"
+              onClick={() => set({ author: undefined, team: undefined, reviewer: undefined, drafts: undefined })}
             >
-              <Stack gap={3}>
-                {total !== null && (
-                  <p className="ideas-total">
-                    {plural(total, state === 'closed' ? 'closed idea' : 'open idea')} · the most recently changed first
-                  </p>
-                )}
-                <IdeaList
-                  ideas={rows.map((row) => ideaInfo(row, me.id))}
-                  empty={
-                    q.trim()
-                      ? 'A search needs a word of at least 3 letters.'
-                      : filtered
-                        ? 'No ideas you can see match these filters.'
-                        : state === 'closed'
-                          ? 'No closed ideas you can see.'
-                          : 'No open ideas yet. Start one with ideaf start.'
-                  }
-                  more={
-                    all.hasNextPage ? { loading: all.isFetchingNextPage, onMore: () => void all.fetchNextPage() } : null
-                  }
-                />
-              </Stack>
-            </StateTabs>
-          </>
-        )}
-        {searching && found.data?.incomplete && (
-          <p>More ideas match than one search looks through: add a word to narrow it.</p>
-        )}
+              Clear filters
+            </Button>
+          )}
+        </div>
+        <StateTabs
+          value={state}
+          onChange={(next) => set({ state: next === 'closed' ? 'closed' : undefined })}
+          counts={counts.data}
+        >
+          <Stack gap={3}>
+            {total !== null && (
+              <p className="ideas-total">
+                {plural(total, state === 'closed' ? 'closed idea' : 'open idea')}
+                {filters.q && ` matching “${filters.q}”`}
+              </p>
+            )}
+            <IdeaList
+              ideas={rows.map((row) => ideaInfo(row, me.id))}
+              {...(filters.q ? { query: filters.q } : {})}
+              empty={
+                filters.q
+                  ? `No ${state} ideas you can see match “${filters.q}”${narrowed ? ' with these filters' : ''}.`
+                  : narrowed
+                    ? 'No ideas you can see match these filters.'
+                    : state === 'closed'
+                      ? 'No closed ideas you can see.'
+                      : 'No open ideas yet. Start one with ideaf start.'
+              }
+              more={
+                all.hasNextPage ? { loading: all.isFetchingNextPage, onMore: () => void all.fetchNextPage() } : null
+              }
+            />
+          </Stack>
+        </StateTabs>
+        {tooShort && <p className="ideas-total">A search needs a word of at least 3 letters.</p>}
+        {incomplete && <p>More ideas match than one search looks through: add a word to narrow it.</p>}
       </Stack>
     </Page>
   )
