@@ -11,6 +11,8 @@ export interface AccountMenuProps {
   theme: Theme
   onThemeChange: (theme: Theme) => void
   onSignOut: () => void
+  /** Just your avatar, opening downwards: for a bar across the top of a page, not the foot of the navigation. */
+  compact?: boolean
 }
 
 const THEMES: Array<{ value: Theme; label: string }> = [
@@ -22,23 +24,40 @@ const THEMES: Array<{ value: Theme; label: string }> = [
 
 // You, as one button at the foot of the navigation: it opens your settings, the theme and signing out,
 // as GitHub's and GitLab's account menus do. Base UI's menu does the keyboard and focus work.
-export function AccountMenu({ person, settingsHref, theme, onThemeChange, onSignOut }: AccountMenuProps) {
+export function AccountMenu({
+  person,
+  settingsHref,
+  theme,
+  onThemeChange,
+  onSignOut,
+  compact = false,
+}: AccountMenuProps) {
   return (
     <Menu.Root>
-      <Menu.Trigger className="account-menu-trigger">
+      <Menu.Trigger
+        className={`account-menu-trigger${compact ? ' is-compact' : ''}`}
+        title={compact ? person.name : undefined}
+      >
         <span aria-hidden>
           <Avatar person={person} size="sm" />
         </span>
-        <span className="account-menu-name">
+        <span className={compact ? 'visually-hidden' : 'account-menu-name'}>
           {person.name}
           <span className="visually-hidden">: settings, theme, sign out</span>
         </span>
-        <span className="account-menu-caret" aria-hidden>
-          ▴
-        </span>
+        {!compact && (
+          <span className="account-menu-caret" aria-hidden>
+            ▴
+          </span>
+        )}
       </Menu.Trigger>
       <Menu.Portal>
-        <Menu.Positioner className="account-menu-positioner" side="top" align="start" sideOffset={6}>
+        <Menu.Positioner
+          className="account-menu-positioner"
+          side={compact ? 'bottom' : 'top'}
+          align={compact ? 'end' : 'start'}
+          sideOffset={6}
+        >
           <Menu.Popup className="account-menu">
             <Menu.Item className="account-menu-item" render={<Link href={settingsHref} />}>
               Your settings

@@ -1,13 +1,14 @@
 .idea-page {
   display: grid;
-  grid-template-columns: 17rem minmax(0, 1fr) 24rem;
-  /* one row pinned to the viewport; each pane scrolls on its own */
+  grid-template-columns: 15rem minmax(0, 1fr) 24rem;
+  /* one row, as tall as the space it's given (under the idea's bar); each pane scrolls on its own */
   grid-template-rows: minmax(0, 1fr);
-  height: 100vh;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 .idea-page-no-panel {
-  grid-template-columns: 17rem minmax(0, 1fr);
+  grid-template-columns: 15rem minmax(0, 1fr);
 }
 .idea-page-nav,
 .idea-page-document,
