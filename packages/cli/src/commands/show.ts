@@ -2,6 +2,7 @@
 // batch: each file's sections and blocks with their IDs, and the open comments.
 import { CliError, type Context, EXIT } from '../context.ts'
 import { truncate } from './output.ts'
+import { markSeen } from './pull.ts'
 
 export async function show(
   ctx: Context,
@@ -14,6 +15,7 @@ export async function show(
   const version = flags.version ? Number(flags.version) : undefined
   const view = await ctx.api.showBlocks({ idea: id, ...(version ? { version } : {}) })
   ctx.result(view)
+  await markSeen(ctx, id, view.version)
   if (ctx.json) {
     return EXIT.ok
   }

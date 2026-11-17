@@ -118,6 +118,11 @@
   color: var(--warn);
   font-weight: 600;
 }
+/* what a reviewer has read since: quieter than their verdict */
+.review-panel-seen {
+  color: var(--ink-3);
+  font-weight: 400;
+}
 .review-panel-ask {
   display: flex;
   flex-wrap: wrap;

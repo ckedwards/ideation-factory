@@ -747,6 +747,35 @@ describe('status and reviews', () => {
   })
 })
 
+describe('versions seen', () => {
+  test('a person’s latest is kept, quietly; a bot’s reading isn’t', async () => {
+    const { service, write } = await created()
+    await write({ type: 'edit', batch: { base: 1, steps: [{ command: 'delete', target: 'b3' }] } })
+    const outbox = await service.outboxSize()
+    expect(await write({ type: 'seen', version: 1 }, REVIEWER)).toEqual({
+      ok: true,
+      value: { kind: 'seen', version: 1 },
+    })
+    expect(await write({ type: 'seen', version: 2 }, REVIEWER)).toEqual({
+      ok: true,
+      value: { kind: 'seen', version: 2 },
+    })
+    expect(await write({ type: 'seen', version: 1 }, REVIEWER)).toEqual({
+      ok: true,
+      value: { kind: 'seen', version: 2 },
+    })
+    const bot: Caller = { user: 'riley', bot: 'checkbot', purpose: 'bot-for-me' }
+    expect(await write({ type: 'seen', version: 2 }, bot)).toEqual({ ok: true, value: { kind: 'seen', version: null } })
+    expect(await write({ type: 'seen', version: 3 }, REVIEWER)).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    })
+    expect((await service.reviews()).seen).toEqual([{ user: 'maya', version: 2, at: expect.any(Number) }])
+    // it's not a write anyone hears about
+    expect(await service.outboxSize()).toBe(outbox)
+  })
+})
+
 describe('pending reviews', () => {
   const QUICK = { kind: 'text', file: 'f1', start: 5, end: 10 }
   const maya = 'u:maya'

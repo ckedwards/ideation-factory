@@ -199,6 +199,7 @@ function Overview() {
       c.kind === 'groups' ? c.groups.filter((g) => g.approvedBy.length > 0).map((g) => g.id) : [],
     ),
   )
+  const seen = new Map(reviews.seen.map((r) => [r.user, r.version]))
   // the review: its panel, the status in the header, and closing it
   const review: ReviewPanelProps = {
     status: statusOf(reviews.status),
@@ -209,6 +210,8 @@ function Overview() {
       label: names.get(subjectKey(s))?.label ?? '…',
       // a group's approval, from the requirement checks
       ...(subjectKey(s).startsWith('group:') ? { approved: approvedGroups.has((s as { id: string }).id) } : {}),
+      // the latest version a person has opened
+      ...(subjectKey(s).startsWith('user:') ? { seen: seen.get((s as { id: string }).id) ?? null } : {}),
     })),
     reviews: reviews.reviews.map((r): ReviewRow => ({
       ...r,

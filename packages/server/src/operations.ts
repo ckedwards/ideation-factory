@@ -134,9 +134,12 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
   /** An idea's reviews as list_reviews gives them, its grants already read. */
   const reviewsWith = async (idea: string, viewer: string | null, grants: Grant[]) => {
     const { reviews, check } = await requirementsOf(idea, viewer)
-    const { openThreads: _open, ...rest } = reviews
+    const { openThreads: _open, seen, ...rest } = reviews
+    // what the people asked by name have seen: anyone else's reading isn't shown
+    const named = new Set(grants.flatMap((g) => (g.reviewer && g.subject.kind === 'user' ? [g.subject.id] : [])))
     return {
       ...rest,
+      seen: seen.filter((s) => named.has(s.user)),
       reviewers: grants.filter((g) => g.reviewer).map((g) => g.subject),
       // when each was asked, and by whom, for the idea's activity
       requests: grants.flatMap((g) =>
@@ -550,6 +553,16 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
           { type: 'reply', parent: input.comment, body: input.body, ...(input.pending ? { pending: true } : {}) },
           comment,
         ),
+      ),
+
+    markSeen: (input, context) =>
+      withAccess(input.idea, context, 'view', () =>
+        write(input.idea, context, { type: 'seen', version: input.version }, (value) => {
+          if (value.kind !== 'seen') {
+            throw new Error(`expected a version seen, got ${value.kind}`)
+          }
+          return { version: value.version }
+        }),
       ),
 
     resolveComment: (input, context) =>

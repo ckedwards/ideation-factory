@@ -38,6 +38,18 @@ export async function pull(ctx: Context, flags: { idea?: string }): Promise<numb
   })
 }
 
+/**
+ * Says you've opened a version (for reviewers' "seen v3"). It's not what the
+ * command is for, so its failing never fails the command.
+ */
+export async function markSeen(ctx: Context, idea: string, version: number): Promise<void> {
+  try {
+    await ctx.api.markSeen({ idea, version })
+  } catch {
+    // not kept this time: the next show or pull says it again
+  }
+}
+
 /** Pulls an idea into the working tree (the caller holds its lock), printing what changed for people. */
 export async function pullInto(
   ctx: Context,
@@ -115,6 +127,7 @@ export async function pullInto(
   }
 
   await writeState(ctx.ws, { ...state, version: latest.version, files })
+  await markSeen(ctx, id, latest.version)
   if (!(await activeIdea(ctx.ws))) {
     await setActiveIdea(ctx.ws, id)
   }

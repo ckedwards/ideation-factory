@@ -81,6 +81,12 @@ export interface IdeaDB {
     at: number
     dismissed: string | null
   }
+  /**
+   * The latest version each person has opened the document of (in the web
+   * app, or with the cli's show or pull), for reviewers' "seen v3". People
+   * only: what their bots read isn't what they've seen.
+   */
+  seen: { user: string; version: number; at: number }
   /** The idea's draft: changes on the latest version, in the order they were made, until it's committed or discarded. */
   draft: { key: string; seq: number; change: string; by: string; at: number }
   writes: { key: string; result: string; at: number }
@@ -126,6 +132,7 @@ export const IDEA_COLUMNS = {
   anchors: ['comment', 'version', 'state', 'anchor'],
   status_changes: ['seq', 'status', 'by', 'at', 'note'],
   reviews: ['seq', 'reviewer', 'by', 'verdict', 'version', 'body', 'at', 'dismissed'],
+  seen: ['user', 'version', 'at'],
   draft: ['key', 'seq', 'change', 'by', 'at'],
   writes: ['key', 'result', 'at'],
   outbox: ['id', 'events', 'at', 'attempts', 'next_at'],
@@ -220,6 +227,11 @@ const MIGRATIONS: Migration[] = [
       dismissed TEXT
     )`,
     `CREATE INDEX reviews_reviewer ON reviews (reviewer, seq)`,
+    `CREATE TABLE seen (
+      user TEXT PRIMARY KEY,
+      version INTEGER NOT NULL REFERENCES versions (number),
+      at INTEGER NOT NULL
+    )`,
     `CREATE TABLE draft (
       key TEXT PRIMARY KEY,
       seq INTEGER NOT NULL UNIQUE,

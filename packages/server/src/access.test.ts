@@ -247,6 +247,27 @@ describe('lists and search', () => {
     expect((await listed())?.visibility).toBe('public')
   })
 
+  test('the version each reviewer asked by name last opened, and no one else’s', async () => {
+    const riley = as('riley')
+    const maya = as('maya')
+    const sam = as('sam')
+    const mayaId = (await maya.me({})).id
+    const samId = (await sam.me({})).id
+    const { idea } = await riley.createIdea({ title: 'Seen plan', files: [{ path: 'a.md', content: PLAN }] })
+    await riley.setAccess({ idea, subject: { kind: 'user', id: samId }, access: { edit: false, share: false } })
+    await riley.setReviewer({ idea, subject: { kind: 'user', id: mayaId }, reviewer: true })
+    await riley.edit({ idea, batch: { base: 1, steps: [{ command: 'insert', at: { end: 'f1' }, markdown: 'More.' }] } })
+
+    expect((await riley.listReviews({ idea })).seen).toEqual([])
+    expect(await maya.markSeen({ idea, version: 2 })).toEqual({ version: 2 })
+    // an older version afterwards: the latest seen stays
+    expect(await maya.markSeen({ idea, version: 1 })).toEqual({ version: 2 })
+    // someone not asked to review: kept, but not shown
+    expect(await sam.markSeen({ idea, version: 2 })).toEqual({ version: 2 })
+    expect((await riley.listReviews({ idea })).seen).toEqual([{ user: mayaId, version: 2, at: expect.any(Number) }])
+    await expect(maya.markSeen({ idea, version: 3 })).rejects.toMatchObject({ code: 'not_found' })
+  })
+
   test('counts what a list has, open and closed, at its own address', async () => {
     const riley = as('riley')
     const owner = handle('riley')

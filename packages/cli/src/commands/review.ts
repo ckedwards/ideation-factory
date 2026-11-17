@@ -45,7 +45,18 @@ async function print(ctx: Context, idea: string, reviews: Reviews): Promise<void
   const names = new Names(ctx)
   ctx.say(`${idea} is ${STATUS[reviews.status]}, on v${reviews.latest}.`)
   if (reviews.reviewers.length > 0) {
-    const asked = await Promise.all(reviews.reviewers.map((s) => names.label(s)))
+    // and, for a person, the latest version they've opened
+    const seen = new Map(reviews.seen.map((r) => [r.user, r.version]))
+    const asked = await Promise.all(
+      reviews.reviewers.map(async (s) => {
+        const label = await names.label(s)
+        if (s.kind !== 'user') {
+          return label
+        }
+        const version = seen.get(s.id)
+        return `${label} · ${version === undefined ? 'hasn’t opened it' : `seen v${version}`}`
+      }),
+    )
     ctx.say(`Asked to review: ${asked.join(', ')}`)
   }
   const unmet = reviews.requirements.checks.filter((c) => !c.met)
