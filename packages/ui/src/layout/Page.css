@@ -3,7 +3,8 @@
   align-content: start;
   gap: var(--space-5);
   max-width: 54rem;
-  margin: 0 auto;
+  /* every page starts at the same left edge, narrow or wide, so moving between them doesn't move the heading */
+  margin: 0;
   padding: var(--space-6) var(--space-6) var(--space-8);
 }
 .page[data-width='wide'] {

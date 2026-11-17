@@ -7,7 +7,7 @@ export interface PageProps {
   width?: 'normal' | 'wide'
 }
 
-// A page's content, centered at a readable width, with its header first.
+// A page's content, at a readable width from the same left edge as every other page, with its header first.
 export function Page({ children, width = 'normal' }: PageProps) {
   return (
     <div className="page" data-width={width}>
