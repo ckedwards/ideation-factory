@@ -402,7 +402,7 @@ ${pick(RISKS)}
 
   // a few asking to join a team or group they're not in
   const joinRequests = some(handles, 6).flatMap((by, i) => {
-    const outside =
+    const outside: Data['joinRequests'] =
       i % 2 === 0
         ? teams.filter((t) => !membersOf(t).includes(by)).map((t) => ({ by, team: t.handle }))
         : groups.filter((g) => g.admin !== by && !(by in g.members)).map((g) => ({ by, group: g.handle }))
