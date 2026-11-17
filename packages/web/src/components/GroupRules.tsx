@@ -25,7 +25,7 @@ export function GroupRules({ group, rules }: { group: { name: string }; rules: G
               {g.name}
             </span>
           ))}
-          {rule.request && <span className="group-rules-note"> · they’re asked to review when an idea goes out</span>}
+          {rule.request && <span className="group-rules-note">They’re asked to review when an idea goes out.</span>}
         </li>
       ))}
     </ul>

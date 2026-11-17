@@ -59,7 +59,8 @@ function Home() {
     waiting.map((row) => {
       const named = row.reviewers.some((r) => r.kind === 'user' && r.user.id === me.id)
       const group = row.reviewers.find((r) => r.kind === 'group' && myGroups.has(r.group.id))
-      return [row.id, named ? 'You’re asked' : group?.kind === 'group' ? `Your group ${group.group.name}` : null]
+      // by name, your own face under "Review:" says so already; a group's chip doesn't say it's yours
+      return [row.id, !named && group?.kind === 'group' ? `Your group ${group.group.name}` : null]
     }),
   )
 
@@ -76,12 +77,22 @@ function Home() {
     .map((q, i) => ({ container: deciding[i]!, count: q.data?.items.length ?? 0 }))
     .filter((r) => r.count > 0)
 
-  const summary = [
-    waiting.length > 0 ? `${plural(waiting.length, 'idea')} waiting on your review` : 'Nothing waiting on your review',
-    unreadCount > 0 ? `${plural(unreadCount, 'idea')} with unread updates` : null,
-  ]
-    .filter(Boolean)
-    .join(' · ')
+  // the obvious things to click: each leads to its list
+  const summary = (
+    <>
+      {waiting.length > 0 ? (
+        <Link href={`/ideas?reviewer=${me.handle}`}>{plural(waiting.length, 'idea')} waiting on your review</Link>
+      ) : (
+        'Nothing waiting on your review'
+      )}
+      {unreadCount > 0 && (
+        <>
+          {' · '}
+          <Link href="/notifications?unread=true">{plural(unreadCount, 'idea')} with unread updates</Link>
+        </>
+      )}
+    </>
+  )
 
   return (
     <Page width="wide">
