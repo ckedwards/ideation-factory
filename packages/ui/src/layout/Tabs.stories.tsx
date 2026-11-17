@@ -43,3 +43,34 @@ export const Keyboard: Story = {
     await expect(canvas.getByRole('tab', { name: 'Details' })).toHaveAttribute('aria-selected', 'true')
   },
 }
+
+// More tabs than fit: they scroll on their own, each on one line, and the page around them keeps its width
+export const TooManyToFit: Story = {
+  render: () => (
+    <div style={{ width: '18rem' }} data-testid="narrow">
+      <Tabs
+        label="Settings"
+        tabs={[
+          { id: 'members', label: 'Members', count: 6 },
+          { id: 'groups', label: 'Groups' },
+          { id: 'requests', label: 'Requests', count: 1 },
+          { id: 'requirements', label: 'Approval requirements' },
+          { id: 'general', label: 'General' },
+          { id: 'access', label: 'Access' },
+        ]}
+        value="members"
+        onChange={() => {}}
+      >
+        <p style={{ margin: 0 }}>Members.</p>
+      </Tabs>
+    </div>
+  ),
+  play: async ({ canvas }) => {
+    const narrow = canvas.getByTestId('narrow')
+    const list = canvas.getByRole('tablist')
+    await expect(narrow.scrollWidth).toBeLessThanOrEqual(narrow.clientWidth)
+    await expect(list.scrollWidth).toBeGreaterThan(list.clientWidth)
+    const tab = canvas.getByRole('tab', { name: 'Approval requirements' })
+    await expect(tab.getBoundingClientRect().height).toBeLessThan(40)
+  },
+}
