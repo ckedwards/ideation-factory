@@ -2,10 +2,11 @@
 // GitHub's notifications, grouped by day. Each row says what kind of update
 // came last (an icon), what the idea is, the latest update (and how many are
 // new), where the idea stands now, why you hear about it (a review asked of you
-// stands out), and when, in fixed columns. Unread rows are tinted. Ticking rows
-// acts on them; with none ticked, the toolbar acts on the whole list.
+// stands out), and when: in columns when the list has room for the title, and
+// otherwise on one line under it. An unread row has a dot and a bold title.
+// Ticking rows acts on them; with none ticked, the toolbar acts on the whole list.
 import { type ReactNode, useState } from 'react'
-import { type Actor, ActorLabel, Button, Empty, Link, RelativeTime, StatusPill } from '@ideaf/ui'
+import { type Actor, ActorLabel, Button, Empty, Icon, Link, RelativeTime, StatusPill } from '@ideaf/ui'
 import type { ShownStatus } from '../../../ideas.ts'
 import './InboxList.css'
 
@@ -39,19 +40,6 @@ export type UpdateKind =
   | 'status'
   | 'decided'
   | 'requested'
-
-// a glyph for each kind of update, so a comment, an approval and a new version read apart at a glance
-const ICON: Record<UpdateKind, string> = {
-  version: '⇡',
-  comment: '❝',
-  reply: '↩',
-  suggestion: '±',
-  review: '✓',
-  dismissed: '⊘',
-  status: '→',
-  decided: '±',
-  requested: '?',
-}
 
 const DAY = 24 * 3600_000
 
@@ -131,20 +119,16 @@ export function InboxList({ rows, showing, onRead, onDone, onBack, empty, more }
         />
         {showing === 'inbox' ? (
           <>
-            <Button size="sm" onClick={() => act(onRead)}>
-              {n > 0 ? `Mark ${n} as read` : 'Mark all as read'}
-            </Button>
-            <Button size="sm" onClick={() => act(onDone)}>
-              {n > 0 ? `Mark ${n} as done` : 'Mark all as done'}
-            </Button>
+            <Button onClick={() => act(onRead)}>{n > 0 ? `Mark ${n} as read` : 'Mark all as read'}</Button>
+            <Button onClick={() => act(onDone)}>{n > 0 ? `Mark ${n} as done` : 'Mark all as done'}</Button>
           </>
         ) : (
-          <Button size="sm" onClick={() => act(onBack)}>
+          <Button onClick={() => act(onBack)}>
             {n > 0 ? `Move ${n} back to the inbox` : 'Move all back to the inbox'}
           </Button>
         )}
         {n > 0 && (
-          <Button size="sm" variant="ghost" onClick={() => setTicked(new Set())}>
+          <Button variant="ghost" onClick={() => setTicked(new Set())}>
             Clear selection
           </Button>
         )}
@@ -161,26 +145,36 @@ export function InboxList({ rows, showing, onRead, onDone, onBack, empty, more }
                   checked={ticked.has(row.id)}
                   onChange={(event) => tick(row.id, event.target.checked)}
                 />
-                <span className={`inbox-icon is-${row.kind ?? 'update'}`} aria-hidden>
-                  {row.kind ? ICON[row.kind] : '•'}
+                <span className={`inbox-icon is-${row.kind ?? 'update'}`}>
+                  <Icon name={row.kind ?? 'update'} />
                 </span>
                 <div className="inbox-main">
                   <div className="inbox-title">
                     <span className="inbox-where">{row.where}</span>
-                    <Link href={row.href}>{row.title}</Link>
+                    <span className="inbox-name">
+                      {row.newCount > 0 && (
+                        <span className="inbox-dot">
+                          <span className="visually-hidden">Unread: </span>
+                        </span>
+                      )}
+                      <Link href={row.href}>{row.title}</Link>
+                    </span>
                   </div>
                   <div className="inbox-update">
                     {row.actor && <ActorLabel actor={row.actor} short />} {row.update}
                     {row.newCount > 1 && <span className="inbox-new"> · {row.newCount} new</span>}
                   </div>
                 </div>
-                <span className="inbox-state">
-                  <StatusPill
-                    status={row.status.status}
-                    {...(row.status.reason ? { reason: row.status.reason } : {})}
-                  />
-                </span>
-                <span className={`inbox-reason${row.asked ? ' is-asked' : ''}`}>{row.reason}</span>
+                {/* columns of their own when there's room; a line under the title when there isn't */}
+                <div className="inbox-meta">
+                  <span className="inbox-state">
+                    <StatusPill
+                      status={row.status.status}
+                      {...(row.status.reason ? { reason: row.status.reason } : {})}
+                    />
+                  </span>
+                  <span className={`inbox-reason${row.asked ? ' is-asked' : ''}`}>{row.reason}</span>
+                </div>
                 <span className="inbox-time">
                   <RelativeTime at={row.at} />
                 </span>
