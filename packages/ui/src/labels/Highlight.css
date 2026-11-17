@@ -1,6 +1,9 @@
+/*
+ * A search's match: bold, not the amber that marks commented text in a
+ * document, so the two never read as the same thing.
+ */
 .highlight {
-  border-radius: var(--radius-sm);
-  background: var(--mark);
-  color: var(--mark-ink);
-  box-shadow: 0 calc(var(--hairline) * 2) 0 var(--mark-line);
+  background: none;
+  color: inherit;
+  font-weight: 700;
 }

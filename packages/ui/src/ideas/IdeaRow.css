@@ -60,7 +60,7 @@
 .idea-row-side {
   display: grid;
   /* at most this wide, so many reviewers wrap rather than squeeze the title */
-  max-width: 15rem;
+  max-width: 18rem;
   justify-items: end;
   align-content: start;
   gap: var(--space-2);
@@ -73,5 +73,18 @@
   }
   .idea-row-side {
     justify-items: start;
+  }
+}
+/* the reviewers beside the status, on one line */
+.idea-row-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+@container (max-width: 34rem) {
+  .idea-row-state {
+    justify-content: flex-start;
   }
 }
