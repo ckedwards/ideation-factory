@@ -63,15 +63,6 @@
 .review-panel-verdict-what {
   font-weight: 600;
 }
-.review-panel-body,
-.review-panel-dismissed {
-  margin: 0;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-.review-panel-dismissed {
-  color: var(--ink-3);
-}
 .review-panel-blocked {
   margin: 0;
   color: var(--ink-2);
@@ -84,10 +75,6 @@
 .review-panel-close {
   display: grid;
   gap: var(--space-2);
-}
-.review-panel-yours {
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--rule);
 }
 .review-panel-buttons {
   display: flex;
