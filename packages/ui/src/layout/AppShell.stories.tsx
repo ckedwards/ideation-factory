@@ -6,7 +6,6 @@ import { Page, Section } from './Page.tsx'
 import { SideNav } from './SideNav.tsx'
 import { Stack } from './Stack.tsx'
 import { Button } from '../controls/Button.tsx'
-import { SearchInput } from '../controls/SearchInput.tsx'
 import { ThemeToggle, type Theme } from '../controls/ThemeToggle.tsx'
 import { IdeaRow } from '../ideas/IdeaRow.tsx'
 import { PageHeader } from '../page/PageHeader.tsx'
@@ -15,7 +14,6 @@ import { UserName } from '../people/UserName.tsx'
 import { ideas, riley } from '../stories/fixtures.ts'
 
 function Nav() {
-  const [query, setQuery] = useState('')
   const [theme, setTheme] = useState<Theme>('auto')
   return (
     <SideNav
@@ -23,9 +21,6 @@ function Nav() {
         <>
           <span aria-hidden>✳</span> Ideation Factory
         </>
-      }
-      search={
-        <SearchInput value={query} onChange={setQuery} label="Search everything" placeholder="Search" shortcut="/" />
       }
       groups={[
         {

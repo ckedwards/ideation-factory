@@ -26,11 +26,3 @@
 .search-icon {
   color: var(--ink-3);
 }
-.search-kbd {
-  padding: 0 var(--space-1);
-  border: var(--hairline) solid var(--rule-strong);
-  border-radius: var(--radius-sm);
-  color: var(--ink-3);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-}

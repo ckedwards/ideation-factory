@@ -7,11 +7,9 @@ export interface SearchInputProps {
   label: string
   placeholder?: string
   autoFocus?: boolean
-  // a keyboard shortcut that focuses it, shown as a hint ("/")
-  shortcut?: string
 }
 
-export function SearchInput({ value, onChange, label, placeholder, autoFocus, shortcut }: SearchInputProps) {
+export function SearchInput({ value, onChange, label, placeholder, autoFocus }: SearchInputProps) {
   return (
     <label className="search">
       <span className="search-icon" aria-hidden>
@@ -25,11 +23,6 @@ export function SearchInput({ value, onChange, label, placeholder, autoFocus, sh
         autoFocus={autoFocus}
         onChange={(event) => onChange(event.target.value)}
       />
-      {shortcut && !value && (
-        <kbd className="search-kbd" aria-hidden>
-          {shortcut}
-        </kbd>
-      )}
     </label>
   )
 }

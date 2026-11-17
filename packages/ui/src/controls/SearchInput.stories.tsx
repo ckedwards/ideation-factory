@@ -25,6 +25,4 @@ type Story = StoryObj<typeof meta>
 
 export const Empty: Story = {}
 
-export const WithShortcut: Story = { args: { shortcut: '/' } }
-
-export const Filled: Story = { args: { value: 'offline sync', shortcut: '/' } }
+export const Filled: Story = { args: { value: 'offline sync' } }

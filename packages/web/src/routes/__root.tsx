@@ -7,7 +7,6 @@ import { createRootRouteWithContext, Outlet, redirect, useMatches, useNavigate }
 import { AppShell, Empty, Link, Page, PageHeader, SearchInput, type Theme } from '@ideaf/ui'
 import { membershipsQuery, meQuery, unreadQuery } from '../api.ts'
 import { AppNav, type NavPage } from '../components/AppNav.tsx'
-import { QuickSearch } from '../components/QuickSearch.tsx'
 import { SiteLinks } from '../components/SiteLinks.tsx'
 import { accessToken, SignedOut, signInHref, signOut } from '../session.ts'
 import { SiteProvider } from '../site.tsx'
@@ -78,7 +77,6 @@ function Root() {
             theme={theme}
             onThemeChange={site.onThemeChange}
             onSignOut={site.onSignOut}
-            search={<QuickSearch />}
             watching={memberships.watching}
             currentTeam={currentTeam}
           />
