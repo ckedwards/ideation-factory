@@ -76,17 +76,18 @@ function Move() {
   if (!access.you.share) {
     return (
       <Page>
-        <PageHeader title={idea.title} sub="Move" crumbs={<Link href={links.overview}>← Overview</Link>} />
+        <PageHeader title="Move" crumbs={<Link href={links.overview}>← Overview</Link>} />
         <p>Only someone who can share it can move it.</p>
       </Page>
     )
   }
   return (
     <Page>
+      {/* inside the idea's frame, which has its title: this page is the move */}
       <PageHeader
-        title={idea.title}
-        sub="Move it to another team"
-        crumbs={<Link href={links.sharing}>← Sharing</Link>}
+        title="Move it to another team"
+        sub="Who gains and loses access is shown before anything changes."
+        crumbs={<Link href={links.overview}>← Overview</Link>}
       />
       <Section title="Where to">
         <Stack gap={3}>
