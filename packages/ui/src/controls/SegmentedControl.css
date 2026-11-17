@@ -1,5 +1,10 @@
+/* as wide as its options, even in a grid or a column that would stretch it */
 .segmented {
   display: inline-flex;
+  justify-self: start;
+  align-self: start;
+  width: max-content;
+  max-width: 100%;
   border: var(--hairline) solid var(--rule-strong);
   border-radius: var(--radius);
   overflow: hidden;
