@@ -12,8 +12,6 @@ import {
   type Actor,
   Button,
   changedRanges,
-  CommentCard,
-  type CommentInfo,
   CommentGutter,
   headings,
   IdeaPageLayout,
@@ -32,17 +30,12 @@ import {
 import { VersionList, type VersionListProps } from './VersionList.tsx'
 import type { Placement } from './view.ts'
 import { CommentBox } from './CommentBox.tsx'
+import { type PageComment, type ThreadActions, ThreadCard } from './ThreadCard.tsx'
 import './IdeaPage.css'
 
-/** A comment, as shown, and where it goes in the file shown. */
-export interface PageComment {
-  info: CommentInfo
-  place: Placement
-  /** Not saved yet: shown, but not replied to or resolved until it is. */
-  pending?: boolean
-}
+export type { PageComment } from './ThreadCard.tsx'
 
-export interface IdeaPageProps {
+export interface IdeaPageProps extends ThreadActions {
   /** The file's Markdown as it's written, in place of the rendered document. */
   showSource?: boolean
   /** A comment to open where it is (a link from the overview): active, and its text scrolled to. */
@@ -58,12 +51,6 @@ export interface IdeaPageProps {
   /** The versions panel. */
   versions: VersionListProps
   comments: PageComment[]
-  /** Commenting is offered only to someone who can, on the latest version. */
-  canComment: boolean
-  /** Accepting and rejecting suggestions: for people with edit access, on the latest version. */
-  canDecide?: boolean
-  /** Offer "Add to your review": comments, suggestions and replies kept pending until the review is submitted. */
-  addToReview?: boolean
   /** `pending`: added to the review rather than sent now. */
   onComment?: (selection: TextSelection, body: string, pending: boolean) => void
   /** A comment on the whole file: the box at the end of the comments. */
@@ -71,18 +58,7 @@ export interface IdeaPageProps {
   /** What a suggestion on a selection replaces (whole formatting), or null where there can't be one. */
   suggestionOf?: (selection: TextSelection) => string | null
   onSuggest?: (selection: TextSelection, replacement: string, body: string, pending: boolean) => void
-  /** Accepts suggestions as one new version. */
-  onAccept?: (suggestions: string[]) => void
-  /** Accepts suggestions into the idea's draft. */
-  onAddToDraft?: (suggestions: string[]) => void
-  onReject?: (suggestion: string) => void
   onSectionComment?: (heading: number, body: string, pending: boolean) => void
-  onReply?: (comment: string, body: string, pending: boolean) => void
-  /** Deletes one of your pending comments. */
-  onDelete?: (comment: string) => void
-  onResolve?: (comment: string, resolved: boolean) => void
-  /** An outdated comment's "View in v3". */
-  onViewInVersion?: (version: number) => void
   /** Editing: the document and the panel, in place of the file and its comments. */
   editing?: { document: ReactNode; panel: ReactNode; bar?: ReactNode } | null
 }
@@ -137,35 +113,12 @@ export function IdeaPage(props: IdeaPageProps) {
     : []
 
   const card = (comment: PageComment, showTarget = false): ReactNode => (
-    <CommentCard
-      comment={comment.info}
+    <ThreadCard
+      comment={comment}
+      actions={props}
       active={comment.info.id === active}
-      showTarget={showTarget}
       onSelect={() => setActive(comment.info.id)}
-      onReply={
-        canComment && !comment.pending && props.onReply
-          ? (body, pending) => props.onReply?.(comment.info.id, body, pending)
-          : undefined
-      }
-      addToReview={props.addToReview ?? false}
-      onResolve={
-        // a comment in your review goes out before it can be resolved
-        canComment && !comment.pending && !comment.info.pending && props.onResolve
-          ? (resolved) => props.onResolve?.(comment.info.id, resolved)
-          : undefined
-      }
-      canDecide={canDecide && !comment.pending && !comment.info.pending}
-      extra={
-        comment.info.pending && !comment.pending && props.onDelete ? (
-          <Button variant="link" size="sm" onClick={() => props.onDelete?.(comment.info.id)}>
-            Delete
-          </Button>
-        ) : undefined
-      }
-      onAccept={props.onAccept ? () => props.onAccept?.([comment.info.id]) : undefined}
-      onAddToDraft={props.onAddToDraft ? () => props.onAddToDraft?.([comment.info.id]) : undefined}
-      onReject={props.onReject ? () => props.onReject?.(comment.info.id) : undefined}
-      onViewInVersion={props.onViewInVersion}
+      showTarget={showTarget}
     />
   )
   const list = (comments: PageComment[], showTarget = false) => (

@@ -87,11 +87,16 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
       .catch(() => {})
   }, [id, version, queryClient])
 
-  const shown = pulled.files.find((f) => f.path === path) ?? pulled.files[0]!
-  const entries = outlines.find((o) => o.id === shown.file)?.entries ?? []
-  const file: FileView = { id: shown.file, path: shown.path, source: shown.content, unitIds: entries.map((e) => e.id) }
-  // a section's title, by its heading's ID, for what a section comment is on
-  const titles = new Map(entries.flatMap((e) => (e.kind === 'heading' ? [[e.id, e.path.at(-1) ?? '']] : [])))
+  // each file of the version, and its sections' titles by their headings' IDs, for what a section comment is on
+  const views = pulled.files.map((f) => {
+    const entries = outlines.find((o) => o.id === f.file)?.entries ?? []
+    const view: FileView = { id: f.file, path: f.path, source: f.content, unitIds: entries.map((e) => e.id) }
+    const titles = new Map(entries.flatMap((e) => (e.kind === 'heading' ? [[e.id, e.path.at(-1) ?? '']] : [])))
+    return { view, titles }
+  })
+  const shown = views.find((f) => f.view.path === path) ?? views[0]!
+  const file = shown.view
+  const titles = shown.titles
   const made = idea.versions.find((n) => n.number === version)
   const people = usePeople([
     idea.owner,
@@ -105,21 +110,39 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
   // the version in a link: none for the latest, so the link follows new ones
   const shownV = older ? version : undefined
   const baseFile = base !== null ? baseFiles.data?.files.find((f) => f.file === file.id) : undefined
-  // a selection as a text anchor, in the plain text comments are matched in
-  const anchorOf = (selection: { start: number; end: number }): Extract<Anchor, { kind: 'text' }> | null => {
-    const range = toPlain(file.source, selection)
+  // a selection in a file as a text anchor, in the plain text comments are matched in
+  const anchorIn = (
+    at: FileView,
+    selection: { start: number; end: number },
+  ): Extract<Anchor, { kind: 'text' }> | null => {
+    const range = toPlain(at.source, selection)
     if (!range) {
       return null
     }
-    const quote = parseMarkdown(file.source).plain.text.slice(range.start, range.end)
-    return { kind: 'text', file: file.id, ...range, quote }
+    const quote = parseMarkdown(at.source).plain.text.slice(range.start, range.end)
+    return { kind: 'text', file: at.id, ...range, quote }
   }
   // what a suggestion there replaces: the same widening the server does
-  const suggestionOf = (selection: { start: number; end: number }) => {
-    const anchor = anchorOf(selection)
-    const one = { files: [{ id: file.id, path: file.path, source: file.source, unitIds: file.unitIds }], nextId: 0 }
+  const suggestionIn = (at: FileView, selection: { start: number; end: number }) => {
+    const anchor = anchorIn(at, selection)
+    const one = { files: [{ id: at.id, path: at.path, source: at.source, unitIds: at.unitIds }], nextId: 0 }
     const found = anchor ? suggestionSource(one, anchor) : null
     return found?.ok ? found.old : null
+  }
+  const anchorOf = (selection: { start: number; end: number }) => anchorIn(file, selection)
+  const suggestionOf = (selection: { start: number; end: number }) => suggestionIn(file, selection)
+  const suggestIn = (
+    at: FileView,
+    selection: { start: number; end: number },
+    replacement: string,
+    body: string,
+    pending: boolean,
+  ) => {
+    const anchor = anchorIn(at, selection)
+    const old = suggestionIn(at, selection)
+    if (anchor && old !== null) {
+      writes.suggest(anchor, old, replacement, body, pending)
+    }
   }
   /** Accepts suggestions as a version now, or into the draft. */
   // accepting as a version that would make changes in the draft outdated: asked first
@@ -172,6 +195,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
     },
   })
   const canEdit = idea.you.edit && !older && base === null && !editing
+
   const draftChanges = draft.data?.changes ?? []
   const drafters = [...new Set(draftChanges.map((c) => people.get(c.by.user)?.name ?? 'someone'))]
 
@@ -279,13 +303,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
           }
         }}
         suggestionOf={suggestionOf}
-        onSuggest={(selection, replacement, body, pending) => {
-          const anchor = anchorOf(selection)
-          const old = suggestionOf(selection)
-          if (anchor && old !== null) {
-            writes.suggest(anchor, old, replacement, body, pending)
-          }
-        }}
+        onSuggest={(selection, replacement, body, pending) => suggestIn(file, selection, replacement, body, pending)}
         onAccept={(ids) => accept(ids)}
         onAddToDraft={(ids) => accept(ids, 'draft')}
         onReject={writes.reject}
