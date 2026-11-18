@@ -26,27 +26,14 @@ export interface NavGroup {
 }
 
 export interface SideNavProps {
-  // the site's name, linking home
-  brand: ReactNode
-  brandHref?: string
-  // beside the name, in the column's top corner: your notifications (InboxLink)
-  corner?: ReactNode
   groups: NavGroup[]
-  // at the bottom: you, the theme
-  footer?: ReactNode
 }
 
-// The site's navigation: its name (and your notifications beside it), the main links, your
-// teams, and you at the bottom.
-export function SideNav({ brand, brandHref = '/', corner, groups, footer }: SideNavProps) {
+// The site's navigation and nothing else: the main links, your teams, the teams you watch. The site's
+// name, your notifications and your account are in the app's bar above it.
+export function SideNav({ groups }: SideNavProps) {
   return (
     <div className="side-nav">
-      <div className="side-nav-head">
-        <Link href={brandHref} className="side-nav-brand">
-          {brand}
-        </Link>
-        {corner}
-      </div>
       {groups.map((group, i) => (
         <nav key={group.title ?? i} className="side-nav-group" aria-label={group.title ?? 'Main'}>
           {group.title && (
@@ -76,7 +63,6 @@ export function SideNav({ brand, brandHref = '/', corner, groups, footer }: Side
           {group.more}
         </nav>
       ))}
-      {footer && <div className="side-nav-footer">{footer}</div>}
     </div>
   )
 }

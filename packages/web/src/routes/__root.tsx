@@ -1,15 +1,14 @@
 // Every page: signed in first (to the sign-in page if not), then the app's
-// frame, its navigation beside the page.
+// frame: its bar across the top, its navigation beside the page.
 import { useState } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { createRootRouteWithContext, Outlet, redirect, useMatches, useNavigate } from '@tanstack/react-router'
 import { AppShell, Empty, Link, Page, PageHeader, SearchInput, type Theme } from '@ideaf/ui'
 import { membershipsQuery, meQuery, unreadQuery } from '../api.ts'
+import { AppBar } from '../components/AppBar.tsx'
 import { AppNav, type NavPage } from '../components/AppNav.tsx'
-import { SiteLinks } from '../components/SiteLinks.tsx'
 import { accessToken, SignedOut, signInHref, signOut } from '../session.ts'
-import { SiteProvider } from '../site.tsx'
 import { savedTheme, setTheme } from '../theme.ts'
 import './-root.css'
 
@@ -55,36 +54,34 @@ function Root() {
       return place && !place.startsWith('@') ? place : null
     },
   })
-  const site = {
-    theme,
-    onThemeChange: (next: Theme) => {
-      pickTheme(next)
-      setTheme(next)
-    },
-    onSignOut: () => void signOut(),
-  }
   return (
-    <SiteProvider value={site}>
-      <AppShell
-        bare={wide}
-        bar={<SiteLinks bar />}
-        nav={
-          <AppNav
-            me={me}
-            teams={memberships.teams}
-            current={current}
-            unread={unread.data ?? 0}
-            theme={theme}
-            onThemeChange={site.onThemeChange}
-            onSignOut={site.onSignOut}
-            watching={memberships.watching}
-            currentTeam={currentTeam}
-          />
-        }
-      >
-        <Outlet />
-      </AppShell>
-    </SiteProvider>
+    <AppShell
+      bare={wide}
+      bar={
+        <AppBar
+          me={me}
+          unread={unread.data ?? 0}
+          inbox={current === 'notifications'}
+          theme={theme}
+          onThemeChange={(next) => {
+            pickTheme(next)
+            setTheme(next)
+          }}
+          onSignOut={() => void signOut()}
+        />
+      }
+      nav={
+        <AppNav
+          me={me}
+          teams={memberships.teams}
+          current={current}
+          watching={memberships.watching}
+          currentTeam={currentTeam}
+        />
+      }
+    >
+      <Outlet />
+    </AppShell>
   )
 }
 

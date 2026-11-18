@@ -13,20 +13,27 @@ import { Empty } from '../page/Empty.tsx'
 import { UserName } from '../people/UserName.tsx'
 import { ideas, riley } from '../stories/fixtures.ts'
 
-function Nav() {
+// the app's bar: only what's global, the site's name and you
+function Bar() {
   const [theme, setTheme] = useState<Theme>('auto')
   return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <strong>✳ Ideation Factory</strong>
+      <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <ThemeToggle value={theme} onChange={setTheme} />
+        <UserName person={riley} withAvatar />
+      </span>
+    </div>
+  )
+}
+
+function Nav() {
+  return (
     <SideNav
-      brand={
-        <>
-          <span aria-hidden>✳</span> Ideation Factory
-        </>
-      }
       groups={[
         {
           items: [
             { href: '#home', label: 'Home', current: true },
-            { href: '#notifications', label: 'Notifications', count: 4 },
             { href: '#ideas', label: 'Ideas' },
             { href: '#me', label: '🔒 Your ideas' },
             { href: '#teams', label: 'Teams' },
@@ -38,17 +45,11 @@ function Nav() {
           title: 'Your teams',
           items: [
             { href: '#teams/mobile', label: 'Mobile', note: 'All' },
-            { href: '#teams/payments', label: 'Payments' },
+            { href: '#teams/payments', label: 'Payments', count: 4 },
             { href: '#teams/security', label: '🔒 Security', note: 'Active' },
           ],
         },
       ]}
-      footer={
-        <>
-          <UserName person={riley} withAvatar />
-          <ThemeToggle value={theme} onChange={setTheme} />
-        </>
-      }
     />
   )
 }
@@ -57,7 +58,7 @@ const meta = {
   title: 'Layout/AppShell',
   component: AppShell,
   parameters: { layout: 'fullscreen' },
-  args: { nav: <Nav />, children: null },
+  args: { nav: <Nav />, bar: <Bar />, children: null },
 } satisfies Meta<typeof AppShell>
 
 export default meta
@@ -101,7 +102,7 @@ export const EmptyPage: Story = {
   },
 }
 
-// A page that needs the width (an idea's document): no site navigation, the page gives its own way home
+// A page that needs the width (an idea's): no navigation column, but the bar is still across the top
 export const Bare: Story = {
   args: {
     bare: true,
@@ -114,16 +115,16 @@ export const Bare: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await expect(canvas.queryByRole('link', { name: 'Notifications' })).toBeNull()
+    await expect(canvas.queryByRole('link', { name: 'Home' })).toBeNull()
+    await expect(canvasElement.querySelector('.app-shell-bar')).toHaveTextContent('Ideation Factory')
     await expect(canvas.getByRole('main')).toHaveTextContent('The document has the whole width.')
   },
 }
 
-// A phone: a bar across the top, and the navigation behind Menu, over the page; a link in it closes it.
-// (The bar shows below 50rem: the test presses its buttons whatever the width.)
+// A phone: the same bar, with the navigation behind Menu at its end, over the page; a link in it closes it.
 export const Phone: Story = {
+  globals: { viewport: { value: 'mobile2' } },
   args: {
-    bar: <strong>✳ Ideation Factory</strong>,
     children: (
       <Page>
         <PageHeader title="Home" />
@@ -133,7 +134,7 @@ export const Phone: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    const menu = canvas.getByRole('button', { name: 'Menu', hidden: true })
+    const menu = canvas.getByRole('button', { name: 'Menu' })
     await expect(menu).toHaveAttribute('aria-expanded', 'false')
     menu.click()
     await expect(await canvas.findByRole('button', { name: 'Close', hidden: true })).toHaveAttribute(

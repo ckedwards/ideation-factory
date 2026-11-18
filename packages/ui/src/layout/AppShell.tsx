@@ -4,18 +4,21 @@ import './AppShell.css'
 export interface AppShellProps {
   // the site's navigation (SideNav)
   nav: ReactNode
-  // on a narrow screen, the bar across the top beside the Menu button: the site's name and what's new
+  // the app's bar across the top of every page: only what's global (the site's name, your notifications,
+  // your account), never the page's own title or actions
   bar?: ReactNode
-  // the page has the width to itself: no site navigation (it gives its own way home), except on a phone,
-  // where every page has the bar and its Menu
+  // the page has the width to itself: no navigation column beside it, except behind Menu on a phone. The
+  // bar is still there.
   bare?: boolean
   children: ReactNode
 }
 
-// The site: navigation on the left, the page on the right. A skip link comes
-// first, so a keyboard can go straight to the page. On a narrow screen the
-// navigation folds into a bar across the top, with a Menu button that opens
-// it over the page; following a link in it, or Esc, closes it again.
+// The site: the app's bar across the top, then navigation on the left and the
+// page on the right, under it. A skip link comes first, so a keyboard can go
+// straight to the page. The bar and the navigation stay put as the page
+// scrolls. On a narrow screen the navigation folds behind a Menu button at the
+// bar's right end, which opens it over the page; following a link in it, or
+// Esc, closes it again.
 export function AppShell({ nav, bar, bare = false, children }: AppShellProps) {
   const [open, setOpen] = useState(false)
   const navId = useId()

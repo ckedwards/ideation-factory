@@ -1,5 +1,10 @@
+/* the app's bar across the top, the navigation and the page under it */
 .app-shell {
+  /* the bar's height: a 32px row (the envelope, the avatar) and its padding and rule. What's under it that
+     stays put, or fills the window, takes this off. */
+  --app-bar-height: calc(2rem + 2 * var(--space-2) + var(--hairline));
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   grid-template-columns: 16rem minmax(0, 1fr);
   min-height: 100vh;
 }
@@ -9,10 +14,27 @@
 .app-shell-bare > .app-shell-nav {
   display: none;
 }
-.app-shell-nav {
+.app-shell-bar {
   position: sticky;
   top: 0;
-  height: 100vh;
+  z-index: 20;
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--app-bar-height);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: var(--hairline) solid var(--rule);
+  background: var(--surface-2);
+}
+.app-shell-bar-content {
+  flex: 1;
+  min-width: 0;
+}
+.app-shell-nav {
+  position: sticky;
+  top: var(--app-bar-height);
+  height: calc(100vh - var(--app-bar-height));
   overflow-y: auto;
   border-right: var(--hairline) solid var(--rule);
   background: var(--surface-2);
@@ -21,32 +43,17 @@
   min-width: 0;
   outline: none;
 }
-/* the bar is for narrow screens only */
-.app-shell-bar {
+/* Menu is for narrow screens only */
+.app-shell-menu {
   display: none;
 }
-/* narrow: a bar across the top, and the navigation behind its Menu button, over the page */
+/* narrow: the navigation behind the bar's Menu button, over the page */
 @media (max-width: 50rem) {
   .app-shell {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto 1fr;
-  }
-  .app-shell-bar {
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-2) var(--space-4);
-    border-bottom: var(--hairline) solid var(--rule);
-    background: var(--surface-2);
-  }
-  .app-shell-bar-content {
-    flex: 1;
-    min-width: 0;
   }
   .app-shell-menu {
+    display: block;
     padding: var(--space-1) var(--space-3);
     border: var(--hairline) solid var(--rule-strong);
     border-radius: var(--radius);
@@ -59,7 +66,7 @@
   }
   .app-shell-nav {
     position: fixed;
-    top: 3rem;
+    top: var(--app-bar-height);
     right: 0;
     bottom: 0;
     left: 0;
@@ -72,9 +79,5 @@
   .app-shell-open .app-shell-nav,
   .app-shell-bare.app-shell-open > .app-shell-nav {
     display: block;
-  }
-  /* the bar already has the site's name */
-  .app-shell-nav .side-nav-brand {
-    display: none;
   }
 }

@@ -83,12 +83,6 @@
     display: inline-block;
   }
 }
-/* a phone has the site's bar across the top, with its Menu: the rail doesn't repeat it */
-@media (max-width: 50rem) {
-  .idea-nav .site-links {
-    display: none;
-  }
-}
 /* the comments panel: its filters, its small group labels, and the whole-file box at the end */
 /* fixed widths, side by side: they don't stack, or change width with what's chosen */
 .idea-comment-filters {

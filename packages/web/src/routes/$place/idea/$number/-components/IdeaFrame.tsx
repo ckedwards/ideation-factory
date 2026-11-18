@@ -1,21 +1,20 @@
 // Every page of an idea, in one frame drawn once by the idea's route, so
 // nothing about the idea moves when you go from one of its pages to another:
-// a bar with the way out (the product's mark for Home, the team), its title,
-// its status, its version, and what can be done with it (Subscribe, Sharing,
-// your review, and the rest behind ⋯), then your notifications and account;
-// and its tabs under that. The site's navigation steps aside, as the idea's
-// pages have side columns of their own. Sharing, your review and closing open
+// under the app's bar, the idea's own bar with the way out (its team), its
+// title, its status, its version, and what can be done with it (Subscribe,
+// Sharing, your review, and the rest behind ⋯); and its tabs under that. The
+// site's navigation steps aside, as the idea's pages have side columns of
+// their own. Sharing, your review and closing open
 // as dialogs over whichever page is shown. A page can put the idea in a mode
 // (IdeaMode: editing its draft): the bar then says so and has the mode's
 // actions where its own were, and the tabs wait until the mode ends.
 import { createContext, type ReactNode, useContext, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AccountMenu, Button, Dialog, InboxLink, Link, RelativeTime, RowMenu, Toast } from '@ideaf/ui'
+import { Button, Dialog, Link, RelativeTime, RowMenu, Toast } from '@ideaf/ui'
 import { useLiveSuspenseQuery } from '@tanstack/react-db'
 import { useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { api, meQuery, teamQuery, unreadQuery } from '../../../../../api.ts'
-import { useSite } from '../../../../../site.tsx'
+import { api, meQuery, teamQuery } from '../../../../../api.ts'
 import { IdeaTabs } from './IdeaTabs.tsx'
 import type { IdeaLinks } from './links.ts'
 import { commentsOf } from './live.ts'
@@ -70,12 +69,10 @@ export function IdeaFrame({ id, links, current, sharing, onSharing, children }: 
   const [slot, setSlot] = useState<HTMLElement | null>(null)
   const [moded, setModed] = useState(false)
   const navigate = useNavigate()
-  const site = useSite()
   const { data: idea } = useSuspenseQuery(ideaQuery(id))
   const { data: me } = useSuspenseQuery(meQuery)
   const { data: pulled } = useSuspenseQuery(filesQuery(id, idea.latest))
   const team = useQuery({ ...teamQuery(idea.team ?? ''), enabled: idea.team !== null })
-  const unread = useQuery(unreadQuery).data ?? 0
   const subscription = useQuery(subscriptionQuery(id))
   const [subscribing, setSubscribing] = useState(false)
   const [closing, setClosing] = useState(false)
@@ -102,9 +99,6 @@ export function IdeaFrame({ id, links, current, sharing, onSharing, children }: 
     <div className="idea-frame">
       <header className="idea-bar">
         <div className="idea-bar-where">
-          <Link className="idea-bar-mark" href="/" aria-label="Home" title="Home">
-            <span aria-hidden>✳</span>
-          </Link>
           {where.href ? (
             <Link className="idea-bar-team" href={where.href}>
               {where.name}
@@ -174,17 +168,6 @@ export function IdeaFrame({ id, links, current, sharing, onSharing, children }: 
             />
           </div>
         )}
-        <div className="idea-bar-site">
-          <InboxLink href="/notifications" unread={unread} />
-          <AccountMenu
-            compact
-            person={me}
-            settingsHref="/settings"
-            theme={site.theme}
-            onThemeChange={site.onThemeChange}
-            onSignOut={site.onSignOut}
-          />
-        </div>
       </header>
       {/* the tabs wait while a mode is on: leaving is the mode's to do */}
       <div className={`idea-frame-tabs${moded ? ' is-waiting' : ''}`} inert={moded}>
