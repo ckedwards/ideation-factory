@@ -1,4 +1,4 @@
-// The reader view: an idea's files with everything else out of the way. Each
+// The focus view: an idea's files with everything else out of the way. Each
 // file is a page on a sheet of its own, one under the other in one scroll, with
 // the pages' names down the left. Comments are hidden until asked for; then each
 // page's open threads sit beside it, level with their text, and can be acted on
@@ -22,32 +22,32 @@ import {
   type TextSelection,
 } from '@ideaf/ui'
 import { type PageComment, type ThreadActions, ThreadCard } from './ThreadCard.tsx'
-import './ReaderView.css'
+import './FocusView.css'
 
 /** still: open from the start (its address opened directly), nothing to carry from. */
-export type ReaderPhase = 'still' | 'entering' | 'open' | 'leaving'
+export type FocusPhase = 'still' | 'entering' | 'open' | 'leaving'
 
 /** One file, one page: its open comments, placed in it. */
-export interface ReaderPage {
+export interface FocusPage {
   id: string
   path: string
   source: string
   comments: PageComment[]
 }
 
-export interface ReaderViewProps {
+export interface FocusViewProps {
   title: string
   /** "v1 · 22h ago" */
   version: ReactNode
-  pages: ReaderPage[]
+  pages: FocusPage[]
   /** The file the Files tab shows: what entering carries from, and leaving carries to. */
   file: string
-  phase: ReaderPhase
+  phase: FocusPhase
   /** Exit or Esc: the file whose page is at the top. */
   onExit: (path: string) => void
   /** Entering's done. */
   onOpened: () => void
-  /** Leaving's done: the reader can go. */
+  /** Leaving's done: focus view can go. */
   onLeft: () => void
   actions: ThreadActions
   /** What a suggestion there replaces, in a page's file. */
@@ -70,16 +70,16 @@ const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matc
 // the Files tab's text, which entering carries from and leaving carries to
 const filesText = () => document.querySelector<HTMLElement>('.idea-page-measure .prose')
 const filesScroller = () => document.querySelector<HTMLElement>('.idea-page-document')
-// the page beneath, out of reach while the reader's open
+// the page beneath, out of reach while focus view's open
 const BENEATH = ['.app-shell-bar', '.app-shell-nav', '.idea-bar', '.idea-frame-tabs', '.idea-page']
 
-export function ReaderView(props: ReaderViewProps) {
+export function FocusView(props: FocusViewProps) {
   const { pages, phase } = props
   const root = useRef<HTMLDivElement>(null)
   const sheets = useRef(new Map<string, HTMLElement>())
   const rows = useRef(new Map<string, HTMLElement>())
   const running = useRef<Animation[]>([])
-  // the reader's own look: open (the ground, the sheets in place) and comments on
+  // focus view's own look: open (the ground, the sheets in place) and comments on
   const [open, setOpen] = useState(phase === 'still')
   const [comments, setComments] = useState(false)
   // no transitions for a change that's measured, not shown (comments off on the way out)
@@ -106,18 +106,18 @@ export function ReaderView(props: ReaderViewProps) {
     running.current = []
   }
 
-  // the page beneath steps back: its bars and columns leave (ReaderView.css), it can't be reached, and
-  // its text is handed to the reader's sheet
+  // the page beneath steps back: its bars and columns leave (FocusView.css), it can't be reached, and
+  // its text is handed to focus view's sheet
   useLayoutEffect(() => {
     const html = document.documentElement
-    html.classList.add('reader-motion')
+    html.classList.add('focus-motion')
     const beneath = BENEATH.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)])
     for (const element of beneath) {
       element.inert = true
     }
     return () => {
-      html.classList.remove('reader-motion')
-      delete html.dataset['reader']
+      html.classList.remove('focus-motion')
+      delete html.dataset['focus']
       for (const element of beneath) {
         element.inert = false
       }
@@ -125,26 +125,26 @@ export function ReaderView(props: ReaderViewProps) {
   }, [])
   useLayoutEffect(() => {
     if (open) {
-      document.documentElement.dataset['reader'] = 'open'
+      document.documentElement.dataset['focus'] = 'open'
     } else {
-      delete document.documentElement.dataset['reader']
+      delete document.documentElement.dataset['focus']
     }
   }, [open])
 
-  // entering: the reader scrolled to the text being read, its sheet put where that text is now, and
+  // entering: focus view scrolled to the text being read, its sheet put where that text is now, and
   // carried home as everything else arrives
   useLayoutEffect(() => {
-    const reader = root.current
-    if (!reader) {
+    const scroller = root.current
+    if (!scroller) {
       return
     }
     if (phase === 'still') {
       // opened at its address: on its file, at once
       const row = rows.current.get(current.page)
       if (row) {
-        reader.scrollTop = row.offsetTop - remToPx(4.25)
+        scroller.scrollTop = row.offsetTop - remToPx(4.25)
       }
-      reader.focus({ preventScroll: true })
+      scroller.focus({ preventScroll: true })
       return
     }
     if (phase !== 'entering') {
@@ -156,11 +156,11 @@ export function ReaderView(props: ReaderViewProps) {
     const from = filesText()
     if (sheet && to && from) {
       // as far down the file as the Files tab was
-      reader.scrollTop += to.getBoundingClientRect().top - from.getBoundingClientRect().top
+      scroller.scrollTop += to.getBoundingClientRect().top - from.getBoundingClientRect().top
     }
-    reader.focus({ preventScroll: true })
+    scroller.focus({ preventScroll: true })
     // the starting look is drawn before the change, so the change is a transition
-    void reader.offsetHeight
+    void scroller.offsetHeight
     setOpen(true)
     if (!sheet || !to || !from || reduced()) {
       setCarried(null)
@@ -181,7 +181,7 @@ export function ReaderView(props: ReaderViewProps) {
           easing: EASE,
         },
       ),
-      ...[...sheet.querySelectorAll('.reader-sheet-head')].map((head) =>
+      ...[...sheet.querySelectorAll('.focus-sheet-head')].map((head) =>
         head.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DURATION, easing: 'ease' }),
       ),
     )
@@ -203,7 +203,7 @@ export function ReaderView(props: ReaderViewProps) {
     if (phase !== 'leaving') {
       return
     }
-    const reader = root.current
+    const view = root.current
     cancel()
     const page = pages.find((p) => p.path === props.file)
     const sheet = page && sheets.current.get(page.id)
@@ -211,7 +211,7 @@ export function ReaderView(props: ReaderViewProps) {
     setStill(true)
     setComments(false)
     let carry: (() => void) | null = null
-    if (reader && sheet && showing && !reduced()) {
+    if (view && sheet && showing && !reduced()) {
       carry = () => {
         const to = filesText()
         const text = sheet.querySelector<HTMLElement>('.prose')
@@ -238,7 +238,7 @@ export function ReaderView(props: ReaderViewProps) {
             ],
             { duration: DURATION, easing: EASE, fill: 'forwards' },
           ),
-          ...[...sheet.querySelectorAll('.reader-sheet-head')].map((head) =>
+          ...[...sheet.querySelectorAll('.focus-sheet-head')].map((head) =>
             head.animate([{ opacity: 1 }, { opacity: 0 }], { duration: DURATION, fill: 'forwards' }),
           ),
         )
@@ -264,18 +264,18 @@ export function ReaderView(props: ReaderViewProps) {
 
   // which page and heading are being read
   useEffect(() => {
-    const reader = root.current
-    if (!reader) {
+    const scroller = root.current
+    if (!scroller) {
       return
     }
     const spy = () => {
-      const line = reader.getBoundingClientRect().top + SPY
+      const line = scroller.getBoundingClientRect().top + SPY
       const order = latest.current.pages.flatMap((p) => {
         const row = rows.current.get(p.id)
         return row ? [{ id: p.id, row }] : []
       })
       // scrolled to the end, the last page is the one being read, however short it is
-      const end = reader.scrollTop > 0 && reader.scrollTop + reader.clientHeight >= reader.scrollHeight - 2
+      const end = scroller.scrollTop > 0 && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2
       const at = end ? order.at(-1) : (order.findLast((p) => p.row.getBoundingClientRect().top <= line) ?? order[0])
       if (!at) {
         return
@@ -287,8 +287,8 @@ export function ReaderView(props: ReaderViewProps) {
       setCurrent((was) => (was.page === next.page && was.heading === next.heading ? was : next))
     }
     spy()
-    reader.addEventListener('scroll', spy, { passive: true })
-    return () => reader.removeEventListener('scroll', spy)
+    scroller.addEventListener('scroll', spy, { passive: true })
+    return () => scroller.removeEventListener('scroll', spy)
   }, [])
 
   // Esc leaves, once there's nothing smaller open to close first
@@ -364,43 +364,43 @@ export function ReaderView(props: ReaderViewProps) {
   }
 
   const classes = [
-    'reader',
+    'focus-view',
     open && 'is-open',
     comments && 'has-comments',
     still && 'is-still',
     pagesOpen && 'has-pages-open',
   ]
   return createPortal(
-    <div className={classes.filter(Boolean).join(' ')} ref={root} role="region" aria-label="Reader view" tabIndex={-1}>
-      <div className="reader-top">
-        <div className="reader-what">
+    <div className={classes.filter(Boolean).join(' ')} ref={root} role="region" aria-label="Focus view" tabIndex={-1}>
+      <div className="focus-top">
+        <div className="focus-what">
           <button
             type="button"
-            className="reader-pages-button"
+            className="focus-pages-button"
             aria-expanded={pagesOpen}
-            aria-controls="reader-nav"
+            aria-controls="focus-nav"
             onClick={() => setPagesOpen(!pagesOpen)}
           >
             Pages
           </button>
-          <span className="reader-title">{props.title}</span>
-          <span className="reader-version">{props.version}</span>
+          <span className="focus-title">{props.title}</span>
+          <span className="focus-version">{props.version}</span>
         </div>
-        <div className="reader-tools">
+        <div className="focus-tools">
           <Button aria-pressed={comments} onClick={toggle}>
-            Comments <span className="reader-count">{count}</span>
+            Comments <span className="focus-count">{count}</span>
           </Button>
           <Button variant="ghost" onClick={exit}>
-            Exit reader view <kbd aria-hidden>Esc</kbd>
+            Exit focus view <kbd aria-hidden>Esc</kbd>
           </Button>
         </div>
       </div>
-      <nav className="reader-nav" id="reader-nav" aria-label="Pages">
-        <ol className="reader-nav-in">
+      <nav className="focus-nav" id="focus-nav" aria-label="Pages">
+        <ol className="focus-nav-in">
           {pages.map((page, i) => {
             const here = page.id === current.page
             return (
-              <li key={page.id} className={`reader-nav-item${here ? ' is-current' : ''}`}>
+              <li key={page.id} className={`focus-nav-item${here ? ' is-current' : ''}`}>
                 <a
                   href={`#${rowId(i)}`}
                   aria-current={here ? 'page' : undefined}
@@ -409,7 +409,7 @@ export function ReaderView(props: ReaderViewProps) {
                     go(rowId(i))
                   }}
                 >
-                  <span className="reader-nav-n">{i + 1}</span>
+                  <span className="focus-nav-n">{i + 1}</span>
                   {page.path}
                 </a>
                 {here && (
@@ -426,7 +426,7 @@ export function ReaderView(props: ReaderViewProps) {
           })}
         </ol>
       </nav>
-      <div className="reader-pages">
+      <div className="focus-pages">
         {pages.map((page, i) => (
           <Row
             key={page.id}
@@ -463,9 +463,9 @@ export function ReaderView(props: ReaderViewProps) {
 // the look a carried sheet has at the Files tab's end: the text alone
 const BARE = { backgroundColor: 'transparent', borderColor: 'transparent', boxShadow: '0 0 0 transparent' }
 
-const rowId = (i: number) => `reader-page-${i + 1}`
+const rowId = (i: number) => `focus-page-${i + 1}`
 // each page's headings get IDs of their own, so two files' "Why" don't clash
-const prefixOf = (i: number) => `reader-${i + 1}-`
+const prefixOf = (i: number) => `focus-${i + 1}-`
 
 /** The page being read's second-level headings, each with its count of open comments. */
 function Sections(props: {
@@ -481,7 +481,7 @@ function Sections(props: {
     return null
   }
   return (
-    <ol className="reader-nav-sections">
+    <ol className="focus-nav-sections">
       {twos.map((heading) => {
         const end = all.find((h) => h.offset > heading.offset && h.level <= heading.level)?.offset ?? Infinity
         const open = props.comments.filter((c) => {
@@ -502,7 +502,7 @@ function Sections(props: {
             >
               <span>{heading.title}</span>
               {open > 0 && (
-                <span className="reader-nav-count">
+                <span className="focus-nav-count">
                   {open}
                   <span className="visually-hidden"> {open === 1 ? 'comment' : 'comments'}</span>
                 </span>
@@ -518,7 +518,7 @@ function Sections(props: {
 interface RowProps {
   index: number
   of: number
-  page: ReaderPage
+  page: FocusPage
   tree: ReturnType<typeof markdownTree>
   comments: boolean
   carried: boolean
@@ -542,22 +542,22 @@ function Row(props: RowProps) {
   const inText = page.comments.filter((c) => c.place.kind === 'text' || c.place.kind === 'section')
   return (
     <div
-      className={`reader-row${props.carried ? ' is-carried' : ''}`}
+      className={`focus-row${props.carried ? ' is-carried' : ''}`}
       id={rowId(index)}
       ref={props.rowRef}
       style={{ ['--row' as string]: index }}
     >
       <article
-        className="reader-sheet"
+        className="focus-sheet"
         aria-labelledby={`${prefix}name`}
         ref={(element) => {
           sheet.current = element
           props.sheetRef(element)
         }}
       >
-        <header className="reader-sheet-head">
+        <header className="focus-sheet-head">
           <span id={`${prefix}name`}>{page.path}</span>
-          <span className="reader-sheet-n">
+          <span className="focus-sheet-n">
             {index + 1} of {props.of}
           </span>
         </header>
@@ -575,7 +575,7 @@ function Row(props: RowProps) {
                   ? [{ id: c.info.id, start: c.place.start, end: c.place.end, active: c.info.id === active }]
                   : [],
               ),
-              ...(props.flash ? [{ id: 'reader-changed', ...props.flash }] : []),
+              ...(props.flash ? [{ id: 'focus-changed', ...props.flash }] : []),
             ]}
             sectionMarks={inText.flatMap((c) =>
               c.place.kind === 'section'
@@ -620,7 +620,7 @@ interface Note {
  * nothing; a reply box opening does move the ones below. A thread dealt with fades out to the right.
  */
 function Notes(props: {
-  page: ReaderPage
+  page: FocusPage
   sheet: RefObject<HTMLElement | null>
   shown: boolean
   active: string | null
@@ -652,9 +652,9 @@ function Notes(props: {
             id: 'file',
             node: (
               <>
-                <h3 className="reader-note-label">On the whole file</h3>
+                <h3 className="focus-note-label">On the whole file</h3>
                 {onFile.map((c) => (
-                  <div key={c.info.id} className="reader-thread">
+                  <div key={c.info.id} className="focus-thread">
                     {card(c)}
                   </div>
                 ))}
@@ -666,8 +666,8 @@ function Notes(props: {
     ...inText.map((c) => ({
       id: c.info.id,
       node: (
-        <div className="reader-thread">
-          <p className="reader-note-where">
+        <div className="focus-thread">
+          <p className="focus-note-where">
             {c.info.target.kind === 'text'
               ? `“${c.info.target.quote}”`
               : c.info.target.kind === 'section'
@@ -749,7 +749,7 @@ function Notes(props: {
   let shownIndex = 0
   return (
     <aside
-      className="reader-notes"
+      className="focus-notes"
       aria-label={`Comments on ${page.path}`}
       ref={column}
       inert={!shown}
@@ -760,7 +760,7 @@ function Notes(props: {
         return (
           <div
             key={note.id}
-            className={`reader-note${top === undefined ? ' is-unplaced' : ''}`}
+            className={`focus-note${top === undefined ? ' is-unplaced' : ''}`}
             ref={(element) => setIn(elements.current, note.id, element)}
             style={{ top: `${Math.max(0, top ?? 0)}px`, ['--i' as string]: Math.min(shownIndex++, 8) }}
           >
@@ -769,7 +769,7 @@ function Notes(props: {
         )
       })}
       {[...going].map(([id, node]) => (
-        <div key={`going-${id}`} className="reader-note is-going" style={{ top: `${tops.get(id) ?? 0}px` }} aria-hidden>
+        <div key={`going-${id}`} className="focus-note is-going" style={{ top: `${tops.get(id) ?? 0}px` }} aria-hidden>
           {node}
         </div>
       ))}
