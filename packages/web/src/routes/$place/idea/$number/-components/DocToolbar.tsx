@@ -1,5 +1,6 @@
 // The bar across the top of an idea's document: which file and version it is, and what can be done
-// with it: compare it with another version (or stop), read its Markdown source, and edit it. Comparing
+// with it: read it in the reader view, compare it with another version (or stop), read its Markdown
+// source, and edit it. Comparing
 // lives here, a way of looking at the file, not a page of its own. Your review is of the idea, not one
 // file, so its button is in the idea's bar.
 import { Button, FilterMenu, Select } from '@ideaf/ui'
@@ -23,6 +24,8 @@ export interface DocToolbarProps {
    * "Comparing: v1 → v3" menu (the versions, newest first).
    */
   range?: { versions: number[]; onRange: (version: number, base: number | null) => void }
+  /** Opens the reader view; none while editing or comparing, where there's no button. */
+  onReader?: (() => void) | undefined
   /** The editor's open: the toolbar stays, saying how to edit in place of the reading actions (the idea's bar has the rest). */
   editing?: boolean
 }
@@ -41,6 +44,11 @@ export function DocToolbar(props: DocToolbarProps) {
         </span>
       ) : (
         <span className="doc-toolbar-actions">
+          {props.onReader && (
+            <Button className="doc-toolbar-reader" onClick={props.onReader}>
+              Reader view
+            </Button>
+          )}
           {props.compare ? (
             // the one control for comparing: which versions, and stopping
             <FilterMenu

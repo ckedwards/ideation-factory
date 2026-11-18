@@ -1,0 +1,573 @@
+/* The reader view (ReaderView.tsx). Sizes, distances and times are the design's
+   (docs/design-reader-view.md). --d is entering and leaving, --dc comments on and off. */
+
+/* ---- the page beneath, stepping back: html.reader-motion while the reader's there, [data-reader=open]
+   while it's open ---- */
+html.reader-motion :is(.app-shell-bar, .idea-bar, .idea-frame-tabs, .idea-page-nav, .idea-page-panel, .doc-toolbar) {
+  transition:
+    transform 300ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 300ms ease;
+}
+html[data-reader='open'] :is(.app-shell-bar, .idea-bar, .idea-frame-tabs) {
+  opacity: 0;
+  transform: translateY(-1.5rem);
+}
+html[data-reader='open'] .idea-page-nav {
+  opacity: 0;
+  transform: translateX(-2rem);
+}
+html[data-reader='open'] .idea-page-panel {
+  opacity: 0;
+  transform: translateX(2rem);
+}
+html[data-reader='open'] .doc-toolbar {
+  opacity: 0;
+}
+/* the text is handed to the reader's sheet at once, and handed back once the sheet has carried it home */
+html.reader-motion .idea-page-measure .prose {
+  transition: opacity 0s linear 300ms;
+}
+html[data-reader='open'] .idea-page-measure .prose {
+  opacity: 0;
+  transition: opacity 0s;
+}
+
+/* ---- the reader ---- */
+.reader {
+  --d: 300ms;
+  --dc: 240ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --top: 4.25rem;
+  --note-w: 22rem;
+  position: fixed;
+  inset: 0;
+  /* above the app's bar (20), under menus (40) and what's over them */
+  z-index: 30;
+  overflow: hidden auto;
+  background-color: transparent;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  outline: none;
+  transition: background-color var(--d) ease;
+}
+.reader.is-open {
+  background-color: var(--surface-2);
+}
+.reader.is-still,
+.reader.is-still * {
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+}
+
+/* the line across the top */
+.reader-top {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  background: var(--surface-2);
+  font-size: var(--text-sm);
+  opacity: 0;
+  transition: opacity var(--d) ease;
+}
+.reader.is-open .reader-top {
+  opacity: 1;
+}
+.reader-what {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-width: 0;
+  color: var(--ink-3);
+}
+.reader-title {
+  overflow: hidden;
+  color: var(--ink-2);
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reader-version {
+  flex: none;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.reader-tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+}
+.reader-tools .button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.reader-count {
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+.reader-tools kbd {
+  padding: 0 var(--space-1);
+  border: var(--hairline) solid var(--rule-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+}
+/* the page list's button, where the list isn't down the side */
+.reader-pages-button {
+  display: none;
+  flex: none;
+  align-self: center;
+  padding: var(--space-1) var(--space-3);
+  border: var(--hairline) solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* the pages' names, down the left: out of the flow, so the sheets centre on the window */
+.reader-nav {
+  position: sticky;
+  top: var(--top);
+  z-index: 2;
+  height: 0;
+}
+.reader-nav-in {
+  display: grid;
+  gap: var(--hairline);
+  width: 13rem;
+  margin: 0 0 0 var(--space-5);
+  padding: 0;
+  font-size: var(--text-sm);
+  list-style: none;
+  opacity: 0;
+  transform: translateX(-0.75rem);
+  transition:
+    opacity var(--d) ease,
+    transform var(--d) var(--ease);
+}
+.reader.is-open .reader-nav-in {
+  opacity: 1;
+  transform: none;
+  transition-delay: calc(var(--d) * 0.35);
+}
+.reader-nav-item > a {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
+  color: var(--ink-3);
+  text-decoration: none;
+}
+.reader-nav-item > a:hover {
+  color: var(--ink);
+}
+.reader-nav-n {
+  flex: none;
+  width: 1rem;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.reader-nav-item.is-current > a {
+  color: var(--ink);
+  font-weight: 600;
+}
+.reader-nav-sections {
+  display: grid;
+  margin: var(--space-1) 0 var(--space-2) calc(var(--space-2) + 1.5rem);
+  padding: 0;
+  border-left: var(--hairline) solid var(--rule-strong);
+  list-style: none;
+}
+.reader-nav-sections a {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-left: calc(var(--hairline) * -1);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+  border-left: calc(var(--hairline) * 2) solid transparent;
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  text-decoration: none;
+}
+.reader-nav-sections a:hover {
+  color: var(--ink);
+}
+.reader-nav-sections a.is-current {
+  border-left-color: var(--accent);
+  color: var(--ink);
+}
+.reader-nav-count {
+  flex: none;
+  align-self: center;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--mark);
+  color: var(--mark-ink);
+  font-size: 0.625rem;
+  font-weight: 700;
+  opacity: 0;
+  transition: opacity var(--dc) ease;
+}
+.reader.has-comments .reader-nav-count {
+  opacity: 1;
+}
+
+/* the pages: one sheet a file, one under the other, on the darker ground */
+.reader-pages {
+  display: grid;
+  gap: var(--space-6);
+  padding: var(--space-2) 16.5rem 6rem;
+  transition: padding var(--dc) var(--ease);
+}
+.reader.has-comments .reader-pages {
+  padding-right: 4rem;
+}
+.reader-row {
+  display: grid;
+  grid-template-columns: minmax(0, 46rem) 0rem;
+  column-gap: 0rem;
+  justify-content: center;
+  align-items: start;
+  scroll-margin-top: var(--top);
+  opacity: 0;
+  transform: translateY(2.5rem);
+  transition:
+    grid-template-columns var(--dc) var(--ease),
+    column-gap var(--dc) var(--ease),
+    opacity var(--d) ease,
+    transform var(--d) var(--ease);
+}
+.reader.is-open .reader-row,
+.reader-row.is-carried {
+  opacity: 1;
+  transform: none;
+}
+.reader-row.is-carried {
+  transition:
+    grid-template-columns var(--dc) var(--ease),
+    column-gap var(--dc) var(--ease);
+}
+.reader.has-comments .reader-row {
+  grid-template-columns: minmax(0, 46rem) var(--note-w);
+  column-gap: 1.5rem;
+}
+.reader-sheet {
+  position: relative;
+  min-width: 0;
+  /* the text column is the Files tab's 40rem, so lines break in the same places: 46rem less the padding
+     and the border */
+  padding: var(--space-6) calc(var(--space-7) - var(--hairline)) var(--space-8);
+  border: var(--hairline) solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.reader-sheet .prose :is(h1, h2, h3, h4) {
+  scroll-margin-top: calc(var(--top) + var(--space-3));
+}
+.reader-sheet-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+  padding-bottom: var(--space-3);
+  border-bottom: var(--hairline) solid var(--rule);
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+.reader-sheet-n {
+  font-family: var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+
+/* comments off: the text is clean; on: the marks come back */
+.reader-sheet .md-mark {
+  border-bottom-color: transparent;
+  background-color: transparent;
+  color: inherit;
+  cursor: text;
+  transition:
+    background-color var(--dc) ease,
+    border-color var(--dc) ease;
+}
+.reader.has-comments .reader-sheet .md-mark {
+  border-bottom-color: var(--mark-line);
+  background-color: var(--mark);
+  color: var(--mark-ink);
+  cursor: pointer;
+}
+.reader.has-comments .reader-sheet .md-mark.is-active {
+  background-color: var(--mark-active);
+}
+/* an accepted suggestion's new words, for a moment */
+.reader.has-comments .reader-sheet .md-mark[data-comment-id='reader-changed'] {
+  border-bottom-color: transparent;
+  background-color: transparent;
+  color: inherit;
+  animation: reader-changed 1.6s ease-out;
+}
+@keyframes reader-changed {
+  from {
+    background-color: var(--ins-bg);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+/* a section's comment marks its heading in the Files tab: not here until comments are on */
+.reader:not(.has-comments) .reader-sheet [data-comment-id] {
+  outline: none;
+  box-shadow: none;
+}
+
+/* the threads beside a sheet */
+.reader-notes {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  transition: min-height var(--dc) var(--ease);
+}
+.reader.has-comments .reader-notes {
+  /* the next sheet starts below the last thread */
+  min-height: var(--notes-h, 0);
+}
+.reader-note {
+  position: absolute;
+  left: 0;
+  display: grid;
+  gap: var(--space-2);
+  width: var(--note-w);
+  opacity: 0;
+  transform: translateX(1.25rem);
+  pointer-events: none;
+  transition:
+    opacity var(--dc) ease,
+    transform var(--dc) var(--ease),
+    top var(--dc) var(--ease);
+}
+.reader.has-comments .reader-note {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  transition-delay: calc(var(--i, 0) * 30ms);
+}
+/* off: they go together, with no stagger */
+.reader:not(.has-comments) .reader-note {
+  transition-delay: 0s;
+}
+.reader .reader-note.is-going {
+  opacity: 0;
+  transform: translateX(1.25rem);
+  pointer-events: none;
+  transition-delay: 0s;
+}
+.reader .reader-note.is-unplaced {
+  visibility: hidden;
+}
+.reader-note-label {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.reader-note-where {
+  display: none;
+  margin: 0 0 var(--space-1);
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
+.reader-note-where:empty {
+  display: none !important;
+}
+
+/* a thread's buttons take no room at rest; they open at its foot when the pointer rests on it, focus is
+   in it, or it's the active one, and the thread grows over what's below */
+.reader-note .comment-actions,
+.reader-note .suggestion-actions {
+  max-height: 0;
+  margin-top: calc(var(--space-2) * -1);
+  overflow: hidden;
+  opacity: 0;
+  transition:
+    max-height 0.22s var(--ease),
+    margin-top 0.22s var(--ease),
+    opacity 0.22s ease;
+}
+.reader-thread:hover :is(.comment-actions, .suggestion-actions),
+.reader-thread:focus-within :is(.comment-actions, .suggestion-actions),
+.reader-thread .comment-card.is-active :is(.comment-actions, .suggestion-actions) {
+  max-height: 5rem;
+  margin-top: 0;
+  opacity: 1;
+}
+.reader-thread:hover :is(.comment-actions, .suggestion-actions) {
+  transition-delay: 0.12s;
+}
+.reader-note:hover,
+.reader-note:focus-within {
+  z-index: 3;
+}
+.reader-note .comment-card {
+  transition:
+    box-shadow 0.22s ease,
+    border-color 0.22s ease;
+}
+.reader-note .comment-card.is-active {
+  box-shadow: var(--shadow-sm);
+}
+.reader-thread:hover .comment-card,
+.reader-thread:focus-within .comment-card {
+  box-shadow: var(--shadow);
+}
+@media (hover: none) {
+  .reader-note .comment-actions,
+  .reader-note .suggestion-actions {
+    max-height: none;
+    margin-top: 0;
+    overflow: visible;
+    opacity: 1;
+  }
+}
+
+/* ---- narrower windows ---- */
+/* the page list only just fits beside the sheet and its threads */
+@media (max-width: 89.99rem) and (min-width: 85rem) {
+  .reader.has-comments .reader-pages {
+    padding-right: var(--space-2);
+    padding-left: 15rem;
+  }
+}
+/* the page list behind a Pages button, opening as a menu */
+@media (max-width: 84.99rem) {
+  .reader-pages-button {
+    display: block;
+  }
+  .reader-pages,
+  .reader.has-comments .reader-pages {
+    padding: var(--space-2) var(--space-5) 6rem;
+  }
+  .reader-nav {
+    position: fixed;
+    top: 3.5rem;
+    left: var(--space-3);
+    z-index: 6;
+    display: none;
+    height: auto;
+    max-height: calc(100vh - 5rem);
+    overflow-y: auto;
+    padding: var(--space-3);
+    border: var(--hairline) solid var(--rule);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+  }
+  .reader.has-pages-open .reader-nav {
+    display: block;
+  }
+  .reader-nav-in {
+    margin: 0;
+  }
+}
+@media (max-width: 70.99rem) {
+  .reader {
+    --note-w: 18rem;
+  }
+}
+/* one column: the sheet the window's width, and a page's threads listed under it, each quoting its text */
+@media (max-width: 62.5rem) {
+  .reader-pages,
+  .reader.has-comments .reader-pages {
+    padding: var(--space-2) var(--space-3) 6rem;
+  }
+  .reader-row,
+  .reader.has-comments .reader-row {
+    grid-template-columns: minmax(0, 1fr);
+    column-gap: 0;
+    row-gap: var(--space-4);
+  }
+  .reader-sheet {
+    padding: var(--space-5) var(--space-4) var(--space-7);
+  }
+  .reader-notes {
+    display: none;
+  }
+  .reader.has-comments .reader-notes {
+    display: grid;
+    gap: var(--space-3);
+    min-height: 0;
+  }
+  .reader-note {
+    position: static;
+    width: auto;
+    transform: none;
+    transition: opacity var(--dc) ease;
+  }
+  .reader.has-comments .reader-note {
+    transition-delay: 0s;
+  }
+  .reader-note-where {
+    display: block;
+  }
+}
+/* a phone: the top line in two rows, what it is over what to do; no keyboard hint */
+@media (max-width: 50rem) {
+  .reader {
+    --top: 6.25rem;
+  }
+  .reader-top {
+    flex-wrap: wrap;
+    row-gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+  }
+  .reader-what {
+    flex: 1 1 100%;
+    align-items: center;
+  }
+  .reader-title {
+    flex: 1;
+    min-width: 0;
+  }
+  .reader-tools {
+    margin-left: auto;
+  }
+  .reader-tools kbd {
+    display: none;
+  }
+  .reader-nav {
+    top: 5.75rem;
+    right: var(--space-3);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reader,
+  .reader *,
+  html.reader-motion :is(.app-shell-bar, .idea-bar, .idea-frame-tabs, .idea-page-nav, .idea-page-panel, .doc-toolbar),
+  html.reader-motion .idea-page-measure .prose {
+    transition: none !important;
+    animation: none !important;
+  }
+}
