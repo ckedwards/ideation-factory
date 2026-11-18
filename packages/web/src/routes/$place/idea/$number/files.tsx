@@ -1,6 +1,6 @@
 // An idea's files: the latest version, following new ones, or an older one
-// with ?v= (read only); ?file= picks the file, and ?view=reader shows them all
-// in the reader view.
+// with ?v= (read only); ?file= picks the file, and ?view=focus shows them all
+// in the focus view.
 import { createFileRoute } from '@tanstack/react-router'
 import { IdeaView, versionsOf } from './-components/IdeaView.tsx'
 import { ideaLinks } from './-components/links.ts'
@@ -12,8 +12,8 @@ interface Search {
   v?: number
   /** A comment to open where it is. */
   comment?: string
-  /** The reader view: every file, one page each, with nothing else on the screen. */
-  view?: 'reader'
+  /** The focus view: every file, one page each, with nothing else on the screen. */
+  view?: 'focus'
 }
 
 export const Route = createFileRoute('/$place/idea/$number/files')({
@@ -22,7 +22,7 @@ export const Route = createFileRoute('/$place/idea/$number/files')({
     return {
       ...(typeof search['file'] === 'string' ? { file: search['file'] } : {}),
       ...(typeof search['comment'] === 'string' ? { comment: search['comment'] } : {}),
-      ...(search['view'] === 'reader' ? { view: 'reader' as const } : {}),
+      ...(search['view'] === 'focus' ? { view: 'focus' as const } : {}),
       ...(Number.isInteger(v) && v > 0 ? { v } : {}),
     }
   },

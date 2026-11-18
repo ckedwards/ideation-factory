@@ -1,7 +1,7 @@
 // An idea's files, read (/files) or compared (/changes/1..3): loads what the
 // page shows, keeps the latest version's comments live, and writes comments
-// and suggestions, and accepts and rejects them. ?view=reader shows every file
-// in the reader view (ReaderView), over the page. Someone with edit access can
+// and suggestions, and accepts and rejects them. ?view=focus shows every file
+// in the focus view (FocusView), over the page. Someone with edit access can
 // open the idea's draft on the latest version here and change it (editing.tsx),
 // and accept suggestions into it.
 // The routes say which version, which file and what to compare against.
@@ -22,7 +22,7 @@ import { commentsQuery, draftQuery, filesQuery, ideaQuery, outlineQuery, reviews
 import { commentInfo, commentWrites, usePeople } from './shared.tsx'
 import { VersionBanner } from './VersionBanner.tsx'
 import { DocToolbar } from './DocToolbar.tsx'
-import { type ReaderPhase, ReaderView } from './ReaderView.tsx'
+import { type FocusPhase, FocusView } from './FocusView.tsx'
 import { actorOf, type FileView, place, type Thread } from './view.ts'
 
 export interface IdeaViewProps {
@@ -35,8 +35,8 @@ export interface IdeaViewProps {
   file?: string | undefined
   /** A comment to open where it is: active, and its text scrolled to. */
   comment?: string | undefined
-  /** The reader view, over the page. */
-  view?: 'reader' | undefined
+  /** The focus view, over the page. */
+  view?: 'focus' | undefined
 }
 
 /** The version shown and the one compared against, as the idea has them: anything else is left out. */
@@ -200,32 +200,32 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
   })
   const canEdit = idea.you.edit && !older && base === null && !editing
 
-  // the reader view: open while the address says so, and not while editing or comparing. Opening it
+  // the focus view: open while the address says so, and not while editing or comparing. Opening it
   // here carries the text into it; its address opened directly shows it at once
-  const reading = view === 'reader' && base === null && !editing
-  const [reader, setReader] = useState<ReaderPhase | null>(reading ? 'still' : null)
+  const focusing = view === 'focus' && base === null && !editing
+  const [focusPhase, setFocusPhase] = useState<FocusPhase | null>(focusing ? 'still' : null)
   // each time it opens is a new one, so leaving and opening again don't share a half-run animation
-  const [readings, setReadings] = useState(0)
-  const wasReading = useRef(reading)
+  const [openings, setOpenings] = useState(0)
+  const wasFocusing = useRef(focusing)
   // the file it was opened on from here: leaving on that file is going Back
   const enteredOn = useRef<string | null>(null)
   useEffect(() => {
-    if (reading && !wasReading.current) {
-      setReadings((n) => n + 1)
-      setReader('entering')
-    } else if (!reading && wasReading.current) {
-      setReader((was) => (was === null ? null : 'leaving'))
+    if (focusing && !wasFocusing.current) {
+      setOpenings((n) => n + 1)
+      setFocusPhase('entering')
+    } else if (!focusing && wasFocusing.current) {
+      setFocusPhase((was) => (was === null ? null : 'leaving'))
     }
-    wasReading.current = reading
-  }, [reading])
-  // back to the button that opened it, once the reader's gone and the page can be reached again
-  const focusReaderButton = useRef(false)
+    wasFocusing.current = focusing
+  }, [focusing])
+  // back to the button that opened it, once focus view's gone and the page can be reached again
+  const returnFocus = useRef(false)
   useEffect(() => {
-    if (reader === null && focusReaderButton.current) {
-      focusReaderButton.current = false
-      window.document.querySelector<HTMLElement>('.doc-toolbar-reader')?.focus()
+    if (focusPhase === null && returnFocus.current) {
+      returnFocus.current = false
+      window.document.querySelector<HTMLElement>('.doc-toolbar-focus')?.focus()
     }
-  }, [reader])
+  }, [focusPhase])
   const threadActions = {
     canComment: idea.you.view && !older,
     canDecide: idea.you.edit && !older,
@@ -288,11 +288,11 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
                   : null
               }
               editing={editing}
-              onReader={
+              onFocusView={
                 base === null && !editing
                   ? () => {
                       enteredOn.current = file.path
-                      void navigate({ href: links.files({ v: shownV, file: file.path, view: 'reader' }) })
+                      void navigate({ href: links.files({ v: shownV, file: file.path, view: 'focus' }) })
                     }
                   : undefined
               }
@@ -400,9 +400,9 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
           ))}
         </ul>
       </Dialog>
-      {reader && (
-        <ReaderView
-          key={readings}
+      {focusPhase && (
+        <FocusView
+          key={openings}
           title={idea.title}
           version={
             <>
@@ -425,7 +425,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
             }),
           }))}
           file={file.path}
-          phase={reader}
+          phase={focusPhase}
           onExit={(leaving) => {
             if (enteredOn.current === leaving) {
               window.history.back()
@@ -434,10 +434,10 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
             }
             enteredOn.current = null
           }}
-          onOpened={() => setReader((was) => (was === 'entering' ? 'open' : was))}
+          onOpened={() => setFocusPhase((was) => (was === 'entering' ? 'open' : was))}
           onLeft={() => {
-            setReader(null)
-            focusReaderButton.current = true
+            setFocusPhase(null)
+            returnFocus.current = true
           }}
           actions={threadActions}
           suggestionOf={(page, selection) => {

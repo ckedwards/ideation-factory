@@ -1,5 +1,5 @@
 // A comment thread on an idea's file, with what can be done to it here: reply, resolve, delete one of
-// your pending ones, and decide a suggested edit. The Files tab and the reader view draw threads the same
+// your pending ones, and decide a suggested edit. The Files tab and the focus view draw threads the same
 // way, with the same rules about who may do what.
 import type { ReactNode } from 'react'
 import { Button, CommentCard, type CommentInfo } from '@ideaf/ui'

@@ -4,7 +4,7 @@ import { markdownTree } from '@ideaf/core'
 import { type CommentInfo, MarkdownView, RelativeTime } from '@ideaf/ui'
 import { maya, NOW, riley, sam } from '@ideaf/ui/fixtures'
 import { expect, fn, waitFor, within } from 'storybook/test'
-import { type ReaderPage, ReaderView, type ReaderViewProps } from './ReaderView.tsx'
+import { type FocusPage, FocusView, type FocusViewProps } from './FocusView.tsx'
 
 const offline = `# Offline mode for the field app
 
@@ -67,7 +67,7 @@ const thread = (
   ...extra,
 })
 
-const twoFiles: ReaderPage[] = [
+const twoFiles: FocusPage[] = [
   {
     id: 'f1',
     path: 'offline.md',
@@ -121,7 +121,7 @@ const twoFiles: ReaderPage[] = [
   },
 ]
 
-const oneLongFile: ReaderPage[] = [
+const oneLongFile: FocusPage[] = [
   {
     id: 'f1',
     path: 'on-call.md',
@@ -133,13 +133,13 @@ const oneLongFile: ReaderPage[] = [
   },
 ]
 
-// the reader with its pages' threads in state, so resolving one takes it out
-function Reader(props: Omit<ReaderViewProps, 'pages'> & { pages: ReaderPage[] }) {
+// focus view with its pages' threads in state, so resolving one takes it out
+function Focus(props: Omit<FocusViewProps, 'pages'> & { pages: FocusPage[] }) {
   const [pages, setPages] = useState(props.pages)
   const without = (id: string) =>
     setPages((all) => all.map((p) => ({ ...p, comments: p.comments.filter((c) => c.info.id !== id) })))
   return (
-    <ReaderView
+    <FocusView
       {...props}
       pages={pages}
       actions={{
@@ -158,8 +158,8 @@ function Reader(props: Omit<ReaderViewProps, 'pages'> & { pages: ReaderPage[] })
 }
 
 const meta = {
-  title: 'Ideas/ReaderView',
-  component: Reader,
+  title: 'Ideas/FocusView',
+  component: Focus,
   // the window the design was drawn for: the page list down the side, threads beside the sheets
   parameters: {
     layout: 'fullscreen',
@@ -190,25 +190,25 @@ const meta = {
       onReject: fn(),
     },
   },
-} satisfies Meta<typeof Reader>
+} satisfies Meta<typeof Focus>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
-const reader = () => within(document.body).getByRole('region', { name: 'Reader view' })
+const region = () => within(document.body).getByRole('region', { name: 'Focus view' })
 
 // Two files, a sheet each in one scroll, the pages' names down the left; comments off, the text clean
 export const TwoFiles: Story = {
   play: async () => {
-    const view = within(reader())
-    const sheets = view.getAllByRole('article').filter((a) => a.classList.contains('reader-sheet'))
+    const view = within(region())
+    const sheets = view.getAllByRole('article').filter((a) => a.classList.contains('focus-sheet'))
     await expect(sheets).toHaveLength(2)
     await expect(sheets[0]).toHaveTextContent('1 of 2')
     await expect(sheets[1]).toHaveTextContent('2 of 2')
     await expect(view.getByRole('button', { name: /Comments/ })).toHaveAttribute('aria-pressed', 'false')
     await expect(view.getByRole('button', { name: /Comments/ })).toHaveTextContent('4')
     // the threads are there, but out of reach until comments are on
-    await expect(reader().querySelector('.reader-notes')).toHaveAttribute('inert')
+    await expect(region().querySelector('.focus-notes')).toHaveAttribute('inert')
     // the page being read is marked, with its sections under it
     const pages = within(view.getByRole('navigation', { name: 'Pages' }))
     await expect(pages.getByRole('link', { name: /offline\.md/ })).toHaveAttribute('aria-current', 'page')
@@ -219,10 +219,10 @@ export const TwoFiles: Story = {
 // Comments on: each thread beside its text, the highlights back, a suggested edit among them; and off again
 export const TwoFilesWithComments: Story = {
   play: async ({ userEvent }) => {
-    const view = within(reader())
+    const view = within(region())
     await userEvent.click(view.getByRole('button', { name: /Comments/ }))
     await expect(view.getByRole('button', { name: /Comments/ })).toHaveAttribute('aria-pressed', 'true')
-    await expect(reader().querySelector('.reader-notes')).not.toHaveAttribute('inert')
+    await expect(region().querySelector('.focus-notes')).not.toHaveAttribute('inert')
     const notes = within(view.getByRole('complementary', { name: 'Comments on offline.md' }))
     // they fade in, one after the other
     await waitFor(() => expect(notes.getByText('Suggested edit')).toBeVisible())
@@ -230,7 +230,7 @@ export const TwoFilesWithComments: Story = {
     await waitFor(() => expect(fileNotes.getByText('On the whole file')).toBeVisible())
     // threads don't overlap: each starts below the one above
     await waitFor(() => {
-      const tops = [...reader().querySelectorAll<HTMLElement>('.reader-row:first-child .reader-note')].map((n) =>
+      const tops = [...region().querySelectorAll<HTMLElement>('.focus-row:first-child .focus-note')].map((n) =>
         n.getBoundingClientRect(),
       )
       tops.sort((a, b) => a.top - b.top)
@@ -239,7 +239,7 @@ export const TwoFilesWithComments: Story = {
       }
     })
     await userEvent.click(view.getByRole('button', { name: /Comments/ }))
-    await expect(reader().querySelector('.reader-notes')).toHaveAttribute('inert')
+    await expect(region().querySelector('.focus-notes')).toHaveAttribute('inert')
   },
 }
 
@@ -247,12 +247,12 @@ export const TwoFilesWithComments: Story = {
 // nothing. (The pointer resting on it opens them by the same rule; a story's pointer can't trigger :hover.)
 export const ButtonsOnFocus: Story = {
   play: async ({ userEvent }) => {
-    const view = within(reader())
+    const view = within(region())
     await userEvent.click(view.getByRole('button', { name: /Comments/ }))
-    const card = reader().querySelector<HTMLElement>('.reader-thread')!
+    const card = region().querySelector<HTMLElement>('.focus-thread')!
     const actions = card.querySelector<HTMLElement>('.suggestion-actions')!
     await waitFor(() => expect(actions.getBoundingClientRect().height).toBe(0))
-    const next = card.closest<HTMLElement>('.reader-note')!.nextElementSibling!
+    const next = card.closest<HTMLElement>('.focus-note')!.nextElementSibling!
     await waitFor(() => expect(getComputedStyle(next).opacity).toBe('1'))
     const top = next.getBoundingClientRect().top
     within(card).getByRole('button', { name: 'Reply', hidden: true }).focus()
@@ -267,16 +267,16 @@ export const ButtonsOnFocus: Story = {
 // Resolving a thread takes it and its highlight out
 export const Resolving: Story = {
   play: async ({ args, userEvent }) => {
-    const view = within(reader())
+    const view = within(region())
     await userEvent.click(view.getByRole('button', { name: /Comments/ }))
-    await expect(reader().querySelector('[data-comment-id="c2"]')).not.toBeNull()
-    const card = [...reader().querySelectorAll<HTMLElement>('.reader-thread')].find((t) =>
+    await expect(region().querySelector('[data-comment-id="c2"]')).not.toBeNull()
+    const card = [...region().querySelectorAll<HTMLElement>('.focus-thread')].find((t) =>
       t.textContent?.includes('same banner'),
     )!
     await userEvent.hover(card)
     await userEvent.click(within(card).getByRole('button', { name: 'Resolve' }))
     await expect(args.actions.onResolve).toHaveBeenCalledWith('c2', true)
-    await waitFor(() => expect(reader().querySelector('[data-comment-id="c2"]')).toBeNull())
+    await waitFor(() => expect(region().querySelector('[data-comment-id="c2"]')).toBeNull())
     await expect(view.getByRole('button', { name: /Comments/ })).toHaveTextContent('3')
   },
 }
@@ -284,10 +284,10 @@ export const Resolving: Story = {
 // A page's name in the list scrolls to its sheet, and Esc leaves
 export const PagesAndEsc: Story = {
   play: async ({ args, userEvent }) => {
-    const view = within(reader())
+    const view = within(region())
     const second = view.getByRole('link', { name: /sync-states\.md/ })
     await userEvent.click(second)
-    await waitFor(() => expect(reader().scrollTop).toBeGreaterThan(0))
+    await waitFor(() => expect(region().scrollTop).toBeGreaterThan(0))
     await waitFor(() => expect(second).toHaveAttribute('aria-current', 'page'))
     await userEvent.keyboard('{Escape}')
     await expect(args.onExit).toHaveBeenCalledWith('sync-states.md')
@@ -298,7 +298,7 @@ export const PagesAndEsc: Story = {
 export const OneLongFile: Story = {
   args: { title: 'Handbook: being on call', pages: oneLongFile, file: 'on-call.md' },
   play: async () => {
-    const view = within(reader())
+    const view = within(region())
     await expect(view.getByText('1 of 1')).toBeVisible()
     await expect(within(view.getByRole('navigation', { name: 'Pages' })).getAllByRole('link')).toHaveLength(7)
   },
@@ -308,11 +308,11 @@ export const OneLongFile: Story = {
 export const OneLongFileWithComments: Story = {
   args: { title: 'Handbook: being on call', pages: oneLongFile, file: 'on-call.md' },
   play: async ({ userEvent }) => {
-    const view = within(reader())
+    const view = within(region())
     await userEvent.click(view.getByRole('button', { name: /Comments/ }))
     await waitFor(() => {
-      const heading = reader().querySelector<HTMLElement>('[data-comment-id="l1"]')!.getBoundingClientRect()
-      const note = reader().querySelectorAll<HTMLElement>('.reader-note')[1]!.getBoundingClientRect()
+      const heading = region().querySelector<HTMLElement>('[data-comment-id="l1"]')!.getBoundingClientRect()
+      const note = region().querySelectorAll<HTMLElement>('.focus-note')[1]!.getBoundingClientRect()
       expect(Math.abs(note.top - (heading.top - 12))).toBeLessThan(2)
     })
   },

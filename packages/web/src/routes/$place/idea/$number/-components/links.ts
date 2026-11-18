@@ -3,8 +3,8 @@
 // (?v= for an older version), and what changed between two versions at
 // /changes/1..3, or /changes/1.. for everything since v1, following new
 // versions as they come. ?file= picks the file in either, and ?comment= a comment
-// on the files page, opened where it is. ?view=reader opens the files in the
-// reader view, on the file ?file= names.
+// on the files page, opened where it is. ?view=focus opens the files in the
+// focus view, on the file ?file= names.
 
 import { ideaPath } from '@ideaf/api'
 
@@ -14,7 +14,7 @@ export interface IdeaLinks {
     v?: number | undefined
     file?: string | undefined
     comment?: string | undefined
-    view?: 'reader' | undefined
+    view?: 'focus' | undefined
   }): string
   /** From one version to another, or (without `to`) to the latest, whatever it becomes. */
   changes(from: number, to?: number | undefined, file?: string | undefined): string
