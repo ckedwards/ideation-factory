@@ -12,7 +12,8 @@
 }
 .home-aside {
   position: sticky;
-  top: var(--space-5);
+  /* under the app's bar */
+  top: calc(var(--app-bar-height, 0px) + var(--space-5));
 }
 @media (max-width: 75rem) {
   .home {

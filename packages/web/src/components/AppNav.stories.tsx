@@ -1,18 +1,11 @@
-import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import type { Theme } from '@ideaf/ui'
-import { longName, riley } from '@ideaf/ui/fixtures'
-import { expect, fn, within } from 'storybook/test'
-import { AppNav, type AppNavProps } from './AppNav.tsx'
-
-function Nav(props: Omit<AppNavProps, 'theme' | 'onThemeChange'>) {
-  const [theme, setTheme] = useState<Theme>('auto')
-  return <AppNav {...props} theme={theme} onThemeChange={setTheme} />
-}
+import { riley } from '@ideaf/ui/fixtures'
+import { expect, within } from 'storybook/test'
+import { AppNav } from './AppNav.tsx'
 
 const meta = {
   title: 'App/AppNav',
-  component: Nav,
+  component: AppNav,
   args: {
     me: riley,
     teams: [
@@ -20,37 +13,27 @@ const meta = {
       { handle: 'payments', name: 'Payments' },
     ],
     current: 'home',
-    onSignOut: fn(),
   },
   parameters: { layout: 'fullscreen' },
-} satisfies Meta<typeof Nav>
+} satisfies Meta<typeof AppNav>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
-// On the home page: its link marked, the person signed in at the bottom
+// On the home page: its link marked, and Home first. The site's name, the envelope and the account are in
+// the app's bar, not here.
 export const Home: Story = {
   play: async ({ canvasElement }) => {
     const nav = within(canvasElement)
     await expect(nav.getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page')
-    await expect(nav.getByText(riley.name)).toBeVisible()
+    await expect(nav.getAllByRole('link')[0]).toHaveTextContent('Home')
+    await expect(nav.queryByText(riley.name)).toBeNull()
+    await expect(nav.queryByRole('link', { name: /Notifications/ })).toBeNull()
   },
 }
 
 // A page the nav doesn't list: nothing marked
 export const ElsewhereInTheApp: Story = { args: { current: null } }
-
-// A long name stays on one line in the account button
-export const LongName: Story = { args: { me: longName } }
-
-// Signing out, from the account menu at the foot
-export const SignOut: Story = {
-  play: async ({ args, canvasElement, userEvent }) => {
-    await userEvent.click(within(canvasElement).getByRole('button', { name: /settings, theme, sign out/ }))
-    await userEvent.click(await within(canvasElement.ownerDocument.body).findByRole('menuitem', { name: 'Sign out' }))
-    await expect(args.onSignOut).toHaveBeenCalled()
-  },
-}
 
 // In no team yet: the way to find one
 export const NoTeams: Story = {
@@ -60,14 +43,6 @@ export const NoTeams: Story = {
       'href',
       '/teams',
     )
-  },
-}
-
-// Ideas with news in your inbox, as a count by Notifications (99+ at most)
-export const Unread: Story = {
-  args: { unread: 140 },
-  play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).getByText('99+')).toBeVisible()
   },
 }
 

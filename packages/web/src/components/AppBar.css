@@ -1,0 +1,29 @@
+.app-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.app-bar-home {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.app-bar-mark {
+  color: var(--ok);
+  font-size: 1.25rem;
+}
+.app-bar-you {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+}

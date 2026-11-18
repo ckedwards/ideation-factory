@@ -1,22 +1,18 @@
-// The app's navigation, beside every page: the site's name, the main pages,
-// your teams, and at the bottom the signed-in person, the theme and signing
-// out.
-import { AccountMenu, InboxLink, Link, type Person, SideNav, type Theme } from '@ideaf/ui'
+// The app's navigation, beside every page but an idea's: the main pages, your
+// teams, and the teams you watch. The site's name, your notifications and your
+// account are in the app's bar (AppBar).
+import { Link, type Person, SideNav } from '@ideaf/ui'
 import './AppNav.css'
 
 /** The page being shown, so its link is marked. */
 export type NavPage = 'home' | 'notifications' | 'ideas' | 'teams' | 'groups' | 'settings' | null
 
 export interface AppNavProps {
+  /** You, for Your ideas. */
   me: Person
   /** Your teams, by name, linking to their pages, with how much of each you hear about. */
   teams: { handle: string; name: string; watch?: 'participating' | 'active' | 'all' }[]
   current: NavPage
-  /** Ideas in your inbox with news. */
-  unread?: number
-  theme: Theme
-  onThemeChange: (theme: Theme) => void
-  onSignOut: () => void
   /** The teams watched above participating, member or not, with how much. */
   watching?: { handle: string; name: string; level: 'participating' | 'active' | 'all' }[]
   /** The team whose pages these are: marked in Your teams and Watching. */
@@ -25,26 +21,9 @@ export interface AppNavProps {
 
 const LEVEL = { participating: null, active: 'Active', all: 'All' } as const
 
-export function AppNav({
-  me,
-  teams,
-  current,
-  unread = 0,
-  theme,
-  onThemeChange,
-  onSignOut,
-  watching = [],
-  currentTeam = null,
-}: AppNavProps) {
+export function AppNav({ me, teams, current, watching = [], currentTeam = null }: AppNavProps) {
   return (
     <SideNav
-      brand={
-        <>
-          <span aria-hidden>✳</span> Ideation Factory
-        </>
-      }
-      brandHref="/"
-      corner={<InboxLink href="/notifications" unread={unread} current={current === 'notifications'} />}
       groups={[
         {
           items: [
@@ -82,15 +61,6 @@ export function AppNav({
             ]
           : []),
       ]}
-      footer={
-        <AccountMenu
-          person={me}
-          settingsHref="/settings"
-          theme={theme}
-          onThemeChange={onThemeChange}
-          onSignOut={onSignOut}
-        />
-      }
     />
   )
 }
