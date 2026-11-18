@@ -1,13 +1,14 @@
 // An idea's files, read (/files) or compared (/changes/1..3): loads what the
 // page shows, keeps the latest version's comments live, and writes comments
-// and suggestions, and accepts and rejects them. Someone with edit access can
+// and suggestions, and accepts and rejects them. ?view=reader shows every file
+// in the reader view (ReaderView), over the page. Someone with edit access can
 // open the idea's draft on the latest version here and change it (editing.tsx),
 // and accept suggestions into it.
 // The routes say which version, which file and what to compare against.
 import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '@ideaf/api'
 import { type Anchor, type DraftChange, parseMarkdown, suggestionSource } from '@ideaf/core'
-import { Button, Dialog, Toast } from '@ideaf/ui'
+import { Button, Dialog, RelativeTime, Toast } from '@ideaf/ui'
 import { useLiveSuspenseQuery } from '@tanstack/react-db'
 import { useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
@@ -21,6 +22,7 @@ import { commentsQuery, draftQuery, filesQuery, ideaQuery, outlineQuery, reviews
 import { commentInfo, commentWrites, usePeople } from './shared.tsx'
 import { VersionBanner } from './VersionBanner.tsx'
 import { DocToolbar } from './DocToolbar.tsx'
+import { type ReaderPhase, ReaderView } from './ReaderView.tsx'
 import { actorOf, type FileView, place, type Thread } from './view.ts'
 
 export interface IdeaViewProps {
@@ -33,6 +35,8 @@ export interface IdeaViewProps {
   file?: string | undefined
   /** A comment to open where it is: active, and its text scrolled to. */
   comment?: string | undefined
+  /** The reader view, over the page. */
+  view?: 'reader' | undefined
 }
 
 /** The version shown and the one compared against, as the idea has them: anything else is left out. */
@@ -41,7 +45,7 @@ export function versionsOf(at: { v?: number | undefined; base?: number | undefin
   return { version, base: at.base && at.base < version ? at.base : null }
 }
 
-export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: opened }: IdeaViewProps) {
+export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: opened, view }: IdeaViewProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { data: idea } = useSuspenseQuery(ideaQuery(id))
@@ -196,6 +200,43 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
   })
   const canEdit = idea.you.edit && !older && base === null && !editing
 
+  // the reader view: open while the address says so, and not while editing or comparing. Opening it
+  // here carries the text into it; its address opened directly shows it at once
+  const reading = view === 'reader' && base === null && !editing
+  const [reader, setReader] = useState<ReaderPhase | null>(reading ? 'still' : null)
+  // each time it opens is a new one, so leaving and opening again don't share a half-run animation
+  const [readings, setReadings] = useState(0)
+  const wasReading = useRef(reading)
+  // the file it was opened on from here: leaving on that file is going Back
+  const enteredOn = useRef<string | null>(null)
+  useEffect(() => {
+    if (reading && !wasReading.current) {
+      setReadings((n) => n + 1)
+      setReader('entering')
+    } else if (!reading && wasReading.current) {
+      setReader((was) => (was === null ? null : 'leaving'))
+    }
+    wasReading.current = reading
+  }, [reading])
+  // back to the button that opened it, once the reader's gone and the page can be reached again
+  const focusReaderButton = useRef(false)
+  useEffect(() => {
+    if (reader === null && focusReaderButton.current) {
+      focusReaderButton.current = false
+      window.document.querySelector<HTMLElement>('.doc-toolbar-reader')?.focus()
+    }
+  }, [reader])
+  const threadActions = {
+    canComment: idea.you.view && !older,
+    canDecide: idea.you.edit && !older,
+    addToReview: true,
+    onReply: writes.reply,
+    onDelete: writes.remove,
+    onResolve: writes.resolve,
+    onAccept: (ids: string[]) => accept(ids),
+    onAddToDraft: (ids: string[]) => accept(ids, 'draft'),
+    onReject: writes.reject,
+  }
   const draftChanges = draft.data?.changes ?? []
   const drafters = [...new Set(draftChanges.map((c) => people.get(c.by.user)?.name ?? 'someone'))]
 
@@ -247,6 +288,14 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
                   : null
               }
               editing={editing}
+              onReader={
+                base === null && !editing
+                  ? () => {
+                      enteredOn.current = file.path
+                      void navigate({ href: links.files({ v: shownV, file: file.path, view: 'reader' }) })
+                    }
+                  : undefined
+              }
             />
             {canEdit && draftChanges.length > 0 ? (
               <p className="idea-edit-start">
@@ -351,6 +400,65 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
           ))}
         </ul>
       </Dialog>
+      {reader && (
+        <ReaderView
+          key={readings}
+          title={idea.title}
+          version={
+            <>
+              v{version}
+              {' · '}
+              <RelativeTime at={at} />
+            </>
+          }
+          pages={views.map(({ view: at, titles: named }) => ({
+            id: at.id,
+            path: at.path,
+            source: at.source,
+            // its open threads, in the version being read
+            comments: threads.flatMap((thread) => {
+              const where = place(thread, at)
+              const info = where && where.kind !== 'outdated' ? commentInfo(thread, people, named, drafted) : null
+              return where && info && !info.resolved
+                ? [{ info, place: where, pending: thread.id.startsWith('pending-') }]
+                : []
+            }),
+          }))}
+          file={file.path}
+          phase={reader}
+          onExit={(leaving) => {
+            if (enteredOn.current === leaving) {
+              window.history.back()
+            } else {
+              void navigate({ href: links.files({ v: shownV, file: leaving }), replace: true })
+            }
+            enteredOn.current = null
+          }}
+          onOpened={() => setReader((was) => (was === 'entering' ? 'open' : was))}
+          onLeft={() => {
+            setReader(null)
+            focusReaderButton.current = true
+          }}
+          actions={threadActions}
+          suggestionOf={(page, selection) => {
+            const at = views.find((f) => f.view.id === page)?.view
+            return at ? suggestionIn(at, selection) : null
+          }}
+          onComment={(page, selection, body, pending) => {
+            const at = views.find((f) => f.view.id === page)?.view
+            const anchor = at ? anchorIn(at, selection) : null
+            if (anchor) {
+              writes.comment(anchor, body, pending)
+            }
+          }}
+          onSuggest={(page, selection, replacement, body, pending) => {
+            const at = views.find((f) => f.view.id === page)?.view
+            if (at) {
+              suggestIn(at, selection, replacement, body, pending)
+            }
+          }}
+        />
+      )}
       {/* the editor's words and actions, in the idea's bar while it's open */}
       {editor?.bar}
       <Toast message={note} onDismiss={() => setNote(null)} />

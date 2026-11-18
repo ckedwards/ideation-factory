@@ -26,6 +26,7 @@ type Story = StoryObj<typeof meta>
 
 // Which file, and what can be done with it: compare, read the source, review, edit
 export const Latest: Story = {
+  args: { onReader: fn() },
   play: async ({ args, canvasElement, userEvent }) => {
     const bar = within(canvasElement)
     await expect(bar.getByText('notes/plan.md')).toBeVisible()
@@ -33,6 +34,11 @@ export const Latest: Story = {
     await expect(args.onCompare).toHaveBeenCalledWith('/mobile/idea/9/changes/1..?file=notes/plan.md')
     await userEvent.click(bar.getByRole('button', { name: 'Source' }))
     await expect(args.onSource).toHaveBeenCalledWith(true)
+    // the reader view first, before Source
+    const actions = within(canvasElement.querySelector<HTMLElement>('.doc-toolbar-actions')!).getAllByRole('button')
+    await expect(actions[0]).toHaveTextContent('Reader view')
+    await userEvent.click(actions[0]!)
+    await expect(args.onReader!).toHaveBeenCalled()
     // only the file's own controls: your review is of the idea, in its bar
     await expect(bar.queryByRole('button', { name: /review/i })).toBeNull()
     // the toolbar's buttons are the medium size: big enough for a finger
@@ -51,6 +57,8 @@ export const Comparing: Story = {
   play: async ({ args, canvasElement, userEvent }) => {
     const bar = within(canvasElement)
     const body = within(canvasElement.ownerDocument.body)
+    // no reader view while comparing
+    await expect(bar.queryByRole('button', { name: 'Reader view' })).toBeNull()
     await expect(bar.queryByRole('combobox', { name: 'Compare with another version' })).toBeNull()
     await userEvent.click(bar.getByRole('button', { name: 'Comparing: v1 → v3' }))
     await userEvent.selectOptions(await body.findByRole('combobox', { name: 'Compared with' }), '2')
@@ -78,6 +86,7 @@ export const Editing: Story = {
     const bar = within(canvasElement)
     await expect(bar.getByText(/Hover a block to edit it/)).toBeVisible()
     await expect(bar.queryByRole('button', { name: 'Source' })).toBeNull()
+    await expect(bar.queryByRole('button', { name: 'Reader view' })).toBeNull()
     await expect(
       canvasElement.querySelector('.doc-toolbar-actions')!.getBoundingClientRect().height,
     ).toBeGreaterThanOrEqual(28)
