@@ -1,7 +1,8 @@
-/* across the top of the document, staying there as it scrolls */
+/* across the top of the document, staying there as it scrolls. It sits in the document's top padding, so it
+   sticks that far up too: at 0 the text scrolling by would show in a strip above it. */
 .doc-toolbar {
   position: sticky;
-  top: 0;
+  top: calc(var(--idea-document-top, var(--space-6)) * -1);
   z-index: 5;
   display: flex;
   flex-wrap: wrap;
