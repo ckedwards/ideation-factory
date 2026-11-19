@@ -5,9 +5,10 @@ services:
   app:
     image: ideaf-test-ui-app
     environment:
-      # Docker's own networks, which connections from this machine come through: their
-      # X-Forwarded-For is believed, so test-ui.sh seed's people sign in from addresses of their own
-      IDEAF__TRUSTED_PROXIES: 172.16.0.0/12
+      # The private networks, which connections from this machine come through (Docker's bridge on
+      # Linux, 172.16.0.0/12; Docker Desktop's VM on a Mac, 192.168.65.0/24; Colima's, 192.168.5.0/24):
+      # their X-Forwarded-For is believed, so test-ui.sh seed's people sign in from addresses of their own
+      IDEAF__TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
     build:
       context: .
       dockerfile: deploy/app.Dockerfile
