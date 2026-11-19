@@ -33,8 +33,12 @@ const who = (handle: string) => {
 }
 const groupIds = new Map<string, string>()
 
-/** Each person signs in from an address of their own, so sign-in's limits count them apart (test-ui.yaml trusts it). */
-const addressOf = (i: number) => `10.81.${Math.floor(i / 200)}.${(i % 200) + 10}`
+/**
+ * Each person signs in from an address of their own, so sign-in's limits count them apart (test-ui.yaml
+ * trusts it). They're in 198.18.0.0/15, set aside for tests: not a private network, which the app
+ * would take for one more proxy to look past.
+ */
+const addressOf = (i: number) => `198.18.${Math.floor(i / 200)}.${(i % 200) + 10}`
 
 async function auth(path: string, ip: string, body: unknown, cookie?: string): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
@@ -49,11 +53,16 @@ async function auth(path: string, ip: string, body: unknown, cookie?: string): P
       body: JSON.stringify(body),
     })
     // Sign-in limits how many codes one address can ask for. If the app doesn't believe our
-    // X-Forwarded-For (test-ui.yaml trusts Docker's usual networks), everyone counts as one
+    // X-Forwarded-For (test-ui.yaml trusts the private networks), everyone counts as one
     // address and some get 429: wait and try again, so they get through a few at a time.
     if (response.status === 429 && attempt < 12) {
       await Bun.sleep(5_000)
       continue
+    }
+    if (response.status === 429) {
+      throw new Error(
+        `${path}: 429, still, after a minute: the app counts everyone as one address. Connections from this machine reach it from an address IDEAF__TRUSTED_PROXIES in scripts/test-ui.yaml doesn't cover; add its range there, then scripts/test-ui.sh up.`,
+      )
     }
     if (!response.ok) {
       throw new Error(`${path}: ${response.status} ${await response.text()}`)
