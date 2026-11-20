@@ -320,21 +320,6 @@ html[data-focus='open'] .idea-page-measure .prose {
 .focus-view.has-comments .focus-sheet .md-mark.is-active {
   background-color: var(--mark-active);
 }
-/* an accepted suggestion's new words, for a moment */
-.focus-view.has-comments .focus-sheet .md-mark[data-comment-id='focus-changed'] {
-  border-bottom-color: transparent;
-  background-color: transparent;
-  color: inherit;
-  animation: focus-changed 1.6s ease-out;
-}
-@keyframes focus-changed {
-  from {
-    background-color: var(--ins-bg);
-  }
-  to {
-    background-color: transparent;
-  }
-}
 /* a section's comment marks its heading in the Files tab: not here until comments are on */
 .focus-view:not(.has-comments) .focus-sheet [data-comment-id] {
   outline: none;

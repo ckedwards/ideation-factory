@@ -216,9 +216,11 @@ describe('ideaf comment suggest', () => {
     expect(listed.out).toContain(`c1  @${h('maya')}, v1 · suggestion · open`)
     expect(listed.out).toContain('suggests "the **offline mode**" → "the **local mode**"')
 
-    // a reviewer can't decide; the owner accepts two as one version, and rejects the third
+    // a reviewer can't decide; the owner adds two to the draft and commits it as one version, and
+    // rejects the third
     expect((await maya.ideaf('comment', 'accept', 'c1', '--idea', idea)).exit).not.toBe(0)
-    expect((await r.ideaf('comment', 'accept', 'c1', 'c2')).out).toBe('Accepted c1, c2 as v2.')
+    expect((await r.ideaf('comment', 'accept', 'c1', 'c2')).out).toBe('Added c1, c2 to the draft.')
+    expect((await r.ideaf('draft', 'commit')).out).toContain('Committed the draft as v2.')
     expect((await r.ideaf('comment', 'reject', 'c3')).out).toBe('Rejected c3.')
     const plan = (await api(h('riley')).pull({ idea })).files.find((f) => f.path === 'docs/plan.md')!
     expect(plan.content).toContain('We should ship the **local mode** in Q3.')
@@ -239,7 +241,7 @@ describe('ideaf draft', () => {
     await r.ideaf('comment', 'suggest', 'in Q3', '--quote', 'this quarter')
     await r.ideaf('comment', 'suggest', 'It may rain', '--quote', 'It might rain', '--file', 'docs/notes.md')
     expect((await r.ideaf('draft', 'show')).out).toBe(`The draft of ${idea} is empty.`)
-    expect((await r.ideaf('comment', 'accept', 'c1', 'c2', '--draft')).out).toBe('Added c1, c2 to the draft.')
+    expect((await r.ideaf('comment', 'accept', 'c1', 'c2')).out).toBe('Added c1, c2 to the draft.')
     expect((await r.ideaf('comment', 'list')).out).toContain('suggestion · in the draft · open')
     const shown = (await r.ideaf('draft', 'show')).out
     expect(shown).toContain('2 changes')

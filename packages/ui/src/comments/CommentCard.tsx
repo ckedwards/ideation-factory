@@ -64,8 +64,7 @@ export interface CommentCardProps {
   // offer "Add to your review" on a reply (a reply in your own pending thread always is)
   addToReview?: boolean
   onResolve?: ((resolved: boolean) => void) | undefined
-  onAccept?: (() => void) | undefined
-  // into the idea's draft, rather than a version now
+  // accepts it into the idea's draft: committing the draft makes the version
   onAddToDraft?: (() => void) | undefined
   onReject?: (() => void) | undefined
   onViewInVersion?: ((version: number) => void) | undefined
@@ -85,7 +84,6 @@ export function CommentCard({
   onReply,
   addToReview = false,
   onResolve,
-  onAccept,
   onAddToDraft,
   onReject,
   onViewInVersion,
@@ -166,11 +164,8 @@ export function CommentCard({
           </div>
           {suggestion.state === 'open' && canDecide && !comment.outdated && (
             <div className="suggestion-actions" onClick={(event) => event.stopPropagation()}>
-              <Button variant="primary" size="sm" onClick={onAccept}>
-                Accept as a new version
-              </Button>
               {onAddToDraft && (
-                <Button size="sm" onClick={onAddToDraft}>
+                <Button variant="primary" size="sm" onClick={onAddToDraft}>
                   Add to draft
                 </Button>
               )}

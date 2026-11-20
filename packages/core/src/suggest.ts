@@ -9,9 +9,9 @@
 //   elsewhere. If the source occurs more than once there, the one at the
 //   comment is picked by taking in surrounding text until it's unique.
 import type { Nodes } from 'mdast'
-import { applyBatch, type BatchResult, occurrences, sectionExtent } from './apply.ts'
+import { occurrences, sectionExtent } from './apply.ts'
 import type { Command } from './batch.ts'
-import { type Anchor, type Comment, fileById, type Idea } from './idea.ts'
+import { type Anchor, fileById, type Idea } from './idea.ts'
 import { markdownTree, parseMarkdown, type ParsedFile } from './markdown.ts'
 
 /** Inline syntax a replacement must take whole: its markers sit around the text a selection covers. */
@@ -176,54 +176,4 @@ export interface Suggestion {
   new: string
 }
 
-export type AcceptResult =
-  /** The suggestions that apply, as one batch applied: a step for each, in order. */
-  | {
-      ok: true
-      applied: Extract<BatchResult, { ok: true }>
-      commands: Command[]
-      accepted: string[]
-      skipped: Skipped[]
-    }
-  | { ok: false; skipped: Skipped[] }
-
 export type Skipped = { id: string; message: string }
-
-/**
- * Accepts suggestions together: one batch, a step for each. One that no longer
- * applies (its text changed or gone, or overlapping one before it) is left
- * out, saying why, and the rest still land.
- */
-export function acceptSuggestions(
-  idea: Idea,
-  comments: Comment[],
-  base: number,
-  suggestions: Suggestion[],
-): AcceptResult {
-  const skipped: Skipped[] = []
-  let steps: Array<{ id: string; command: Command }> = []
-  for (const s of suggestions) {
-    const built = suggestionCommand(idea, s.anchor, s, [s.id])
-    if (built.ok) {
-      steps.push({ id: s.id, command: built.command })
-    } else {
-      skipped.push({ id: s.id, message: built.message })
-    }
-  }
-  // each round drops the steps that conflicted; what's left either applies or runs out
-  while (steps.length > 0) {
-    const applied = applyBatch(idea, comments, { base, steps: steps.map((s) => s.command) })
-    if (applied.ok) {
-      return { ok: true, applied, commands: steps.map((s) => s.command), accepted: steps.map((s) => s.id), skipped }
-    }
-    const failed = new Set(applied.conflicts.map((c) => c.step))
-    for (const c of applied.conflicts) {
-      skipped.push({
-        id: steps[c.step]!.id,
-        message: c.reason === 'no_match' ? 'its text changed, by a suggestion accepted with it' : c.message,
-      })
-    }
-    steps = steps.filter((_, i) => !failed.has(i))
-  }
-  return { ok: false, skipped }
-}

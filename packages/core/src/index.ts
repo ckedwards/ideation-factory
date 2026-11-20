@@ -50,12 +50,5 @@ export {
   type UnitKind,
 } from './markdown.ts'
 export { type FileOutline, type OutlineEntry, outline } from './outline.ts'
-export {
-  type AcceptResult,
-  acceptSuggestions,
-  type Skipped,
-  type Suggestion,
-  suggestionCommand,
-  suggestionSource,
-} from './suggest.ts'
+export { type Skipped, type Suggestion, suggestionCommand, suggestionSource } from './suggest.ts'
 export { applyUpload, type Upload, type UploadResult } from './upload.ts'

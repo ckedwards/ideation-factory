@@ -185,7 +185,6 @@ const meta = {
       addToReview: true,
       onReply: fn(),
       onResolve: fn(),
-      onAccept: fn(),
       onAddToDraft: fn(),
       onReject: fn(),
     },
@@ -257,7 +256,7 @@ export const ButtonsOnFocus: Story = {
     const top = next.getBoundingClientRect().top
     within(card).getByRole('button', { name: 'Reply', hidden: true }).focus()
     await waitFor(() => expect(actions.getBoundingClientRect().height).toBeGreaterThan(0))
-    await expect(within(card).getByRole('button', { name: 'Accept as a new version' })).toBeVisible()
+    await expect(within(card).getByRole('button', { name: 'Add to draft' })).toBeVisible()
     // nothing else moved
     await new Promise((resolve) => setTimeout(resolve, 300))
     await expect(next.getBoundingClientRect().top).toBe(top)

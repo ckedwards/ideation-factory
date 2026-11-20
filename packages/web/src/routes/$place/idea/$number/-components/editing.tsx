@@ -148,7 +148,7 @@ function below(units: DraftUnit[], file: string, unit: DraftUnit): Position {
 }
 
 /** A change as the list of changes names it. */
-export function describe(change: DraftChange): string {
+function describe(change: DraftChange): string {
   const heading = (source: string) => /^\s*#{1,6}\s/.test(source)
   switch (change.kind) {
     case 'insert':

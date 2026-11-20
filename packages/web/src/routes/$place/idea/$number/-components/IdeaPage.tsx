@@ -189,18 +189,13 @@ export function IdeaPage(props: IdeaPageProps) {
     )
   ) : (
     <Stack gap={4}>
-      {acceptable.length > 1 && props.onAccept && (
+      {acceptable.length > 1 && props.onAddToDraft && (
         <div className="idea-suggestions">
           <span>{acceptable.length} suggested edits</span>
           <span className="idea-suggestions-buttons">
-            <Button size="sm" variant="primary" onClick={() => props.onAccept?.(acceptable)}>
-              Accept all as one version
+            <Button size="sm" variant="primary" onClick={() => props.onAddToDraft?.(acceptable)}>
+              Add all to draft
             </Button>
-            {props.onAddToDraft && (
-              <Button size="sm" onClick={() => props.onAddToDraft?.(acceptable)}>
-                Add all to draft
-              </Button>
-            )}
           </span>
         </div>
       )}

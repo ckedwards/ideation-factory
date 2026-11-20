@@ -50,7 +50,7 @@ The cli keeps the bases in a per-idea state file (see Uploads in `cli.md`).
 
 **This is the core of Ideation Factory and what sets it apart.** Instead of editing files locally and uploading a new copy, people and agents edit the idea in place with **commands**, then pull the result into the repository. Every command says exactly what it does: "move this section there", "rename this heading", "replace this sentence". So comments follow edits exactly, rather than being inferred from a diff afterwards. Uploading a new copy still works (see Keeping comments anchored under Comments), but commands are the main way to edit.
 
-**One framework for everyone.** Editing in the web UI, agents editing through skills, the cli or the MCP server, and accepting a suggested edit all produce the same commands. They pass the same checks, land the same way, and have the same effect on comments. A suggested edit is a pending `replace` command, and accepting it applies the command.
+**One framework for everyone.** Editing in the web UI, agents editing through skills, the cli or the MCP server, and accepting a suggested edit all produce the same commands. They pass the same checks, land the same way, and have the same effect on comments. A suggested edit is a pending `replace` command, and accepting it adds the command to the idea's draft, where committing applies it.
 
 **Reading:** a structured view of the idea lists each file's sections and blocks (paragraphs, list items, code blocks, tables), with a stable ID and the text of each, plus the open comments and what they're attached to (`ideaf show --blocks`, an MCP tool, and what the web UI uses underneath). IDs are kept across versions. Commands keep them by definition, uploads keep them by following positions through the diff, and a block that can't be followed gets a new ID.
 
@@ -147,11 +147,11 @@ Comments can have replies associated with them to start conversations.
 
 ## Drafts
 
-Each idea has **one draft**, shared by everyone with edit access: changes on the latest version, collected until someone commits them as one new version. Editing in the web app adds to it (a block's new source, new text, a deletion), and so does accepting a suggestion into it. Everyone editing sees the same draft, live, with who made each change.
+Each idea has **one draft**, shared by everyone with edit access: changes on the latest version, collected until someone commits them as one new version. Editing in the web app adds to it (a block's new source, new text, a deletion), and so does accepting a suggestion, which is the only way to accept one. Everyone editing sees the same draft, live, with who made each change.
 
 - **Checked as it's added:** an edit or deletion carries the block as it read when the change was made. If it reads differently now (someone else changed it, in the draft or in a newer version), the change is refused as outdated. Nothing is merged by guessing.
-- **Always on the latest version:** a version made elsewhere (an agent's batch, an upload, a suggestion accepted as a version) is what the draft is then built on. Changes it overtook are marked outdated, and committing waits until they're undone or redone.
-- **Outdating the draft is confirmed:** a version that would make changes in the draft outdated is refused (`draft_outdated`, naming them) until whoever makes it confirms: `ideaf sync`, `ideaf edit` and `ideaf comment accept` ask at a terminal and otherwise need `--outdate-draft`, and the web app asks before accepting a suggestion as a version. A suggestion in the draft that's accepted as a version leaves the draft.
+- **Always on the latest version:** a version made elsewhere (an agent's batch, an upload) is what the draft is then built on. Changes it overtook are marked outdated, and committing waits until they're undone or redone.
+- **Outdating the draft is confirmed:** a version that would make changes in the draft outdated is refused (`draft_outdated`, naming them) until whoever makes it confirms: `ideaf sync` and `ideaf edit` ask at a terminal and otherwise need `--outdate-draft`. Nothing in the web app makes a version around the draft, so it never asks.
 - **Committing** makes one version, a step for each command, and accepts the suggestions in it. **Discarding** empties it for everyone, and opens its suggestions again.
 
 Agents editing with batches, and uploads, make versions directly. A full editor in the web app, later, writes to the same draft.
@@ -160,13 +160,13 @@ Agents editing with batches, and uploads, make versions directly. A full editor 
 
 Suggested edits are required for 1.0. A reviewer (human or agent) can propose a concrete change to a highlighted selection or section instead of only describing it in a comment. A suggestion is a comment with a proposed replacement attached, so it uses the same anchoring, replies, status and bot/user attribution as any other comment.
 
-Only someone with edit access to the idea (or a bot acting for them) can accept a suggestion. Accepting a suggestion applies its `replace` command (see Editing with commands), which creates a new version in Ideation Factory; `ideaf pull` brings it into the source. Reviewers propose, the people with edit access decide, and the repository (or wherever the idea ends up) stays the final home.
+Only someone with edit access to the idea (or a bot acting for them) can accept a suggestion. Accepting a suggestion adds its `replace` command (see Editing with commands) to the idea's draft (see Drafts), in the web app, the cli and the API alike; committing the draft makes the new version in Ideation Factory, and `ideaf pull` brings it into the source. Changes gather in the draft and become one version, rather than a version for each suggestion. Reviewers propose, the people with edit access decide, and the repository (or wherever the idea ends up) stays the final home.
 
 If a suggestion's text isn't in a newer version, it's outdated like any comment, and can no longer be accepted.
 
-**Accepting into the draft:** instead of a version now, a suggestion can be accepted into the idea's draft (see Drafts), to be committed with the rest of it. It's checked against the draft as it is: if the draft has already changed or removed its text, it isn't added, and stays open saying why. Committing the draft accepts it, in that version; discarding the draft opens it again.
+**Into the draft:** a suggestion is checked against the draft as it is: if the draft has already changed or removed its text, it isn't added, and stays open saying why. Committing the draft accepts it, in that version, with each suggestion its own step, so every suggestion's comment follows its new wording; discarding the draft opens it again. Rejecting one that's in the draft takes it out.
 
-**Accepting several at once:** someone with edit access can accept several suggestions (across files) together. That's one batch (see Editing with commands): one new version, with each suggestion its own step, so every suggestion's comment follows its new wording. Two suggestions on overlapping text conflict: the second one's text is gone, so it stays open, and says why. Rejecting stays immediate, one at a time: it makes no version, so there's nothing to batch.
+**Accepting several at once:** someone with edit access can accept several suggestions (across files) together: each is added to the draft. Two suggestions on overlapping text conflict: the second one's text is gone from the draft, so it stays open, and says why. Rejecting stays immediate, one at a time.
 
 **What a suggestion replaces:** the source of the selected text, widened to whole formatting where the selection crosses it (selecting "line sync" in `**Offline** sync` takes `**Offline** sync`), which the suggester edits. Accepting finds that source where the comment is now, so a suggestion survives its paragraph moving or changing elsewhere; if the source itself has changed, it can't be accepted.
 

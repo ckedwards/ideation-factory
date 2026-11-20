@@ -25,9 +25,7 @@ export interface ThreadActions {
   /** Deletes one of your pending comments. */
   onDelete?: (comment: string) => void
   onResolve?: (comment: string, resolved: boolean) => void
-  /** Accepts suggestions as one new version. */
-  onAccept?: (suggestions: string[]) => void
-  /** Accepts suggestions into the idea's draft. */
+  /** Accepts suggestions into the idea's draft: committing it makes the version. */
   onAddToDraft?: (suggestions: string[]) => void
   onReject?: (suggestion: string) => void
   /** An outdated comment's "View in v3". */
@@ -70,7 +68,6 @@ export function ThreadCard({ comment, actions, active, onSelect, showTarget = fa
           </Button>
         ) : undefined
       }
-      onAccept={actions.onAccept ? () => actions.onAccept?.([comment.info.id]) : undefined}
       onAddToDraft={actions.onAddToDraft ? () => actions.onAddToDraft?.([comment.info.id]) : undefined}
       onReject={actions.onReject ? () => actions.onReject?.(comment.info.id) : undefined}
       onViewInVersion={actions.onViewInVersion}

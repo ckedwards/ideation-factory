@@ -37,7 +37,7 @@ So "Markdown in comments" is half there. What's missing is help writing it, and 
 7. **Decided: the switch is remembered for each browser,** not for each account.
 8. **Decided: cut and paste carries comments.** ⌘X then ⌘V moves the text and its comments. ⌘⇧V pastes plain text, and the comments stay behind.
 9. **Decided: a suggested edit can only be added to the draft.** "Accept as a new version" goes from the web app.
-10. **Decided: the cli and the API lose it too.** Fewer versions is the point: changes gather in the draft and Commit makes one version of them. `acceptSuggestions` loses `into: 'version'` and `outdateDraft` (nothing it does can outdate the draft any more); `ideaf comment accept` always adds to the draft, and its `--draft` and `--outdate-draft` flags go. Agents have no accept tool, so nothing changes for them.
+10. **Decided: the cli and the API lose it too.** Fewer versions is the point: changes gather in the draft and Commit makes one version of them. `acceptSuggestions` loses `into: 'version'` and `outdateDraft` (nothing it does can outdate the draft any more); `ideaf comment accept` always adds to the draft, and its `--draft` and `--outdate-draft` flags go. Agents' `accept_suggestions` tool adds to the draft too.
 11. **Decided: a two-day spike on the clipboard before the page editor is built** (see [A spike before the page editor](#a-spike-before-the-page-editor)). Comments and suggested edits don't wait for it.
 12. **Decided: not in this work:** uploading images from the web app, and @mentions. The editor leaves room for both.
 
