@@ -7,7 +7,7 @@ import { ApiError, type Input, type Operations, type Output } from '@ideaf/api'
 import { parseMarkdown } from '@ideaf/core'
 import { CliError, type Context, EXIT } from '../context.ts'
 import { scopeFrom } from '../workspace.ts'
-import { truncate } from './output.ts'
+import { excerpt, truncate } from './output.ts'
 import { confirmingDraft } from './draft.ts'
 import { Names } from './subjects.ts'
 
@@ -458,7 +458,10 @@ function where(thread: Thread, view: View): string {
 }
 
 async function threadLines(thread: Thread, view: View, names: Names, full: boolean): Promise<string[]> {
-  const text = (body: string, indent = '    ') => (full ? body.replace(/\n/g, `\n${indent}`) : truncate(body, 200))
+  // in full, the Markdown as written; cut short, as it reads
+  const text = (body: string, indent = '    ') => (full ? body.replace(/\n/g, `\n${indent}`) : excerpt(body, 200))
+  // a suggestion's replacement is set against the source it replaces, so it stays source
+  const source = (markdown: string) => (full ? markdown.replace(/\n/g, '\n    ') : truncate(markdown, 200))
   const decision = thread.suggestion?.decision
   const status = [
     ...(thread.pending ? ['pending: only you see it'] : []),
@@ -474,7 +477,7 @@ async function threadLines(thread: Thread, view: View, names: Names, full: boole
     `    ${where(thread, view)}`,
     ...(thread.suggestion
       ? [
-          `    suggests ${JSON.stringify(truncate(thread.suggestion.old, 80))} → ${JSON.stringify(text(thread.suggestion.new))}`,
+          `    suggests ${JSON.stringify(truncate(thread.suggestion.old, 80))} → ${JSON.stringify(source(thread.suggestion.new))}`,
         ]
       : []),
     ...(thread.body ? [`    ${text(thread.body)}`] : []),

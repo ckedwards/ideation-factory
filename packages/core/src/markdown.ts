@@ -102,6 +102,14 @@ export function markdownTree(source: string): Root {
   })
 }
 
+/**
+ * Some Markdown as it reads, on one line: its plain text with the whitespace collapsed, so a
+ * comment's excerpt shows no syntax. Markdown with no text (raw HTML alone, say) is its source.
+ */
+export function plainLine(markdown: string): string {
+  return parseMarkdown(markdown).plain.text.replace(/\s+/g, ' ').trim() || markdown.replace(/\s+/g, ' ').trim()
+}
+
 function parse(source: string): ParsedFile {
   const tree = markdownTree(source)
   const units: Unit[] = []

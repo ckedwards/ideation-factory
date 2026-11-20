@@ -1,7 +1,7 @@
 // ideaf show --blocks: the structured view an agent reads before building a
 // batch: each file's sections and blocks with their IDs, and the open comments.
 import { CliError, type Context, EXIT } from '../context.ts'
-import { truncate } from './output.ts'
+import { excerpt, truncate } from './output.ts'
 import { markSeen } from './pull.ts'
 
 export async function show(
@@ -26,7 +26,7 @@ export async function show(
     ctx.say('\ncomments on the idea:')
   }
   for (const c of onIdea) {
-    ctx.say(`  ${c.id.padEnd(4)} ${truncate(c.body, 90)}${replies(c.replies.length)}`)
+    ctx.say(`  ${c.id.padEnd(4)} ${excerpt(c.body, 90)}${replies(c.replies.length)}`)
   }
   for (const file of view.files) {
     ctx.say(`\n${file.id}  ${file.path}`)
@@ -45,7 +45,7 @@ export async function show(
           : c.anchor?.kind === 'section'
             ? `on section ${c.anchor.section}`
             : 'on the file'
-      ctx.say(`    ${c.id.padEnd(4)} ${on}: ${truncate(c.body, 70)}${replies(c.replies.length)}`)
+      ctx.say(`    ${c.id.padEnd(4)} ${on}: ${excerpt(c.body, 70)}${replies(c.replies.length)}`)
     }
   }
   return EXIT.ok

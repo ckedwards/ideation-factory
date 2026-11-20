@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { markdownTree, parseMarkdown, plainIndexAt } from './markdown.ts'
+import { markdownTree, parseMarkdown, plainIndexAt, plainLine } from './markdown.ts'
 
 const kinds = (source: string) => parseMarkdown(source).units.map((u) => u.kind)
 const texts = (source: string) => {
@@ -129,5 +129,17 @@ describe('the syntax tree', () => {
     const blocks = markdownTree(source).children.map((node) => [node.position?.start.offset, node.position?.end.offset])
     const units = parseMarkdown(source).units.map((unit) => [unit.start, unit.end])
     expect(blocks).toEqual(units)
+  })
+})
+
+describe('a line of plain text', () => {
+  test('reads as the Markdown does: no syntax, one line', () => {
+    expect(plainLine('Use **`createIdea`**, see [the docs](https://example.com).\n\n- one\n- two\n\n> quoted')).toBe(
+      'Use createIdea, see the docs. one two quoted',
+    )
+  })
+
+  test('is the source when there is no text to read', () => {
+    expect(plainLine('<details>\n</details>')).toBe('<details> </details>')
   })
 })

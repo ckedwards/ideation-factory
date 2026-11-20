@@ -45,6 +45,7 @@ export {
   parseMarkdown,
   type PlainText,
   type Section,
+  plainLine,
   type Unit,
   type UnitKind,
 } from './markdown.ts'
