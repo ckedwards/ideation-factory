@@ -52,7 +52,7 @@ flowchart LR
 
 ![Sync flow](uploads/sync-flow.svg)
 
-<details><summary>Raw HTML is shown, not run</summary><script>alert(1)</script></details>
+<details><summary>Raw HTML is drawn, made safe first</summary><script>alert(1)</script></details>
 
 ---
 

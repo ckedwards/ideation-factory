@@ -369,3 +369,28 @@
 .prose .rl-image-after img {
   outline: calc(var(--hairline) * 3) solid var(--ins-bg);
 }
+/* raw HTML, drawn once sanitized (html.ts) */
+.prose .md-html-drawn {
+  margin: 0 0 var(--space-4);
+}
+.prose .md-html-drawn > :last-child,
+.prose .md-html-drawn [data-html-slot] > :last-child {
+  margin-bottom: 0;
+}
+.prose .md-html-drawn details {
+  margin: 0 0 var(--space-2);
+}
+.prose .md-html-drawn summary {
+  cursor: pointer;
+}
+.prose .md-html-drawn details[open] > summary {
+  margin-bottom: var(--space-2);
+}
+.prose .md-html-drawn :is(h1, h2, h3, h4, h5, h6) {
+  margin-top: 0;
+}
+/* a link whose address was taken out (javascript:, say) is plain text */
+.prose .md-html-drawn a:not([href]) {
+  color: inherit;
+  text-decoration: none;
+}
