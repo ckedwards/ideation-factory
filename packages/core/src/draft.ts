@@ -3,7 +3,8 @@
 // version.
 //
 // - **Changes, not commands:** an edit of a block (its new source), new text
-//   at a place, a deletion, or an accepted suggestion. Each is turned into
+//   at a place, a deletion, a move of a block or section, or an accepted
+//   suggestion. Each is turned into
 //   commands against the draft as it is at that point, in the order they were
 //   made, so a later change builds on an earlier one.
 // - **Checked, never guessed:** an edit or deletion remembers the block as it
@@ -38,6 +39,8 @@ export const DraftChange = z.discriminatedUnion('kind', [
   /** A block, or a heading and its section. */
   z.strictObject({ kind: z.literal('delete'), id: BlockId, was: Source }),
   z.strictObject({ kind: z.literal('insert'), at: Position, markdown: Source.min(1) }),
+  /** A block, or a heading and its section, to a new place, perhaps in another file; its comments go with it. */
+  z.strictObject({ kind: z.literal('move'), id: BlockId, to: Position, was: Source }),
   /** A suggestion accepted into the draft: its comment, and its change. */
   z.strictObject({ kind: z.literal('suggestion'), comment: z.string().max(64), old: Source, new: Source }),
 ])
@@ -181,13 +184,17 @@ function commandsFor(
       return built.ok ? { ok: true, commands: [built.command] } : built
     }
     case 'edit':
-    case 'delete': {
+    case 'delete':
+    case 'move': {
       const now = unitSource(idea, change.id)
       if (now === null) {
         return { ok: false, message: 'what it changes is gone' }
       }
       if (now !== change.was) {
         return { ok: false, message: 'that block has changed since; undo this, and edit it again' }
+      }
+      if (change.kind === 'move') {
+        return { ok: true, commands: [{ command: 'move', target: change.id, to: change.to, expect: now }] }
       }
       return change.kind === 'edit'
         ? blockEdit(idea, change.id, change.source)

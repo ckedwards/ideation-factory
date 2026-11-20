@@ -157,6 +157,8 @@ function describe(change: DraftChange): string {
       return `Suggestion ${change.comment}: “${excerpt(change.old)}” → “${excerpt(change.new)}”`
     case 'delete':
       return heading(change.was) ? `Deleted the section “${title(change.was)}”` : `Deleted “${excerpt(change.was)}”`
+    case 'move':
+      return heading(change.was) ? `Moved the section “${title(change.was)}”` : `Moved “${excerpt(change.was)}”`
     case 'edit':
       return heading(change.was)
         ? `Renamed “${title(change.was)}” to “${title(change.source)}”`
