@@ -177,16 +177,21 @@ async function anchorOf(api: ApiClient, idea: string, seed: IdeaSeed, d: Discuss
   }
 }
 
-async function makeIdea(seed: IdeaSeed) {
-  const author = who(seed.by)
-  const created = await author.api.createIdea({
+/** An idea made, as its author: its number is the next in its team, or its author's. */
+async function createIdea(seed: IdeaSeed): Promise<string> {
+  const created = await who(seed.by).api.createIdea({
     title: seed.title,
     ...(seed.description ? { description: seed.description } : {}),
     ...(seed.team ? { team: seed.team } : {}),
     files: Object.entries(seed.files).map(([path, content]) => ({ path, content })),
     ...(seed.review ? { status: 'requesting-review' as const } : {}),
   })
-  const idea = created.idea
+  return created.idea
+}
+
+/** The rest of an idea made: its sharing, reviewers, discussion, versions, reviews and end. */
+async function fillIdea(seed: IdeaSeed, idea: string) {
+  const author = who(seed.by)
   for (const share of seed.share ?? []) {
     await author.api.setAccess({
       idea,
@@ -345,11 +350,17 @@ for (const r of joinRequests) {
   }
 }
 
+// made one at a time, in the order they're written, so each has the same number on every seed
+// (mobile/idea/1 is always the same idea); then filled in, a few at a time
+const made = new Map<IdeaSeed, string>()
+for (const seed of ideas) {
+  made.set(seed, await createIdea(seed))
+}
 await each(
   ideas,
   async (seed) => {
     try {
-      await makeIdea(seed)
+      await fillIdea(seed, made.get(seed)!)
     } catch (error) {
       throw new Error(`${seed.title}: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
     }
