@@ -56,6 +56,11 @@ export interface MarkdownEditorProps {
   rows?: number
   /** Inside the box, under the text: its buttons. */
   footer?: ReactNode
+  /**
+   * The most Markdown it takes, in characters. Near it, the box counts them (the Markdown, which can
+   * be longer than what shows); past it, the count is marked, and the page doesn't send it.
+   */
+  limit?: number
   className?: string
 }
 
@@ -273,6 +278,9 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
   )
 
   const standIn = <StandIn value={props.value} placeholder={props.placeholder} />
+  // counted from nine tenths of the limit
+  const counted = props.limit !== undefined && props.value.length >= props.limit * 0.9
+  const over = props.limit !== undefined && props.value.length > props.limit
 
   return (
     <div
@@ -367,7 +375,17 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
           onSource={() => switchTo(true)}
         />
       </EditorOwner.Provider>
-      {props.footer && <div className="md-editor-foot">{props.footer}</div>}
+      {(props.footer || counted) && (
+        <div className="md-editor-foot">
+          {counted && (
+            <span className={`md-editor-count${over ? ' is-over' : ''}`} aria-live="polite">
+              {props.value.length.toLocaleString('en-US')} of {props.limit!.toLocaleString('en-US')} characters of
+              Markdown
+            </span>
+          )}
+          {props.footer}
+        </div>
+      )}
     </div>
   )
 }

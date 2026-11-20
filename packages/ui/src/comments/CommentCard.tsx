@@ -1,9 +1,10 @@
 import { useId, useState, type ReactNode } from 'react'
 import { Button } from '../controls/Button.tsx'
-import { TextArea } from '../controls/TextArea.tsx'
+import { MarkdownEditor } from '../editor/MarkdownEditor.tsx'
 import { Tag } from '../labels/Tag.tsx'
 import { ActorLabel, type Actor } from '../people/ActorLabel.tsx'
 import { RelativeTime } from '../time/RelativeTime.tsx'
+import { COMMENT_LIMIT } from './limit.ts'
 import { ViewInVersion } from './ViewInVersion.tsx'
 import './CommentCard.css'
 
@@ -102,8 +103,9 @@ export function CommentCard({
     comment.author.kind !== 'person' && 'by-bot',
     comment.pending && 'is-pending',
   ]
+  const sendable = draft.trim() !== '' && draft.length <= COMMENT_LIMIT
   const send = (pending = false) => {
-    if (draft.trim()) {
+    if (sendable) {
       onReply?.(draft, pending || comment.pending === true)
       setDraft('')
       setReplying(false)
@@ -203,30 +205,32 @@ export function CommentCard({
 
       {replying ? (
         <div className="comment-reply" onClick={(event) => event.stopPropagation()}>
-          <TextArea
+          <MarkdownEditor
             autoFocus
             rows={2}
             value={draft}
             placeholder="Reply…"
-            aria-label="Reply"
+            label="Reply"
+            limit={COMMENT_LIMIT}
             onChange={setDraft}
             onSubmit={() => send()}
             onCancel={() => setReplying(false)}
+            footer={
+              <>
+                <Button variant="ghost" size="sm" onClick={() => setReplying(false)}>
+                  Cancel
+                </Button>
+                {addToReview && !comment.pending && (
+                  <Button size="sm" disabled={!sendable} onClick={() => send(true)}>
+                    Add to your review
+                  </Button>
+                )}
+                <Button variant="primary" size="sm" disabled={!sendable} onClick={() => send()}>
+                  {comment.pending ? 'Add reply' : 'Reply'}
+                </Button>
+              </>
+            }
           />
-          <div className="comment-reply-actions">
-            <span className="comment-hint">⌘↵ to send</span>
-            <Button variant="ghost" size="sm" onClick={() => setReplying(false)}>
-              Cancel
-            </Button>
-            {addToReview && !comment.pending && (
-              <Button size="sm" disabled={!draft.trim()} onClick={() => send(true)}>
-                Add to your review
-              </Button>
-            )}
-            <Button variant="primary" size="sm" disabled={!draft.trim()} onClick={() => send()}>
-              {comment.pending ? 'Add reply' : 'Reply'}
-            </Button>
-          </div>
         </div>
       ) : (
         (onReply || onResolve || extra) && (

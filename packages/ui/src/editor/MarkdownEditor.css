@@ -289,6 +289,18 @@
   padding: 0.375rem 0.5rem;
   border-top: var(--hairline) solid var(--rule);
 }
+/* how much Markdown, near the limit: on the left, the buttons on the right */
+.md-editor-count {
+  margin-right: auto;
+  color: var(--ink-3);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.md-editor-count.is-over {
+  color: var(--del-ink);
+  font-weight: 600;
+}
 
 /* ---- More, the table's menu, and the link box ---- */
 .md-editor-menu-positioner {

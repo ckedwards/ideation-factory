@@ -2,6 +2,8 @@ import { Popover } from '@base-ui/react/popover'
 import { type RefObject, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '../controls/Button.tsx'
 import { TextArea } from '../controls/TextArea.tsx'
+import { MarkdownEditor } from '../editor/MarkdownEditor.tsx'
+import { COMMENT_LIMIT } from './limit.ts'
 import { selectionInSource, type TextSelection } from './selection.ts'
 import './SelectionMenu.css'
 
@@ -160,7 +162,9 @@ export function SelectionMenu({
   }
   const replaced = original(selection)
   // a suggestion must change something; a comment must say something
-  const ready = mode === 'suggest' ? replaced !== null && replacement !== replaced : body.trim() !== ''
+  const ready =
+    body.length <= COMMENT_LIMIT &&
+    (mode === 'suggest' ? replaced !== null && replacement !== replaced : body.trim() !== '')
   const submit = (pending = false) => {
     if (!ready) {
       return
@@ -262,7 +266,7 @@ export function SelectionMenu({
                     aria-label="Replace it with"
                   />
                 )}
-                <TextArea
+                <MarkdownEditor
                   value={body}
                   onChange={setBody}
                   onSubmit={() => submit()}
@@ -270,24 +274,27 @@ export function SelectionMenu({
                   rows={mode === 'suggest' ? 2 : 3}
                   autoFocus={mode !== 'suggest'}
                   placeholder={mode === 'suggest' ? 'Why (optional)' : 'Add a comment'}
-                  aria-label={mode === 'suggest' ? 'Why' : 'Comment'}
+                  label={mode === 'suggest' ? 'Why' : 'Comment'}
+                  limit={COMMENT_LIMIT}
+                  footer={
+                    <>
+                      {mode === 'suggest' && replacement === replaced && (
+                        <span className="selection-menu-hint">Change the text to suggest an edit</span>
+                      )}
+                      <Button size="sm" variant="ghost" onClick={close}>
+                        Cancel
+                      </Button>
+                      {addToReview && (
+                        <Button size="sm" disabled={!ready} onClick={() => submit(true)}>
+                          Add to your review
+                        </Button>
+                      )}
+                      <Button size="sm" variant="primary" type="submit" disabled={!ready}>
+                        {mode === 'suggest' ? 'Suggest' : 'Comment'}
+                      </Button>
+                    </>
+                  }
                 />
-                <div className="selection-menu-buttons">
-                  <span className="selection-menu-hint">
-                    {mode === 'suggest' && !ready ? 'Change the text to suggest an edit' : '⌘↵ to send'}
-                  </span>
-                  <Button size="sm" variant="ghost" onClick={close}>
-                    Cancel
-                  </Button>
-                  {addToReview && (
-                    <Button size="sm" disabled={!ready} onClick={() => submit(true)}>
-                      Add to your review
-                    </Button>
-                  )}
-                  <Button size="sm" variant="primary" type="submit" disabled={!ready}>
-                    {mode === 'suggest' ? 'Suggest' : 'Comment'}
-                  </Button>
-                </div>
               </form>
             )}
           </Popover.Popup>
