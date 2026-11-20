@@ -104,6 +104,8 @@ function describe(change: Change): string {
       return `suggestion ${change.comment}: ${text(change.old)} → ${text(change.new)}`
     case 'delete':
       return `deleted ${text(change.was)}`
+    case 'move':
+      return `moved ${change.id}: ${text(change.was)}`
     case 'edit':
       return `edited ${change.id}: ${text(change.source)}`
   }

@@ -141,3 +141,36 @@ test('a unit’s source, by ID', () => {
   expect(unitSource(plan(), 's4')).toBe('## Risks')
   expect(unitSource(plan(), 'b99')).toBeNull()
 })
+
+describe('a move in the draft', () => {
+  test('takes a block, or a section, to a new place with its comments', () => {
+    const idea = plan()
+    const comments = [
+      { id: 'c1', anchor: textAnchor(idea, 'f1', 'quick brown') },
+      { id: 'c2', anchor: { kind: 'section' as const, file: 'f1', section: 's6' } },
+    ]
+    const draft = buildDraft(
+      idea,
+      comments,
+      entries(
+        { kind: 'move', id: 'b3', to: { after: 'b5' }, was: 'The quick brown fox.' },
+        { kind: 'move', id: 's6', to: { before: 's4' }, was: '## Costs' },
+      ),
+    )
+    expect(draft.problems).toEqual({})
+    expect(sourceOf(draft)).toBe('# Plan\n\n## Costs\n\nCheap.\n\n## Risks\n\nIt might rain.\n\nThe quick brown fox.\n')
+    expect(draft.comments.map((c) => [c.id, c.state])).toEqual([
+      ['c1', 'moved'],
+      ['c2', 'moved'],
+    ])
+  })
+
+  test('is outdated once the block reads differently', () => {
+    const draft = buildDraft(
+      plan(),
+      [],
+      entries({ kind: 'move', id: 'b3', to: { after: 'b5' }, was: 'The slow brown fox.' }),
+    )
+    expect(Object.values(draft.problems)).toEqual(['that block has changed since; undo this, and edit it again'])
+  })
+})
