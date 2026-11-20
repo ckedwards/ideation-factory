@@ -676,7 +676,7 @@ function marked(value: string, node: Nodes, ctx: Context): ReactNode {
   const skip = node.type === 'inlineCode' ? (end - start - value.length) / 2 : 0
   const exact = Number.isInteger(skip) && (node.type === 'inlineCode' || value.length === end - start)
   if (!exact) {
-    const whole = wrap(value, hits[0], inserted.length > 0, 0)
+    const whole = wrap(value, hits[0], inserted.length > 0, 0, hits[0] && ends(hits[0], start, end))
     return [...deletions.map((deletion, i) => deleted(deletion, i)), whole]
   }
   const from = start + skip
@@ -705,12 +705,23 @@ function marked(value: string, node: Nodes, ctx: Context): ReactNode {
       .filter((mark) => mark.start <= from + a && from + b <= mark.end)
       .sort((x, y) => Number(Boolean(y.active)) - Number(Boolean(x.active)) || x.end - x.start - (y.end - y.start))
     const added = inserted.some((range) => range.start <= from + a && from + b <= range.end)
-    out.push(wrap(value.slice(a, b), covering[0], added, i))
+    out.push(wrap(value.slice(a, b), covering[0], added, i, covering[0] && ends(covering[0], from + a, from + b)))
   }
   return out
 }
 
-function wrap(text: string, mark: MarkdownMark | undefined, added: boolean, key: number): ReactNode {
+/** Whether a piece of a mark, [start, end) in the source, is where the mark starts, and where it ends. */
+function ends(mark: MarkdownMark, start: number, end: number): { first: boolean; last: boolean } {
+  return { first: start <= mark.start, last: end >= mark.end }
+}
+
+function wrap(
+  text: string,
+  mark: MarkdownMark | undefined,
+  added: boolean,
+  key: number,
+  at: { first: boolean; last: boolean } = { first: true, last: true },
+): ReactNode {
   const inner = added ? (
     <ins key={`ins-${key}`}>
       <span className="visually-hidden">[inserted: </span>
@@ -720,11 +731,23 @@ function wrap(text: string, mark: MarkdownMark | undefined, added: boolean, key:
   ) : (
     text
   )
-  return mark ? markElement(mark, inner, key) : <Fragment key={key}>{inner}</Fragment>
+  return mark ? markElement(mark, inner, key, at) : <Fragment key={key}>{inner}</Fragment>
 }
 
-function markElement(mark: MarkdownMark, text: ReactNode, key: number) {
-  const classes = ['md-mark', mark.active && 'is-active', mark.resolved && 'is-resolved'].filter(Boolean).join(' ')
+/**
+ * One piece of a comment's mark. A comment over formatted text is a piece for each run of it; only
+ * the pieces at its two ends are rounded, so together they're one line.
+ */
+function markElement(mark: MarkdownMark, text: ReactNode, key: number, at = { first: true, last: true }) {
+  const classes = [
+    'md-mark',
+    at.first && 'is-first',
+    at.last && 'is-last',
+    mark.active && 'is-active',
+    mark.resolved && 'is-resolved',
+  ]
+    .filter(Boolean)
+    .join(' ')
   return (
     <mark key={key} className={classes} data-comment-id={mark.id}>
       {text}
