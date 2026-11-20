@@ -112,7 +112,10 @@ export const Comment: Story = {
     await userEvent.click(await page.findByRole('button', { name: 'Comment' }))
     // the text stays marked while the form has the focus, and not after
     await expect(CSS.highlights.has('selection-pending')).toBe(true)
-    await userEvent.type(await page.findByRole('textbox', { name: 'Comment' }), 'Oldest by device clock?')
+    // the box has the focus once it's ready: typing goes straight in
+    const box = await page.findByRole('textbox', { name: 'Comment' })
+    await waitFor(() => expect(box).toHaveFocus())
+    await userEvent.keyboard('Oldest by device clock?')
     await userEvent.click(page.getByRole('button', { name: 'Comment' }))
     await waitFor(() => expect(CSS.highlights.has('selection-pending')).toBe(false))
     const start = sample.indexOf('oldest first')
