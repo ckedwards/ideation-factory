@@ -243,6 +243,68 @@ describe('delete', () => {
   })
 })
 
+describe('move-text', () => {
+  test("moves some of a block's text into another block, with the comments on it; the blocks keep their IDs", () => {
+    const idea = plan()
+    const r = run(
+      idea,
+      [
+        { id: 'moved', anchor: textAnchor(idea, 'f1', 'quick brown') },
+        { id: 'stays', anchor: textAnchor(idea, 'f1', 'lazy dog') },
+      ],
+      { command: 'move-text', in: 'b3', old: ' quick brown', to: { in: 'b5', after: 'It might' } },
+    )
+    expect(source(r)).toContain('The fox jumps over the lazy dog.\n\n## Risks\n\nIt might quick brown rain on the day.')
+    expect(ids(r)).toEqual(plan().files[0]!.unitIds)
+    expect(outcome(r, 'moved')).toEqual({ state: 'moved', quote: 'quick brown', file: 'f1' })
+    expect(outcome(r, 'stays')).toEqual({ state: 'exact', quote: 'lazy dog', file: 'f1' })
+  })
+
+  test('within one block, and into another file', () => {
+    expect(
+      source(run(plan(), [], { command: 'move-text', in: 'b3', old: 'quick ', to: { in: 'b3', before: 'dog' } })),
+    ).toContain('The brown fox jumps over the lazy quick dog.')
+    const two = createIdea([
+      { path: 'plan.md', source: PLAN },
+      { path: 'notes.md', source: 'Notes here.\n' },
+    ])
+    const r = ok(
+      run(two, [{ id: 'c', anchor: textAnchor(two, 'f1', 'quick brown') }], {
+        command: 'move-text',
+        in: 'b3',
+        old: ' quick brown',
+        to: { in: two.files[1]!.unitIds[0]!, after: 'Notes' },
+      }),
+    )
+    expect(r.idea.files[1]!.source).toBe('Notes quick brown here.\n')
+    expect(r.comments[0]).toMatchObject({ state: 'moved', anchor: { file: two.files[1]!.id } })
+  })
+
+  test("refuses what it can't find once, a whole block, and more than a block", () => {
+    const conflicts = (step: Command) => {
+      const r = run(plan(), [], step)
+      return r.ok ? [] : r.conflicts.map((c) => [c.reason, c.message])
+    }
+    expect(conflicts({ command: 'move-text', in: 'b3', old: 'cat', to: { in: 'b5', after: 'rain' } })).toEqual([
+      ['no_match', '"cat" isn\'t in b3'],
+    ])
+    expect(conflicts({ command: 'move-text', in: 'b3', old: 'quick', to: { in: 'b3', after: 'o' } })[0]![0]).toBe(
+      'ambiguous',
+    )
+    expect(
+      conflicts({
+        command: 'move-text',
+        in: 'b3',
+        old: 'The quick brown fox jumps over the lazy dog.',
+        to: { in: 'b5', after: 'rain' },
+      }),
+    ).toEqual([['invalid', "that's all of b3: move the block with move"]])
+    expect(conflicts({ command: 'move-text', in: 'b3', old: 'quick', to: { in: 'b3', after: 'qu' } })).toEqual([
+      ['invalid', "can't move text into itself"],
+    ])
+  })
+})
+
 describe('rename-heading', () => {
   test('section comments stay; a comment on the heading text covers the new title', () => {
     const idea = plan()

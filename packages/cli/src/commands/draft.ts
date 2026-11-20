@@ -106,6 +106,8 @@ function describe(change: Change): string {
       return `deleted ${text(change.was)}`
     case 'move':
       return `moved ${change.id}: ${text(change.was)}`
+    case 'move-text':
+      return `moved ${text(change.old)} from ${change.from} to ${change.to.in}`
     case 'edit':
       return `edited ${change.id}: ${text(change.source)}`
   }

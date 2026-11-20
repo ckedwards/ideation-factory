@@ -253,6 +253,61 @@ function plan(idea: Idea, ids: Ids, command: Command): Plan {
       }
       return out
     }
+    case 'move-text': {
+      const from = blockText(idea, command.in)
+      const found = occurrences(from.source, command.old)
+      if (found.length !== 1) {
+        throw new Fail(
+          found.length === 0 ? 'no_match' : 'ambiguous',
+          found.length === 0
+            ? `"${short(command.old)}" isn't in ${command.in}`
+            : `"${short(command.old)}" occurs ${found.length} times in ${command.in}; include more text`,
+        )
+      }
+      if (/\n\s*\n/.test(command.old)) {
+        throw new Fail('invalid', 'moved text stays within a block; move whole blocks with move')
+      }
+      if (command.old.trim() === from.source.trim()) {
+        throw new Fail('invalid', `that's all of ${command.in}: move the block with move`)
+      }
+      const start = from.start + found[0]!
+      const end = start + command.old.length
+      const to = blockText(idea, command.to.in)
+      const near = 'before' in command.to ? command.to.before : command.to.after
+      const places = occurrences(to.source, near)
+      if (places.length !== 1) {
+        throw new Fail(
+          places.length === 0 ? 'no_match' : 'ambiguous',
+          places.length === 0
+            ? `"${short(near)}" isn't in ${command.to.in}`
+            : `"${short(near)}" occurs ${places.length} times in ${command.to.in}; include more text`,
+        )
+      }
+      const at = to.start + places[0]! + ('after' in command.to ? near.length : 0)
+      if (to.file.id === from.file.id && at > start && at < end) {
+        throw new Fail('invalid', "can't move text into itself")
+      }
+      const moved: Piece = { kind: 'copy', file: from.file.id, start, end, moved: true }
+      if (to.file.id === from.file.id) {
+        out.pieces.set(
+          from.file.id,
+          applyEdit(from.file.id, from.file.source.length, {
+            deletes: [[start, end]],
+            inserts: [{ at, pieces: [moved] }],
+          }),
+        )
+      } else {
+        out.pieces.set(
+          from.file.id,
+          applyEdit(from.file.id, from.file.source.length, { deletes: [[start, end]], inserts: [] }),
+        )
+        out.pieces.set(
+          to.file.id,
+          applyEdit(to.file.id, to.file.source.length, { deletes: [], inserts: [{ at, pieces: [moved] }] }),
+        )
+      }
+      return out
+    }
     case 'rename-heading': {
       const target = unitTarget(idea, command.target, command.expect)
       const title = command.title.trim()
@@ -353,6 +408,16 @@ function scopeOf(idea: Idea, id: string): { file: IdeaFile; start: number; end: 
   }
   const [start, end] = sectionExtent(at.parsed, at.unit)
   return { file: at.file, start, end }
+}
+
+/** A block's own text (a heading's line, not its section): where it is, and its source. */
+function blockText(idea: Idea, id: string): { file: IdeaFile; start: number; end: number; source: string } {
+  const at = locate(idea, id)
+  if (!at) {
+    throw new Fail('not_found', `${id} isn't in this version`)
+  }
+  const unit = at.parsed.units[at.unit]!
+  return { file: at.file, start: unit.start, end: unit.end, source: at.file.source.slice(unit.start, unit.end) }
 }
 
 type UnitTarget = {

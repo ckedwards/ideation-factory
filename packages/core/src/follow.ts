@@ -28,8 +28,12 @@ export function matchUnits(
       if (end <= start) {
         return
       }
+      // where its text went: what stayed decides, and text moved out of it (move-text) only when
+      // none stayed, so a block that loses a few words keeps its ID
       let target: string | null = null
       let several = false
+      let movedTarget: string | null = null
+      let movedSeveral = false
       for (let c = start; c < end && !several; c++) {
         const hit = map.map(file.id, c)
         // a heading only follows its own surviving text or an explicit rename: a heading
@@ -53,11 +57,20 @@ export function matchUnits(
           continue
         }
         const key = `${to.file}\u0000${u}`
-        if (target === null) {
+        if (hit?.moved) {
+          if (movedTarget === null) {
+            movedTarget = key
+          } else if (movedTarget !== key) {
+            movedSeveral = true
+          }
+        } else if (target === null) {
           target = key
         } else if (target !== key) {
           several = true
         }
+      }
+      if (target === null && !movedSeveral) {
+        target = movedTarget
       }
       if (target === null || several) {
         return
