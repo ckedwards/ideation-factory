@@ -6,6 +6,7 @@
 //
 // Every block carries its source offsets (data-start, data-end), which is how
 // the page maps between the document and comment anchors, sections and edits.
+import { markdownTree } from '@ideaf/core'
 import type { Code, Definition, Html, Nodes, PhrasingContent, Root, RootContent, Table } from 'mdast'
 import { Fragment, type ReactNode, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -109,6 +110,33 @@ export function MarkdownView(props: MarkdownViewProps) {
         : blocks(tree.children, ctx, true)}
     </div>
   )
+}
+
+/**
+ * Markdown that's a run of text, a suggested edit's old or new words say, drawn inline: its bold,
+ * code and links, with no paragraph around them. Null if it's more than one paragraph (a list, two
+ * paragraphs), which doesn't go inside a line.
+ */
+export function inlineMarkdown(source: string): ReactNode | null {
+  if (source.trim() === '') {
+    return ''
+  }
+  const tree = markdownTree(source)
+  const [only] = tree.children
+  if (tree.children.length !== 1 || only?.type !== 'paragraph') {
+    return null
+  }
+  const ctx: Context = {
+    props: { tree },
+    marks: [],
+    resolveLink: defaultResolveLink,
+    image: defaultImage,
+    externalImages: 'click',
+    definitions: collectDefinitions(tree),
+    counters: { footnotes: new Map(), slugs: new Map(), tables: 0 },
+    edit: null,
+  }
+  return inline(only.children, ctx)
 }
 
 // One block of a redline. Every change has a rail in the margin and words for

@@ -4,6 +4,7 @@ import { MarkdownEditor } from '../editor/MarkdownEditor.tsx'
 import { Tag } from '../labels/Tag.tsx'
 import { ActorLabel, type Actor } from '../people/ActorLabel.tsx'
 import { RelativeTime } from '../time/RelativeTime.tsx'
+import { inlineMarkdown } from '../document/MarkdownView.tsx'
 import { COMMENT_LIMIT } from './limit.ts'
 import { ViewInVersion } from './ViewInVersion.tsx'
 import './CommentCard.css'
@@ -93,6 +94,7 @@ export function CommentCard({
   const [draft, setDraft] = useState('')
   const headingId = useId()
   const { target, suggestion } = comment
+  const shown = suggestionShown(suggestion, target)
   const classes = [
     'comment-card',
     active && 'is-active',
@@ -145,7 +147,7 @@ export function CommentCard({
       <div className="comment-body">{comment.body}</div>
 
       {suggestion && target.kind === 'text' && (
-        <div className={`suggestion suggestion-${suggestion.state}${suggestion.old !== undefined ? ' is-source' : ''}`}>
+        <div className={`suggestion suggestion-${suggestion.state}${shown.source ? ' is-source' : ''}`}>
           <div className="suggestion-label">
             Suggested edit
             {suggestion.state !== 'open' && ` · ${suggestion.state === 'in-draft' ? 'in the draft' : suggestion.state}`}
@@ -154,12 +156,12 @@ export function CommentCard({
             {suggestion.state !== 'accepted' && (
               <del>
                 <span className="visually-hidden">Replace: </span>
-                {suggestion.old ?? target.quote}
+                {shown.old}
               </del>
             )}
             <ins>
               <span className="visually-hidden">{suggestion.state === 'accepted' ? 'Now: ' : 'With: '}</span>
-              {suggestion.replacement}
+              {shown.replacement}
             </ins>
           </div>
           {suggestion.state === 'open' && canDecide && !comment.outdated && (
@@ -246,4 +248,25 @@ export function CommentCard({
       )}
     </article>
   )
+}
+
+/**
+ * A suggestion's old and new words as they read: bold as bold, a link as a link. Its old words are
+ * the Markdown it replaces, or (without it) the quote, which is plain text. Either being more than a
+ * line of text (two paragraphs, a list) shows both as their source, so they're set side by side alike.
+ */
+function suggestionShown(
+  suggestion: Suggestion | undefined,
+  target: CommentTarget,
+): { old: ReactNode; replacement: ReactNode; source: boolean } {
+  if (!suggestion) {
+    return { old: null, replacement: null, source: false }
+  }
+  const quote = target.kind === 'text' ? target.quote : ''
+  const old = suggestion.old === undefined ? quote : inlineMarkdown(suggestion.old)
+  const replacement = inlineMarkdown(suggestion.replacement)
+  if (old === null || replacement === null) {
+    return { old: suggestion.old ?? quote, replacement: suggestion.replacement, source: true }
+  }
+  return { old, replacement, source: false }
 }
