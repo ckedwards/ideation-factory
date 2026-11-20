@@ -106,10 +106,7 @@
 }
 .idea-activity-said {
   flex-basis: 100%;
-  margin: 0;
-  color: var(--ink);
-  font-family: var(--font-prose);
-  font-size: var(--text-md);
+  min-width: 0;
 }
 /* the box for a comment on the idea, after everything that happened */
 .idea-activity-comment-box {

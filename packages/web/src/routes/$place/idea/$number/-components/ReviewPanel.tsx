@@ -11,6 +11,7 @@ import {
   ActorLabel,
   Button,
   type ClosedReason,
+  COMMENT_LIMIT,
   Dialog,
   type OpenStatus,
   RelativeTime,
@@ -24,6 +25,7 @@ import {
   Tag,
   TextArea,
 } from '@ideaf/ui'
+import { MarkdownEditor } from '@ideaf/ui/editor'
 import { type Picked, SubjectPicker } from '../../../../../components/SubjectPicker.tsx'
 import type { ShownStatus } from '../../../../../ideas.ts'
 import './ReviewPanel.css'
@@ -411,7 +413,12 @@ function ReviewForm({ pending, verdicts, onReview, onDiscard, onCancel }: Review
   const [body, setBody] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // a summary goes only with a verdict
+  const tooLong = verdict !== 'none' && body.length > COMMENT_LIMIT
   const send = async () => {
+    if (tooLong) {
+      return
+    }
     setSending(true)
     setError(null)
     try {
@@ -441,11 +448,12 @@ function ReviewForm({ pending, verdicts, onReview, onDiscard, onCancel }: Review
         <SegmentedControl label="Your verdict" options={choices} value={verdict} onChange={setVerdict} />
       )}
       {verdict !== 'none' && (
-        <TextArea
+        <MarkdownEditor
           rows={3}
           value={body}
           placeholder="A summary, if it needs one"
-          aria-label="Summary"
+          label="Summary"
+          limit={COMMENT_LIMIT}
           onChange={setBody}
           onSubmit={() => void send()}
         />
@@ -460,7 +468,7 @@ function ReviewForm({ pending, verdicts, onReview, onDiscard, onCancel }: Review
         <Button variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
-        <Button variant="primary" type="submit" disabled={sending}>
+        <Button variant="primary" type="submit" disabled={sending || tooLong}>
           {sending ? 'Sending…' : verdict === 'none' ? 'Publish my comments' : 'Submit review'}
         </Button>
       </div>

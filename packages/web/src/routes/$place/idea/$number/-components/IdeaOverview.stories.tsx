@@ -147,7 +147,7 @@ export const Reply: Story = {
   play: async ({ args, canvasElement, userEvent }) => {
     const page = within(canvasElement)
     await userEvent.click(page.getAllByRole('button', { name: 'Reply' })[0]!)
-    await userEvent.type(page.getByRole('textbox', { name: /reply/i }), 'Agreed.')
+    await userEvent.type(await page.findByRole('textbox', { name: /reply/i }), 'Agreed.')
     await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
     await waitFor(() => expect(args.onReply).toHaveBeenCalledWith('c1', 'Agreed.'))
   },
@@ -182,13 +182,13 @@ export const OnTheIdea: Story = {
     const page = within(canvasElement)
     await expect(page.getByText('Worth trying with the Denver crew before it goes wider.')).toBeVisible()
     await expect(page.queryByText('Whole file')).toBeNull()
-    const box = page.getByRole('textbox', { name: 'Comment on the idea' })
+    const box = await page.findByRole('textbox', { name: 'Comment on the idea' })
     // how to send is plain from the start: the button's there, waiting for something to send
     await expect(page.getByRole('button', { name: 'Comment' })).toBeDisabled()
     await userEvent.type(box, 'Agreed: Denver first.')
     await userEvent.click(page.getByRole('button', { name: 'Add to your review' }))
     await waitFor(() => expect(args.onComment).toHaveBeenCalledWith('Agreed: Denver first.', true))
-    await expect(box).toHaveValue('')
+    await waitFor(() => expect(box).toHaveTextContent(''))
     await userEvent.type(box, 'And Austin after.')
     await userEvent.click(page.getByRole('button', { name: 'Comment' }))
     await waitFor(() => expect(args.onComment).toHaveBeenCalledWith('And Austin after.', false))
