@@ -11,9 +11,11 @@
 // - The structured view agents and the web editor read (outline.ts)
 // - A block's new source as the smallest command, for editing in place (edit.ts)
 // - An idea's draft: changes on the latest version, checked as they're built (draft.ts)
+// - An editor's blocks, as they are on screen, turned into draft changes (changes.ts)
 // - What a suggested edit replaces, and the command accepting it applies (suggest.ts)
 
 export { applyBatch, type BatchResult, type Conflict, type ConflictReason, type StepResult } from './apply.ts'
+export { type DraftChanges, draftChanges, type EditorBlock, type MovedWords } from './changes.ts'
 export { Batch, batchJsonSchema, Command, Position } from './batch.ts'
 export {
   addChange,

@@ -377,7 +377,7 @@ The editor loads as its own chunk, fetched when an idea page is idle. A box open
 2. **Comments:** every box in the table above, and excerpts.
 3. **Suggested edits:** the inline flavor, the rendered change in a thread, and Add to draft as the only way to accept.
 4. **Done. The spike:** two days on the clipboard cases (see [A spike before the page editor](#a-spike-before-the-page-editor)), ending in a go, a narrower design, or bare ProseMirror for the page.
-5. **The draft's new work:** the function in `core`, changes sent together, the draft as a difference, heading levels and moves, each with tests and no interface yet.
+5. **Done. The draft's new work:** the function in `core`, changes sent together, the draft as a difference, heading levels and moves, each with tests and no interface yet.
 6. **The page editor:** the surface, its toolbar and its saving, replacing the block editor.
 
 Steps 1 and 2 are the smallest useful piece. Steps 4 and 5 can start alongside them, since they touch nothing the first three do. Step 6 waits for both.

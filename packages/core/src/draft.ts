@@ -268,7 +268,7 @@ function foldInto(
 }
 
 /** The commands for one change, against the draft as it is at that point. */
-function commandsFor(
+export function commandsFor(
   idea: Idea,
   anchors: Map<string, Anchor | null>,
   change: DraftChange,
