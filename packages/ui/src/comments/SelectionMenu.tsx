@@ -178,6 +178,12 @@ export function SelectionMenu({
     }
     close()
   }
+  // the button pressed goes as the form takes the menu's place: focus moves to the popup first, so
+  // the popup doesn't take it back from the box once the box has it (the box takes it when it's ready)
+  const openForm = (form: Exclude<Mode, 'menu'>) => {
+    box.current?.focus()
+    setMode(form)
+  }
   const quote = selection.quote.length > 80 ? `${selection.quote.slice(0, 80)}…` : selection.quote
 
   return (
@@ -214,12 +220,12 @@ export function SelectionMenu({
             {mode === 'menu' ? (
               <div className="selection-menu-actions">
                 {onComment && (
-                  <Button size="sm" variant="ghost" onClick={() => setMode('comment')}>
+                  <Button size="sm" variant="ghost" onClick={() => openForm('comment')}>
                     Comment
                   </Button>
                 )}
                 {onSuggest && replaced !== null && (
-                  <Button size="sm" variant="ghost" onClick={() => setMode('suggest')}>
+                  <Button size="sm" variant="ghost" onClick={() => openForm('suggest')}>
                     Suggest an edit
                   </Button>
                 )}
@@ -227,7 +233,7 @@ export function SelectionMenu({
                   <>
                     {/* the section, not the selection: set apart */}
                     <span className="selection-menu-divider" aria-hidden />
-                    <Button size="sm" variant="ghost" onClick={() => setMode('section')}>
+                    <Button size="sm" variant="ghost" onClick={() => openForm('section')}>
                       Comment on “{selection.section.title}”
                     </Button>
                   </>
