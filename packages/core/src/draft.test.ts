@@ -174,3 +174,38 @@ describe('a move in the draft', () => {
     expect(Object.values(draft.problems)).toEqual(['that block has changed since; undo this, and edit it again'])
   })
 })
+
+describe("moving some of a block's text in the draft", () => {
+  test('takes the words and their comments to another block', () => {
+    const idea = plan()
+    const draft = buildDraft(
+      idea,
+      [{ id: 'c1', anchor: textAnchor(idea, 'f1', 'quick') }],
+      entries({
+        kind: 'move-text',
+        from: 'b3',
+        old: ' quick',
+        to: { in: 'b5', after: 'It might' },
+        was: { from: 'The quick brown fox.', to: 'It might rain.' },
+      }),
+    )
+    expect(draft.problems).toEqual({})
+    expect(sourceOf(draft)).toContain('The brown fox.\n\n## Risks\n\nIt might quick rain.')
+    expect(draft.comments[0]).toMatchObject({ id: 'c1', state: 'moved' })
+  })
+
+  test('is outdated once either block reads differently', () => {
+    const draft = buildDraft(
+      plan(),
+      [],
+      entries({
+        kind: 'move-text',
+        from: 'b3',
+        old: ' quick',
+        to: { in: 'b5', after: 'It might' },
+        was: { from: 'The quick brown fox.', to: 'It may rain.' },
+      }),
+    )
+    expect(Object.values(draft.problems)).toHaveLength(1)
+  })
+})

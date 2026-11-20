@@ -3,8 +3,8 @@
 // version.
 //
 // - **Changes, not commands:** an edit of a block (its new source), new text
-//   at a place, a deletion, a move of a block or section, or an accepted
-//   suggestion. Each is turned into
+//   at a place, a deletion, a move of a block or section or of some of a
+//   block's text, or an accepted suggestion. Each is turned into
 //   commands against the draft as it is at that point, in the order they were
 //   made, so a later change builds on an earlier one.
 // - **Checked, never guessed:** an edit or deletion remembers the block as it
@@ -22,7 +22,7 @@
 // one would be, and suggestions find their text after earlier changes.
 import { applyBatch } from './apply.ts'
 import { z } from 'zod'
-import { type Command, Position } from './batch.ts'
+import { type Command, Position, TextPlace } from './batch.ts'
 import { blockEdit } from './edit.ts'
 import { worse } from './follow.ts'
 import type { Anchor, AnchorState, Comment, CommentOutcome, Idea } from './idea.ts'
@@ -41,6 +41,14 @@ export const DraftChange = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('insert'), at: Position, markdown: Source.min(1) }),
   /** A block, or a heading and its section, to a new place, perhaps in another file; its comments go with it. */
   z.strictObject({ kind: z.literal('move'), id: BlockId, to: Position, was: Source }),
+  /** Some of a block's text (`old`, once in it) into a block; `was`, both blocks as the change was made against. */
+  z.strictObject({
+    kind: z.literal('move-text'),
+    from: BlockId,
+    old: Source.min(1),
+    to: TextPlace,
+    was: z.strictObject({ from: Source, to: Source }),
+  }),
   /** A suggestion accepted into the draft: its comment, and its change. */
   z.strictObject({ kind: z.literal('suggestion'), comment: z.string().max(64), old: Source, new: Source }),
 ])
@@ -182,6 +190,17 @@ function commandsFor(
       }
       const built = suggestionCommand(idea, anchor, change, [change.comment])
       return built.ok ? { ok: true, commands: [built.command] } : built
+    }
+    case 'move-text': {
+      const from = unitSource(idea, change.from)
+      const to = unitSource(idea, change.to.in)
+      if (from === null || to === null) {
+        return { ok: false, message: 'what it changes is gone' }
+      }
+      if (from !== change.was.from || to !== change.was.to) {
+        return { ok: false, message: 'that block has changed since; undo this, and edit it again' }
+      }
+      return { ok: true, commands: [{ command: 'move-text', in: change.from, old: change.old, to: change.to }] }
     }
     case 'edit':
     case 'delete':

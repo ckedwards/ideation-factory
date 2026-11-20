@@ -52,6 +52,7 @@ const CommandName = z.enum([
   'insert',
   'delete',
   'move',
+  'move-text',
   'rename-heading',
   'set-section',
   'rename-file',

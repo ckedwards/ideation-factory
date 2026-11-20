@@ -26,5 +26,5 @@ test('unknown commands, unknown fields and bad IDs are refused', () => {
 test('the format is published as JSON Schema', () => {
   const schema = batchJsonSchema() as { properties: { steps: { items: { oneOf?: unknown[]; anyOf?: unknown[] } } } }
   const variants = schema.properties.steps.items.oneOf ?? schema.properties.steps.items.anyOf
-  expect(variants).toHaveLength(9)
+  expect(variants).toHaveLength(10)
 })

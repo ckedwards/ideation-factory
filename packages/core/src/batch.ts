@@ -24,6 +24,12 @@ export const Position = z.union([
   z.strictObject({ end: FileId }),
 ])
 
+/** Where moved text goes: just before or after some text that occurs once in a block. */
+export const TextPlace = z.union([
+  z.strictObject({ in: BlockOrSection, before: z.string().min(1).max(MAX_MARKDOWN) }),
+  z.strictObject({ in: BlockOrSection, after: z.string().min(1).max(MAX_MARKDOWN) }),
+])
+
 export const Command = z.discriminatedUnion('command', [
   z.strictObject({
     command: z.literal('replace'),
@@ -37,6 +43,18 @@ export const Command = z.discriminatedUnion('command', [
   z.strictObject({ command: z.literal('insert'), at: Position, markdown: Markdown.min(1), addresses }),
   z.strictObject({ command: z.literal('delete'), target: BlockOrSection, expect, addresses }),
   z.strictObject({ command: z.literal('move'), target: BlockOrSection, to: Position, expect, addresses }),
+  /**
+   * Moves some of a block's text (`old`, source that must occur exactly once in the block `in`) into
+   * a block, perhaps in another file; comments on it go with it. Less than the whole block: a whole
+   * block moves with `move`.
+   */
+  z.strictObject({
+    command: z.literal('move-text'),
+    in: BlockOrSection,
+    old: z.string().min(1).max(MAX_MARKDOWN),
+    to: TextPlace,
+    addresses,
+  }),
   z.strictObject({
     command: z.literal('rename-heading'),
     target: SectionId,
@@ -60,6 +78,7 @@ export const Batch = z.strictObject({
 })
 
 export type Position = z.infer<typeof Position>
+export type TextPlace = z.infer<typeof TextPlace>
 export type Command = z.infer<typeof Command>
 export type Batch = z.infer<typeof Batch>
 
