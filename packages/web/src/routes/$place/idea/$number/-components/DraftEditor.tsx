@@ -70,8 +70,33 @@ export function DraftEditor(props: DraftEditorProps) {
       return true
     }
     const run = (async () => {
-      const { text: sent, base: from, props: now } = latest.current
-      const made = draftChanges(ideaOf(from), { [file.file]: handle.blocks() }, handle.movedWords())
+      const { text: sent, props: now } = latest.current
+      let from = latest.current.base
+      const blocks = handle.blocks()
+      // a cut saved as deletions, then pasted: until it's pasted a cut is a deletion, and pasted, it's
+      // a move. Its blocks are back on the page with their IDs, so their deletions come out of the
+      // draft first, and the draft it's counted from has them again
+      const known = new Set(from.files.flatMap((f) => f.units.map((u) => u.id)))
+      const back = from.changes.filter(({ change }) => {
+        if (change.kind !== 'delete') {
+          return false
+        }
+        return !known.has(change.id) && blocks.some((b) => b.id === change.id)
+      })
+      if (back.length > 0) {
+        setStatus('saving')
+        try {
+          for (const c of back) {
+            await api.undoDraftChange({ idea: now.idea, key: c.key })
+          }
+          from = await api.getDraft({ idea: now.idea })
+          setBase(from)
+        } catch (error) {
+          setStatus({ problem: error instanceof Error ? error.message : String(error) })
+          return false
+        }
+      }
+      const made = draftChanges(ideaOf(from), { [file.file]: blocks }, handle.movedWords())
       if (!made.ok) {
         setStatus({ problem: made.message })
         return false
