@@ -8,6 +8,8 @@ import { createRichEditor, type Flavor, type RichEditor, type RichOptions, type 
 
 export interface RichSurfaceProps {
   value: string
+  /** A page's: the draft's ID for each of the value's blocks. */
+  ids?: string[] | undefined
   onChange: (value: string) => void
   flavor: Flavor
   label: string
@@ -35,6 +37,7 @@ export default function RichSurface(props: RichSurfaceProps) {
     const options = {
       root: root.current!,
       source: latest.current.value,
+      ids: latest.current.ids,
       flavor: latest.current.flavor,
       label: latest.current.label,
       onChange: (markdown: string) => latest.current.onChange(markdown),
@@ -61,7 +64,7 @@ export default function RichSurface(props: RichSurfaceProps) {
       editor.current = made_
       latest.current.onReady(made_)
       // the value may have changed while it was being made
-      made_.load(latest.current.value)
+      made_.load(latest.current.value, latest.current.ids)
     })
     return () => {
       gone = true
@@ -71,10 +74,14 @@ export default function RichSurface(props: RichSurfaceProps) {
     }
   }, [props.flavor])
 
-  // given a different value from outside (cleared once sent, say): open it
+  // given a different value from outside (cleared once sent, say): open it. A page's new IDs (the
+  // draft saved, or changed by someone else) go with it
+  const lastIds = useRef(props.ids)
   useEffect(() => {
-    editor.current?.load(props.value)
-  }, [props.value])
+    const ids = props.ids !== lastIds.current ? props.ids : undefined
+    lastIds.current = props.ids
+    editor.current?.load(props.value, ids)
+  }, [props.value, props.ids])
 
   return <div ref={root} className="md-editor-rich" hidden={props.hidden} />
 }

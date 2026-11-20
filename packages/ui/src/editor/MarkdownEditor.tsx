@@ -9,11 +9,12 @@
 //
 // Flavors: full (comments, replies, summaries), and inline for a suggested edit's replacement (marks
 // and links, no blocks).
-import { markdownTree } from '@ideaf/core'
+import { blocksOfSource, type EditorBlock, markdownTree, type MovedWords, parseMarkdown } from '@ideaf/core'
 import {
   type CSSProperties,
   lazy,
   type ReactNode,
+  type Ref,
   Suspense,
   useCallback,
   useEffect,
@@ -21,6 +22,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useImperativeHandle,
 } from 'react'
 import { TextArea } from '../controls/TextArea.tsx'
 import { MarkdownView } from '../document/MarkdownView.tsx'
@@ -66,7 +68,21 @@ export interface MarkdownEditorProps {
    * menus), where a form has two boxes together; by default it always shows.
    */
   toolbar?: 'always' | 'focus'
+  /** A page's: the draft's ID for each of the value's blocks (core's units), in order. */
+  ids?: string[]
+  /** A page's, at the right of its toolbar: how saving is going ("Saved to the draft"). */
+  status?: ReactNode
+  /** A page's: its blocks and the words moved between them, read when it's saved. */
+  ref?: Ref<MarkdownEditorHandle>
   className?: string
+}
+
+/** What a page reads from its editor when it saves to the draft. */
+export interface MarkdownEditorHandle {
+  /** Each of the draft's blocks on screen, with its identity (null for new text) and its Markdown now. */
+  blocks: () => EditorBlock[]
+  /** Words moved from one block into another since this was last asked. */
+  movedWords: () => MovedWords[]
 }
 
 const STORED = 'ideaf:editor:markdown'
@@ -164,6 +180,29 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
   // the plain box is what's typed in on the Markdown side, and while the rich side loads
   const plain = markdown || !rich
 
+  // a page's draft as last given (its Markdown and its blocks' IDs): what's changed is counted from it
+  const basis = useRef({ value: props.value, ids: props.ids })
+  if (props.ids !== basis.current.ids) {
+    basis.current = { value: props.value, ids: props.ids }
+  }
+  const basisBlocks = () => {
+    const { value, ids = [] } = basis.current
+    return parseMarkdown(value).units.map((u, i) => ({
+      id: ids[i]!,
+      source: value.slice(u.start, u.end),
+      kind: u.kind,
+    }))
+  }
+  useImperativeHandle(
+    props.ref,
+    () => ({
+      // the Markdown side has no identities: its blocks are matched to the draft's by their text
+      blocks: () => (plain ? blocksOfSource(basisBlocks(), props.value) : (rich?.blocks() ?? basisBlocks())),
+      movedWords: () => (plain ? [] : (rich?.movedWords() ?? [])),
+    }),
+    [plain, rich, props.value],
+  )
+
   const editPlain = (action: Action | ((value: string, start: number, end: number) => PlainEdit)) => {
     const box = textarea.current
     if (!box) {
@@ -216,6 +255,10 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
     }
     if (action === 'link') {
       openLink()
+    } else if (plain && (action === 'undo' || action === 'redo')) {
+      // the box's own history
+      textarea.current?.focus()
+      document.execCommand(action)
     } else if (plain) {
       editPlain(action)
     } else if (action !== 'table' && action !== 'heading') {
@@ -300,7 +343,7 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
     />
   )
 
-  const standIn = <StandIn value={props.value} placeholder={props.placeholder} />
+  const standIn = <StandIn value={props.value} placeholder={props.placeholder} page={flavor === 'page'} />
   // counted from nine tenths of the limit
   const counted = props.limit !== undefined && props.value.length >= props.limit * 0.9
   const over = props.limit !== undefined && props.value.length > props.limit
@@ -316,6 +359,7 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
       <EditorOwner.Provider value={owner}>
         <Toolbar
           flavor={flavor}
+          {...(props.status !== undefined ? { status: props.status } : {})}
           active={plain ? NOWHERE.active : selection.active}
           disabled={plain ? NOWHERE.disabled : selection.disabled}
           why={plain ? {} : selection.why}
@@ -373,6 +417,7 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
             <RichSurface
               hidden={!rich}
               value={props.value}
+              ids={props.ids}
               onChange={props.onChange}
               flavor={flavor}
               label={props.label}
@@ -416,11 +461,11 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
 }
 
 /** Until the rich side is drawn: the text as it will look, not to be typed in yet. */
-function StandIn({ value, placeholder }: { value: string; placeholder?: string | undefined }) {
+function StandIn({ value, placeholder, page }: { value: string; placeholder?: string | undefined; page: boolean }) {
   return (
     <div className="md-editor-standin" aria-hidden="true">
       {value.trim() ? (
-        <MarkdownView tree={markdownTree(value)} variant="compact" />
+        <MarkdownView tree={markdownTree(value)} variant={page ? 'document' : 'compact'} />
       ) : (
         <p className="md-editor-standin-placeholder">{placeholder}</p>
       )}

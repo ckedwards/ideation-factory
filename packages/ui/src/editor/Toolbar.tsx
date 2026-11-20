@@ -103,6 +103,18 @@ export const ACTIONS: Record<Action, ActionInfo> = {
       </>,
     ),
   },
+  undo: { label: 'Undo', keys: '⌘Z', icon: svg(<path d="M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />) },
+  redo: { label: 'Redo', keys: '⌘⇧Z', icon: svg(<path d="m15 14 5-5-5-5M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />) },
+  'code-block': {
+    label: 'Code block',
+    keys: '⌘⌥C',
+    icon: svg(
+      <>
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="m10 9-3 3 3 3M14 9l3 3-3 3" />
+      </>,
+    ),
+  },
 }
 
 const MORE_ICON = svg(
@@ -131,6 +143,14 @@ const FULL: Action[][] = [
   ['table'],
 ]
 const INLINE: Action[][] = [['bold', 'italic', 'strike', 'code', 'link']]
+// a whole file's: history, its style, text, lists, then blocks
+const PAGE: Action[][] = [
+  ['undo', 'redo'],
+  ['heading'],
+  ['bold', 'italic', 'strike', 'code', 'link'],
+  ['bullets', 'numbers', 'tasks'],
+  ['quote', 'code-block', 'table'],
+]
 const NARROW = new Set<Action>(['bold', 'italic', 'code', 'link', 'bullets'])
 
 // the table menu's icons: where a row or column goes (a plus), how a column lines up, what's deleted (a cross)
@@ -231,10 +251,20 @@ const LEVELS: Array<[number, string]> = [
   [6, 'Heading 6'],
 ]
 
-function LevelItems({ current, onHeading }: { current: number | null; onHeading: (level: number) => void }) {
+function LevelItems({
+  current,
+  onHeading,
+  page = false,
+}: {
+  current: number | null
+  onHeading: (level: number) => void
+  /** A page's style menu: Text, and headings 1 to 4. */
+  page?: boolean
+}) {
+  const levels = page ? LEVELS.slice(0, 5).map(([l, label]): [number, string] => [l, l === 0 ? 'Text' : label]) : LEVELS
   return (
     <>
-      {LEVELS.map(([level, label]) => (
+      {levels.map(([level, label]) => (
         <Menu.Item key={level} className="md-editor-menu-item" onClick={() => onHeading(level)}>
           <span className="md-editor-menu-check" aria-hidden>
             {current === level ? '✓' : ''}
@@ -282,11 +312,13 @@ export interface ToolbarProps {
   }
   /** A popup closed with nothing chosen: focus back to the text, unless it went somewhere of its own. */
   onRefocus: (away: boolean) => void
+  /** At the right, before the switch: how saving is going ("Saved to the draft"), on a page. */
+  status?: ReactNode
 }
 
 export function Toolbar(props: ToolbarProps) {
   const tag = usePopupTag()
-  const groups = props.flavor === 'inline' ? INLINE : FULL
+  const groups = props.flavor === 'inline' ? INLINE : props.flavor === 'page' ? PAGE : FULL
   const narrow = props.flavor === 'full'
   const hidden = groups.flat().filter((a) => narrow && !NARROW.has(a))
   // the one button that takes Tab; the arrow keys move it
@@ -343,15 +375,31 @@ export function Toolbar(props: ToolbarProps) {
       return <LinkTool key={action} {...props.link} trigger={common} icon={info.icon} on={on} off={off} />
     }
     if (action === 'heading' && !off) {
+      const page = props.flavor === 'page'
+      // a page's style menu names the style it's in: Text, or the heading's level
+      const style = props.heading ? `Heading ${props.heading}` : 'Text'
       return (
         <Menu.Root key={action}>
-          <Menu.Trigger {...common} type="button">
-            {info.icon}
+          <Menu.Trigger
+            {...common}
+            {...(page ? { className: `${common.className} md-editor-style`, 'aria-label': `Style: ${style}` } : {})}
+            type="button"
+          >
+            {page ? (
+              <>
+                <span>{style}</span>
+                <svg className="md-editor-style-caret" viewBox="0 0 24 24" width="12" height="12" aria-hidden>
+                  <path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </>
+            ) : (
+              info.icon
+            )}
           </Menu.Trigger>
           <Menu.Portal>
             <Menu.Positioner className="md-editor-menu-positioner" align="start" sideOffset={4}>
               <Menu.Popup {...tag} className="md-editor-menu">
-                <LevelItems current={props.heading} onHeading={props.onHeading} />
+                <LevelItems current={props.heading} onHeading={props.onHeading} page={page} />
               </Menu.Popup>
             </Menu.Positioner>
           </Menu.Portal>
@@ -374,7 +422,7 @@ export function Toolbar(props: ToolbarProps) {
         type="button"
         {...common}
         {...keepFocus}
-        aria-pressed={props.markdown || action === 'table' ? undefined : on}
+        aria-pressed={props.markdown || ['table', 'undo', 'redo'].includes(action) ? undefined : on}
         aria-haspopup={action === 'table' ? 'dialog' : undefined}
         onClick={(event) => {
           if (off) {
@@ -472,6 +520,11 @@ export function Toolbar(props: ToolbarProps) {
         }}
       />
       <span className="md-editor-grow" />
+      {props.status !== undefined && (
+        <span className="md-editor-status" role="status">
+          {props.status}
+        </span>
+      )}
       <button
         type="button"
         {...roving('markdown')}
