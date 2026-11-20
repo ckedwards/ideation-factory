@@ -3,15 +3,15 @@
 // to it as it's made, and is refused as outdated if the block no longer reads
 // as it did; the socket's draft event keeps everyone's copy current.
 // Committing makes one version.
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useRef, useState } from 'react'
 import { ApiError, type Operations, type Output } from '@ideaf/api'
-import { type DraftChange, type DraftUnit, markdownTree, plainLine, type Position } from '@ideaf/core'
+import { type DraftChange, markdownTree, plainLine } from '@ideaf/core'
 import { type Person, Redline, renderMermaid } from '@ideaf/ui'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../../../api.ts'
 import { type CommentOutcomeRow, EditActions, EditPanel, type EditPanelProps } from './EditPanel.tsx'
 import { IdeaMode } from './IdeaFrame.tsx'
-import { IdeaEditor, title } from './IdeaEditor.tsx'
+import { DraftEditor } from './DraftEditor.tsx'
 import { draftQuery } from './queries.ts'
 import type { Thread } from './view.ts'
 
@@ -38,6 +38,8 @@ export function useEditing(args: UseEditingArgs): { document: ReactNode; panel: 
   const queryClient = useQueryClient()
   const [previewing, setPreviewing] = useState(false)
   const [committing, setCommitting] = useState(false)
+  // the page's save of whatever's unsaved: the bar's actions wait for it
+  const flush = useRef<(() => Promise<boolean>) | null>(null)
   if (!args.open || !draft) {
     return null
   }
@@ -51,17 +53,16 @@ export function useEditing(args: UseEditingArgs): { document: ReactNode; panel: 
         : `That didn’t work: ${error instanceof Error ? error.message : String(error)}`,
     )
   }
-  const change = (change: DraftChange) =>
-    void api
-      .changeDraft({ idea, changes: [change] })
-      .catch(failed)
-      .finally(() => void reread())
   const file = draft.files.find((f) => f.file === args.file) ?? draft.files[0]
-  const units = file?.units ?? []
+  /** What's typed, saved first; false if it couldn't be (the page says why). */
+  const saved = async () => (flush.current ? flush.current() : true)
 
   const commit = async () => {
     setCommitting(true)
     try {
+      if (!(await saved())) {
+        return
+      }
       const done = await api.commitDraft({ idea })
       args.onCommitted(done.version)
       setPreviewing(false)
@@ -76,9 +77,11 @@ export function useEditing(args: UseEditingArgs): { document: ReactNode; panel: 
 
   const before = args.latestFiles.find((f) => f.file === file?.file)?.content ?? ''
   const after = file?.content ?? ''
-  const close = () => {
-    setPreviewing(false)
-    args.setOpen(false)
+  const close = async () => {
+    if (await saved()) {
+      setPreviewing(false)
+      args.setOpen(false)
+    }
   }
   // the panel's and the bar's: the same draft, and the same ways of acting on it
   const panelProps: EditPanelProps = {
@@ -105,7 +108,7 @@ export function useEditing(args: UseEditingArgs): { document: ReactNode; panel: 
         .undoDraftChange({ idea, key })
         .catch(failed)
         .finally(() => void reread()),
-    onPreview: setPreviewing,
+    onPreview: (on) => void saved().then((ok) => ok && setPreviewing(on)),
     onCommit: () => void commit(),
     onDiscard: () =>
       void api
@@ -115,7 +118,7 @@ export function useEditing(args: UseEditingArgs): { document: ReactNode; panel: 
           setPreviewing(false)
         }, failed)
         .finally(() => void reread()),
-    onClose: close,
+    onClose: () => void close(),
   }
   return {
     document: previewing ? (
@@ -125,26 +128,12 @@ export function useEditing(args: UseEditingArgs): { document: ReactNode; panel: 
         renderCode={renderMermaid}
       />
     ) : (
-      <IdeaEditor
-        units={units}
-        onEdit={(unit, text) => change({ kind: 'edit', id: unit.id, source: text, was: unit.source })}
-        onAdd={(unit, markdown) => change({ kind: 'insert', at: below(units, file?.file ?? '', unit), markdown })}
-        onDelete={(unit) => change({ kind: 'delete', id: unit.id, was: unit.source })}
-      />
+      file && <DraftEditor key={file.file} idea={idea} draft={draft} file={file.file} reread={reread} flush={flush} />
     ),
     panel: <EditPanel {...panelProps} />,
     // the editor's words and actions in the idea's bar, while it's open
     bar: <IdeaMode label={`Editing the draft, on v${draft.version}`} actions={<EditActions {...panelProps} />} />,
   }
-}
-
-/** Where text added below a unit goes: after a block; for a heading, before what follows it, or at the file's end. */
-function below(units: DraftUnit[], file: string, unit: DraftUnit): Position {
-  if (unit.kind !== 'heading') {
-    return { after: unit.id }
-  }
-  const following = units[units.indexOf(unit) + 1]
-  return following ? { before: following.id } : { end: file }
 }
 
 /** A change as the list of changes names it. */
@@ -172,4 +161,12 @@ function describe(change: DraftChange): string {
 function excerpt(markdown: string): string {
   const text = plainLine(markdown)
   return text.length > 60 ? `${text.slice(0, 60)}…` : text
+}
+
+/** A heading's title: its source without the #s. */
+function title(source: string): string {
+  return source
+    .replace(/^\s*#{1,6}\s+/, '')
+    .replace(/\s+#+\s*$/, '')
+    .trim()
 }

@@ -167,6 +167,8 @@ export interface RichEditor {
   adopt: (units: Array<{ id: string; source: string }>) => void
   /** Words moved between blocks since this was last asked, to go to the draft as moves. */
   movedWords: () => MovedWords[]
+  /** A page's blocks the draft has changed, by their IDs: marked with a rail. */
+  markChanged: (ids: string[]) => void
   run: (action: Exclude<Action, 'link' | 'table' | 'heading'>) => void
   /** The caret's block made a heading of this level, 1 to 6, or back into text with 0. */
   heading: (level: number) => void
@@ -328,6 +330,36 @@ const htmlRunSchema = $nodeSchema('ideaf_html_run', () => ({
     },
   },
 }))
+
+// a page's changed blocks: a rail beside each, as the page draws one beside the draft's changes
+const changedKey = new PluginKey<Set<string>>('ideaf-changed')
+const changedRail = $prose(
+  () =>
+    new Plugin<Set<string>>({
+      key: changedKey,
+      state: {
+        init: () => new Set(),
+        apply: (tr, ids) => (tr.getMeta(changedKey) as Set<string> | undefined) ?? ids,
+      },
+      props: {
+        decorations: (state) => {
+          const ids = changedKey.getState(state)
+          if (!ids || ids.size === 0) {
+            return null
+          }
+          const marks: Decoration[] = []
+          state.doc.descendants((node, pos) => {
+            const id = node.attrs['blockId'] as string | null | undefined
+            if (id && ids.has(id)) {
+              marks.push(Decoration.node(pos, pos + node.nodeSize, { class: 'is-changed' }))
+            }
+            return node.type.name !== 'table'
+          })
+          return DecorationSet.create(state.doc, marks)
+        },
+      },
+    }),
+)
 
 // a run drawn as its HTML with the blocks between where it left off, none of it typed in
 const htmlRunView = $view(htmlRunSchema.node, () => (node) => {
@@ -860,6 +892,7 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
         : [],
     )
     .use(clipboard)
+    .use(changedRail)
     .use(placeholder)
     .use(watch)
     .create()
@@ -1165,6 +1198,10 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
     markdown: () => write(view().state.doc),
     blocks,
     adopt: (units) => adopt(units),
+    markChanged: (ids) => {
+      const v = view()
+      v.dispatch(v.state.tr.setMeta(changedKey, new Set(ids)))
+    },
     movedWords: () => {
       const out = moved
       moved = []

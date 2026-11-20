@@ -84,7 +84,7 @@ export const Editing: Story = {
   args: { editing: true },
   play: async ({ canvasElement }) => {
     const bar = within(canvasElement)
-    await expect(bar.getByText(/Hover a block to edit it/)).toBeVisible()
+    await expect(bar.getByText(/saved to the draft as you go/)).toBeVisible()
     await expect(bar.queryByRole('button', { name: 'Source' })).toBeNull()
     await expect(bar.queryByRole('button', { name: 'Focus view' })).toBeNull()
     await expect(

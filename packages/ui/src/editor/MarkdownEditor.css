@@ -123,6 +123,10 @@
   outline: none;
   white-space: pre-wrap;
 }
+/* the box shows where focus is (a page, the caret): not the text inside it as well */
+.md-editor-surface:focus-visible {
+  outline: none;
+}
 .md-editor-surface > :last-child,
 .md-editor-standin .prose > :last-child {
   margin-bottom: 0;
@@ -462,17 +466,23 @@
 
 /* ---- a page: a whole file under a toolbar that stays at the top as it scrolls ---- */
 .md-editor.is-page {
+  /* its toolbar never goes narrow: not a container, so the page around it can size the toolbar */
+  container-type: normal;
   border: 0;
   border-radius: 0;
   background: transparent;
 }
 .md-editor.is-page:focus-within {
+  outline: none;
   box-shadow: none;
 }
 .md-editor.is-page .md-editor-bar {
   position: sticky;
   top: 0;
   z-index: 5;
+  /* a long status (a save refused, and what to do) takes a line of its own */
+  flex-wrap: wrap;
+  row-gap: 0.25rem;
   padding: 0.375rem var(--space-3);
   border-radius: 0;
   background: var(--surface);
@@ -501,4 +511,23 @@
   color: var(--ink-3);
   font: var(--text-xs) var(--font-ui);
   white-space: nowrap;
+}
+/* a block the draft has changed: a rail in the margin beside it */
+.md-editor.is-page .md-editor-surface .is-changed {
+  position: relative;
+}
+.md-editor.is-page .md-editor-surface .is-changed::before {
+  content: '';
+  position: absolute;
+  top: 0.15em;
+  bottom: 0.15em;
+  left: calc(-1 * var(--space-4));
+  width: 3px;
+  border-radius: 2px;
+  background: var(--changed);
+  pointer-events: none;
+}
+/* on a page, the status keeps to the right, beside the switch, on its own line too */
+.md-editor.is-page .md-editor-status {
+  margin-left: auto;
 }
