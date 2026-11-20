@@ -62,6 +62,7 @@ export {
   headings,
   type HeadingInfo,
   MarkdownView,
+  inlineMarkdown,
   defaultResolveLink,
   plainText,
   type MarkdownMark,

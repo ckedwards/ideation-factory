@@ -118,6 +118,19 @@
   color: var(--ins-ink);
   text-decoration: none;
 }
+/* the words drawn as they read: code and links as a comment shows them, in the change's color */
+.suggestion:not(.is-source) .suggestion-diff code {
+  padding: 0.1em 0.3em;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+.suggestion-diff a {
+  color: inherit;
+  text-decoration-thickness: var(--hairline);
+  text-underline-offset: 0.2em;
+}
 /* they wrap in a narrow column rather than push out of the card */
 .suggestion-actions {
   display: flex;

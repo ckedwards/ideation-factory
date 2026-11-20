@@ -185,8 +185,8 @@ export const Suggestions: Story = {
   play: async ({ args, canvasElement, userEvent }) => {
     const page = within(canvasElement)
     await expect(page.getByText('2 suggested edits')).toBeVisible()
-    // one that has formatting shows the Markdown it replaces
-    await expect(page.getByText('**oldest first**')).toBeVisible()
+    // one that has formatting reads as it will, bold and all
+    await expect(canvasElement.querySelector('.suggestion-diff ins strong')).toHaveTextContent('in order')
     await userEvent.click(page.getByRole('button', { name: 'Add all to draft' }))
     await expect(args.onAddToDraft).toHaveBeenCalledWith(['c6', 'c7'])
     await userEvent.click(page.getAllByRole('button', { name: 'Reject' })[1]!)

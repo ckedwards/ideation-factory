@@ -118,7 +118,7 @@ export const WithReplies: Story = { args: { comment: comments.withReplies } }
 
 export const AutomatedBot: Story = { args: { comment: comments.bot } }
 
-// Its three buttons wrap in a column as narrow as the comments pane, rather than push out of the card
+// Its buttons wrap in a column as narrow as the comments pane, rather than push out of the card
 export const SuggestedEdit: Story = {
   args: { comment: comments.suggestion, canDecide: true, onAddToDraft: fn() },
   play: async ({ canvasElement }) => {
@@ -137,8 +137,32 @@ export const SuggestionInDraft: Story = {
 
 export const SuggestedEditNotAuthor: Story = { args: { comment: comments.suggestion } }
 
-// a suggestion shows the Markdown it replaces when that has formatting
-export const SuggestedEditOfSource: Story = { args: { comment: comments.suggestionOfSource, canDecide: true } }
+// A suggestion's words read as they will: its bold is bold, not asterisks, before and after
+export const SuggestedEditOfSource: Story = {
+  args: { comment: comments.suggestionOfSource, canDecide: true, onAddToDraft: fn() },
+  play: async ({ canvasElement }) => {
+    const diff = canvasElement.querySelector<HTMLElement>('.suggestion-diff')!
+    await expect(diff.querySelector('del strong')).toHaveTextContent('Offline')
+    await expect(diff.querySelector('ins strong')).toHaveTextContent('Local-first')
+    await expect(diff).not.toHaveTextContent('**')
+  },
+}
+
+// More than a line of text (a list, two paragraphs) shows as its source, before and after alike
+export const SuggestedEditOfBlocks: Story = {
+  args: {
+    comment: {
+      ...comments.suggestionOfSource,
+      suggestion: { old: '**Offline** sync', replacement: '- Local-first sync\n- Queued writes', state: 'open' },
+    },
+    canDecide: true,
+  },
+  play: async ({ canvasElement }) => {
+    const suggestion = canvasElement.querySelector<HTMLElement>('.suggestion')!
+    await expect(suggestion).toHaveClass('is-source')
+    await expect(suggestion.querySelector('del')).toHaveTextContent('**Offline** sync')
+  },
+}
 
 export const SuggestionAccepted: Story = { args: { comment: comments.suggestionAccepted } }
 
