@@ -832,3 +832,44 @@ export const PageBehind: Story = {
     await waitFor(() => expect(box).toHaveTextContent(''))
   },
 }
+
+// the box in a form, as a comment's is
+function InForm({ onSend }: { onSend: () => void }) {
+  const [value, setValue] = useState('See the notice.')
+  return (
+    <form
+      style={{ maxWidth: '30rem' }}
+      onSubmit={(event) => {
+        event.preventDefault()
+        onSend()
+      }}
+    >
+      <MarkdownEditor label="Comment" value={value} onChange={setValue} footer={<Button type="submit">Send</Button>} />
+      <output data-testid="markdown">{value}</output>
+    </form>
+  )
+}
+
+// The link box is a form of its own, drawn outside the box: adding a link doesn't send the form the
+// box is in
+export const LinkInAForm: Story = {
+  args: { onSubmit: fn() },
+  render: (args) => <InForm onSend={args.onSubmit!} />,
+  play: async ({ args, canvasElement }) => {
+    const box = await surface(canvasElement)
+    const text = within(box).getByText('See the notice.').firstChild!
+    const range = document.createRange()
+    range.setStart(text, 8)
+    range.setEnd(text, 14)
+    box.focus()
+    getSelection()!.removeAllRanges()
+    getSelection()!.addRange(range)
+    await settle()
+    await userEvent.keyboard('{Control>}k{/Control}')
+    const address = await within(document.body).findByRole('textbox', { name: 'Link address' })
+    await waitFor(() => expect(address).toHaveFocus())
+    await userEvent.type(address, 'https://example.com/notice{Enter}')
+    await waitFor(() => expect(markdown(canvasElement)).toBe('See the [notice](https://example.com/notice).'))
+    await expect(args.onSubmit).not.toHaveBeenCalled()
+  },
+}

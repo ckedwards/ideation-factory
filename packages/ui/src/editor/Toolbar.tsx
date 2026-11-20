@@ -689,6 +689,9 @@ function LinkTool({ open, off, text, href, at, onOpen, onApply, trigger, icon, o
             <form
               onSubmit={(event) => {
                 event.preventDefault()
+                // React passes a portal's events up its own tree: without this, the box's form (a
+                // comment's, a review's) would be sent too
+                event.stopPropagation()
                 if (address.trim()) {
                   onApply(address.trim(), words)
                 }
