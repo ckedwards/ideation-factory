@@ -243,6 +243,19 @@ describe('delete', () => {
   })
 })
 
+describe('the last item of a list', () => {
+  test('deleted or moved, leaves the paragraph after the list a paragraph', () => {
+    const idea = createIdea([{ path: 'a.md', source: 'Intro.\n\n- one\n- two\n- three\n\nText.\n' }])
+    // b2 Intro, b3 b4 b5 the items, b6 Text
+    const deleted = run(idea, [], { command: 'delete', target: 'b5' })
+    expect(source(deleted)).toBe('Intro.\n\n- one\n- two\n\nText.\n')
+    expect(ids(deleted)).toEqual(['b2', 'b3', 'b4', 'b6'])
+    const moved = run(idea, [], { command: 'move', target: 'b5', to: { before: 'b3' } })
+    expect(source(moved)).toBe('Intro.\n\n- three\n- one\n- two\n\nText.\n')
+    expect(ids(moved)).toEqual(['b2', 'b5', 'b3', 'b4', 'b6'])
+  })
+})
+
 describe('move-text', () => {
   test("moves some of a block's text into another block, with the comments on it; the blocks keep their IDs", () => {
     const idea = plan()
