@@ -14,6 +14,10 @@
 }
 
 /* ---- the toolbar ---- */
+/* one of two boxes together, not in use: its toolbar waits until it is */
+.md-editor.is-resting .md-editor-bar {
+  display: none;
+}
 .md-editor-bar {
   display: flex;
   align-items: center;

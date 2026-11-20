@@ -134,20 +134,66 @@ export const Comment: Story = {
   },
 }
 
-// A suggested edit starts from the text as written, Markdown and all
+// A suggested edit starts from the text as written. The replacement and the reason are both
+// editors; only the one in use shows its toolbar
 export const Suggest: Story = {
   play: async ({ args, canvasElement, userEvent }) => {
     select(canvasElement, 'stops working')
     const page = within(document.body)
     await userEvent.click(await page.findByRole('button', { name: 'Suggest an edit' }))
-    const replacement = page.getByRole('textbox', { name: 'Replace it with' })
-    await expect(replacement).toHaveValue('stops working')
+    const replacement = await page.findByRole('textbox', { name: 'Replace it with' })
+    await waitFor(() => expect(replacement).toHaveFocus())
+    await expect(replacement).toHaveTextContent('stops working')
+    const [forReplacement, forWhy] = [...document.querySelectorAll('.selection-menu .md-editor')]
+    await waitFor(() => expect(forReplacement!.querySelector('.md-editor-bar')).toBeVisible())
+    await expect(forWhy!.querySelector('.md-editor-bar')).not.toBeVisible()
+    // the inline flavor: marks and links, no blocks
+    await expect(within(forReplacement as HTMLElement).queryByRole('button', { name: 'Bulleted list' })).toBeNull()
+    await userEvent.click(await page.findByRole('textbox', { name: 'Why' }))
+    await waitFor(() => expect(forWhy!.querySelector('.md-editor-bar')).toBeVisible())
+    await expect(forReplacement!.querySelector('.md-editor-bar')).not.toBeVisible()
     await userEvent.clear(replacement)
     await userEvent.type(replacement, 'can’t save')
     await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
     await expect(args.onSuggest).toHaveBeenCalledWith(
       expect.objectContaining({ quote: 'stops working' }),
       'can’t save',
+      '',
+      false,
+    )
+  },
+}
+
+// A selection cutting through formatting takes it whole, and the replacement shows it as it reads:
+// what's sent is Markdown
+export const SuggestFormatted: Story = {
+  // as the page widens it (core's suggestionSource)
+  args: { suggestionOf: () => 'app **stops working**' },
+  play: async ({ args, canvasElement, userEvent }) => {
+    // from "app " into the bold "stops working"
+    const texts = document.createTreeWalker(canvasElement, NodeFilter.SHOW_TEXT)
+    let before: Node | null = texts.nextNode()
+    while (before && !before.textContent!.includes('today the app')) {
+      before = texts.nextNode()
+    }
+    const bold = texts.nextNode()!
+    const range = document.createRange()
+    range.setStart(before!, before!.textContent!.indexOf('app'))
+    range.setEnd(bold, 'stops'.length)
+    getSelection()!.removeAllRanges()
+    getSelection()!.addRange(range)
+    bold.parentElement!.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+    const page = within(document.body)
+    await userEvent.click(await page.findByRole('button', { name: 'Suggest an edit' }))
+    const replacement = await page.findByRole('textbox', { name: 'Replace it with' })
+    await waitFor(() => expect(replacement).toHaveFocus())
+    await expect(replacement.querySelector('strong')).toHaveTextContent('stops working')
+    await expect(replacement).not.toHaveTextContent('**')
+    // the caret's at the end, in the bold, so what's typed is bold too
+    await userEvent.keyboard(' at once{Control>}{Enter}{/Control}')
+    await expect(args.onSuggest).toHaveBeenCalledWith(
+      expect.objectContaining({ quote: 'app stops' }),
+      'app **stops working at once**',
       '',
       false,
     )
