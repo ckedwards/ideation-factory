@@ -379,7 +379,11 @@ export function Toolbar(props: ToolbarProps) {
       // a page's style menu names the style it's in: Text, or the heading's level
       const style = props.heading ? `Heading ${props.heading}` : 'Text'
       return (
-        <Menu.Root key={action}>
+        <Menu.Root
+          key={action}
+          // closed: focus back to the text, the style chosen there (unless focus went somewhere itself)
+          onOpenChange={(open, details) => !open && props.onRefocus(movedAway(details.reason))}
+        >
           <Menu.Trigger
             {...common}
             {...(page ? { className: `${common.className} md-editor-style`, 'aria-label': `Style: ${style}` } : {})}
@@ -398,7 +402,8 @@ export function Toolbar(props: ToolbarProps) {
           </Menu.Trigger>
           <Menu.Portal>
             <Menu.Positioner className="md-editor-menu-positioner" align="start" sideOffset={4}>
-              <Menu.Popup {...tag} className="md-editor-menu">
+              {/* a style chosen puts the caret back in the text: the menu doesn't take focus back to its button */}
+              <Menu.Popup {...tag} className="md-editor-menu" finalFocus={false}>
                 <LevelItems current={props.heading} onHeading={props.onHeading} page={page} />
               </Menu.Popup>
             </Menu.Positioner>
@@ -479,7 +484,7 @@ export function Toolbar(props: ToolbarProps) {
                       </Menu.SubmenuTrigger>
                       <Menu.Portal>
                         <Menu.Positioner className="md-editor-menu-positioner" sideOffset={4}>
-                          <Menu.Popup {...tag} className="md-editor-menu">
+                          <Menu.Popup {...tag} className="md-editor-menu" finalFocus={false}>
                             <LevelItems current={props.heading} onHeading={props.onHeading} />
                           </Menu.Popup>
                         </Menu.Positioner>

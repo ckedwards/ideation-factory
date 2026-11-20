@@ -67,6 +67,10 @@ function Page() {
           if (!made.ok) {
             throw new Error(made.message)
           }
+          // nothing to save: the page leaves what's on screen as it is
+          if (made.changes.length === 0) {
+            return
+          }
           const saved = buildDraft(
             idea,
             [],
@@ -320,5 +324,39 @@ export const CutAWholeList: Story = {
     const { changes } = await readBack(canvasElement)
     await expect(changes.length).toBeGreaterThan(0)
     await expect(changes.every((c) => c.kind === 'move')).toBe(true)
+  },
+}
+
+// A new heading chosen from the style menu on an empty line is nothing yet, and isn't saved; typed
+// in, it's a new heading, and saved, it takes its ID
+export const NewHeading: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const box = await surface(canvasElement)
+    const field = textNode(box, 'Field teams')
+    await select(box, field, field.length, field, field.length)
+    await typing.keyboard('{Enter}')
+    await userEvent.click(canvas.getByRole('button', { name: /^Style: / }))
+    await userEvent.click(await within(document.body).findByRole('menuitem', { name: /Heading 2/ }))
+    // the caret's back in the text, in the new heading, to type its words
+    await waitFor(() => expect(box).toHaveFocus())
+    await expect(getSelection()!.anchorNode?.nodeName).toBe('H2')
+    await expect((await readBack(canvasElement)).changes).toEqual([])
+    await userEvent.click(canvas.getByRole('button', { name: 'Save' }))
+    // back into the empty heading (the page saves by itself; here a button did)
+    const empty = [...box.querySelectorAll('h2')].find((h) => h.textContent === '')!
+    const range = document.createRange()
+    range.setStart(empty, 0)
+    box.focus()
+    getSelection()!.removeAllRanges()
+    getSelection()!.addRange(range)
+    await settle()
+    await typing.keyboard('ddd')
+    await expect((await readBack(canvasElement)).changes).toEqual([
+      { kind: 'insert', at: { after: 'b3' }, markdown: '## ddd' },
+    ])
+    await userEvent.click(canvas.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(box.querySelector('h2[data-block-id="s11"]')).toHaveTextContent('ddd'))
+    await expect((await readBack(canvasElement)).changes).toEqual([])
   },
 }
