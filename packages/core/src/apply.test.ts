@@ -4,6 +4,7 @@ import { describe, expect, test } from 'bun:test'
 import { applyBatch, type BatchResult } from './apply.ts'
 import type { Command } from './batch.ts'
 import { type Comment, createIdea, type Idea, textAnchor } from './idea.ts'
+import { parseMarkdown } from './markdown.ts'
 
 const PLAN = `# Plan
 
@@ -266,6 +267,42 @@ describe('rename-heading', () => {
     )
     expect(source(run(idea, [], { command: 'rename-heading', target: 's3', title: 'New' }))).toBe(
       'Title\n=====\n\n## New ##\n',
+    )
+  })
+})
+
+describe("a heading's level", () => {
+  test("changes with its title or alone; its ID, its section's comments and a comment on its words stay", () => {
+    const idea = plan()
+    const r = run(
+      idea,
+      [
+        { id: 'section', anchor: { kind: 'section', file: 'f1', section: 's4' } },
+        { id: 'heading', anchor: textAnchor(idea, 'f1', 'Risks') },
+      ],
+      { command: 'rename-heading', target: 's4', title: 'Risks', level: 3 },
+    )
+    expect(source(r)).toContain('### Risks\n')
+    expect(ids(r)).toEqual(plan().files[0]!.unitIds)
+    expect(outcome(r, 'section')).toEqual({ state: 'exact', quote: null, file: 'f1' })
+    expect(outcome(r, 'heading')).toEqual({ state: 'exact', quote: 'Risks', file: 'f1' })
+    expect(source(run(plan(), [], { command: 'rename-heading', target: 's4', title: 'Hazards', level: 1 }))).toContain(
+      '\n# Hazards\n',
+    )
+  })
+
+  test("its section follows the new level's nesting", () => {
+    // Risks up to level 1: Costs, at level 2, is now inside it rather than inside Plan
+    const r = ok(run(plan(), [], { command: 'rename-heading', target: 's4', title: 'Risks', level: 1 }))
+    const parsed = parseMarkdown(r.idea.files[0]!.source)
+    const risks = parsed.sections.find((s) => parsed.units[s.heading]!.level === 1 && s.heading > 0)!
+    expect(parsed.units[risks.last]!.end).toBe(parsed.units.at(-1)!.end)
+  })
+
+  test('a setext heading becomes # headings when its level changes', () => {
+    const idea = createIdea([{ path: 'a.md', source: 'Title\n=====\n\nText.\n' }])
+    expect(source(run(idea, [], { command: 'rename-heading', target: 's2', title: 'Title', level: 2 }))).toBe(
+      '## Title\n\nText.\n',
     )
   })
 })

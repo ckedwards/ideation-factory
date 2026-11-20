@@ -70,6 +70,13 @@ describe('editing a heading', () => {
       { command: 'rename-heading', target: 's4', title: 'Open risks', expect: '## Risks' },
     ])
     expect(commands(plan(), 's4', '## Risks')).toEqual([])
+    // a new level from its #s; none keeps the level
+    expect(commands(plan(), 's4', '### Risks')).toEqual([
+      { command: 'rename-heading', target: 's4', title: 'Risks', level: 3, expect: '## Risks' },
+    ])
+    expect(commands(plan(), 's4', '# Open risks')).toEqual([
+      { command: 'rename-heading', target: 's4', title: 'Open risks', level: 1, expect: '## Risks' },
+    ])
     expect(blockEdit(plan(), 's4', 'Two\nlines')).toEqual({ ok: false, message: 'a heading is one line of text' })
   })
 })

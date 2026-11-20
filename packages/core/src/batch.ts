@@ -41,6 +41,8 @@ export const Command = z.discriminatedUnion('command', [
     command: z.literal('rename-heading'),
     target: SectionId,
     title: z.string().min(1).max(500),
+    /** Its new level, 1 to 6; it keeps its own without one. Its section follows the new level's nesting. */
+    level: z.number().int().min(1).max(6).optional(),
     expect,
     addresses,
   }),

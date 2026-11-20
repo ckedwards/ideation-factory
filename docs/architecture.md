@@ -62,7 +62,7 @@ The cli keeps the bases in a per-idea state file (see Uploads in `cli.md`).
 | `insert` {before or after a block or section, markdown} | None |
 | `delete` {block or section} | Comments on it become *outdated* |
 | `move` {block or section, to a place, possibly in another file} | They move with it, even if a later command in the same batch edits it |
-| `rename-heading` {section, title} | Section comments stay with the section |
+| `rename-heading` {section, title, and optionally a level}: a new level re-nests its section | Section comments stay with the section; a comment on the title's words stays on them |
 | `set-section` {section, markdown}: rewrite a section's body | Section comments stay. Text comments follow `replace` rules where their text survives; the rest become *outdated* |
 | `rename-file`, `create-file`, `delete-file` | They follow the file, or become *outdated* if it's deleted |
 

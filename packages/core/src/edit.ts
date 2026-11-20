@@ -5,8 +5,8 @@
 // - **A block:** a `replace` of only what changed (the common start and end
 //   left alone), taking in surrounding text until it's unique in the block.
 //   Emptying it is a `delete`.
-// - **A heading:** a `rename-heading`, so its section's comments stay. Its
-//   level doesn't change here.
+// - **A heading:** a `rename-heading`, so its section's comments stay, with
+//   its new level when its #s changed (none given keeps the level it has).
 import type { Command } from './batch.ts'
 import { type Idea, locate } from './idea.ts'
 import { uniqueReplace } from './suggest.ts'
@@ -30,13 +30,16 @@ export function blockEdit(idea: Idea, id: string, next: string): BlockEdit {
     if (!title || /[\r\n]/.test(title)) {
       return { ok: false, message: 'a heading is one line of text' }
     }
-    const current = before
-      .replace(/^\s*#{1,6}\s+/, '')
-      .replace(/\s+#+\s*$/, '')
-      .trim()
+    const current = headingTitle(before)
+    const level = /^\s*(#{1,6})\s/.exec(next)?.[1]?.length ?? u.level
+    if (title === current && level === u.level) {
+      return { ok: true, commands: [] }
+    }
     return {
       ok: true,
-      commands: title === current ? [] : [{ command: 'rename-heading', target: id, title, expect: before }],
+      commands: [
+        { command: 'rename-heading', target: id, title, ...(level === u.level ? {} : { level }), expect: before },
+      ],
     }
   }
   const after = next.trim()
@@ -70,4 +73,17 @@ export function blockEdit(idea: Idea, id: string, next: string): BlockEdit {
   return command
     ? { ok: true, commands: [command] }
     : { ok: false, message: `${id} can't be told apart from text around it` }
+}
+
+/** A heading's title, as its source has it: ATX or setext, without the markers. */
+function headingTitle(source: string): string {
+  const lines = source.split('\n')
+  // setext: the text above its underline
+  if (lines.length > 1 && /^ {0,3}(=+|-+)\s*$/.test(lines.at(-1)!)) {
+    return lines.slice(0, -1).join(' ').trim()
+  }
+  return source
+    .replace(/^\s*#{1,6}\s+/, '')
+    .replace(/\s+#+\s*$/, '')
+    .trim()
 }

@@ -260,8 +260,24 @@ function plan(idea: Idea, ids: Ids, command: Command): Plan {
         throw new Fail('invalid', 'a heading title must be one non-empty line')
       }
       const unit = target.parsed.units[target.unit]!
-      const [start, end] = headingText(target.file.source, unit.start, unit.end)
-      out.pieces.set(target.file.id, replaceRange(target.file, start, end, title))
+      if (command.level === undefined || command.level === unit.level) {
+        const [start, end] = headingText(target.file.source, unit.start, unit.end)
+        out.pieces.set(target.file.id, replaceRange(target.file, start, end, title))
+        return out
+      }
+      // a new level: the heading rewritten as # to ######, a setext one too, only what changed
+      // replaced, so a comment on its words stays on them
+      const { file } = target
+      out.pieces.set(file.id, [
+        ...identity(file.id, unit.start),
+        ...diffPieces(
+          file.id,
+          file.source.slice(unit.start, unit.end),
+          `${'#'.repeat(command.level)} ${title}`,
+          unit.start,
+        ),
+        { kind: 'copy', file: file.id, start: unit.end, end: file.source.length, moved: false },
+      ])
       return out
     }
     case 'set-section': {
