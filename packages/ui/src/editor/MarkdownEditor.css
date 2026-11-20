@@ -1,0 +1,445 @@
+/* The Markdown editor: one bordered box, toolbar, text and buttons, as GitHub's. Its measures are the
+   agreed mockup's (docs/design-rich-text.md). */
+.md-editor {
+  container-type: inline-size;
+  display: grid;
+  min-width: 0;
+  border: var(--hairline) solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.md-editor:focus-within {
+  outline: calc(var(--hairline) * 2) solid var(--accent);
+  outline-offset: calc(var(--hairline) * 2);
+}
+
+/* ---- the toolbar ---- */
+.md-editor-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  min-width: 0;
+  padding: 0.25rem 0.375rem;
+  border-bottom: var(--hairline) solid var(--rule);
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--bg);
+}
+.md-editor-group {
+  display: contents;
+}
+.md-editor-tool {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink-2);
+  font: 500 var(--text-sm) / 1 var(--font-ui);
+  cursor: pointer;
+}
+.md-editor-tool:hover,
+.md-editor-tool[data-popup-open] {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.md-editor-tool.is-on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+/* not available where the caret is: still reachable from the keyboard, its tooltip says why */
+.md-editor-tool[aria-disabled='true'] {
+  background: none;
+  color: var(--ink-3);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.md-editor-tool:focus-visible {
+  outline: calc(var(--hairline) * 2) solid var(--accent);
+  outline-offset: calc(var(--hairline) * -1);
+}
+.md-editor-glyph {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  line-height: 1;
+}
+.md-editor-glyph.is-bold {
+  font-weight: 800;
+}
+.md-editor-glyph.is-italic {
+  font-family: var(--font-prose);
+  font-size: 1.05em;
+  font-weight: 400;
+}
+.md-editor-sep {
+  flex: none;
+  width: var(--hairline);
+  height: 1rem;
+  margin: 0 0.25rem;
+  background: var(--rule-strong);
+}
+.md-editor-grow {
+  flex: 1;
+}
+.md-editor-tool.md-editor-switch {
+  width: 2rem;
+}
+
+/* too narrow for every button (the comments column): five, and the rest under More */
+.md-editor .is-narrow-only {
+  display: none;
+}
+@container (max-width: 26.5rem) {
+  .md-editor.is-full .is-wide-only {
+    display: none;
+  }
+  .md-editor.is-full .is-narrow-only {
+    display: inline-grid;
+  }
+  .md-editor.is-full .md-editor-sep.is-narrow-only {
+    display: block;
+  }
+}
+
+/* ---- the text ---- */
+.md-editor-rich,
+.md-editor .md-editor-source {
+  min-width: 0;
+}
+.md-editor-surface,
+.md-editor-standin {
+  min-height: calc(var(--md-editor-rows, 3) * 1.45em + 2 * var(--space-2));
+  padding: var(--space-2) var(--space-3);
+  overflow-wrap: anywhere;
+}
+.md-editor-surface {
+  outline: none;
+  white-space: pre-wrap;
+}
+.md-editor-surface > :last-child,
+.md-editor-standin .prose > :last-child {
+  margin-bottom: 0;
+}
+.md-editor.is-inline .md-editor-surface,
+.md-editor.is-inline .md-editor-standin {
+  min-height: calc(1.45em + 2 * var(--space-2));
+}
+/* the text as it will look while the rich side loads: seen, not used */
+.md-editor-standin {
+  pointer-events: none;
+}
+.md-editor-standin-placeholder {
+  margin: 0;
+  color: var(--ink-3);
+}
+/* the plain box, inside the editor's own border, as tall as its text (MarkdownEditor sizes it) */
+.md-editor .md-editor-source {
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--font-ui);
+  outline: none;
+  resize: none;
+}
+.md-editor-placeholder::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--ink-3);
+  pointer-events: none;
+}
+/* a block shown as its source, not typed in: front matter, a link definition, raw HTML */
+.md-editor-surface .md-editor-raw {
+  padding: var(--space-2) var(--space-3);
+  border: var(--hairline) dashed var(--rule-strong);
+  background: transparent;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+}
+.md-editor-surface .ProseMirror-selectednode {
+  outline: calc(var(--hairline) * 2) solid var(--accent);
+}
+.md-editor-surface li.ProseMirror-selectednode {
+  outline: none;
+}
+.md-editor-surface li.ProseMirror-selectednode::after {
+  border-color: var(--accent);
+}
+/* where the caret is, still marked while focus is in a menu or the link box: the selection, or a caret */
+.md-editor-surface .md-editor-held-caret {
+  display: inline-block;
+  width: 0;
+  height: 1.2em;
+  margin-right: -0.125rem;
+  border-left: 0.125rem solid var(--accent);
+  vertical-align: text-bottom;
+  pointer-events: none;
+}
+/* back in the text, the browser draws its own again */
+.md-editor-surface.ProseMirror-focused .md-editor-held-caret {
+  display: none;
+}
+/* the selection, held: a highlight over the text, which is left as it is (milkdown.ts, the hold plugin) */
+::highlight(md-editor-held) {
+  background-color: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+/* raw HTML: drawn as the page draws it, and read only (it's changed on the Markdown side) */
+.md-editor-surface .md-editor-html {
+  position: relative;
+  margin: 0 0 var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border: var(--hairline) dashed var(--rule-strong);
+  border-radius: var(--radius-sm);
+}
+.md-editor-surface .md-editor-html > .md-html-drawn {
+  margin: 0;
+}
+.md-editor-surface .md-editor-html > .md-html-drawn > :last-child {
+  margin-bottom: 0;
+}
+.md-editor-html-mark {
+  position: absolute;
+  top: -0.75rem;
+  right: var(--space-2);
+  z-index: 1;
+  display: inline-grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: var(--hairline) solid var(--rule-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: help;
+  user-select: none;
+}
+/* inline HTML: its source, as the page shows it */
+.md-editor-surface span[data-type='html'] {
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+}
+/* a tight list: its items spaced as a comment shows them (MarkdownView draws their text without a
+   paragraph, so without a paragraph's margin) */
+.md-editor-surface :is(ul, ol)[data-spread='false'] > li > p {
+  margin-bottom: 0;
+}
+/* task items: a box before each */
+.md-editor-surface li[data-item-type='task'] {
+  position: relative;
+  list-style: none;
+}
+.md-editor-surface li[data-item-type='task']::before {
+  content: '';
+  position: absolute;
+  top: 0.35em;
+  left: calc(var(--space-5) * -1 + 0.1em);
+  width: 0.85em;
+  height: 0.85em;
+  border: calc(var(--hairline) * 1.5) solid var(--ink-3);
+  border-radius: calc(var(--radius-sm) / 2);
+}
+.md-editor-surface li[data-item-type='task'][data-checked='true']::before {
+  border-color: var(--accent);
+  background: var(--accent)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / 100% no-repeat;
+}
+/* tables: a grid, scrolling sideways when wide */
+.md-editor-surface .tableWrapper {
+  margin: 0 0 var(--space-4);
+  overflow-x: auto;
+}
+.md-editor-surface table {
+  margin: 0 0 var(--space-4);
+}
+.md-editor-surface .tableWrapper table {
+  margin: 0;
+}
+.md-editor-surface :is(td, th) {
+  position: relative;
+  border: var(--hairline) solid var(--rule);
+}
+.md-editor-surface :is(td, th) > p {
+  margin: 0;
+}
+.md-editor-surface .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  pointer-events: none;
+}
+.md-editor-surface .column-resize-handle {
+  display: none;
+}
+
+/* ---- the foot: the buttons ---- */
+.md-editor-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: 0.375rem 0.5rem;
+  border-top: var(--hairline) solid var(--rule);
+}
+
+/* ---- More, the table's menu, and the link box ---- */
+.md-editor-menu-positioner {
+  z-index: 60;
+}
+.md-editor-menu {
+  min-width: 13rem;
+  padding: 0.25rem;
+  border: var(--hairline) solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font: var(--text-sm) / 1.2 var(--font-ui);
+}
+.md-editor-menu:focus,
+.md-editor-link:focus {
+  outline: none;
+}
+.md-editor-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  cursor: pointer;
+  outline: none;
+}
+.md-editor-menu-item[data-highlighted] {
+  background: var(--surface-2);
+}
+.md-editor-menu-item[data-disabled] {
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+.md-editor-menu-item.is-danger {
+  color: var(--lost);
+}
+.md-editor-menu-item.is-danger .md-editor-menu-icon {
+  color: inherit;
+}
+.md-editor-menu-item kbd {
+  margin-left: auto;
+  color: var(--ink-3);
+  font: var(--text-xs) / 1 var(--font-ui);
+}
+.md-editor-menu-check {
+  width: 1rem;
+  color: var(--accent);
+}
+.md-editor-menu-more {
+  margin-left: auto;
+  color: var(--ink-3);
+}
+/* each level a little like itself */
+.md-editor-level {
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+.md-editor-level.is-h1 {
+  font-size: 1.15rem;
+}
+.md-editor-level.is-h2 {
+  font-size: 1.05rem;
+}
+.md-editor-level.is-h5,
+.md-editor-level.is-h6 {
+  font-size: var(--text-xs);
+}
+.md-editor-menu-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 1rem;
+  color: var(--ink-2);
+}
+.md-editor-menu-label {
+  padding: 0.375rem 0.5rem 0.125rem;
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+.md-editor-menu-rule {
+  height: var(--hairline);
+  margin: 0.25rem 0;
+  background: var(--rule);
+}
+.md-editor-link {
+  width: 18rem;
+  padding: var(--space-3);
+  border: var(--hairline) solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.md-editor-link form {
+  display: grid;
+  gap: var(--space-2);
+}
+.md-editor-link-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* the table size picker: a grid, the header row darker */
+.md-editor-table-picker {
+  /* as wide as the grid: the words under it wrap to it */
+  width: min-content;
+  padding: var(--space-3);
+  border: var(--hairline) solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-family: var(--font-ui);
+}
+.md-editor-table-picker:focus {
+  outline: none;
+}
+.md-editor-table-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1.125rem);
+  gap: 0.1875rem;
+  padding: 0.1875rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.md-editor-table-grid:focus-visible {
+  outline: calc(var(--hairline) * 2) solid var(--accent);
+}
+.md-editor-table-cell {
+  height: 1.125rem;
+  border: var(--hairline) solid var(--rule-strong);
+  border-radius: calc(var(--radius-sm) / 2);
+  background: var(--surface);
+}
+.md-editor-table-cell.is-on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.md-editor-table-cell.is-head.is-on {
+  background: color-mix(in srgb, var(--accent) 40%, var(--accent-soft));
+}
+.md-editor-table-size {
+  margin: var(--space-2) 0 0;
+  white-space: nowrap;
+  color: var(--ink);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.md-editor-table-hint {
+  margin: var(--space-1) 0 0;
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
