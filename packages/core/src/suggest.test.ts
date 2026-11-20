@@ -4,7 +4,7 @@ import { describe, expect, test } from 'bun:test'
 import { applyBatch } from './apply.ts'
 import type { Command } from './batch.ts'
 import { type Anchor, createIdea, type Idea, textAnchor } from './idea.ts'
-import { acceptSuggestions, suggestionCommand, suggestionSource } from './suggest.ts'
+import { suggestionCommand, suggestionSource } from './suggest.ts'
 
 const PLAN = `# Plan
 
@@ -119,37 +119,6 @@ describe('accepting a suggestion', () => {
     expect(suggestionCommand(idea, null, { old: 'keeps the', new: 'x' }, [])).toEqual({
       ok: false,
       message: "its text isn't in the latest version",
-    })
-  })
-})
-
-describe('accepting several at once', () => {
-  test('is one batch, a step for each; one overlapping another stays open', () => {
-    const idea = plan()
-    const a = { id: 'c1', anchor: textAnchor(idea, 'f1', 'keeps the'), old: 'keeps the', new: 'holds a' }
-    const b = { id: 'c2', anchor: textAnchor(idea, 'f1', 'might rain'), old: 'might rain', new: 'may pour' }
-    const overlapping = {
-      id: 'c3',
-      anchor: textAnchor(idea, 'f1', 'the last'),
-      old: 'the [last copy](https://example.com)',
-      new: 'a copy',
-    }
-    const comments = [a, b, overlapping].map(({ id, anchor }) => ({ id, anchor }))
-    const result = acceptSuggestions(idea, comments, 1, [a, b, overlapping])
-    if (!result.ok) {
-      throw new Error(JSON.stringify(result.skipped))
-    }
-    expect(result.accepted).toEqual(['c1', 'c2'])
-    expect(result.skipped).toEqual([{ id: 'c3', message: 'its text changed, by a suggestion accepted with it' }])
-    expect(result.applied.steps.map((s) => s.addresses)).toEqual([['c1'], ['c2']])
-    expect(result.applied.idea.files[0]!.source).toContain('holds a [last copy]')
-  })
-
-  test('with none that apply, nothing lands', () => {
-    const idea = plan()
-    expect(acceptSuggestions(idea, [], 1, [{ id: 'c1', anchor: null, old: 'x', new: 'y' }])).toEqual({
-      ok: false,
-      skipped: [{ id: 'c1', message: "its text isn't in the latest version" }],
     })
   })
 })

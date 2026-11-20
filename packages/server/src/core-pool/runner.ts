@@ -2,8 +2,6 @@
 // large upload or batch slows only its own idea, not every actor on the node
 // (scale concerns, concern 4). Tests run it in process.
 import {
-  type AcceptResult,
-  acceptSuggestions,
   type Anchor,
   type AnchorInput,
   applyBatch,
@@ -19,7 +17,6 @@ import {
   type FileOutline,
   type Idea,
   outline,
-  type Suggestion,
   suggestionSource,
   type Upload,
   type UploadResult,
@@ -37,13 +34,6 @@ export interface CoreRunner {
   checkAnchor(key: string, idea: Idea, input: AnchorInput): Promise<ReturnType<typeof checkAnchor>>
   suggestionSource(key: string, idea: Idea, anchor: Anchor): Promise<ReturnType<typeof suggestionSource>>
   buildDraft(key: string, idea: Idea, comments: Comment[], entries: DraftEntry[]): Promise<BuiltDraft>
-  acceptSuggestions(
-    key: string,
-    idea: Idea,
-    comments: Comment[],
-    base: number,
-    suggestions: Suggestion[],
-  ): Promise<AcceptResult>
   close(): Promise<void>
 }
 
@@ -64,7 +54,6 @@ export const core = {
   createIdea: tryCreateIdea,
   checkAnchor,
   suggestionSource,
-  acceptSuggestions,
   buildDraft,
 }
 export type CoreMethod = keyof typeof core
@@ -78,8 +67,6 @@ export function inProcessCore(): CoreRunner {
     checkAnchor: async (_key, idea, input) => checkAnchor(idea, input),
     suggestionSource: async (_key, idea, anchor) => suggestionSource(idea, anchor),
     buildDraft: async (_key, idea, comments, entries) => buildDraft(idea, comments, entries),
-    acceptSuggestions: async (_key, idea, comments, base, suggestions) =>
-      acceptSuggestions(idea, comments, base, suggestions),
     close: async () => {},
   }
 }

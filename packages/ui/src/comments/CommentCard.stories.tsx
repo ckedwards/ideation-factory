@@ -92,7 +92,7 @@ const meta = {
     onSelect: fn(),
     onReply: fn(),
     onResolve: fn(),
-    onAccept: fn(),
+    onAddToDraft: fn(),
     onReject: fn(),
     onViewInVersion: fn(),
   },

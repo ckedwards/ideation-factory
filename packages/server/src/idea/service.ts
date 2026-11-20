@@ -111,12 +111,10 @@ export const IdeaWrite = z.discriminatedUnion('type', [
     body: z.string().trim().max(20_000),
     pending: z.boolean().optional(),
   }),
-  /** Accepts suggestions as one version, or into the draft; those that no longer apply are skipped. */
+  /** Adds suggestions to the draft (committing it makes the version); those that no longer apply are skipped. */
   z.strictObject({
     type: z.literal('accept'),
     suggestions: z.array(z.string()).min(1).max(100),
-    into: z.enum(['version', 'draft']).optional(),
-    outdateDraft: z.boolean().optional(),
   }),
   /** Adds a change to the draft, if it applies to the draft as it is. Suggestions go in by `accept`. */
   z.strictObject({ type: z.literal('draft'), change: DraftChange }),
@@ -203,9 +201,6 @@ export type WriteValue =
       version: number
       comments: CommentOutcome[]
       steps: StepResult[]
-      /** Accepting suggestions: those in the version, and those left open, saying why. */
-      accepted?: string[]
-      skipped?: Skipped[]
     }
 
 export type WriteResult = { ok: true; value: WriteValue } | { ok: false; error: WriteError }
@@ -1003,7 +998,6 @@ export class IdeaService {
   }
 
   async #accept(request: WriteRequest, write: Extract<IdeaWrite, { type: 'accept' }>) {
-    const meta = await this.#requireMeta()
     const latest = await this.#loadLatest()
     const ids = [...new Set(write.suggestions)]
     const rows = new Map((await this.#suggestions(ids)).map((r) => [r.id, r]))
@@ -1018,42 +1012,7 @@ export class IdeaService {
       }
       candidates.push({ id, anchor: anchors.get(id) ?? null, old: row.old, new: row.new })
     }
-    if (write.into === 'draft') {
-      return this.#acceptIntoDraft(request, candidates, skipped)
-    }
-    const accepted =
-      candidates.length > 0
-        ? await this.#core.acceptSuggestions(this.id, latest.idea, latest.comments, meta.latest, candidates)
-        : ({ ok: false, skipped: [] } as const)
-    if (!accepted.ok) {
-      const all = [...skipped, ...accepted.skipped]
-      refuse('conflict', `none of these suggestions apply: ${all.map((s) => `${s.id}, ${s.message}`).join('; ')}`, {
-        skipped: all,
-      })
-    }
-    const ok = accepted as Extract<typeof accepted, { ok: true }>
-    this.#checkSizes(
-      latest.bytes,
-      ok.applied.idea.files.map((f) => ({ file: f.id, path: f.path, bytes: byteLength(f.source) })),
-    )
-    const steps = ok.commands.map((command, step) => ({ step, command, addresses: command.addresses ?? [] }))
-    const number = meta.latest + 1
-    const decision: Decision = { kind: 'accepted', by: request.caller, at: this.#now(), version: number }
-    return this.#newVersion(
-      request,
-      meta,
-      latest,
-      'commands',
-      ok.applied.idea,
-      ok.applied.comments,
-      steps,
-      ok.applied.steps,
-      {
-        decide: { ids: ok.accepted, decision },
-        value: { accepted: ok.accepted, skipped: [...skipped, ...ok.skipped] },
-        outdateDraft: write.outdateDraft === true,
-      },
-    )
+    return this.#acceptIntoDraft(request, candidates, skipped)
   }
 
   async #reject(request: WriteRequest, write: Extract<IdeaWrite, { type: 'reject' }>) {
@@ -1407,9 +1366,8 @@ export class IdeaService {
     stepResults: StepResult[],
     more: {
       gitHint?: { uri: string | null; branch: string }
-      /** Suggestions this version accepts. */
+      /** Suggestions this version accepts (the draft's, committed). */
       decide?: { ids: string[]; decision: Decision }
-      value?: { accepted: string[]; skipped: Skipped[] }
       /** Committing the draft: it's emptied with the new version. */
       clearDraft?: boolean
       /** Make the version even if changes in the draft would become outdated (confirmed by the caller). */
@@ -1418,17 +1376,13 @@ export class IdeaService {
   ) {
     const number = meta.latest + 1
     const { gitHint, decide } = more
-    // suggestions accepted here leave the draft: they're in this version
-    const accepted = new Set(decide?.ids ?? [])
     const drafted = more.clearDraft ? [] : await this.#draftEntries()
-    const leaving = drafted.filter((e) => e.change.kind === 'suggestion' && accepted.has(e.change.comment))
-    const staying = drafted.filter((e) => !leaving.includes(e))
-    if (staying.length > 0 && !more.outdateDraft) {
-      await this.#checkDraftKept(latest, idea, outcomes, staying)
+    if (drafted.length > 0 && !more.outdateDraft) {
+      await this.#checkDraftKept(latest, idea, outcomes, drafted)
     }
     const result: WriteResult = {
       ok: true,
-      value: { kind: 'version', version: number, comments: outcomes, steps: stepResults, ...more.value },
+      value: { kind: 'version', version: number, comments: outcomes, steps: stepResults },
     }
     const stored = await this.#storeContents(idea)
     const events: IdeaEvent[] = [
@@ -1460,15 +1414,6 @@ export class IdeaService {
       }
       if (more.clearDraft) {
         await tx.deleteFrom('draft').execute()
-      } else if (leaving.length > 0) {
-        await tx
-          .deleteFrom('draft')
-          .where(
-            'key',
-            'in',
-            leaving.map((e) => e.key),
-          )
-          .execute()
       }
       await this.#remember(tx, request.key, result, events)
     })

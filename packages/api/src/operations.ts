@@ -353,21 +353,16 @@ export const operations = {
     mcp: true,
     summary: 'Accept suggested edits',
     description:
-      "Accepts suggestions as one new version, a step for each that addresses it, and resolves them; or, with `into: draft`, adds them to the idea's draft, to be committed with the rest of it. One whose text has changed or gone since (in the version, or in the draft), or that overlaps one before it, is skipped and stays open, saying why; if none apply, it's refused with conflict. Needs edit access.",
+      "Adds suggestions to the idea's draft, to be committed with the rest of it: committing the draft makes the version, and resolves them. One whose text has changed or gone since (in the version, or in the draft), that's in the draft already, or that overlaps one before it, is skipped and stays open, saying why; if none apply, it's refused with conflict. Needs edit access.",
     method: 'POST',
     path: '/ideas/{idea}/suggestions/accept',
     kind: 'write',
     input: z.strictObject({
       idea: IdeaId,
       suggestions: z.array(CommentId).min(1).max(100),
-      /** `draft`: into the idea's draft, to commit with the rest of it, instead of a version now. */
-      into: z.enum(['version', 'draft']).optional(),
-      /** As a version, even though it makes changes in the idea's draft outdated (draft_outdated said which). */
-      outdateDraft: z.boolean().optional(),
     }),
     output: z.object({
-      /** The new version; null when they went into the draft. */
-      version: z.number().int().nullable(),
+      /** Those added to the draft. */
       accepted: z.array(z.string()),
       skipped: z.array(Skipped),
     }),

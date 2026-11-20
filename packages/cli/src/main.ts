@@ -395,27 +395,11 @@ const comment: Family = {
     },
     {
       name: 'accept',
-      usage: 'ideaf comment accept <suggestion>… [--draft]',
+      usage: 'ideaf comment accept <suggestion>…',
       summary:
-        'Accept suggestions as one new version, or into the idea’s draft (needs edit access). One whose text has changed or gone, or overlaps another, stays open and says why',
-      flags: {
-        idea: IDEA,
-        draft: { type: 'boolean', description: 'into the draft, to commit with the rest of it' },
-        'outdate-draft': {
-          type: 'boolean',
-          description: 'as a version even if it makes changes in the draft outdated (asked otherwise)',
-        },
-      },
-      run: (ctx, f, a) =>
-        comments.accept(
-          ctx,
-          {
-            ...(str(f, 'idea') ? { idea: str(f, 'idea')! } : {}),
-            draft: f.draft === true,
-            outdateDraft: f['outdate-draft'] === true,
-          },
-          a,
-        ),
+        'Add suggestions to the idea’s draft, to commit with the rest of it (needs edit access). One whose text has changed or gone, or overlaps another, stays open and says why',
+      flags: { idea: IDEA },
+      run: (ctx, f, a) => comments.accept(ctx, str(f, 'idea') ? { idea: str(f, 'idea')! } : {}, a),
     },
     {
       name: 'reject',

@@ -417,20 +417,22 @@ describe('suggested edits', () => {
     })
   })
 
-  test('accepting several is one version, a step for each; the rest stay open, saying why', async () => {
+  test('accepting several adds them to the draft, and committing it is one version, a step for each; the rest stay open, saying why', async () => {
     const { service, write } = await created()
     value(await write({ type: 'suggest', version: 1, anchor: QUICK, new: 'slow red', body: '' }, REVIEWER))
     value(await write({ type: 'suggest', version: 1, anchor: RAIN, new: 'may pour', body: '' }, REVIEWER))
-    // overlaps the first: "brown" is gone once it's accepted
+    // overlaps the first: "brown" is gone once it's in the draft
     const BROWN = { kind: 'text', file: 'f1', start: 15, end: 24 } as const
     value(await write({ type: 'suggest', version: 1, anchor: BROWN, new: 'brown cat', body: '' }, REVIEWER))
     const result = value(await write({ type: 'accept', suggestions: ['c1', 'c2', 'c3'] }))
     expect(result).toMatchObject({
-      kind: 'version',
-      version: 2,
+      kind: 'drafted',
       accepted: ['c1', 'c2'],
-      skipped: [{ id: 'c3', message: 'its text changed, by a suggestion accepted with it' }],
+      skipped: [{ id: 'c3', message: expect.any(String) }],
     })
+    // no version until the draft's committed
+    expect((await service.summary())!.latest).toBe(1)
+    expect(value(await write({ type: 'commit' }))).toMatchObject({ version: 2 })
     expect((await service.file(2, 'f1'))!.content).toBe('# Plan\n\nThe slow red fox.\n\n## Risks\n\nIt may pour.\n')
     expect((await service.steps(2)).map((s) => s.addresses)).toEqual([['c1'], ['c2']])
     const threads = await service.comments()
@@ -455,6 +457,7 @@ describe('suggested edits', () => {
     value(await write({ type: 'suggest', version: 1, anchor: RAIN, new: 'may pour', body: '' }, REVIEWER))
     expect(value(await write({ type: 'reject', suggestion: 'c1' }))).toEqual({ kind: 'rejected', comment: 'c1' })
     value(await write({ type: 'accept', suggestions: ['c2'] }))
+    value(await write({ type: 'commit' }))
     expect(await write({ type: 'reject', suggestion: 'c2' })).toMatchObject({ ok: false, error: { code: 'invalid' } })
     expect(await write({ type: 'reject', suggestion: 'c9' })).toMatchObject({ ok: false, error: { code: 'not_found' } })
     const [c1] = await service.comments()
@@ -470,7 +473,7 @@ describe('suggested edits', () => {
       ok: false,
       error: {
         code: 'conflict',
-        details: { skipped: [{ id: 'c1', message: "its text isn't in the latest version" }] },
+        details: { skipped: [{ id: 'c1', message: 'its text is gone' }] },
       },
     })
   })
@@ -567,18 +570,18 @@ describe('the draft', () => {
     expect(value(await write({ type: 'edit', batch }))).toMatchObject({ version: 2 })
   })
 
-  test('a suggestion in the draft, accepted as a version instead, leaves the draft', async () => {
+  test('a suggestion in the draft, rejected, leaves the draft', async () => {
     const { service, write } = await created()
     value(await write({ type: 'suggest', version: 1, anchor: RAIN, new: 'may pour', body: '' }, REVIEWER))
-    value(await write({ type: 'accept', suggestions: ['c1'], into: 'draft' }))
-    expect(value(await write({ type: 'accept', suggestions: ['c1'] }))).toMatchObject({ version: 2 })
+    value(await write({ type: 'accept', suggestions: ['c1'] }))
+    value(await write({ type: 'reject', suggestion: 'c1' }))
     expect((await service.draft()).changes).toEqual([])
   })
 
   test('takes accepted suggestions, which are accepted when it is committed, and open again if it is discarded', async () => {
     const { service, write } = await created()
     value(await write({ type: 'suggest', version: 1, anchor: RAIN, new: 'may pour', body: '' }, REVIEWER))
-    const drafted = value(await write({ type: 'accept', suggestions: ['c1'], into: 'draft' }))
+    const drafted = value(await write({ type: 'accept', suggestions: ['c1'] }))
     expect(drafted).toEqual({ kind: 'drafted', accepted: ['c1'], skipped: [] })
     expect((await service.comments())[0]).toMatchObject({
       resolved: false,
@@ -586,7 +589,7 @@ describe('the draft', () => {
     })
     expect((await service.draft()).files[0]!.content).toContain('It may pour.')
     // already in it
-    expect(await write({ type: 'accept', suggestions: ['c1'], into: 'draft' })).toMatchObject({
+    expect(await write({ type: 'accept', suggestions: ['c1'] })).toMatchObject({
       ok: false,
       error: { details: { skipped: [{ id: 'c1', message: 'it’s in the draft already' }] } },
     })
@@ -594,7 +597,7 @@ describe('the draft', () => {
     value(await write({ type: 'discard' }))
     expect((await service.comments())[0]).toMatchObject({ suggestion: { inDraft: false, decision: null } })
 
-    value(await write({ type: 'accept', suggestions: ['c1'], into: 'draft' }))
+    value(await write({ type: 'accept', suggestions: ['c1'] }))
     value(await write({ type: 'commit' }))
     expect((await service.comments())[0]).toMatchObject({
       resolved: true,
@@ -607,7 +610,7 @@ describe('the draft', () => {
     const { write } = await created()
     value(await write({ type: 'suggest', version: 1, anchor: RAIN, new: 'may pour', body: '' }, REVIEWER))
     value(await write({ type: 'draft', change: { kind: 'delete', id: 'b5', was: 'It might rain.' } }))
-    expect(await write({ type: 'accept', suggestions: ['c1'], into: 'draft' })).toMatchObject({
+    expect(await write({ type: 'accept', suggestions: ['c1'] })).toMatchObject({
       ok: false,
       error: { code: 'conflict', details: { skipped: [{ id: 'c1', message: 'its text is gone' }] } },
     })

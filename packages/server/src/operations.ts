@@ -604,24 +604,12 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
 
     acceptSuggestions: (input, context) =>
       withAccess(input.idea, context, 'edit', () =>
-        write(
-          input.idea,
-          context,
-          {
-            type: 'accept',
-            suggestions: input.suggestions,
-            ...(input.into ? { into: input.into } : {}),
-            ...(input.outdateDraft ? { outdateDraft: true } : {}),
-          },
-          (value) =>
-            value.kind === 'drafted'
-              ? { version: null, accepted: value.accepted, skipped: value.skipped }
-              : {
-                  version: version(value).version,
-                  accepted: value.kind === 'version' ? (value.accepted ?? []) : [],
-                  skipped: value.kind === 'version' ? (value.skipped ?? []) : [],
-                },
-        ),
+        write(input.idea, context, { type: 'accept', suggestions: input.suggestions }, (value) => {
+          if (value.kind !== 'drafted') {
+            throw new Error(`expected suggestions added to the draft, got ${value.kind}`)
+          }
+          return { accepted: value.accepted, skipped: value.skipped }
+        }),
       ),
 
     getDraft: (input, { caller, token }) =>

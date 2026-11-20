@@ -98,8 +98,10 @@ describe('suggested edits', () => {
     await expect(maya.acceptSuggestions({ idea, suggestions: [comment] })).rejects.toMatchObject({ code: 'forbidden' })
     await expect(maya.rejectSuggestion({ idea, comment })).rejects.toMatchObject({ code: 'forbidden' })
 
+    // into the draft: committing it makes the version
     const accepted = await riley.acceptSuggestions({ idea, suggestions: [comment] })
-    expect(accepted).toMatchObject({ version: 2, accepted: [comment], skipped: [] })
+    expect(accepted).toEqual({ accepted: [comment], skipped: [] })
+    expect(await riley.commitDraft({ idea })).toMatchObject({ version: 2 })
     expect((await riley.pull({ idea })).files[0]!.content).toBe('# Plan\n\nThe slow red fox.\n')
     const [thread] = await maya.listComments({ idea })
     expect(thread).toMatchObject({ resolved: true, suggestion: { decision: { kind: 'accepted', version: 2 } } })

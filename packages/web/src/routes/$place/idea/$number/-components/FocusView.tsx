@@ -328,40 +328,7 @@ export function FocusView(props: FocusViewProps) {
     document.getElementById(id)?.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' })
   }
 
-  // an accepted suggestion's new words, flashed where they now are once the new version's in
-  const [flash, setFlash] = useState<{ page: string; start: number; end: number } | null>(null)
-  const accepting = useRef<{ page: string; near: number; text: string; source: string } | null>(null)
-  useEffect(() => {
-    const wanted = accepting.current
-    const page = wanted && pages.find((p) => p.id === wanted.page)
-    if (!wanted || !page || page.source === wanted.source) {
-      return
-    }
-    accepting.current = null
-    const start = page.source.indexOf(wanted.text, Math.max(0, wanted.near - 80))
-    if (start < 0) {
-      return
-    }
-    setFlash({ page: page.id, start, end: start + wanted.text.length })
-    const done = window.setTimeout(() => setFlash(null), 1600)
-    return () => window.clearTimeout(done)
-  }, [pages])
-  const actions: ThreadActions = {
-    ...props.actions,
-    ...(props.actions.onAccept
-      ? {
-          onAccept: (ids: string[]) => {
-            const page = pages.find((p) => p.comments.some((c) => c.info.id === ids[0]))
-            const comment = page?.comments.find((c) => c.info.id === ids[0])
-            const replacement = comment?.info.suggestion?.replacement
-            if (page && comment && replacement && comment.place.kind === 'text') {
-              accepting.current = { page: page.id, near: comment.place.start, text: replacement, source: page.source }
-            }
-            props.actions.onAccept?.(ids)
-          },
-        }
-      : {}),
-  }
+  const actions: ThreadActions = props.actions
 
   const classes = [
     'focus-view',
@@ -438,7 +405,6 @@ export function FocusView(props: FocusViewProps) {
             carried={carried === page.id}
             active={active}
             onActive={setActive}
-            flash={flash?.page === page.id ? flash : null}
             actions={actions}
             rowRef={(element) => setIn(rows.current, page.id, element)}
             sheetRef={(element) => setIn(sheets.current, page.id, element)}
@@ -524,7 +490,6 @@ interface RowProps {
   carried: boolean
   active: string | null
   onActive: (id: string) => void
-  flash: { start: number; end: number } | null
   actions: ThreadActions
   rowRef: (element: HTMLElement | null) => void
   sheetRef: (element: HTMLElement | null) => void
@@ -569,14 +534,11 @@ function Row(props: RowProps) {
             resolveLink={(url) =>
               url.startsWith('#') ? { href: `#${prefix}${url.slice(1)}`, kind: 'internal' } : defaultResolveLink(url)
             }
-            marks={[
-              ...inText.flatMap((c) =>
-                c.place.kind === 'text'
-                  ? [{ id: c.info.id, start: c.place.start, end: c.place.end, active: c.info.id === active }]
-                  : [],
-              ),
-              ...(props.flash ? [{ id: 'focus-changed', ...props.flash }] : []),
-            ]}
+            marks={inText.flatMap((c) =>
+              c.place.kind === 'text'
+                ? [{ id: c.info.id, start: c.place.start, end: c.place.end, active: c.info.id === active }]
+                : [],
+            )}
             sectionMarks={inText.flatMap((c) =>
               c.place.kind === 'section'
                 ? [{ id: c.info.id, heading: c.place.heading, active: c.info.id === active }]
