@@ -110,8 +110,8 @@ export function DraftEditor(props: DraftEditorProps) {
     if (!now) {
       return
     }
-    if (now.content === agreed.current || latest.current.text === agreed.current) {
-      if (now.content !== latest.current.text) {
+    if (same(now.content, agreed.current) || latest.current.text === agreed.current) {
+      if (!same(now.content, latest.current.text)) {
         // theirs, and nothing of ours unsaved: open the draft as it now is
         setText(now.content)
         agreed.current = now.content
@@ -213,4 +213,13 @@ function ideaOf(draft: Draft): Idea {
     files: draft.files.map((f) => ({ id: f.file, path: f.path, source: f.content, unitIds: f.units.map((u) => u.id) })),
     nextId: highest + 1,
   }
+}
+
+/**
+ * The same file, as far as the page is concerned: the editor writes a new last block without the
+ * file's final newline, and the draft spaces blocks its own way, so blank lines don't count.
+ */
+function same(a: string, b: string): boolean {
+  const norm = (s: string) => s.replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '')
+  return norm(a) === norm(b)
 }
