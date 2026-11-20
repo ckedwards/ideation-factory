@@ -5,7 +5,7 @@
 // Committing makes one version.
 import { type ReactNode, useState } from 'react'
 import { ApiError, type Operations, type Output } from '@ideaf/api'
-import { type DraftChange, type DraftUnit, markdownTree, parseMarkdown, type Position } from '@ideaf/core'
+import { type DraftChange, type DraftUnit, markdownTree, plainLine, type Position } from '@ideaf/core'
 import { type Person, Redline, renderMermaid } from '@ideaf/ui'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../../../api.ts'
@@ -166,6 +166,6 @@ export function describe(change: DraftChange): string {
 
 /** Some Markdown as it reads, cut short. */
 function excerpt(markdown: string): string {
-  const text = parseMarkdown(markdown).plain.text.replace(/\s+/g, ' ').trim() || markdown.trim()
+  const text = plainLine(markdown)
   return text.length > 60 ? `${text.slice(0, 60)}…` : text
 }

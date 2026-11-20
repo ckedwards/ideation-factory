@@ -2,9 +2,8 @@
 // People change it in the web app, and suggestions are accepted into it; here
 // it's read, committed as one version, or discarded.
 import { ApiError, type Operations, type Output } from '@ideaf/api'
-import { parseMarkdown } from '@ideaf/core'
 import { CliError, type Context, EXIT } from '../context.ts'
-import { truncate } from './output.ts'
+import { excerpt } from './output.ts'
 import { Names } from './subjects.ts'
 
 type Change = Output<Operations['getDraft']>['changes'][number]['change']
@@ -97,8 +96,7 @@ export async function confirmingDraft<T>(
 }
 
 function describe(change: Change): string {
-  const text = (markdown: string) =>
-    JSON.stringify(truncate(parseMarkdown(markdown).plain.text.replace(/\s+/g, ' ').trim() || markdown.trim(), 60))
+  const text = (markdown: string) => JSON.stringify(excerpt(markdown, 60))
   switch (change.kind) {
     case 'insert':
       return `added ${text(change.markdown)}`

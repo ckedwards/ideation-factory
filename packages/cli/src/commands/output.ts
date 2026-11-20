@@ -1,5 +1,6 @@
 // Shared human-readable output.
 import type { Output, Operations } from '@ideaf/api'
+import { plainLine } from '@ideaf/core'
 
 type Outcome = Output<Operations['edit']>['comments'][number]
 
@@ -34,4 +35,9 @@ export function describeOutcomes(outcomes: Outcome[]): string[] {
 export function truncate(text: string, length: number): string {
   const line = text.replace(/\s+/g, ' ').trim()
   return line.length > length ? `${line.slice(0, length - 1)}…` : line
+}
+
+/** Some Markdown (a comment, a summary) as it reads, without its syntax, cut short. */
+export function excerpt(markdown: string, length: number): string {
+  return truncate(plainLine(markdown), length)
 }

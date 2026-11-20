@@ -109,7 +109,7 @@ These are the rules the rest follows from.
 
 **The rest of comments:**
 
-- **Excerpts:** the inbox row, the notifications page and the cli's lists show a comment's plain-text form (`parseMarkdown(body).plain.text`, as `editing.tsx` already does for draft changes), so syntax doesn't show. Email keeps the Markdown as written in its text part.
+- **Excerpts:** the inbox row, the notifications page, email and the cli's lists show a comment's plain-text form (core's `plainLine`, which the draft panel uses too), so syntax doesn't show. Email quotes the inbox's excerpt, so it reads the same; `ideaf comment show` gives one thread's Markdown as written.
 - **Compact styles:** check every construct in a comment at the compact size: tables, code blocks, task lists, quotes, nested lists and images. A comment's headings step down from 1.5em (heading 1) to 0.85em (heading 6), smaller than a document's but still a level apart.
 - **Limits:** a comment stays at most 20,000 characters of Markdown. The box counts the Markdown, not the visible text, and says so near the limit.
 

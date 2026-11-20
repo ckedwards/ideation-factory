@@ -5,7 +5,7 @@
 // withdrawn or dismissed, and stops the idea closing as accepted.
 import type { Caller, IdeaStatus, Operations, Output, Review, Verdict } from '@ideaf/api'
 import { CliError, type Context, EXIT } from '../context.ts'
-import { truncate } from './output.ts'
+import { excerpt, truncate } from './output.ts'
 import { Names } from './subjects.ts'
 
 type Reviews = Output<Operations['listReviews']>
@@ -80,7 +80,7 @@ async function print(ctx: Context, idea: string, reviews: Reviews): Promise<void
   for (const r of reviews.reviews) {
     ctx.say(`  ${await line(names, r)}`)
     if (r.body) {
-      ctx.say(`      ${truncate(r.body.replace(/\s+/g, ' '), 100)}`)
+      ctx.say(`      ${excerpt(r.body, 100)}`)
     }
     if (r.dismissed) {
       ctx.say(

@@ -2,6 +2,7 @@
 // row shows (who, when, and what). Resolving a thread and changing the draft
 // tell no one; pending comments never get here (they send no events until
 // their review is submitted).
+import { plainLine } from '@ideaf/core'
 import type { InboxEvent } from '../directory/types.ts'
 import type { IdeaEvent } from './service.ts'
 
@@ -109,8 +110,8 @@ function suggested(json: string): { old: string; new: string } | Record<string, 
   return typeof parsed.old === 'string' && typeof parsed.new === 'string' ? change(parsed.old, parsed.new) : {}
 }
 
-/** The start of what was said, for the inbox row. */
+/** The start of what was said, for the inbox row: as it reads, without its Markdown. */
 function excerpt(text: string): string {
-  const flat = text.replace(/\s+/g, ' ').trim()
+  const flat = plainLine(text)
   return flat.length > 140 ? `${flat.slice(0, 140)}…` : flat
 }
