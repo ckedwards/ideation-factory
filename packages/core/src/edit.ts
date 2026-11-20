@@ -83,7 +83,7 @@ function headingTitle(source: string): string {
     return lines.slice(0, -1).join(' ').trim()
   }
   return source
-    .replace(/^\s*#{1,6}\s+/, '')
+    .replace(/^\s*#{1,6}(\s+|$)/, '')
     .replace(/\s+#+\s*$/, '')
     .trim()
 }

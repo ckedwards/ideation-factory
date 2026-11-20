@@ -331,3 +331,20 @@ describe('a block made into another kind', () => {
     expect(made('s4', '### Risks').kinds).toEqual(['edit'])
   })
 })
+
+describe('a block with no words yet', () => {
+  test('a new heading, list item or paragraph with no words is not saved until it has some', () => {
+    const idea = open(PLAN)
+    const list = blocks(idea).flatMap((x) => (x.id === 'b3' ? [x, b(null, '##'), b(null, '-')] : [x]))
+    expect(after(idea, { f1: list }).changes).toEqual([])
+  })
+
+  test('a heading saved with no words, then typed in, stays the heading', () => {
+    const idea = open('# Plan\n\nIntro.\n\n##\n\nText.\n')
+    // s2 Plan, b3 Intro, s4 the empty heading, b5 Text
+    const list = blocks(idea).map((x) => (x.id === 's4' ? b('s4', '## ddd') : x))
+    const r = after(idea, { f1: list })
+    expect(r.kinds).toEqual(['edit'])
+    expect(r.sources[0]).toBe('# Plan\n\nIntro.\n\n## ddd\n\nText.\n')
+  })
+})
