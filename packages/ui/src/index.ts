@@ -42,6 +42,7 @@ export { NowProvider, RelativeTime, formatAgo, useNow, type RelativeTimeProps } 
 export { Button, type ButtonProps, type ButtonVariant, LinkButton, type LinkButtonProps } from './controls/Button.tsx'
 export { SegmentedControl, type Segment, type SegmentedControlProps } from './controls/SegmentedControl.tsx'
 export { ThemeToggle, applyTheme, type Theme, type ThemeToggleProps } from './controls/ThemeToggle.tsx'
+export { loadFonts } from './theme/fonts.ts'
 export { SearchInput, type SearchInputProps } from './controls/SearchInput.tsx'
 export { Select, type SelectOption, type SelectProps } from './controls/Select.tsx'
 export { Combobox, type ComboboxOption, type ComboboxProps } from './controls/Combobox.tsx'
