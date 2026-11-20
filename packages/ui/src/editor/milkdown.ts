@@ -42,6 +42,7 @@ import {
   turnIntoTextCommand,
   wrapInBlockquoteCommand,
   wrapInHeadingCommand,
+  headingKeymap,
 } from '@milkdown/kit/preset/commonmark'
 import {
   addColAfterCommand,
@@ -853,6 +854,12 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
       ctx.update(strikethroughKeymap.key, (prev) => ({
         ...prev,
         ToggleStrikethrough: { ...prev.ToggleStrikethrough, shortcuts: 'Mod-Shift-x' },
+      }))
+      // Backspace at a heading's start joins it to the block before, as anywhere else: Milkdown's
+      // takes the heading down a level instead, as if it were deleting a hidden #
+      ctx.update(headingKeymap.key, (prev) => ({
+        ...prev,
+        DowngradeHeading: { ...prev.DowngradeHeading, shortcuts: [] },
       }))
       ctx.update(blockquoteKeymap.key, (prev) => ({
         ...prev,
