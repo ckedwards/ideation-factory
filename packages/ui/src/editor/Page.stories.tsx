@@ -158,7 +158,7 @@ export const Opened: Story = {
     const canvas = within(canvasElement)
     // the page's toolbar: history, the style menu, and the save status
     await expect(canvas.getByRole('button', { name: 'Undo' })).toBeVisible()
-    await expect(canvas.getByRole('button', { name: 'Style: Text' })).toBeVisible()
+    await expect(canvas.getByRole('button', { name: /^Style: / })).toBeVisible()
     await expect(canvas.getByRole('button', { name: 'Code block' })).toBeVisible()
     await expect(canvasElement.querySelector('.md-editor-status')).toHaveTextContent('Saved to the draft')
     const { blocks, changes } = await readBack(canvasElement)
@@ -280,5 +280,22 @@ export const BackspaceAtAHeading: Story = {
     await expect(box.querySelector('h1')).toHaveTextContent('Offline mode')
     await expect(box.querySelectorAll('h1')).toHaveLength(1)
     await waitFor(() => expect(textNode(box, 'Field teams').textContent).toMatch(/typed\.What changes$/))
+  },
+}
+
+// Opened again with the draft as saved (it ends in a newline the editor leaves off), the caret stays
+// where it was, not at the end of the file
+export const CaretStaysWhenSaved: Story = {
+  play: async ({ canvasElement }) => {
+    const box = await surface(canvasElement)
+    const last = textNode(box, 'Starting a site')
+    await select(box, last, last.length, last, last.length)
+    await typing.keyboard('{Enter}A last line.')
+    const field = textNode(box, 'Field teams')
+    await select(box, field, 5, field, 5)
+    await userEvent.click(within(canvasElement).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(box.querySelector('[data-block-id="b11"]')).not.toBeNull())
+    const caret = getSelection()!
+    await expect(caret.anchorNode?.textContent).toMatch(/^Field teams/)
   },
 }

@@ -1166,10 +1166,16 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
 
   const load = (source: string, ids?: string[]) => {
     const v = view()
+    const was = v.state.selection.from
     const doc = open(source, ids)
     const tr = v.state.tr.replaceWith(0, v.state.doc.content.size, doc.content).setMeta('addToHistory', false)
-    // the caret at the end of the text, or at its start when it ends in a block that isn't typed in
-    tr.setSelection(tr.doc.lastChild?.isTextblock ? TextSelection.atEnd(tr.doc) : TextSelection.atStart(tr.doc))
+    if (options.flavor === 'page') {
+      // a page opened again (someone else's change): the caret stays about where it was
+      tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(was, tr.doc.content.size))))
+    } else {
+      // the caret at the end of the text, or at its start when it ends in a block that isn't typed in
+      tr.setSelection(tr.doc.lastChild?.isTextblock ? TextSelection.atEnd(tr.doc) : TextSelection.atStart(tr.doc))
+    }
     loading = true
     v.dispatch(tr)
     loading = false
