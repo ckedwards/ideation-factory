@@ -391,11 +391,14 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
   // the keys, as the design has them (Milkdown's own differ): these run before Milkdown's
   const keys = $prose((ctx) => {
     const inTable: Command = (state) => isInTable(state)
+    // ⌘↵ or Ctrl+↵ on any system, as the plain box takes them
+    const submit: Command = () => {
+      latest.options.onSubmit?.()
+      return Boolean(latest.options.onSubmit)
+    }
     return keymap({
-      'Mod-Enter': () => {
-        latest.options.onSubmit?.()
-        return Boolean(latest.options.onSubmit)
-      },
+      'Meta-Enter': submit,
+      'Ctrl-Enter': submit,
       Escape: () => {
         latest.options.onCancel?.()
         return Boolean(latest.options.onCancel)
