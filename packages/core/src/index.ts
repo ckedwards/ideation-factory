@@ -15,7 +15,7 @@
 // - What a suggested edit replaces, and the command accepting it applies (suggest.ts)
 
 export { applyBatch, type BatchResult, type Conflict, type ConflictReason, type StepResult } from './apply.ts'
-export { type DraftChanges, draftChanges, type EditorBlock, type MovedWords } from './changes.ts'
+export { blocksOfSource, type DraftChanges, draftChanges, type EditorBlock, type MovedWords } from './changes.ts'
 export { Batch, batchJsonSchema, Command, Position } from './batch.ts'
 export {
   addChange,

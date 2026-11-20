@@ -17,10 +17,11 @@
 // Every change is worked out on a copy of the draft with the same commands committing uses, so
 // each one's `was` and place are the blocks as the change before left them, and the changes apply
 // in the order given (change_draft takes them all or none).
-import { applyBatch } from './apply.ts'
+import { applyBatch, occurrences } from './apply.ts'
 import type { Position, TextPlace } from './batch.ts'
 import { commandsFor, type DraftChange, unitSource } from './draft.ts'
 import { type Idea, locate } from './idea.ts'
+import { parseMarkdown, type UnitKind } from './markdown.ts'
 
 /** A block on screen: the draft block it is, or null for new text, and its Markdown now. */
 export interface EditorBlock {
@@ -71,7 +72,9 @@ export function draftChanges(
     for (const w of words) {
       const from = unitSource(idea, w.from)
       const to = unitSource(idea, w.to.in)
-      if (from === null || to === null) {
+      const near = 'before' in w.to ? w.to.before : w.to.after
+      // words no longer where they were seen (typed over since, say): the edits below carry them
+      if (from === null || to === null || occurrences(from, w.old).length !== 1 || occurrences(to, near).length !== 1) {
         continue
       }
       apply({ kind: 'move-text', from: w.from, old: w.old, to: w.to, was: { from, to } })
@@ -331,4 +334,67 @@ function join(sources: string[]): string {
     (all, s, i) => (i === 0 ? s : `${all}${listItem(s) && listItem(sources[i - 1]!) ? '\n' : '\n\n'}${s}`),
     '',
   )
+}
+
+/**
+ * The blocks of some Markdown (the whole file, as the Markdown side of the editor has it), each
+ * known as the draft block it was where that can be told: by its text, unchanged, in order (the
+ * longest run of them), and between those, a changed block of the same kind in the same place.
+ * The rest are new text, and the draft's blocks not matched are gone.
+ */
+export function blocksOfSource(
+  was: Array<{ id: string; source: string; kind: UnitKind }>,
+  source: string,
+): EditorBlock[] {
+  const parsed = parseMarkdown(source)
+  const now = parsed.units.map((u) => ({ source: source.slice(u.start, u.end), kind: u.kind }))
+  const ids: Array<string | null> = now.map(() => null)
+  // unchanged blocks: the longest common run, by their text
+  const same = commonRun(
+    was.map((w) => w.source.trim()),
+    now.map((n) => n.source.trim()),
+  )
+  // between them, changed blocks of the same kind, in order
+  const anchors = [[-1, -1] as [number, number], ...same, [was.length, now.length] as [number, number]]
+  for (let a = 0; a < anchors.length - 1; a++) {
+    const [wi, ni] = anchors[a]!
+    const [wj, nj] = anchors[a + 1]!
+    if (a > 0) {
+      ids[ni] = was[wi]!.id
+    }
+    let w = wi + 1
+    for (let n = ni + 1; n < nj && w < wj; n++) {
+      const match = was.slice(w, wj).findIndex((x) => x.kind === now[n]!.kind)
+      if (match >= 0) {
+        ids[n] = was[w + match]!.id
+        w += match + 1
+      }
+    }
+  }
+  return now.map((n, i) => ({ id: ids[i]!, source: n.source }))
+}
+
+/** The longest common run of two lists of texts: pairs of indexes, in order. */
+function commonRun(a: string[], b: string[]): Array<[number, number]> {
+  const rows = a.length + 1
+  const cols = b.length + 1
+  const len = Array.from({ length: rows }, () => Array.from({ length: cols }, () => 0))
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      len[i]![j] = a[i] === b[j] ? len[i + 1]![j + 1]! + 1 : Math.max(len[i + 1]![j]!, len[i]![j + 1]!)
+    }
+  }
+  const out: Array<[number, number]> = []
+  for (let i = 0, j = 0; i < a.length && j < b.length;) {
+    if (a[i] === b[j]) {
+      out.push([i, j])
+      i++
+      j++
+    } else if (len[i + 1]![j]! >= len[i]![j + 1]!) {
+      i++
+    } else {
+      j++
+    }
+  }
+  return out
 }

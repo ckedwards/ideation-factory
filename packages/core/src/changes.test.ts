@@ -1,9 +1,10 @@
 // Golden tests: the editor's blocks after some typing, cutting and pasting, turned into draft
 // changes, and the draft those make: the Markdown it reads as, and where the comments are.
 import { describe, expect, test } from 'bun:test'
-import { type DraftChanges, draftChanges, type EditorBlock, type MovedWords } from './changes.ts'
+import { blocksOfSource, type DraftChanges, draftChanges, type EditorBlock, type MovedWords } from './changes.ts'
 import { buildDraft, type DraftChange, unitSource } from './draft.ts'
 import { type Comment, createIdea, type Idea, textAnchor } from './idea.ts'
+import { parseMarkdown } from './markdown.ts'
 
 const PLAN = `# Plan
 
@@ -251,5 +252,54 @@ describe('identities the editor got wrong', () => {
     const list = blocks(idea).map((x) => (x.id === 'b3' ? b('b3', '  ') : x))
     const r = after(idea, { f1: list })
     expect(r.changes).toEqual([{ kind: 'delete', id: 'b3', was: 'The first paragraph.' } satisfies DraftChange])
+  })
+})
+
+describe('the Markdown side', () => {
+  const was = (idea: Idea) => {
+    const file = idea.files[0]!
+    return file.unitIds.map((id, i) => ({
+      id,
+      source: unitSource(idea, id)!,
+      kind: parseMarkdown(file.source).units[i]!.kind,
+    }))
+  }
+
+  test('unchanged blocks keep their identity; a changed one in its place keeps its own; new text is new', () => {
+    const idea = open(PLAN)
+    const edited = PLAN.replace('The first paragraph.', 'The first paragraph, edited.').replace(
+      '## Risks',
+      'A new paragraph.\n\n## Risks',
+    )
+    const blocks = blocksOfSource(was(idea), edited)
+    expect(blocks.find((x) => x.source.startsWith('The first'))!.id).toBe('b3')
+    expect(blocks.find((x) => x.source === 'A new paragraph.')!.id).toBeNull()
+    expect(blocks.filter((x) => x.id !== null)).toHaveLength(was(idea).length)
+    const r = after(idea, { f1: blocks })
+    expect(r.kinds.sort()).toEqual(['edit', 'insert'])
+    expect(r.sources[0]).toBe(edited)
+  })
+
+  test('a block deleted and two swapped', () => {
+    const idea = open(PLAN)
+    const edited = PLAN.replace(
+      '## Risks\n\nIt might rain.\n\n## Costs\n\nCheap.\n',
+      '## Costs\n\nCheap.\n\n## Risks\n',
+    ).replace('The first paragraph.\n\n', '')
+    const r = after(idea, { f1: blocksOfSource(was(idea), edited) })
+    expect(r.sources[0]).toBe(edited)
+    expect(r.kinds).toContain('delete')
+  })
+})
+
+describe('moved words no longer where they were seen', () => {
+  test('are left to the edits', () => {
+    const idea = open(PLAN)
+    const list = blocks(idea).map((x) =>
+      x.id === 'b3' ? b('b3', 'The paragraph.') : x.id === 'b9' ? b('b9', 'It might first rain.') : x,
+    )
+    const r = after(idea, { f1: list }, [{ from: 'b3', old: ' missing', to: { in: 'b9', after: 'It might' } }])
+    expect(r.kinds).toEqual(['edit', 'edit'])
+    expect(r.sources[0]).toContain('It might first rain.')
   })
 })
