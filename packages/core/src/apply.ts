@@ -461,10 +461,16 @@ function removalRange(parsed: ParsedFile, from: number, to: number): [number, nu
   const { source, units } = parsed
   const start = lineStartIfBlank(source, from)
   const next = units.find((u) => u.start >= to)
+  const previous = units.findLast((u) => u.end <= from)
   if (next) {
+    // the wider gap stays: the last item of a list, a line from the item before it and a blank line
+    // from what follows, takes the line break before it, so what follows doesn't join the list
+    const blank = /\n[ \t]*\n/
+    if (previous && blank.test(source.slice(to, next.start)) && !blank.test(source.slice(previous.end, from))) {
+      return [previous.end, to]
+    }
     return [start, lineStartIfBlank(source, next.start)]
   }
-  const previous = units.findLast((u) => u.end <= from)
   if (previous) {
     return [previous.end, to]
   }
