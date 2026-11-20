@@ -489,21 +489,21 @@ describe('the draft', () => {
     const first = value(
       await write({
         type: 'draft',
-        change: { kind: 'edit', id: 'b3', source: 'The quick red fox.', was: 'The quick brown fox.' },
+        changes: [{ kind: 'edit', id: 'b3', source: 'The quick red fox.', was: 'The quick brown fox.' }],
       }),
     )
     // editing it again straight after is the same change
     const again = value(
       await write({
         type: 'draft',
-        change: { kind: 'edit', id: 'b3', source: 'The slow red fox.', was: 'The quick red fox.' },
+        changes: [{ kind: 'edit', id: 'b3', source: 'The slow red fox.', was: 'The quick red fox.' }],
       }),
     )
     expect(again).toEqual(first)
-    value(await write({ type: 'draft', change: { kind: 'insert', at: { after: 'b3' }, markdown: 'New.' } }))
+    value(await write({ type: 'draft', changes: [{ kind: 'insert', at: { after: 'b3' }, markdown: 'New.' }] }))
     // made against what the block used to read: outdated, and refused
     expect(
-      await write({ type: 'draft', change: { kind: 'edit', id: 'b3', source: 'x', was: 'The quick brown fox.' } }),
+      await write({ type: 'draft', changes: [{ kind: 'edit', id: 'b3', source: 'x', was: 'The quick brown fox.' }] }),
     ).toMatchObject({
       ok: false,
       error: { code: 'conflict', details: { problem: expect.stringContaining('changed') } },
@@ -523,16 +523,65 @@ describe('the draft', () => {
     expect(await write({ type: 'commit' })).toMatchObject({ ok: false, error: { code: 'invalid' } })
   })
 
+  test('takes several changes at once, all or none', async () => {
+    const { service, write } = await created()
+    const both = value(
+      await write({
+        type: 'draft',
+        changes: [
+          { kind: 'edit', id: 'b3', source: 'The quick red fox.', was: 'The quick brown fox.' },
+          { kind: 'move', id: 'b3', to: { after: 'b5' }, was: 'The quick red fox.' },
+        ],
+      }),
+    )
+    expect(both).toMatchObject({ kind: 'draft', keys: [expect.any(String), expect.any(String)] })
+    expect((await service.draft()).files[0]!.content).toBe(
+      '# Plan\n\n## Risks\n\nIt might rain.\n\nThe quick red fox.\n',
+    )
+    // the second is outdated (the first changed the block): neither goes in
+    expect(
+      await write({
+        type: 'draft',
+        changes: [
+          { kind: 'edit', id: 'b5', source: 'It may rain.', was: 'It might rain.' },
+          { kind: 'delete', id: 'b5', was: 'It might rain.' },
+        ],
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'conflict', details: { change: 1 } } })
+    expect((await service.draft()).changes).toHaveLength(2)
+  })
+
+  test('keeps the difference: a block edited back to how it was leaves no change', async () => {
+    const { service, write } = await created()
+    value(
+      await write({
+        type: 'draft',
+        changes: [{ kind: 'edit', id: 'b3', source: 'The quick red fox.', was: 'The quick brown fox.' }],
+      }),
+    )
+    const back = value(
+      await write({
+        type: 'draft',
+        changes: [{ kind: 'edit', id: 'b3', source: 'The quick brown fox.', was: 'The quick red fox.' }],
+      }),
+    )
+    expect(back).toEqual({ kind: 'draft', keys: [null] })
+    expect((await service.draft()).changes).toEqual([])
+  })
+
   test('is on the latest version: a version made elsewhere can make its changes outdated', async () => {
     const { service, write } = await created()
     const stale = value(
       await write({
         type: 'draft',
-        change: { kind: 'edit', id: 'b3', source: 'The quick red fox.', was: 'The quick brown fox.' },
+        changes: [{ kind: 'edit', id: 'b3', source: 'The quick red fox.', was: 'The quick brown fox.' }],
       }),
     )
     value(
-      await write({ type: 'draft', change: { kind: 'edit', id: 'b5', source: 'It may pour.', was: 'It might rain.' } }),
+      await write({
+        type: 'draft',
+        changes: [{ kind: 'edit', id: 'b5', source: 'It may pour.', was: 'It might rain.' }],
+      }),
     )
     // an agent's batch changes the fox: it has to confirm it outdates the draft's edit
     const batch = { base: 1, steps: [{ command: 'replace', in: 'b3', old: 'quick', new: 'slow' }] }
@@ -541,7 +590,7 @@ describe('the draft', () => {
       error: {
         code: 'draft_outdated',
         message: 'this version would make a change in the draft outdated; confirm to make it anyway',
-        details: { changes: [{ key: (stale as { key: string }).key, by: OWNER }] },
+        details: { changes: [{ key: (stale as { keys: string[] }).keys[0], by: OWNER }] },
       },
     })
     expect((await service.summary())!.latest).toBe(1)
@@ -556,7 +605,7 @@ describe('the draft', () => {
       ok: false,
       error: { code: 'conflict', message: '1 change is outdated: undo or redo it first' },
     })
-    value(await write({ type: 'undraft', key: (stale as { key: string }).key }))
+    value(await write({ type: 'undraft', key: (stale as { keys: string[] }).keys[0] }))
     expect(value(await write({ type: 'commit' }))).toMatchObject({ version: 3 })
     expect((await service.file(3, 'f1'))!.content).toContain('The slow brown fox.\n\n## Risks\n\nIt may pour.')
   })
@@ -564,7 +613,10 @@ describe('the draft', () => {
   test("a version that leaves the draft's changes applying needs no confirming", async () => {
     const { write } = await created()
     value(
-      await write({ type: 'draft', change: { kind: 'edit', id: 'b5', source: 'It may pour.', was: 'It might rain.' } }),
+      await write({
+        type: 'draft',
+        changes: [{ kind: 'edit', id: 'b5', source: 'It may pour.', was: 'It might rain.' }],
+      }),
     )
     const batch = { base: 1, steps: [{ command: 'replace', in: 'b3', old: 'quick', new: 'slow' }] }
     expect(value(await write({ type: 'edit', batch }))).toMatchObject({ version: 2 })
@@ -609,7 +661,7 @@ describe('the draft', () => {
   test('a suggestion whose text the draft has changed is left out, saying why', async () => {
     const { write } = await created()
     value(await write({ type: 'suggest', version: 1, anchor: RAIN, new: 'may pour', body: '' }, REVIEWER))
-    value(await write({ type: 'draft', change: { kind: 'delete', id: 'b5', was: 'It might rain.' } }))
+    value(await write({ type: 'draft', changes: [{ kind: 'delete', id: 'b5', was: 'It might rain.' }] }))
     expect(await write({ type: 'accept', suggestions: ['c1'] })).toMatchObject({
       ok: false,
       error: { code: 'conflict', details: { skipped: [{ id: 'c1', message: 'its text is gone' }] } },

@@ -53,7 +53,7 @@ export function useEditing(args: UseEditingArgs): { document: ReactNode; panel: 
   }
   const change = (change: DraftChange) =>
     void api
-      .changeDraft({ idea, change })
+      .changeDraft({ idea, changes: [change] })
       .catch(failed)
       .finally(() => void reread())
   const file = draft.files.find((f) => f.file === args.file) ?? draft.files[0]

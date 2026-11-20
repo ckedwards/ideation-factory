@@ -399,12 +399,13 @@ export const operations = {
     mcp: true,
     summary: 'Change the draft',
     description:
-      "Adds a change to the idea's draft: a block's (or heading's) new source, a deletion (a heading deletes its section), or new Markdown at a place. Blocks are named by their IDs in the draft (get_draft), and an edit or deletion gives the block as it read (`was`): if it reads differently now, the change is refused with conflict, as outdated. Editing a block again straight after is one change. Needs edit access.",
+      "Adds changes to the idea's draft, in order, all or none: a block's (or heading's) new source (a heading's #s set its level), a deletion (a heading deletes its section), new Markdown at a place, a block or section moved, or some of a block's text moved into a block. Blocks are named by their IDs in the draft (get_draft), and a change gives the blocks as they read (`was`): if one reads differently now, nothing is added and it's refused with conflict, as outdated. The draft keeps the difference, not the history: your edit of a block you just edited is one change with it, and a block edited back to how it was leaves none. Needs edit access.",
     method: 'POST',
     path: '/ideas/{idea}/draft/changes',
     kind: 'write',
-    input: z.strictObject({ idea: IdeaId, change: DraftChange }),
-    output: z.object({ key: z.string() }),
+    input: z.strictObject({ idea: IdeaId, changes: z.array(DraftChange).min(1).max(200) }),
+    /** Each change's key in the draft (one folded into an earlier change has that one's); null where it took a change out. */
+    output: z.object({ keys: z.array(z.string().nullable()) }),
   }),
 
   undoDraftChange: defineOperation({

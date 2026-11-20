@@ -117,7 +117,8 @@ export const IdeaWrite = z.discriminatedUnion('type', [
     suggestions: z.array(z.string()).min(1).max(100),
   }),
   /** Adds a change to the draft, if it applies to the draft as it is. Suggestions go in by `accept`. */
-  z.strictObject({ type: z.literal('draft'), change: DraftChange }),
+  /** Several at once: all of them apply, in order, or none does. */
+  z.strictObject({ type: z.literal('draft'), changes: z.array(DraftChange).min(1).max(200) }),
   /** Takes a change out of the draft. */
   z.strictObject({ type: z.literal('undraft'), key: z.string().min(1).max(64) }),
   z.strictObject({ type: z.literal('discard') }),
@@ -185,7 +186,8 @@ export type WriteValue =
   | { kind: 'suggestion'; comment: string; old: string }
   | { kind: 'rejected'; comment: string }
   /** The draft changed: the change added (or merged into), if any. */
-  | { kind: 'draft'; key: string | null }
+  /** The draft changed: each change's key (a change folded into another has that one's), null where one was taken out. */
+  | { kind: 'draft'; keys: Array<string | null> }
   /** Suggestions accepted into the draft, and those left out. */
   | { kind: 'drafted'; accepted: string[]; skipped: Skipped[] }
   | { kind: 'resolved'; comment: string; resolved: boolean }
@@ -381,7 +383,7 @@ export class IdeaService {
         case 'reject':
           return await this.#reject(request, write)
         case 'draft':
-          return await this.#draftAdd(request, write.change)
+          return await this.#draftAdd(request, write.changes)
         case 'undraft':
           return await this.#undraft(request, write.key)
         case 'discard':
@@ -1106,61 +1108,70 @@ export class IdeaService {
   }
 
   /**
-   * Adds a change, if it applies to the draft as it is now; otherwise it's
-   * refused as outdated. Editing a block again, straight after editing it,
-   * changes that edit rather than adding another.
+   * Adds changes, in order, if they all apply to the draft as it is now;
+   * otherwise none goes in, refused as outdated. The draft keeps the
+   * difference, not the history (core's addChange): an edit after your own
+   * edit of the same block folds into it, and one back to how the block was
+   * takes it out.
    */
-  async #draftAdd(request: WriteRequest, change: DraftChange) {
-    if (change.kind === 'suggestion') {
+  async #draftAdd(request: WriteRequest, changes: DraftChange[]) {
+    if (changes.some((c) => c.kind === 'suggestion')) {
       refuse('invalid', 'suggestions go into the draft by accepting them')
     }
     await this.#requireMeta()
     const latest = await this.#loadLatest()
-    const entries = await this.#draftEntries()
-    const last = entries.at(-1)
-    const merge =
-      change.kind === 'edit' &&
-      last?.change.kind === 'edit' &&
-      last.change.id === change.id &&
-      last.change.source === change.was
-    const key = merge ? last!.key : crypto.randomUUID().slice(0, 8)
-    const next: DraftEntry[] = merge
-      ? [
-          ...entries.slice(0, -1),
-          {
-            key,
-            change: {
-              ...(last!.change as Extract<DraftChange, { kind: 'edit' }>),
-              source: (change as { source: string }).source,
-            },
-          },
-        ]
-      : [...entries, { key, change }]
-    const built = await this.#buildDraft(latest, next)
-    const problem = built.problems[key]
-    if (problem !== undefined) {
-      refuse('conflict', `outdated: ${problem}`, { problem })
-    }
-    const result: WriteResult = { ok: true, value: { kind: 'draft', key } }
-    const at = this.#now()
-    await this.#transaction(async (tx) => {
-      if (merge) {
-        await tx
-          .updateTable('draft')
-          .set({ change: JSON.stringify(next.at(-1)!.change), at })
-          .where('key', '=', key)
-          .execute()
+    const stored = await this.#draftEntries()
+    const by = JSON.stringify(request.caller)
+    let entries = stored.map((e) => ({ key: e.key, change: e.change, by: JSON.stringify(e.by) }))
+    const keys: Array<string | null> = []
+    for (const [i, change] of changes.entries()) {
+      const { addition, problem } = await this.#core.addChange(
+        this.id,
+        latest.idea,
+        latest.comments,
+        entries,
+        change,
+        by,
+        crypto.randomUUID().slice(0, 8),
+      )
+      if (problem !== null) {
+        const which = changes.length > 1 ? `change ${i + 1} of ${changes.length}: ` : ''
+        refuse('conflict', `outdated: ${which}${problem}`, { problem, change: i })
+      }
+      if (addition.op === 'add') {
+        entries = [...entries, { ...addition.entry, by }]
+      } else if (addition.op === 'update') {
+        entries = entries.map((e) => (e.key === addition.entry.key ? { ...e, change: addition.entry.change } : e))
       } else {
-        await tx
-          .insertInto('draft')
-          .values({
-            key,
-            seq: (last?.seq ?? 0) + 1,
-            change: JSON.stringify(change),
-            by: JSON.stringify(request.caller),
-            at,
-          })
-          .execute()
+        entries = entries.filter((e) => e.key !== addition.key)
+      }
+      keys.push(addition.op === 'remove' ? null : addition.entry.key)
+    }
+    const result: WriteResult = { ok: true, value: { kind: 'draft', keys } }
+    const at = this.#now()
+    // the draft as it now is, written over the one it was built on
+    const before = new Map(stored.map((e) => [e.key, e]))
+    let seq = stored.at(-1)?.seq ?? 0
+    await this.#transaction(async (tx) => {
+      for (const old of stored) {
+        if (!entries.some((e) => e.key === old.key)) {
+          await tx.deleteFrom('draft').where('key', '=', old.key).execute()
+        }
+      }
+      for (const entry of entries) {
+        const was = before.get(entry.key)
+        if (!was) {
+          await tx
+            .insertInto('draft')
+            .values({ key: entry.key, seq: ++seq, change: JSON.stringify(entry.change), by, at })
+            .execute()
+        } else if (JSON.stringify(was.change) !== JSON.stringify(entry.change)) {
+          await tx
+            .updateTable('draft')
+            .set({ change: JSON.stringify(entry.change), at })
+            .where('key', '=', entry.key)
+            .execute()
+        }
       }
       await this.#remember(tx, request.key, result)
     })
@@ -1173,7 +1184,7 @@ export class IdeaService {
     if (!found) {
       refuse('not_found', `no change ${key} in the draft`)
     }
-    const result: WriteResult = { ok: true, value: { kind: 'draft', key: null } }
+    const result: WriteResult = { ok: true, value: { kind: 'draft', keys: [] } }
     await this.#transaction(async (tx) => {
       await tx.deleteFrom('draft').where('key', '=', key).execute()
       await this.#remember(tx, request.key, result)
@@ -1183,7 +1194,7 @@ export class IdeaService {
 
   async #discard(request: WriteRequest) {
     await this.#requireMeta()
-    const result: WriteResult = { ok: true, value: { kind: 'draft', key: null } }
+    const result: WriteResult = { ok: true, value: { kind: 'draft', keys: [] } }
     await this.#transaction(async (tx) => {
       await tx.deleteFrom('draft').execute()
       await this.#remember(tx, request.key, result)

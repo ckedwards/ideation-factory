@@ -40,6 +40,7 @@ export class WorkerPool implements CoreRunner {
   suggestionSource: CoreRunner['suggestionSource'] = (key, ...args) =>
     this.#call(key, 'suggestionSource', args) as never
   buildDraft: CoreRunner['buildDraft'] = (key, ...args) => this.#call(key, 'buildDraft', args) as never
+  addChange: CoreRunner['addChange'] = (key, ...args) => this.#call(key, 'addChange', args) as never
 
   async close(): Promise<void> {
     this.#closed = true

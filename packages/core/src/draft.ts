@@ -172,6 +172,101 @@ export function buildDraft(base: Idea, comments: Comment[], entries: DraftEntry[
   }
 }
 
+/** How a change goes into the draft: as a change of its own, into one already there, or taking one out. */
+export type DraftAddition =
+  | { op: 'add'; entry: DraftEntry }
+  | { op: 'update'; entry: DraftEntry }
+  | { op: 'remove'; key: string }
+
+/**
+ * A change added to the draft as the draft keeps it: the difference from the latest version, not
+ * the history of typing. `by` is who made it (any string that tells people apart).
+ *
+ * - **An edit after your own edit** of the same block folds into it, wherever it is in the draft,
+ *   as long as nothing after it changed the block: typing in a paragraph for a minute, saved at
+ *   every pause, is one change.
+ * - **An edit of text you added** folds into the addition, if that added only this block.
+ * - **Back to how it was:** a block edited back to what it was before your edit takes the edit out
+ *   (and text you added, edited away, takes the addition out).
+ * - **Otherwise** it's a change of its own, `key`.
+ *
+ * A fold is kept only if the draft still builds as it did (no change in it newly outdated);
+ * otherwise the change is added as its own. With it, the draft as built, and why the change
+ * doesn't apply, if it doesn't.
+ */
+export function addChange(
+  base: Idea,
+  comments: Comment[],
+  entries: Array<DraftEntry & { by: string }>,
+  change: DraftChange,
+  by: string,
+  key: string,
+): { addition: DraftAddition; built: BuiltDraft; problem: string | null } {
+  const plain = (list: Array<DraftEntry & { by?: string }>) => list.map(({ key, change }) => ({ key, change }))
+  const folded = foldInto(base, comments, entries, change, by)
+  if (folded) {
+    const next =
+      folded.op === 'remove'
+        ? entries.filter((e) => e.key !== folded.key)
+        : entries.map((e) => (e.key === folded.entry.key ? { ...e, change: folded.entry.change } : e))
+    const before = buildDraft(base, comments, plain(entries))
+    const built = buildDraft(base, comments, plain(next))
+    const worse = Object.keys(built.problems).some((k) => !(k in before.problems))
+    if (!worse) {
+      return { addition: folded, built, problem: null }
+    }
+  }
+  const built = buildDraft(base, comments, [...plain(entries), { key, change }])
+  return { addition: { op: 'add', entry: { key, change } }, built, problem: built.problems[key] ?? null }
+}
+
+/** The fold an edit makes into a change of yours already in the draft, if it makes one. */
+function foldInto(
+  base: Idea,
+  comments: Comment[],
+  entries: Array<DraftEntry & { by: string }>,
+  change: DraftChange,
+  by: string,
+): DraftAddition | null {
+  if (change.kind !== 'edit') {
+    return null
+  }
+  // the last change in the draft that touched this block
+  const built = buildDraft(
+    base,
+    comments,
+    entries.map(({ key, change }) => ({ key, change })),
+  )
+  const madeBy = built.files.flatMap((f) => f.units).find((u) => u.id === change.id)?.origin
+  const touches = (e: DraftChange) =>
+    ((e.kind === 'edit' || e.kind === 'delete' || e.kind === 'move') && e.id === change.id) ||
+    (e.kind === 'move-text' && (e.from === change.id || e.to.in === change.id))
+  const last = [...entries]
+    .reverse()
+    .find((e) => touches(e.change) || (madeBy?.kind === 'new' && madeBy.change === e.key))
+  if (!last || last.by !== by) {
+    return null
+  }
+  if (last.change.kind === 'edit' && last.change.source === change.was) {
+    return last.change.was.trim() === change.source.trim()
+      ? { op: 'remove', key: last.key }
+      : { op: 'update', entry: { key: last.key, change: { ...last.change, source: change.source } } }
+  }
+  if (last.change.kind === 'insert' && last.change.markdown.trim() === change.was.trim()) {
+    // only an addition of this block alone
+    const made = built.files
+      .flatMap((f) => f.units)
+      .filter((u) => u.origin.kind === 'new' && u.origin.change === last.key)
+    if (made.length !== 1) {
+      return null
+    }
+    return change.source.trim() === ''
+      ? { op: 'remove', key: last.key }
+      : { op: 'update', entry: { key: last.key, change: { ...last.change, markdown: change.source } } }
+  }
+  return null
+}
+
 /** The commands for one change, against the draft as it is at that point. */
 function commandsFor(
   idea: Idea,

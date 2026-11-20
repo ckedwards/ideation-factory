@@ -16,8 +16,10 @@
 export { applyBatch, type BatchResult, type Conflict, type ConflictReason, type StepResult } from './apply.ts'
 export { Batch, batchJsonSchema, Command, Position } from './batch.ts'
 export {
+  addChange,
   type BuiltDraft,
   buildDraft,
+  type DraftAddition,
   DraftChange,
   type DraftEntry,
   type DraftFile,
