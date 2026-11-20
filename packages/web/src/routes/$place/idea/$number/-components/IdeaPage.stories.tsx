@@ -139,8 +139,8 @@ export const FiltersAndAFileComment: Story = {
     await expect(open.getBoundingClientRect().top).toBeLessThan(gutter.getBoundingClientRect().top)
     await expect(open.getBoundingClientRect().height).toBeLessThan(32)
     await userEvent.click(open)
-    const box = page.getByRole('textbox', { name: 'Comment on the whole file' })
-    await expect(box).toHaveFocus()
+    const box = await page.findByRole('textbox', { name: 'Comment on the whole file' })
+    await waitFor(() => expect(box).toHaveFocus())
     await userEvent.type(box, 'Needs a summary.')
     await userEvent.click(page.getByRole('button', { name: 'Comment' }))
     await expect(args.onFileComment).toHaveBeenCalledWith('Needs a summary.', false)
@@ -151,7 +151,7 @@ export const Reply: Story = {
   play: async ({ args, canvasElement, userEvent }) => {
     const page = within(canvasElement)
     await userEvent.click(page.getAllByRole('button', { name: 'Reply' })[0]!)
-    await userEvent.type(page.getByRole('textbox', { name: /reply/i }), 'Last write wins.')
+    await userEvent.type(await page.findByRole('textbox', { name: /reply/i }), 'Last write wins.')
     await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
     await waitFor(() => expect(args.onReply).toHaveBeenCalledWith(expect.any(String), 'Last write wins.', false))
   },

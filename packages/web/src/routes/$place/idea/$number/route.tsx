@@ -9,6 +9,7 @@ import { useEffect } from 'react'
 import { ApiError } from '@ideaf/api'
 import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, notFound, Outlet, redirect, useMatches, useNavigate } from '@tanstack/react-router'
+import { preloadMarkdownEditor } from '@ideaf/ui/editor'
 import { api } from '../../../../api.ts'
 import { IdeaFrame } from './-components/IdeaFrame.tsx'
 import { ideaLinks } from './-components/links.ts'
@@ -91,6 +92,11 @@ function Idea() {
       })
       .catch(() => {})
   }, [idea, queryClient])
+  // the comment boxes' editor, fetched once the page has settled, so a box opens ready
+  useEffect(() => {
+    const idle = window.requestIdleCallback ?? ((run: () => void) => window.setTimeout(run, 1000))
+    idle(() => preloadMarkdownEditor())
+  }, [])
   return (
     <IdeaFrame
       id={idea}

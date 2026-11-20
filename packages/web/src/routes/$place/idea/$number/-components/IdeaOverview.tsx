@@ -209,7 +209,11 @@ function ActivityRow({ item, ...props }: IdeaOverviewProps & { item: ActivityIte
           </span>
         )}
       </span>
-      {item.body && <p className="idea-activity-said">{item.body}</p>}
+      {item.body && (
+        <div className="idea-activity-said">
+          <MarkdownView tree={markdownTree(item.body)} variant="compact" />
+        </div>
+      )}
     </li>
   ) : item.kind === 'status' ? (
     <li className="idea-activity-version">

@@ -166,7 +166,7 @@ export const Reviewing: Story = {
     await expect(verdicts.getBoundingClientRect().width).toBeLessThan(form.getBoundingClientRect().width - 40)
     await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeVisible()
     await userEvent.click(dialog.getByRole('radio', { name: 'Request changes' }))
-    await userEvent.type(dialog.getByLabelText('Summary'), 'Name the risks')
+    await userEvent.type(await dialog.findByRole('textbox', { name: 'Summary' }), 'Name the risks')
     await userEvent.click(dialog.getByRole('button', { name: 'Submit review' }))
     await expect(args.onReview).toHaveBeenCalledWith('request-changes', 'Name the risks')
     await expect(dialog.queryByRole('dialog', { name: 'Your review of v3' })).toBeNull()
