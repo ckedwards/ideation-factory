@@ -303,3 +303,31 @@ describe('moved words no longer where they were seen', () => {
     expect(r.sources[0]).toContain('It might first rain.')
   })
 })
+
+describe('a block made into another kind', () => {
+  const made = (id: string, source: string) => {
+    const idea = open('# Plan\n\nIntro.\n\n## Risks\n\nIt might rain.\n\n## Costs\n\nCheap.\n')
+    // s2 Plan, b3 Intro, s4 Risks, b5, s6 Costs, b7
+    return after(idea, { f1: blocks(idea).map((x) => (x.id === id ? b(id, source) : x)) })
+  }
+
+  test('a paragraph made a heading is the heading, in its place', () => {
+    expect(made('b3', '## Intro.').sources[0]).toBe(
+      '# Plan\n\n## Intro.\n\n## Risks\n\nIt might rain.\n\n## Costs\n\nCheap.\n',
+    )
+  })
+
+  test("a heading made text is text, and its section's text stays", () => {
+    expect(made('s4', 'Risks').sources[0]).toBe('# Plan\n\nIntro.\n\nRisks\n\nIt might rain.\n\n## Costs\n\nCheap.\n')
+  })
+
+  test('a heading made a list item is the list item', () => {
+    expect(made('s4', '- Risks').sources[0]).toBe(
+      '# Plan\n\nIntro.\n\n- Risks\n\nIt might rain.\n\n## Costs\n\nCheap.\n',
+    )
+  })
+
+  test("a heading's level, or its words, is still the heading", () => {
+    expect(made('s4', '### Risks').kinds).toEqual(['edit'])
+  })
+})
