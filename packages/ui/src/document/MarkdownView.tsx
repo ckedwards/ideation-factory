@@ -1,12 +1,15 @@
 // A Markdown file, rendered from core's syntax tree (markdownTree), so what's
 // shown and where comments land come from one parser. It renders the tree to
-// React elements directly: Markdown never becomes an HTML string, and raw HTML
-// in a file is shown as text, never run.
+// React elements directly: Markdown never becomes an HTML string. Raw HTML in a
+// file is drawn only once it's sanitized to a short allowlist (html.ts), and
+// never run; HTML that doesn't make sense alone is shown as its source.
 //
 // Every block carries its source offsets (data-start, data-end), which is how
 // the page maps between the document and comment anchors, sections and edits.
-import type { Code, Definition, Nodes, PhrasingContent, Root, RootContent, Table } from 'mdast'
-import { Fragment, type ReactNode } from 'react'
+import type { Code, Definition, Html, Nodes, PhrasingContent, Root, RootContent, Table } from 'mdast'
+import { Fragment, type ReactNode, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { htmlRuns, openCount, sanitizeHtml, SLOT } from './html.ts'
 import { Link } from '../link/Link.tsx'
 import { defaultImage, type ExternalImages, type ImageMedia, MarkdownImage } from './MarkdownImage.tsx'
 import type { Deletion, RedlineBlock, SourceRange } from './redline.ts'
@@ -103,7 +106,7 @@ export function MarkdownView(props: MarkdownViewProps) {
     >
       {props.redline
         ? props.redline.blocks.map((item, i) => redlineBlock(item, ctx, i))
-        : tree.children.map((node, i) => block(node, ctx, i, true))}
+        : blocks(tree.children, ctx, true)}
     </div>
   )
 }
@@ -283,6 +286,68 @@ function slugFor(text: string, slugs: Map<string, number>, idPrefix = ''): strin
   return `${idPrefix}${seen === 0 ? base : `${base}-${seen}`}`
 }
 
+/** Sibling blocks, with an HTML block that's left open drawn as one with the blocks up to its close. */
+function blocks(nodes: RootContent[], ctx: Context, top = false): ReactNode[] {
+  const draws = htmlRuns(nodes)
+  const out: ReactNode[] = []
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i]!
+    const draw = draws.get(i)
+    if (draw?.draw === 'run') {
+      out.push(
+        <HtmlRun
+          key={i}
+          open={(node as Html).value}
+          close={(nodes[draw.to] as Html).value}
+          className={top && isChanged(node, ctx) ? 'is-changed' : undefined}
+          at={offsets(node)}
+        >
+          {blocks(nodes.slice(i + 1, draw.to), ctx, top)}
+        </HtmlRun>,
+      )
+      i = draw.to
+      continue
+    }
+    out.push(block(node, ctx, i, top))
+  }
+  return out
+}
+
+/**
+ * Raw HTML, sanitized and drawn. With `close`, it's an opening block and its closing one, and the
+ * blocks between (children) go inside, where the opening one left off.
+ */
+function HtmlRun(props: {
+  open: string
+  close?: string
+  children?: ReactNode
+  className?: string | undefined
+  at: ReturnType<typeof offsets>
+}) {
+  const host = useRef<HTMLDivElement>(null)
+  const html = useMemo(
+    () => sanitizeHtml(props.close === undefined ? props.open : `${props.open}<div ${SLOT}></div>${props.close}`),
+    [props.open, props.close],
+  )
+  // where the blocks between go: undefined until it's been looked for
+  const [slot, setSlot] = useState<Element | null | undefined>(undefined)
+  useLayoutEffect(() => {
+    setSlot(host.current?.querySelector(`[${SLOT}]`) ?? null)
+  }, [html])
+  return (
+    <>
+      <div
+        ref={host}
+        className={['md-html-drawn', props.className].filter(Boolean).join(' ')}
+        {...props.at}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      {props.children !== undefined &&
+        (slot ? createPortal(props.children, slot) : slot === null ? props.children : null)}
+    </>
+  )
+}
+
 function block(node: RootContent, ctx: Context, key: number, top = false): ReactNode {
   const changed = top && isChanged(node, ctx) ? 'is-changed' : undefined
   const at = offsets(node)
@@ -318,7 +383,7 @@ function block(node: RootContent, ctx: Context, key: number, top = false): React
     case 'blockquote':
       return (
         <blockquote key={key} className={changed} {...at}>
-          {node.children.map((child, i) => block(child, ctx, i))}
+          {blocks(node.children, ctx)}
         </blockquote>
       )
     case 'list': {
@@ -409,8 +474,10 @@ function block(node: RootContent, ctx: Context, key: number, top = false): React
     case 'thematicBreak':
       return <hr key={key} {...at} />
     case 'html':
-      // shown, not run
-      return (
+      // drawn, sanitized, when it makes sense alone; otherwise shown as its source
+      return openCount(node.value) === 0 ? (
+        <HtmlRun key={key} open={node.value} className={changed} at={at} />
+      ) : (
         <pre key={key} className={['md-html', changed].filter(Boolean).join(' ')} tabIndex={0} {...at}>
           <code>{node.value}</code>
         </pre>
@@ -425,7 +492,7 @@ function block(node: RootContent, ctx: Context, key: number, top = false): React
           {...at}
         >
           <span className="md-footnote-label">{number}.</span>
-          <div>{node.children.map((child, i) => block(child, ctx, i))}</div>
+          <div>{blocks(node.children, ctx)}</div>
         </div>
       )
     }
