@@ -37,11 +37,12 @@
   font-family: var(--font-prose);
   font-style: italic;
 }
-.selection-menu-replacement {
-  border-color: transparent;
+/* the replacement reads as inserted text */
+.selection-menu-replacement .md-editor-surface,
+.selection-menu-replacement .md-editor-standin,
+.selection-menu-replacement .md-editor-source {
   background: var(--ins-bg);
   color: var(--ins-ink);
-  font-family: var(--font-prose);
 }
 /* on its own line above the buttons */
 .selection-menu-hint {

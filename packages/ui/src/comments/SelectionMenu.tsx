@@ -1,7 +1,7 @@
 import { Popover } from '@base-ui/react/popover'
 import { type RefObject, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '../controls/Button.tsx'
-import { TextArea } from '../controls/TextArea.tsx'
+import { inlineMarkdown } from '../document/MarkdownView.tsx'
 import { MarkdownEditor } from '../editor/MarkdownEditor.tsx'
 import { COMMENT_LIMIT } from './limit.ts'
 import { selectionInSource, type TextSelection } from './selection.ts'
@@ -254,22 +254,24 @@ export function SelectionMenu({
                     replaced !== null &&
                     replaced !== source?.slice(selection.start, selection.end) ? (
                     <>
-                      Replacing <code>{replaced}</code>
+                      Replacing <q>{inlineMarkdown(replaced) ?? replaced}</q>
                     </>
                   ) : (
                     <q>{quote}</q>
                   )}
                 </div>
                 {mode === 'suggest' && (
-                  <TextArea
+                  <MarkdownEditor
                     className="selection-menu-replacement"
+                    flavor="inline"
+                    toolbar="focus"
                     value={replacement}
                     onChange={setReplacement}
                     onSubmit={() => submit()}
                     onCancel={close}
-                    rows={3}
+                    rows={1}
                     autoFocus
-                    aria-label="Replace it with"
+                    label="Replace it with"
                   />
                 )}
                 <MarkdownEditor
@@ -279,6 +281,8 @@ export function SelectionMenu({
                   onCancel={close}
                   rows={mode === 'suggest' ? 2 : 3}
                   autoFocus={mode !== 'suggest'}
+                  // beside the replacement, only the box in use shows its toolbar
+                  toolbar={mode === 'suggest' ? 'focus' : 'always'}
                   placeholder={mode === 'suggest' ? 'Why (optional)' : 'Add a comment'}
                   label={mode === 'suggest' ? 'Why' : 'Comment'}
                   limit={COMMENT_LIMIT}

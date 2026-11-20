@@ -61,6 +61,11 @@ export interface MarkdownEditorProps {
    * be longer than what shows); past it, the count is marked, and the page doesn't send it.
    */
   limit?: number
+  /**
+   * `focus`: the toolbar shows only while focus is in the box (its text, its toolbar or one of its
+   * menus), where a form has two boxes together; by default it always shows.
+   */
+  toolbar?: 'always' | 'focus'
   className?: string
 }
 
@@ -136,6 +141,24 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
     document.addEventListener('focusin', onFocus)
     return () => document.removeEventListener('focusin', onFocus)
   }, [rich, owner])
+  // where a form has two boxes together, only the one in use shows its toolbar
+  const [engaged, setEngaged] = useState(Boolean(props.autoFocus))
+  const toolbarOnFocus = props.toolbar === 'focus'
+  useEffect(() => {
+    if (!toolbarOnFocus) {
+      return
+    }
+    const onFocus = (event: FocusEvent) => {
+      const target = event.target as Element | null
+      setEngaged(
+        Boolean(
+          target && (root.current?.contains(target) || target.closest(`[data-editor-popup="${CSS.escape(owner)}"]`)),
+        ),
+      )
+    }
+    document.addEventListener('focusin', onFocus)
+    return () => document.removeEventListener('focusin', onFocus)
+  }, [toolbarOnFocus, owner])
   // focus follows the switch to the other side
   const moved = useRef(false)
   // the plain box is what's typed in on the Markdown side, and while the rich side loads
@@ -285,7 +308,9 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
   return (
     <div
       ref={root}
-      className={['md-editor', `is-${flavor}`, props.className].filter(Boolean).join(' ')}
+      className={['md-editor', `is-${flavor}`, toolbarOnFocus && !engaged && 'is-resting', props.className]
+        .filter(Boolean)
+        .join(' ')}
       style={{ '--md-editor-rows': props.rows ?? 3 } as CSSProperties}
     >
       <EditorOwner.Provider value={owner}>
