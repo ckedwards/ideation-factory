@@ -6,6 +6,10 @@ import type { Decorator, Preview } from '@storybook/react-vite'
 import '../theme/theme.css'
 import { NOW } from '../stories/fixtures.ts'
 import { NowProvider } from '../time/RelativeTime.tsx'
+import { loadFonts } from '../theme/fonts.ts'
+
+// the typefaces fetched at start, as the app does (fonts.ts)
+loadFonts()
 
 // The toolbar's theme and text size go on <html>, where the app sets them, so
 // every story is seen as a page would show it.

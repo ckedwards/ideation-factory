@@ -3,7 +3,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ApiError } from '@ideaf/api'
-import { applyTheme, LinkProvider } from '@ideaf/ui'
+import { applyTheme, LinkProvider, loadFonts } from '@ideaf/ui'
 import '@ideaf/ui/theme.css'
 import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRouter, RouterProvider } from '@tanstack/react-router'
@@ -41,6 +41,8 @@ declare module '@tanstack/react-router' {
 }
 
 applyTheme(savedTheme())
+// fetched now, not when a page first shows text in them (a reflow then)
+loadFonts()
 
 createRoot(document.getElementById('app')!).render(
   <StrictMode>
