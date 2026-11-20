@@ -164,8 +164,10 @@ export function draftChanges(
 
 /**
  * The blocks as they'll be sent: empty new blocks left out, an identity the draft doesn't know (or
- * one on two blocks) taken off, and a block that a paste split in two given back its identity on
- * the half that kept its text.
+ * one on two blocks) taken off, a block made into another kind (a paragraph into a heading, a
+ * heading into a list item) new text, as the draft can't make one kind into another and keep it the
+ * same block, and a block that a paste split in two given back its identity on the half that kept
+ * its text.
  */
 function settle(files: Record<string, EditorBlock[]>, opened: Map<string, string>): Record<string, EditorBlock[]> {
   const seen = new Set<string>()
@@ -181,7 +183,8 @@ function settle(files: Record<string, EditorBlock[]>, opened: Map<string, string
       if (block.source.trim() === '') {
         continue
       }
-      list.push({ id: known ? block.id : null, source: block.source })
+      const same = known && kindOf(block.source) === kindOf(opened.get(block.id!)!)
+      list.push({ id: same ? block.id : null, source: block.source })
     }
     // a split: the half that kept more of the block's text keeps its identity
     for (let i = 0; i < list.length; i++) {
@@ -204,6 +207,9 @@ function settle(files: Record<string, EditorBlock[]>, opened: Map<string, string
   }
   return out
 }
+
+/** The kind of block some Markdown is (its first). */
+const kindOf = (source: string): UnitKind | null => parseMarkdown(source).units[0]?.kind ?? null
 
 /** How much of `was` a text kept: its common start and end with it. */
 function kept(was: string, text: string): number {
