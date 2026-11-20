@@ -264,8 +264,25 @@
 .prose-compact h4,
 .prose-compact h5,
 .prose-compact h6 {
-  margin: var(--space-2) 0 var(--space-1);
+  margin: var(--space-3) 0 var(--space-1);
   font-size: 1em;
+}
+/* a comment's headings: smaller than a document's, still a step apart */
+.prose-compact h1 {
+  font-size: 1.5em;
+}
+.prose-compact h2 {
+  font-size: 1.3em;
+}
+.prose-compact h3 {
+  font-size: 1.15em;
+}
+.prose-compact h5 {
+  font-size: 0.9em;
+}
+.prose-compact h6 {
+  color: var(--ink-2);
+  font-size: 0.85em;
 }
 .prose-compact p,
 .prose-compact ul,
