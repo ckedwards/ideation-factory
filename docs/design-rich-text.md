@@ -174,6 +174,8 @@ This follows Google Docs.
 - **Between files of the idea** as well as inside one.
 - **Until it's pasted, a cut is a deletion.** The draft panel shows its comments as about to be outdated. Pasting turns the deletion into a move, and they show as moved.
 - **A comment that's only partly inside the cut** keeps the part that stayed, as it does today when part of its text is replaced.
+- **A block's whole text is the block:** a cut from the start of a block's text to its end (a triple click) takes the block, as Google Docs' triple click takes the line break too. A paste at the start of a block goes above it.
+- **Narrowed by the spike:** a table row has no identity of its own (the draft knows a table as one block), so a cut row is an edit of its table and pastes as a new table, its comments outdated. Dragging into another file is a copy until the page editor makes it a move. A paste of several paragraphs into the middle of a block splits it, and step 5's function gives the block's identity to the half that kept its text.
 
 **How:** a block keeps its draft identity through a cut, so when it's pasted the editor knows it as the same block in a new place and sends a move. Plain-text paste and copy carry no identity, so they arrive as new text.
 
@@ -287,6 +289,8 @@ I ran each candidate over the 37 tracked Markdown files in this repository (1,35
 
 ### A spike before the page editor
 
+**Done: go, on Milkdown** ([the results](spike-editor-clipboard.md)). Every case below passed in Chromium, Firefox and WebKit, except a table row, which is narrowed under [Moving text](#moving-text). It took a wrapper of our own in front of Milkdown's paste, which flattens a lone paragraph into text. Not yet tried in Safari itself.
+
 **Recommendation:** spend two days proving the clipboard cases in a real browser before building the page editor. Comments and suggested edits don't use any of this, so they don't wait for it.
 
 **Why:** whole-file editing and cut and paste carrying comments moved the hard part from the library to our own code underneath it. The Markdown side of Milkdown is measured. This side isn't.
@@ -372,7 +376,7 @@ The editor loads as its own chunk, fetched when an idea page is idle. A box open
 1. **The editor in `ui`:** the component with its toolbar, tables and the table writer, its stories, and the round-trip test. No page uses it yet.
 2. **Comments:** every box in the table above, and excerpts.
 3. **Suggested edits:** the inline flavor, the rendered change in a thread, and Add to draft as the only way to accept.
-4. **The spike:** two days on the clipboard cases (see [A spike before the page editor](#a-spike-before-the-page-editor)), ending in a go, a narrower design, or bare ProseMirror for the page.
+4. **Done. The spike:** two days on the clipboard cases (see [A spike before the page editor](#a-spike-before-the-page-editor)), ending in a go, a narrower design, or bare ProseMirror for the page.
 5. **The draft's new work:** the function in `core`, changes sent together, the draft as a difference, heading levels and moves, each with tests and no interface yet.
 6. **The page editor:** the surface, its toolbar and its saving, replacing the block editor.
 
