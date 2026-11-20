@@ -43,13 +43,6 @@
   color: var(--ins-ink);
   font-family: var(--font-prose);
 }
-.selection-menu-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-2);
-}
 /* on its own line above the buttons */
 .selection-menu-hint {
   flex: 1 1 100%;

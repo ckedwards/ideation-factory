@@ -156,7 +156,7 @@ export const ReadOnly: Story = { render: (args) => <CommentCard comment={args.co
 export const Replying: Story = {
   play: async ({ args, canvas, userEvent }) => {
     await userEvent.click(canvas.getByRole('button', { name: 'Reply' }))
-    await userEvent.type(canvas.getByRole('textbox', { name: 'Reply' }), 'Agreed')
+    await userEvent.type(await canvas.findByRole('textbox', { name: 'Reply' }), 'Agreed')
     await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
     await expect(args.onReply).toHaveBeenCalledWith('Agreed', false)
   },
@@ -167,7 +167,7 @@ export const ReplyingToReview: Story = {
   args: { addToReview: true },
   play: async ({ args, canvas, userEvent }) => {
     await userEvent.click(canvas.getByRole('button', { name: 'Reply' }))
-    await userEvent.type(canvas.getByRole('textbox', { name: 'Reply' }), 'Later')
+    await userEvent.type(await canvas.findByRole('textbox', { name: 'Reply' }), 'Later')
     await userEvent.click(canvas.getByRole('button', { name: 'Add to your review' }))
     await expect(args.onReply).toHaveBeenCalledWith('Later', true)
   },
@@ -188,7 +188,7 @@ export const Pending: Story = {
     await expect(canvas.getByText('Pending')).toBeVisible()
     await userEvent.click(canvas.getByRole('button', { name: 'Reply' }))
     await expect(canvas.queryByRole('button', { name: 'Add to your review' })).toBeNull()
-    await userEvent.type(canvas.getByRole('textbox', { name: 'Reply' }), 'And this')
+    await userEvent.type(await canvas.findByRole('textbox', { name: 'Reply' }), 'And this')
     await userEvent.click(canvas.getByRole('button', { name: 'Add reply' }))
     await expect(args.onReply).toHaveBeenCalledWith('And this', true)
   },

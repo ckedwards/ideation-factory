@@ -96,9 +96,9 @@ export const Closing: Story = {
 
     select(canvasElement, 'oldest first')
     await userEvent.click(await page.findByRole('button', { name: 'Comment' }))
-    await userEvent.type(page.getByRole('textbox', { name: 'Comment' }), 'Half a thought')
+    await userEvent.type(await page.findByRole('textbox', { name: 'Comment' }), 'Half a thought')
     await userEvent.click(elsewhere)
-    await expect(page.getByRole('textbox', { name: 'Comment' })).toHaveValue('Half a thought')
+    await expect(page.getByRole('textbox', { name: 'Comment' })).toHaveTextContent('Half a thought')
     await userEvent.keyboard('{Escape}')
     await waitFor(() => expect(page.queryByRole('dialog')).toBeNull())
   },
@@ -112,7 +112,7 @@ export const Comment: Story = {
     await userEvent.click(await page.findByRole('button', { name: 'Comment' }))
     // the text stays marked while the form has the focus, and not after
     await expect(CSS.highlights.has('selection-pending')).toBe(true)
-    await userEvent.type(page.getByRole('textbox', { name: 'Comment' }), 'Oldest by device clock?')
+    await userEvent.type(await page.findByRole('textbox', { name: 'Comment' }), 'Oldest by device clock?')
     await userEvent.click(page.getByRole('button', { name: 'Comment' }))
     await waitFor(() => expect(CSS.highlights.has('selection-pending')).toBe(false))
     const start = sample.indexOf('oldest first')
@@ -158,7 +158,7 @@ export const AddToReview: Story = {
     select(canvasElement, 'oldest first')
     const page = within(document.body)
     await userEvent.click(await page.findByRole('button', { name: 'Comment' }))
-    await userEvent.type(page.getByRole('textbox', { name: 'Comment' }), 'Later')
+    await userEvent.type(await page.findByRole('textbox', { name: 'Comment' }), 'Later')
     await userEvent.click(page.getByRole('button', { name: 'Add to your review' }))
     await waitFor(() =>
       expect(args.onComment).toHaveBeenCalledWith(expect.objectContaining({ quote: 'oldest first' }), 'Later', true),
