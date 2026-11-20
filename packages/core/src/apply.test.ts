@@ -335,6 +335,13 @@ describe('rename-heading', () => {
     expect(outcome(r, 'heading')).toEqual({ state: 'changed', quote: 'Hazards', file: 'f1' })
   })
 
+  test('a heading with no title yet gets one after a space', () => {
+    const idea = createIdea([{ path: 'a.md', source: '# Plan\n\n##\n\nText.\n' }])
+    const r = run(idea, [], { command: 'rename-heading', target: 's3', title: 'Risks' })
+    expect(source(r)).toBe('# Plan\n\n## Risks\n\nText.\n')
+    expect(ids(r)).toEqual(idea.files[0]!.unitIds)
+  })
+
   test('setext and closed ATX headings', () => {
     const idea = createIdea([{ path: 'a.md', source: 'Title\n=====\n\n## Old ##\n' }])
     expect(source(run(idea, [], { command: 'rename-heading', target: 's2', title: 'New title' }))).toBe(

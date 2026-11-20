@@ -87,9 +87,17 @@ export function draftChanges(
           continue
         }
         const now = unitSource(idea, block.id)!
-        if (now.trim() !== block.source.trim()) {
-          apply({ kind: 'edit', id: block.id, source: block.source, was: now })
+        if (now.trim() === block.source.trim()) {
+          continue
         }
+        const edit: DraftChange = { kind: 'edit', id: block.id, source: block.source, was: now }
+        // an edit that would make it another kind of block (so another block, with an ID of its
+        // own): the block is new text, and the one it was goes
+        if (losesItself(idea, edit, block.id)) {
+          block.id = null
+          continue
+        }
+        apply(edit)
       }
     }
 
@@ -179,8 +187,9 @@ function settle(files: Record<string, EditorBlock[]>, opened: Map<string, string
       if (known) {
         seen.add(block.id!)
       }
-      // emptied: it's gone
-      if (block.source.trim() === '') {
+      // emptied, or a block of text with none in it yet (an empty heading is `##`): it's gone, or
+      // isn't there yet
+      if (block.source.trim() === '' || wordless(block.source)) {
         continue
       }
       const same = known && kindOf(block.source) === kindOf(opened.get(block.id!)!)
@@ -206,6 +215,24 @@ function settle(files: Record<string, EditorBlock[]>, opened: Map<string, string
     out[file] = list
   }
   return out
+}
+
+/** Whether an edit, applied, leaves no block with the ID it edited. */
+function losesItself(idea: Idea, edit: DraftChange, id: string): boolean {
+  const built = commandsFor(idea, new Map(), edit)
+  if (!built.ok || built.commands.length === 0) {
+    return false
+  }
+  const applied = applyBatch(idea, [], { base: 1, steps: built.commands })
+  return applied.ok && unitSource(applied.idea, id) === null
+}
+
+// blocks of text: with no words in them, they're nothing yet
+const TEXT = new Set<UnitKind>(['heading', 'paragraph', 'list-item', 'quote'])
+const wordless = (source: string) => {
+  const parsed = parseMarkdown(source)
+  const kind = parsed.units[0]?.kind
+  return kind !== undefined && TEXT.has(kind) && parsed.plain.text.trim() === ''
 }
 
 /** The kind of block some Markdown is (its first). */

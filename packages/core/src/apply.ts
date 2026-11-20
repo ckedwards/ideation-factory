@@ -317,7 +317,9 @@ function plan(idea: Idea, ids: Ids, command: Command): Plan {
       const unit = target.parsed.units[target.unit]!
       if (command.level === undefined || command.level === unit.level) {
         const [start, end] = headingText(target.file.source, unit.start, unit.end)
-        out.pieces.set(target.file.id, replaceRange(target.file, start, end, title))
+        // a heading with no title yet (`##`): the title after a space, or it'd be `##title`, text
+        const spaced = start === end && target.file.source[start - 1] === '#' ? ` ${title}` : title
+        out.pieces.set(target.file.id, replaceRange(target.file, start, end, spaced))
         return out
       }
       // a new level: the heading rewritten as # to ######, a setext one too, only what changed
