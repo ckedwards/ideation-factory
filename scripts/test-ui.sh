@@ -8,7 +8,8 @@
 #   scripts/test-ui.sh seed            fill it with sample people, teams and ideas (scripts/test-ui-data.ts), once;
 #                                      seed medium adds a generated company of about 150 people (scripts/test-ui-medium.ts)
 #   scripts/test-ui.sh save [name]     keep a copy of its data as it is now, as name (seeded if none)
-#   scripts/test-ui.sh restore [name]  put that copy back, in place of whatever's there now (after a wipe too)
+#   scripts/test-ui.sh restore name    put that copy back, in place of whatever's there now (after a wipe too);
+#                                      without a name, the saves there are to restore
 #   scripts/test-ui.sh saves           list the copies kept
 #   scripts/test-ui.sh down            stop it, keeping its data
 #   scripts/test-ui.sh wipe            stop it and delete its data, and its settings; saves are kept
@@ -52,6 +53,22 @@ save_dir() {
     exit 2
   fi
   echo "$SAVES/$name"
+}
+
+# whether there are any saves
+any_saves() {
+  [ -d "$SAVES" ] && [ -n "$(ls -A "$SAVES")" ]
+}
+
+# the saves, newest first: name, when, size
+list_saves() {
+  if ! any_saves; then
+    echo "no saves yet: scripts/test-ui.sh save [name]"
+    return
+  fi
+  for dir in $(ls -td "$SAVES"/*/); do
+    printf '  %-24s %s  %s\n' "$(basename "$dir")" "$(date -r "$dir/engine.tgz" '+%Y-%m-%d %H:%M')" "$(du -sh "$dir" | cut -f1)"
+  done
 }
 
 # runs a shell in a one-off container of the app's image, as root, with both volumes (the engine's
@@ -110,9 +127,20 @@ case "${1:-}" in
     echo "saved as $(basename "$dir") ($(du -sh "$dir" | cut -f1)): scripts/test-ui.sh restore $(basename "$dir")"
     ;;
   restore)
-    dir=$(save_dir "${2:-}")
+    # which one: with no name, or one there's no save of, what there is to restore
+    if ! any_saves; then
+      echo "nothing to restore: no saves yet (scripts/test-ui.sh save [name])" >&2
+      exit 1
+    fi
+    if [ -z "${2:-}" ]; then
+      echo "restore which? scripts/test-ui.sh restore <name>, one of:"
+      list_saves
+      exit 2
+    fi
+    dir=$(save_dir "$2")
     if [ ! -f "$dir/engine.tgz" ]; then
-      echo "no save called $(basename "$dir"): scripts/test-ui.sh saves" >&2
+      echo "no save called $2; there's:" >&2
+      list_saves >&2
       exit 1
     fi
     # the save's secrets, with the ports as they're set now
@@ -128,13 +156,7 @@ case "${1:-}" in
     echo "restored $(basename "$dir")"
     ;;
   saves)
-    if [ ! -d "$SAVES" ] || [ -z "$(ls -A "$SAVES")" ]; then
-      echo "no saves yet: scripts/test-ui.sh save [name]"
-      exit 0
-    fi
-    for dir in "$SAVES"/*/; do
-      printf '%-24s %s  %s\n' "$(basename "$dir")" "$(date -r "$dir/engine.tgz" '+%Y-%m-%d %H:%M')" "$(du -sh "$dir" | cut -f1)"
-    done
+    list_saves
     ;;
   down)
     settings
@@ -150,7 +172,7 @@ case "${1:-}" in
     dc logs -f app
     ;;
   *)
-    sed -n '2,19p' "$0"
+    sed -n '2,20p' "$0"
     exit 2
     ;;
 esac
