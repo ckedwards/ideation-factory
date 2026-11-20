@@ -381,6 +381,10 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
     nodes: [],
   }
   let emitted = ''
+  // Values given out that the page hasn't given back yet. Typing quickly runs ahead of the page:
+  // it's still rendering an older one ("H" after "Ha" went out), which is the page catching up, not
+  // a new value to open. Cleared once the page gives back the latest.
+  const unheard = new Set<string>()
   // opening Markdown isn't a change: what's on screen is what was given
   let loading = false
 
@@ -725,6 +729,7 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
           update: (view: EditorView, before: EditorState) => {
             if (!view.state.doc.eq(before.doc) && !loading) {
               emitted = write(view.state.doc)
+              unheard.add(emitted)
               latest.options.onChange(emitted)
             }
             if (
@@ -965,6 +970,7 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
     v.dispatch(tr)
     loading = false
     emitted = source
+    unheard.clear()
     // Milkdown's own plugins tidy what's loaded (they even out a table's rows, say), making new
     // nodes: each takes the place, and the source, of the one it replaced
     const settled = view().state.doc
@@ -994,7 +1000,10 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
   return {
     markdown: () => write(view().state.doc),
     load: (source) => {
-      if (source !== emitted) {
+      if (source === emitted) {
+        // the page has caught up
+        unheard.clear()
+      } else if (!unheard.has(source)) {
         load(source)
       }
     },

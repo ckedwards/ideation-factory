@@ -800,3 +800,35 @@ export const Link: Story = {
     await waitFor(() => expect(markdown(canvasElement)).toBe('See the [notice](https://example.com/notice).'))
   },
 }
+
+// a page slower than the typing: each value comes back a moment after the editor gave it, and it can
+// clear the box itself, as a page does once a comment's sent
+function SlowPage() {
+  const [value, setValue] = useState('')
+  return (
+    <div style={{ maxWidth: '30rem' }}>
+      <MarkdownEditor
+        label="Comment"
+        value={value}
+        onChange={(next) => setTimeout(() => setValue(next), 40)}
+        footer={<Button onClick={() => setValue('')}>Send</Button>}
+      />
+      <output data-testid="markdown">{value}</output>
+    </div>
+  )
+}
+
+// Typing that runs ahead of the page keeps every key: an older value coming back late isn't opened
+// over what's been typed since. A value the page sets itself still is
+export const PageBehind: Story = {
+  render: () => <SlowPage />,
+  play: async ({ canvasElement }) => {
+    const box = await surface(canvasElement)
+    await userEvent.click(box)
+    await userEvent.setup({ delay: 5 }).keyboard('Half a thought')
+    await waitFor(() => expect(markdown(canvasElement)).toBe('Half a thought'))
+    await expect(box).toHaveTextContent('Half a thought')
+    await userEvent.click(within(canvasElement).getByRole('button', { name: 'Send' }))
+    await waitFor(() => expect(box).toHaveTextContent(''))
+  },
+}
