@@ -348,3 +348,27 @@ describe('a block with no words yet', () => {
     expect(r.sources[0]).toBe('# Plan\n\nIntro.\n\n## ddd\n\nText.\n')
   })
 })
+
+describe('blocks moved out from under a heading', () => {
+  test('move, and the heading stays where it is', () => {
+    const idea = open(PLAN)
+    // the list (b4 b5 b6) moved up, above "# Plan"'s first paragraph's end: past nothing but b3
+    const list = blocks(idea)
+    const items = list.filter((x) => ['b4', 'b5', 'b6'].includes(x.id!))
+    const rest = list.filter((x) => !['b4', 'b5', 'b6'].includes(x.id!))
+    rest.splice(1, 0, ...items)
+    const r = after(idea, { f1: rest })
+    expect(r.kinds.every((k) => k === 'move')).toBe(true)
+    expect(r.changes.some((c) => c.kind === 'move' && c.id.startsWith('s'))).toBe(false)
+    expect(r.sources[0]).toContain('# Plan\n\n- one\n- two\n- three\n\nThe first paragraph.')
+  })
+
+  test('a list moved out of its section, above the next heading up', () => {
+    const idea = open('# Plan\n\nIntro.\n\n## Checks\n\n- one\n- two\n')
+    // s2 Plan, b3 Intro, s4 Checks, b5 b6
+    const list = blocks(idea)
+    const order = [list[0]!, list[1]!, list[3]!, list[4]!, list[2]!]
+    const r = after(idea, { f1: order })
+    expect(r.sources[0]).toBe('# Plan\n\nIntro.\n\n- one\n- two\n\n## Checks\n')
+  })
+})

@@ -119,6 +119,20 @@ export function draftChanges(
       if (was === null) {
         return { ok: false, message: `${out.id} lost its place as it moved` }
       }
+      // a heading takes its section with it, so it can't go after a block still in its section:
+      // the blocks of its section that belong before it move out above it instead
+      const inside = out.id.startsWith('s') ? section(idea, out.id) : []
+      if (out.after && inside.includes(out.after)) {
+        const ahead = new Set(before(target, out.file, out.id))
+        let previous: string | null = null
+        for (const id of inside.filter((x) => ahead.has(x))) {
+          // the first above the heading, the rest after it, so a list stays one list
+          const to: Position = previous ? place(idea, out.file, previous, out.id, id) : { before: out.id }
+          apply({ kind: 'move', id, to, was: unitSource(idea, id)! })
+          previous = id
+        }
+        continue
+      }
       apply({ kind: 'move', id: out.id, to: place(idea, out.file, out.after, out.before, out.id), was })
     }
 
@@ -341,6 +355,12 @@ function place(
   const at = locate(idea, after)!
   const following = at.file.unitIds.slice(at.unit + 1).find((id) => id !== moving)
   return following ? { before: following } : { end: at.file.id }
+}
+
+/** The blocks that come before one, in a file's order as wanted. */
+function before(target: Record<string, EditorBlock[]>, file: string, id: string): string[] {
+  const ids = (target[file] ?? []).flatMap((b) => (b.id ? [b.id] : []))
+  return ids.slice(0, Math.max(0, ids.indexOf(id)))
 }
 
 /** The blocks after a heading, up to the next heading of its level or above. */
