@@ -3,7 +3,7 @@
 // with their text, or the versions. Selecting text offers commenting on it or
 // its section, or suggesting an edit; people with edit access accept or reject
 // suggestions, one at a time or all together as one version. While editing,
-// the page gives the document and the panel (IdeaEditor, EditPanel). Comparing shows the file as a redline against an earlier
+// the page gives the document and the panel (DraftEditor, EditPanel). Comparing shows the file as a redline against an earlier
 // version, with the comments as a list. The route loads the data and does the
 // writing.
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react'

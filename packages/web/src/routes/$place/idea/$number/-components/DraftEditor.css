@@ -1,0 +1,21 @@
+/* a save refused as outdated, in the page's toolbar: theirs or yours */
+.draft-editor-outdated {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--del-ink);
+}
+
+/* the page's toolbar across the whole document pane, pinned to its top as it scrolls; the text stays
+   at the document's measure */
+.idea-page-document:has(.draft-editor) {
+  container-type: inline-size;
+}
+.draft-editor .md-editor.is-page .md-editor-bar {
+  top: calc(-1 * var(--idea-document-top));
+  margin-inline: calc((100% - 100cqw) / 2 - var(--space-7));
+}
+.draft-editor .md-editor.is-page .md-editor-surface,
+.draft-editor .md-editor.is-page .md-editor-standin {
+  padding-inline: 0;
+}

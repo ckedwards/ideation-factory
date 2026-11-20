@@ -40,7 +40,7 @@ export function DocToolbar(props: DocToolbarProps) {
       {props.editing ? (
         // the bar says it's being edited, and has how to finish: here, just how to edit
         <span className="doc-toolbar-actions">
-          <span className="doc-toolbar-hint">Hover a block to edit it, add text below it, or delete it.</span>
+          <span className="doc-toolbar-hint">Type anywhere: it’s saved to the draft as you go.</span>
         </span>
       ) : (
         <span className="doc-toolbar-actions">

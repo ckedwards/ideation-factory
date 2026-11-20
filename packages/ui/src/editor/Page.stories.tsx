@@ -1,7 +1,7 @@
 // A whole file in the editor, as the Files tab will show it: each block knows the draft block it is,
 // through typing, cutting and pasting, and the page turns that into draft changes when it saves
 // (core's draftChanges). Read shows what it would send.
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { buildDraft, createIdea, type DraftChange, draftChanges } from '@ideaf/core'
 import { expect, userEvent, waitFor, within } from 'storybook/test'
@@ -37,6 +37,8 @@ function Page() {
   const [value, setValue] = useState(file.source)
   const editor = useRef<MarkdownEditorHandle>(null)
   const [read, setRead] = useState('')
+  // a new one only when it's saved
+  const saved = useMemo(() => ({ source: idea.files[0]!.source, ids: idea.files[0]!.unitIds }), [idea])
   return (
     <div style={{ maxWidth: '48rem' }}>
       <MarkdownEditor
@@ -45,7 +47,7 @@ function Page() {
         label="offline.md"
         value={value}
         onChange={setValue}
-        ids={file.unitIds}
+        saved={saved}
         status="Saved to the draft"
       />
       <Button

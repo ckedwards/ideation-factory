@@ -68,8 +68,14 @@ export interface MarkdownEditorProps {
    * menus), where a form has two boxes together; by default it always shows.
    */
   toolbar?: 'always' | 'focus'
-  /** A page's: the draft's ID for each of the value's blocks (core's units), in order. */
-  ids?: string[]
+  /**
+   * A page's: the draft's file as last saved, its Markdown and the ID of each of its blocks (core's
+   * units), in order. The page opens with them; once saved again, new blocks take their IDs from it,
+   * and the Markdown side counts what's changed from it. A new object only when it's saved again.
+   */
+  saved?: { source: string; ids: string[] }
+  /** A page's: the blocks the draft has changed, marked with a rail. */
+  changed?: string[]
   /** A page's, at the right of its toolbar: how saving is going ("Saved to the draft"). */
   status?: ReactNode
   /** A page's: its blocks and the words moved between them, read when it's saved. */
@@ -180,24 +186,31 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
   // the plain box is what's typed in on the Markdown side, and while the rich side loads
   const plain = markdown || !rich
 
-  // a page's draft as last given (its Markdown and its blocks' IDs): what's changed is counted from it
-  const basis = useRef({ value: props.value, ids: props.ids })
-  if (props.ids !== basis.current.ids) {
-    basis.current = { value: props.value, ids: props.ids }
-  }
-  const basisBlocks = () => {
-    const { value, ids = [] } = basis.current
-    return parseMarkdown(value).units.map((u, i) => ({
+  // a page's draft as last saved: what's changed is counted from it
+  const savedBlocks = () => {
+    const { source, ids } = props.saved ?? { source: props.value, ids: [] }
+    return parseMarkdown(source).units.map((u, i) => ({
       id: ids[i]!,
-      source: value.slice(u.start, u.end),
+      source: source.slice(u.start, u.end),
       kind: u.kind,
     }))
   }
+  // saved again while typing went on: new blocks take their IDs from it, matched by their text (with
+  // the same text, the editor's own load does it)
+  useEffect(() => {
+    if (rich && props.saved && props.saved.source !== props.value) {
+      rich.adopt(savedBlocks())
+    }
+    // only when it's saved, not as the text changes
+  }, [props.saved, rich])
+  useEffect(() => {
+    rich?.markChanged(props.changed ?? [])
+  }, [props.changed, rich])
   useImperativeHandle(
     props.ref,
     () => ({
       // the Markdown side has no identities: its blocks are matched to the draft's by their text
-      blocks: () => (plain ? blocksOfSource(basisBlocks(), props.value) : (rich?.blocks() ?? basisBlocks())),
+      blocks: () => (plain ? blocksOfSource(savedBlocks(), props.value) : (rich?.blocks() ?? savedBlocks())),
       movedWords: () => (plain ? [] : (rich?.movedWords() ?? [])),
     }),
     [plain, rich, props.value],
@@ -417,7 +430,7 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
             <RichSurface
               hidden={!rich}
               value={props.value}
-              ids={props.ids}
+              ids={props.saved && props.saved.source === props.value ? props.saved.ids : undefined}
               onChange={props.onChange}
               flavor={flavor}
               label={props.label}
