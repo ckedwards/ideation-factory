@@ -9,6 +9,8 @@ const config: StorybookConfig = {
   stories: ['../src/**/*.stories.tsx'],
   addons: ['@storybook/addon-a11y', '@storybook/addon-docs', '@storybook/addon-vitest'],
   core: { disableTelemetry: true },
+  // no "Get started" checklist in the sidebar, or its guide page in the menu
+  features: { sidebarOnboardingChecklist: false, menuOnboardingChecklist: false },
   // the app's hot reloading port is for its dev server, not Storybook's
   viteFinal: (config) => ({ ...config, server: { ...config.server, hmr: true } }),
 }
