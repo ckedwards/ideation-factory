@@ -12,7 +12,7 @@
 // opening HTML block and its closing one are drawn as one, with the Markdown between them inside, read
 // only too. Front matter, link definitions, and HTML that makes no sense alone are shown as their
 // source.
-import { markdownTree } from '@ideaf/core'
+import { markdownTree, parseMarkdown } from '@ideaf/core'
 import {
   commandsCtx,
   defaultValueCtx,
@@ -28,6 +28,7 @@ import {
 import { clipboard } from '@milkdown/kit/plugin/clipboard'
 import { history } from '@milkdown/kit/plugin/history'
 import {
+  createCodeBlockCommand,
   blockquoteKeymap,
   bulletListKeymap,
   commonmark,
@@ -73,9 +74,11 @@ import { Decoration, DecorationSet, type EditorView } from '@milkdown/kit/prose/
 import { $nodeSchema, $prose, $view } from '@milkdown/kit/utils'
 import type { Html, Root, RootContent } from 'mdast'
 import { htmlRuns, sanitizeHtml, SLOT } from '../document/html.ts'
+import { clipboardIdentity, identifiedSchemas, type MovedWords } from './identity.ts'
 import { tableHandler, tableStyle } from './tables.ts'
 
-export type Flavor = 'full' | 'inline'
+/** full: a comment; inline: a suggestion's replacement (marks and links); page: a whole file, in the draft. */
+export type Flavor = 'full' | 'inline' | 'page'
 
 /** What the toolbar can do, on either side of the switch. */
 export type Action =
@@ -90,6 +93,9 @@ export type Action =
   | 'numbers'
   | 'tasks'
   | 'table'
+  | 'undo'
+  | 'redo'
+  | 'code-block'
 
 export type TableOp =
   | 'row-above'
@@ -108,6 +114,8 @@ export interface RichOptions {
   root: HTMLElement
   /** The Markdown it opens with. Its style is the style changed blocks are written in. */
   source: string
+  /** A page's: the draft's ID for each of the source's blocks (core's units), in order. */
+  ids?: string[] | undefined
   flavor: Flavor
   /** For screen readers: the box's name. */
   label: string
@@ -151,8 +159,14 @@ export interface Selection {
 export interface RichEditor {
   /** The Markdown now. */
   markdown: () => string
-  /** Opens other Markdown in place of what's there (the box was cleared or changed from outside). */
-  load: (source: string) => void
+  /** Opens other Markdown in place of what's there (the box was cleared or changed from outside); a page's with its blocks' IDs. */
+  load: (source: string, ids?: string[]) => void
+  /** A page's blocks, as the draft knows them: each with its identity (null for new text) and its Markdown now. */
+  blocks: () => Array<{ id: string | null; source: string }>
+  /** New blocks take the identities the draft gave them (once saved): the draft's blocks, matched by their text. */
+  adopt: (units: Array<{ id: string; source: string }>) => void
+  /** Words moved between blocks since this was last asked, to go to the draft as moves. */
+  movedWords: () => MovedWords[]
   run: (action: Exclude<Action, 'link' | 'table' | 'heading'>) => void
   /** The caret's block made a heading of this level, 1 to 6, or back into text with 0. */
   heading: (level: number) => void
@@ -212,13 +226,22 @@ const rawSchema = $nodeSchema('ideaf_raw', () => ({
   group: 'block',
   atom: true,
   selectable: true,
-  attrs: { value: { default: '', validate: 'string' }, kind: { default: 'source', validate: 'string' } },
+  attrs: {
+    value: { default: '', validate: 'string' },
+    kind: { default: 'source', validate: 'string' },
+    // its draft identity, on a page
+    blockId: { default: null },
+  },
   toDOM: (node) => {
     const value = node.attrs['value'] as string
+    const id = node.attrs['blockId'] as string | null
     if (node.attrs['kind'] !== 'html') {
-      return ['pre', { class: 'md-editor-raw', 'data-raw': 'source' }, value]
+      return ['pre', { class: 'md-editor-raw', 'data-raw': 'source', ...(id ? { 'data-block-id': id } : {}) }, value]
     }
     const dom = document.createElement('div')
+    if (id) {
+      dom.setAttribute('data-block-id', id)
+    }
     dom.className = 'md-editor-html'
     dom.setAttribute('data-raw', 'html')
     dom.setAttribute('data-value', value)
@@ -234,6 +257,7 @@ const rawSchema = $nodeSchema('ideaf_raw', () => ({
       getAttrs: (dom) => ({
         value: (dom as HTMLElement).getAttribute('data-value') ?? (dom as HTMLElement).textContent ?? '',
         kind: (dom as HTMLElement).getAttribute('data-raw') === 'html' ? 'html' : 'source',
+        blockId: (dom as HTMLElement).getAttribute('data-block-id'),
       }),
     },
   ],
@@ -262,10 +286,19 @@ const htmlRunSchema = $nodeSchema('ideaf_html_run', () => ({
   selectable: true,
   defining: true,
   isolating: true,
-  attrs: { open: { default: '', validate: 'string' }, close: { default: '', validate: 'string' } },
+  attrs: {
+    open: { default: '', validate: 'string' },
+    close: { default: '', validate: 'string' },
+    // the draft identities of the blocks it covers, on a page, space apart
+    blockIds: { default: '', validate: 'string' },
+  },
   toDOM: (node) => [
     'div',
-    { 'data-html-open': node.attrs['open'] as string, 'data-html-close': node.attrs['close'] as string },
+    {
+      'data-html-open': node.attrs['open'] as string,
+      'data-html-close': node.attrs['close'] as string,
+      ...(node.attrs['blockIds'] ? { 'data-block-ids': node.attrs['blockIds'] as string } : {}),
+    },
     0,
   ],
   parseDOM: [
@@ -274,6 +307,7 @@ const htmlRunSchema = $nodeSchema('ideaf_html_run', () => ({
       getAttrs: (dom) => ({
         open: (dom as HTMLElement).getAttribute('data-html-open') ?? '',
         close: (dom as HTMLElement).getAttribute('data-html-close') ?? '',
+        blockIds: (dom as HTMLElement).getAttribute('data-block-ids') ?? '',
       }),
     },
   ],
@@ -757,7 +791,8 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
       ctx.update(editorViewOptionsCtx, (prev) => ({
         ...prev,
         attributes: {
-          class: 'md-editor-surface prose prose-compact',
+          // a page reads at the document's size, a comment at a comment's
+          class: options.flavor === 'page' ? 'md-editor-surface prose' : 'md-editor-surface prose prose-compact',
           role: 'textbox',
           'aria-multiline': options.flavor === 'inline' ? 'false' : 'true',
           'aria-label': options.label,
@@ -809,10 +844,21 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
     .use(contextMenu)
     .use(preset)
     .use(gfm)
+    // the draft's blocks can carry their identity (identity.ts)
+    .use(identifiedSchemas)
     .use(rawSchema)
     .use(htmlRunSchema)
     .use(htmlRunView)
     .use(history)
+    // a page keeps its blocks' identities through the clipboard, ahead of Milkdown's paste
+    .use(
+      options.flavor === 'page'
+        ? clipboardIdentity({
+            sourceOf: (id) => blocks().find((b) => b.id === id)?.source ?? null,
+            onWords: (w) => void moved.push(w),
+          })
+        : [],
+    )
     .use(clipboard)
     .use(placeholder)
     .use(watch)
@@ -825,8 +871,15 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
   const serialize = (node: Node): string =>
     action((ctx) => ctx.get(serializerCtx)(schema.topNodeType.create(null, node))).replace(/\n+$/, '')
 
-  /** The Markdown as blocks on screen, each remembering the source it came from. */
-  function open(source: string): Node {
+  // words moved between blocks, not yet asked for
+  let moved: MovedWords[] = []
+
+  /** The Markdown as blocks on screen, each remembering the source it came from (and, on a page, its draft identity). */
+  function open(source: string, ids?: string[]): Node {
+    // the draft's blocks, as core finds them, with their IDs: for the nodes built from them
+    const units = ids
+      ? parseMarkdown(source).units.map((u, i) => ({ start: u.start, kind: u.kind, id: ids[i] ?? null }))
+      : []
     const tree = markdownTree(source)
     const origin = new WeakMap<Node, Block>()
     const blocks: Block[] = []
@@ -893,6 +946,10 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
       if (built.nodes.length === 1) {
         const first = blocks[built.first]!
         const last = blocks[built.last]!
+        if (ids) {
+          const within = units.filter((u) => u.start >= first.start && u.start < last.end).map((u) => u.id)
+          built.nodes[0] = identify(built.nodes[0]!, within)
+        }
         origin.set(built.nodes[0]!, {
           index: first.index,
           last: last.index,
@@ -908,10 +965,10 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
   }
 
   /** The doc as Markdown: unchanged blocks as they were opened, changed ones written in the file's style. */
-  function write(doc: Node): string {
+  function write(doc: Node, span?: (node: Node, pos: number, start: number, end: number) => void): string {
     const used = new Set<Block>()
-    const parts: Array<{ text: string; from: Block | null }> = []
-    doc.forEach((node) => {
+    const parts: Array<{ text: string; from: Block | null; node: Node; pos: number }> = []
+    doc.forEach((node, pos) => {
       let from = opened.origin.get(node) ?? null
       if (!from || used.has(from)) {
         // changed and changed back: as good as unchanged
@@ -920,12 +977,12 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
       }
       if (from) {
         used.add(from)
-        parts.push({ text: from.source, from })
+        parts.push({ text: from.source, from, node, pos })
         return
       }
       const text = node.type.name === 'paragraph' && node.content.size === 0 ? '' : serialize(node)
       if (text) {
-        parts.push({ text, from: null })
+        parts.push({ text, from: null, node, pos })
       }
     })
     if (options.flavor === 'inline') {
@@ -942,6 +999,7 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
       } else {
         out += '\n\n'
       }
+      span?.(part.node, part.pos, out.length, out.length + part.text.length)
       out += part.text
     })
     const last = parts.at(-1)?.from
@@ -949,6 +1007,109 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
       out += source.slice(last.end)
     }
     return out
+  }
+
+  /**
+   * A top-level node with the draft's IDs for the blocks it holds: a list's items each their own, a
+   * run of HTML all of them, anything else the one.
+   */
+  function identify(node: Node, ids: Array<string | null>): Node {
+    const name = node.type.name
+    if (name === 'ideaf_html_run') {
+      return node.type.create({ ...node.attrs, blockIds: ids.filter(Boolean).join(' ') }, node.content, node.marks)
+    }
+    if (name === 'bullet_list' || name === 'ordered_list') {
+      const items: Node[] = []
+      node.descendants((n) => {
+        if (n.type.name === 'list_item') {
+          items.push(n)
+        }
+        return true
+      })
+      if (items.length !== ids.length) {
+        return node
+      }
+      let next = 0
+      const walk = (n: Node): Node => {
+        const content: Node[] = []
+        n.forEach((child) => void content.push(child.isText ? child : walk(child)))
+        const attrs = n.type.name === 'list_item' ? { ...n.attrs, blockId: ids[next++] ?? null } : n.attrs
+        return n.type.create(attrs, Fragment.from(content), n.marks)
+      }
+      return walk(node)
+    }
+    return 'blockId' in node.attrs
+      ? node.type.create({ ...node.attrs, blockId: ids[0] ?? null }, node.content, node.marks)
+      : node
+  }
+
+  /** The doc as Markdown, and where each top-level node's Markdown is in it. */
+  function writeSpans(doc: Node): {
+    text: string
+    spans: Array<{ node: Node; pos: number; start: number; end: number }>
+  } {
+    const spans: Array<{ node: Node; pos: number; start: number; end: number }> = []
+    const text = write(doc, (node, pos, start, end) => void spans.push({ node, pos, start, end }))
+    return { text, spans }
+  }
+
+  /** A page's blocks as the draft knows them, each with where its identity is held (null for none). */
+  function identities(): Array<{ id: string | null; source: string; at: number | null }> {
+    const { text, spans } = writeSpans(view().state.doc)
+    const units = parseMarkdown(text).units
+    const out: Array<{ id: string | null; source: string; at: number | null }> = []
+    for (const span of spans) {
+      const mine = units.filter((u) => u.start >= span.start && u.start < span.end)
+      // who holds each unit's identity in this node: its list items, its run, or itself
+      const holders: Array<{ id: string | null; at: number | null }> = []
+      const name = span.node.type.name
+      if (name === 'bullet_list' || name === 'ordered_list') {
+        span.node.descendants((n, p) => {
+          if (n.type.name === 'list_item') {
+            holders.push({ id: (n.attrs['blockId'] as string | null) ?? null, at: span.pos + 1 + p })
+          }
+          return true
+        })
+      } else if (name === 'ideaf_html_run') {
+        const ids = (span.node.attrs['blockIds'] as string).split(' ').filter(Boolean)
+        ids.forEach((id) => holders.push({ id, at: null }))
+      } else {
+        holders.push({ id: (span.node.attrs['blockId'] as string | null | undefined) ?? null, at: span.pos })
+      }
+      const matched = holders.length === mine.length
+      mine.forEach((u, i) => {
+        const holder = matched ? holders[i]! : i === 0 && holders.length === 1 ? holders[0]! : { id: null, at: null }
+        out.push({ id: holder.id, source: text.slice(u.start, u.end), at: holder.at })
+      })
+    }
+    return out
+  }
+
+  const blocks = () => identities().map(({ id, source }) => ({ id, source }))
+
+  /** New blocks take the identities the draft gave them: its blocks not on screen, matched by their text. */
+  function adopt(units: Array<{ id: string; source: string }>): void {
+    const current = identities()
+    const held = new Set(current.flatMap((b) => (b.id ? [b.id] : [])))
+    const free = units.filter((u) => !held.has(u.id))
+    const v = view()
+    const tr = v.state.tr
+    for (const block of current) {
+      if (block.id !== null || block.at === null) {
+        continue
+      }
+      const i = free.findIndex((u) => u.source.trim() === block.source.trim())
+      if (i >= 0) {
+        tr.setNodeAttribute(block.at, 'blockId', free[i]!.id)
+        free.splice(i, 1)
+      }
+    }
+    if (tr.docChanged) {
+      // the same text: nothing to tell the page
+      loading = true
+      v.dispatch(tr.setMeta('addToHistory', false))
+      loading = false
+    }
   }
 
   /** Moves the caret to the cell below; false in the last row. */
@@ -963,9 +1124,9 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
     return true
   }
 
-  const load = (source: string) => {
+  const load = (source: string, ids?: string[]) => {
     const v = view()
-    const doc = open(source)
+    const doc = open(source, ids)
     const tr = v.state.tr.replaceWith(0, v.state.doc.content.size, doc.content).setMeta('addToHistory', false)
     // the caret at the end of the text, or at its start when it ends in a block that isn't typed in
     tr.setSelection(tr.doc.lastChild?.isTextblock ? TextSelection.atEnd(tr.doc) : TextSelection.atStart(tr.doc))
@@ -990,7 +1151,7 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
       opened = { ...opened, origin, nodes }
     }
   }
-  load(options.source)
+  load(options.source, options.ids)
   options.onSelection(selectionOf(view().state))
 
   const commands = () => action((ctx) => ctx.get(commandsCtx))
@@ -1002,12 +1163,25 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
 
   return {
     markdown: () => write(view().state.doc),
-    load: (source) => {
-      if (source === emitted) {
-        // the page has caught up
-        unheard.clear()
-      } else if (!unheard.has(source)) {
-        load(source)
+    blocks,
+    adopt: (units) => adopt(units),
+    movedWords: () => {
+      const out = moved
+      moved = []
+      return out
+    },
+    load: (source, ids) => {
+      if (source === emitted || unheard.has(source)) {
+        if (source === emitted) {
+          // the page has caught up
+          unheard.clear()
+        }
+        // the same text, saved: new blocks take the identities the draft gave them
+        if (ids) {
+          adopt(parseMarkdown(source).units.map((u, i) => ({ id: ids[i]!, source: source.slice(u.start, u.end) })))
+        }
+      } else {
+        load(source, ids)
       }
     },
     run: (what) => {
@@ -1037,6 +1211,19 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
         case 'numbers':
         case 'tasks':
           exec(toggleList(schema, what, here.active))
+          break
+        case 'undo':
+          exec(undo)
+          break
+        case 'redo':
+          exec(redo)
+          break
+        case 'code-block':
+          if (here.active.has('code-block')) {
+            commands().call(turnIntoTextCommand.key)
+          } else {
+            commands().call(createCodeBlockCommand.key)
+          }
           break
       }
       view().focus()
@@ -1265,6 +1452,9 @@ function selectionOf(state: EditorState): Selection {
       case 'table':
         active.add('table')
         break
+      case 'code_block':
+        active.add('code-block')
+        break
       case 'list_item':
         if (!list) {
           list = true
@@ -1310,6 +1500,7 @@ const ACTIONS_ALL: Action[] = [
   'numbers',
   'tasks',
   'table',
+  'code-block',
 ]
 const MARKS: Array<[string, Action]> = [
   ['strong', 'bold'],
@@ -1338,12 +1529,12 @@ function unavailable(state: EditorState): { disabled: Set<Action>; why: Partial<
     off(ACTIONS_ALL, html ? 'HTML blocks are only editable in source view' : 'only editable in source view')
   } else if (selection.$from.parent.type.spec.code) {
     off(
-      ACTIONS_ALL.filter((a) => a !== 'quote'),
+      ACTIONS_ALL.filter((a) => a !== 'quote' && a !== 'code-block'),
       'not in a code block',
     )
   } else {
     if (isInTable(state)) {
-      off(['heading', 'quote', 'bullets', 'numbers', 'tasks'], 'not in a table')
+      off(['heading', 'quote', 'bullets', 'numbers', 'tasks', 'code-block'], 'not in a table')
     }
     if (selection.$from.parent.type.name === 'heading') {
       off(['bullets', 'numbers', 'tasks'], 'not in a heading')

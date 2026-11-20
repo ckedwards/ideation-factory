@@ -30,7 +30,7 @@ const LIST = /^(?:[-*+] \[[ xX]\] |[-*+] |\d+[.)] )/
 
 export function plainEdit(action: Action, value: string, start: number, end: number): PlainEdit {
   const selected = value.slice(start, end)
-  if (action === 'code' && selected.includes('\n')) {
+  if ((action === 'code' && selected.includes('\n')) || action === 'code-block') {
     return block(value, start, end, '```\n', '\n```')
   }
   const wrap = WRAPS[action]
