@@ -207,7 +207,6 @@
 /* comments on text */
 .prose .md-mark {
   border-bottom: calc(var(--hairline) * 2) solid var(--mark-line);
-  border-radius: calc(var(--radius-sm) / 2);
   background: var(--mark);
   color: var(--mark-ink);
   cursor: pointer;
@@ -215,6 +214,15 @@
 }
 .prose .md-mark.is-active {
   background: var(--mark-active);
+}
+/* a comment over formatted text is a mark for each run of it: rounded at its ends, so it's one line */
+.prose .md-mark.is-first {
+  border-top-left-radius: calc(var(--radius-sm) / 2);
+  border-bottom-left-radius: calc(var(--radius-sm) / 2);
+}
+.prose .md-mark.is-last {
+  border-top-right-radius: calc(var(--radius-sm) / 2);
+  border-bottom-right-radius: calc(var(--radius-sm) / 2);
 }
 .prose .md-mark.is-resolved {
   border-bottom-style: dotted;

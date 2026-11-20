@@ -115,3 +115,27 @@ export const Links: Story = {
 
 // One of this repository's own design docs, as a long real document
 export const RealDocument: Story = { args: { tree: markdownTree(frontend) } }
+
+// A comment over text with formatting in it is one line under it: its pieces meet, rounded only at
+// the comment's two ends, and the spaces between them stay
+const formatted = "- Photos and ***maps aren't*** inverted.\n"
+export const CommentAcrossFormatting: Story = {
+  args: {
+    tree: markdownTree(formatted),
+    marks: [{ id: 'c1', start: formatted.indexOf('Photos'), end: formatted.indexOf('.') + 1 }],
+  },
+  play: async ({ canvasElement }) => {
+    const pieces = [...canvasElement.querySelectorAll<HTMLElement>('mark[data-comment-id="c1"]')]
+    await expect(pieces.length).toBeGreaterThan(1)
+    await expect(pieces.map((p) => p.textContent).join('')).toBe("Photos and maps aren't inverted.")
+    // each piece starts where the one before it ended
+    for (let i = 1; i < pieces.length; i++) {
+      const before = pieces[i - 1]!.getBoundingClientRect()
+      const after = pieces[i]!.getBoundingClientRect()
+      await expect(Math.abs(after.left - before.right)).toBeLessThan(1)
+    }
+    // rounded at the comment's ends only
+    await expect(getComputedStyle(pieces[0]!).borderTopRightRadius).toBe('0px')
+    await expect(getComputedStyle(pieces.at(-1)!).borderTopLeftRadius).toBe('0px')
+  },
+}
