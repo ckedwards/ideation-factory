@@ -267,3 +267,18 @@ export const SavedNewText: Story = {
     ])
   },
 }
+
+// Backspace at a heading's start joins it to the block before, as anywhere else: it doesn't take the
+// heading down a level, as if deleting a hidden #
+export const BackspaceAtAHeading: Story = {
+  play: async ({ canvasElement }) => {
+    const box = await surface(canvasElement)
+    const heading = textNode(box, 'What changes')
+    await select(box, heading, 0, heading, 0)
+    await typing.keyboard('{Backspace}')
+    await expect(box.querySelector('h3')).toBeNull()
+    await expect(box.querySelector('h1')).toHaveTextContent('Offline mode')
+    await expect(box.querySelectorAll('h1')).toHaveLength(1)
+    await waitFor(() => expect(textNode(box, 'Field teams').textContent).toMatch(/typed\.What changes$/))
+  },
+}
