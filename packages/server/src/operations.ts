@@ -617,8 +617,8 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
 
     changeDraft: (input, context) =>
       withAccess(input.idea, context, 'edit', () =>
-        write(input.idea, context, { type: 'draft', change: input.change }, (value) => ({
-          key: value.kind === 'draft' ? (value.key ?? '') : '',
+        write(input.idea, context, { type: 'draft', changes: input.changes }, (value) => ({
+          keys: value.kind === 'draft' ? value.keys : [],
         })),
       ),
 

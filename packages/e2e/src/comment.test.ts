@@ -261,7 +261,7 @@ describe('ideaf draft', () => {
     const para = blocks.files.flatMap((f) => f.entries).find((e) => e.source.startsWith('We should ship'))!
     await api(h('riley')).changeDraft({
       idea,
-      change: { kind: 'edit', id: para.id, source: 'We should ship it this quarter.', was: para.source },
+      changes: [{ kind: 'edit', id: para.id, source: 'We should ship it this quarter.', was: para.source }],
     })
     await r.write('docs/plan.md', PLAN.replace('this quarter', 'next quarter'))
     const stopped = await r.ideaf('sync')

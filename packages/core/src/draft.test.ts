@@ -2,7 +2,7 @@
 // against the draft as it is at that point.
 import { describe, expect, test } from 'bun:test'
 import { applyBatch } from './apply.ts'
-import { buildDraft, type DraftChange, type DraftEntry, unitSource } from './draft.ts'
+import { addChange, buildDraft, type DraftChange, type DraftEntry, unitSource } from './draft.ts'
 import { createIdea, textAnchor } from './idea.ts'
 
 const PLAN = `# Plan
@@ -207,5 +207,98 @@ describe("moving some of a block's text in the draft", () => {
       }),
     )
     expect(Object.values(draft.problems)).toHaveLength(1)
+  })
+})
+
+describe('the draft keeps the difference, not the history', () => {
+  const edit = (source: string, was: string, id = 'b3'): DraftChange => ({ kind: 'edit', id, source, was })
+  /** Adds each change in turn, as the server would, keeping what the draft keeps. */
+  function typed(...made: Array<[DraftChange, string]>) {
+    let list: Array<DraftEntry & { by: string }> = []
+    for (const [change, by] of made) {
+      const { addition, problem } = addChange(plan(), [], list, change, by, `k${++n}`)
+      expect(problem).toBeNull()
+      list =
+        addition.op === 'add'
+          ? [...list, { ...addition.entry, by }]
+          : addition.op === 'update'
+            ? list.map((e) => (e.key === addition.entry.key ? { ...e, change: addition.entry.change } : e))
+            : list.filter((e) => e.key !== addition.key)
+    }
+    return list
+  }
+
+  test('your edits to a block, one after another, are one change', () => {
+    const list = typed(
+      [edit('The quick red fox.', 'The quick brown fox.'), 'riley'],
+      [edit('The slow red fox.', 'The quick red fox.'), 'riley'],
+      [edit('The slow red fox!', 'The slow red fox.'), 'riley'],
+    )
+    expect(list.map((e) => e.change)).toEqual([edit('The slow red fox!', 'The quick brown fox.')])
+  })
+
+  test("even with someone else's change to another block between them", () => {
+    const list = typed(
+      [edit('The quick red fox.', 'The quick brown fox.'), 'riley'],
+      [edit('It may rain.', 'It might rain.', 'b5'), 'sam'],
+      [edit('The slow red fox.', 'The quick red fox.'), 'riley'],
+    )
+    expect(list.map((e) => [e.by, e.change])).toEqual([
+      ['riley', edit('The slow red fox.', 'The quick brown fox.')],
+      ['sam', edit('It may rain.', 'It might rain.', 'b5')],
+    ])
+  })
+
+  test("someone else's edit of your edited block is a change of its own", () => {
+    const list = typed(
+      [edit('The quick red fox.', 'The quick brown fox.'), 'riley'],
+      [edit('The slow red fox.', 'The quick red fox.'), 'sam'],
+    )
+    expect(list.map((e) => e.by)).toEqual(['riley', 'sam'])
+  })
+
+  test('a block typed back to how it was leaves no change', () => {
+    const list = typed(
+      [edit('The quick red fox.', 'The quick brown fox.'), 'riley'],
+      [edit('The quick brown fox.', 'The quick red fox.'), 'riley'],
+    )
+    expect(list).toEqual([])
+  })
+
+  test('editing text you added changes the addition; editing it away takes it out', () => {
+    const added = typed([{ kind: 'insert', at: { after: 'b3' }, markdown: 'New text.' }, 'riley'])
+    // the new block is b8, as committing would make it
+    const edited = typed(
+      [{ kind: 'insert', at: { after: 'b3' }, markdown: 'New text.' }, 'riley'],
+      [edit('Newer text.', 'New text.', 'b8'), 'riley'],
+    )
+    expect(added).toHaveLength(1)
+    expect(edited.map((e) => e.change)).toEqual([{ kind: 'insert', at: { after: 'b3' }, markdown: 'Newer text.' }])
+    expect(
+      typed(
+        [{ kind: 'insert', at: { after: 'b3' }, markdown: 'New text.' }, 'riley'],
+        [edit('', 'New text.', 'b8'), 'riley'],
+      ),
+    ).toEqual([])
+  })
+
+  test('a fold that would make a later change outdated is a change of its own instead', () => {
+    // riley edits b3, sam moves b3's words elsewhere (made against riley's edit), then riley edits
+    // b3 again: folding back past sam's move would leave the move's text missing
+    const list = typed(
+      [edit('The quick red fox.', 'The quick brown fox.'), 'riley'],
+      [
+        {
+          kind: 'move-text',
+          from: 'b3',
+          old: ' red',
+          to: { in: 'b5', after: 'It might' },
+          was: { from: 'The quick red fox.', to: 'It might rain.' },
+        },
+        'sam',
+      ],
+      [edit('The slow fox.', 'The quick fox.'), 'riley'],
+    )
+    expect(list.map((e) => e.change.kind)).toEqual(['edit', 'move-text', 'edit'])
   })
 })
