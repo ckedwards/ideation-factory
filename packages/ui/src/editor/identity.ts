@@ -159,6 +159,17 @@ function wholeRange(view: EditorView): { from: number; to: number } | null {
   ) {
     return null
   }
+  // every item of a list: the list, so cutting them doesn't leave a list with an empty item
+  const $first = doc.resolve(first.start)
+  const list = $first.parent
+  if (
+    $first.depth > 0 &&
+    (list.type.name === 'bullet_list' || list.type.name === 'ordered_list') &&
+    first.start === $first.start() &&
+    last.end === $first.end()
+  ) {
+    return { from: $first.before(), to: $first.after() }
+  }
   return { from: first.start, to: last.end }
 }
 

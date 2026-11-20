@@ -299,3 +299,26 @@ export const CaretStaysWhenSaved: Story = {
     await expect(caret.anchorNode?.textContent).toMatch(/^Field teams/)
   },
 }
+
+// Cutting every item of a list takes the list: no empty item is left behind, and pasted elsewhere
+// the items are moves
+export const CutAWholeList: Story = {
+  play: async ({ canvasElement }) => {
+    const box = await surface(canvasElement)
+    const first = textNode(box, 'Changes are saved')
+    const last = textNode(box, 'Conflicts are shown')
+    await select(box, first, 0, last)
+    const data = new DataTransfer()
+    box.dispatchEvent(new ClipboardEvent('cut', { clipboardData: data, bubbles: true, cancelable: true }))
+    await settle()
+    await expect(box.querySelectorAll('li')).toHaveLength(0)
+    const end = textNode(box, 'Starting a site')
+    await select(box, end, 0, end, 0)
+    box.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+    await settle()
+    await expect(box.querySelectorAll('li')).toHaveLength(3)
+    const { changes } = await readBack(canvasElement)
+    await expect(changes.length).toBeGreaterThan(0)
+    await expect(changes.every((c) => c.kind === 'move')).toBe(true)
+  },
+}
