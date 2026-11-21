@@ -167,8 +167,14 @@ function describe(change: DraftChange): string {
     case 'suggestion':
       return `Suggestion ${change.comment}: “${excerpt(change.old)}” → “${excerpt(change.new)}”`
     case 'delete':
+      if (EMPTY.test(change.was)) {
+        return `Deleted ${empty(change.was)}`
+      }
       return heading(change.was) ? `Deleted the section “${title(change.was)}”` : `Deleted “${excerpt(change.was)}”`
     case 'move':
+      if (EMPTY.test(change.was)) {
+        return `Moved ${empty(change.was)}`
+      }
       return heading(change.was) ? `Moved the section “${title(change.was)}”` : `Moved “${excerpt(change.was)}”`
     case 'move-text':
       return `Moved “${excerpt(change.old)}”`
@@ -185,12 +191,15 @@ function excerpt(markdown: string): string {
   return text.length > 60 ? `${text.slice(0, 60)}…` : text
 }
 
-/** A block with no words yet: a bullet, number, heading or quote marker alone. */
-const EMPTY = /^\s*([-*+]|\d+[.)]|#{1,6}|>)\s*$/
+/** A block with no words yet: a bullet, number, heading or quote marker alone, or an empty line. */
+const EMPTY = /^\s*([-*+]|\d+[.)]|#{1,6}|>|<br\s*\/?>)\s*$/i
 
 /** A block with no words yet, by its kind: an empty bullet, heading or quote. */
 function empty(markdown: string): string {
   const line = markdown.trim()
+  if (line.startsWith('<')) {
+    return 'an empty line'
+  }
   return line.startsWith('#') ? 'an empty heading' : line.startsWith('>') ? 'an empty quote' : 'an empty list item'
 }
 

@@ -344,6 +344,21 @@ describe('a block with no words yet', () => {
     expect(r.sources[0]).toBe('# Plan\n\nIntro.\n\n##\n\n- one\n- two\n-\n\nEnd.\n\n>\n')
   })
 
+  test('an empty line is saved, and typed in, is the paragraph with its words', () => {
+    const idea = open('# Plan\n\nIntro.\n\nEnd.\n')
+    // s2 Plan, b3 Intro, b4 End
+    const added = after(idea, {
+      f1: blocks(idea).flatMap((x) => (x.id === 'b3' ? [x, b(null, '<br />')] : [x])),
+    })
+    expect(added.kinds).toEqual(['insert'])
+    expect(added.sources[0]).toBe('# Plan\n\nIntro.\n\n<br />\n\nEnd.\n')
+    const saved = open(added.sources[0]!)
+    // s2 Plan, b3 Intro, b4 the empty line, b5 End
+    const typed = after(saved, { f1: blocks(saved).map((x) => (x.id === 'b4' ? b('b4', 'Middle.') : x)) })
+    expect(typed.kinds).toEqual(['edit'])
+    expect(typed.sources[0]).toBe('# Plan\n\nIntro.\n\nMiddle.\n\nEnd.\n')
+  })
+
   test('an empty bullet saved, then typed in, is the list item with its words', () => {
     const idea = open('# Plan\n\n- one\n- two\n-\n\nEnd.\n')
     // s2 Plan, b3 b4 b5 the list, b5 the empty item, b6 End

@@ -240,8 +240,12 @@ function losesItself(idea: Idea, edit: DraftChange, id: string): boolean {
   return applied.ok && unitSource(applied.idea, id) === null
 }
 
-/** The kind of block some Markdown is (its first). */
-const kindOf = (source: string): UnitKind | null => parseMarkdown(source).units[0]?.kind ?? null
+/** The kind of block some Markdown is (its first). An empty line (`<br />`) is a paragraph, words to come. */
+const kindOf = (source: string): UnitKind | null =>
+  EMPTY_LINE.test(source) ? 'paragraph' : (parseMarkdown(source).units[0]?.kind ?? null)
+
+/** An empty line, as the page writes one: Markdown has none of its own. */
+const EMPTY_LINE = /^\s*<br\s*\/?>\s*$/i
 
 /** How much of `was` a text kept: its common start and end with it. */
 function kept(was: string, text: string): number {
