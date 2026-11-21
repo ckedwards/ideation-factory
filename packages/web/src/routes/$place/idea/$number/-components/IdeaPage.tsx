@@ -15,6 +15,7 @@ import {
   type CardSize,
   changedRanges,
   CommentGutter,
+  CommentTicks,
   headings,
   IdeaPageLayout,
   Link,
@@ -478,6 +479,18 @@ export function IdeaPage(props: IdeaPageProps) {
               onMarkClick={setActive}
             />
           )}
+          {!narrow && !base && !props.showSource && (
+            // where the comments are in the whole file, down its right edge, a click to each
+            <CommentTicks
+              documentRef={document}
+              comments={order.flatMap((id) => {
+                const c = all.find((one) => one.info.id === id)
+                return c ? [{ id, label: tickLabel(c) }] : []
+              })}
+              active={active}
+              onSelect={jumpTo}
+            />
+          )}
           <SelectionMenu
             documentRef={document}
             source={source}
@@ -590,6 +603,20 @@ function ChangeSummary({
 /** Where a section ends: the next heading at its level or above, or the end of the file. */
 function sectionEnd(sections: { offset: number; level: number }[], heading: { offset: number; level: number }) {
   return sections.find((h) => h.offset > heading.offset && h.level <= heading.level)?.offset ?? Infinity
+}
+
+/** What a tick says a comment is: who wrote it, and what it's on. */
+function tickLabel(c: PageComment): string {
+  const target = c.info.target
+  const on =
+    target.kind === 'text'
+      ? `on “${target.quote.length > 40 ? `${target.quote.slice(0, 40)}…` : target.quote}”`
+      : target.kind === 'section'
+        ? `on § ${target.title}`
+        : target.kind === 'block'
+          ? `on a ${target.label.toLowerCase()}`
+          : 'on the whole file'
+  return `${actorName(c.info.author)} ${on}`
 }
 
 /** Where in the file a comment is: its text's start, or its section's heading; -1 for neither. */
