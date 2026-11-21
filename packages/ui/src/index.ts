@@ -92,6 +92,7 @@ export {
 } from './document/redline.ts'
 
 export {
+  type CardSize,
   CommentCard,
   type CommentCardProps,
   type CommentInfo,
