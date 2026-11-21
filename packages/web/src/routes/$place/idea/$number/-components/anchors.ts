@@ -42,6 +42,30 @@ export function headingOffset(source: string, unitIds: readonly string[], sectio
   return unit?.kind === 'heading' ? unit.start : null
 }
 
+/** Where a block is in a file's Markdown, by its ID; null if it isn't there, or is a heading. */
+export function blockRange(source: string, unitIds: readonly string[], block: string): Range | null {
+  const unit = parseMarkdown(source).units[unitIds.indexOf(block)]
+  return unit && unit.kind !== 'heading' ? { start: unit.start, end: unit.end } : null
+}
+
+/** What kind of block a block is, as its comment's card names it: Table, Diagram, List item. */
+export function blockLabel(entry: { kind: string; source: string }): string {
+  switch (entry.kind) {
+    case 'table':
+      return 'Table'
+    case 'code':
+      return /^\s*(```|~~~)\s*mermaid/.test(entry.source) ? 'Diagram' : 'Code'
+    case 'list-item':
+      return 'List item'
+    case 'quote':
+      return 'Quote'
+    case 'paragraph':
+      return /^\s*!\[/.test(entry.source) ? 'Image' : 'Paragraph'
+    default:
+      return 'Block'
+  }
+}
+
 /** The ID of the section whose heading starts at an offset. */
 export function sectionAt(source: string, unitIds: readonly string[], heading: number): string | null {
   const index = parseMarkdown(source).units.findIndex((unit) => unit.kind === 'heading' && unit.start === heading)

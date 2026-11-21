@@ -284,9 +284,9 @@ const comment: Family = {
     {
       name: 'add',
       usage:
-        'ideaf comment add <body | -> (--quote <text> [--file <file>] | --section <id> | --file <file> | --whole-idea)',
+        'ideaf comment add <body | -> (--quote <text> [--file <file>] | --section <id> | --block <id> | --file <file> | --whole-idea)',
       summary:
-        'Comment on the latest version: on a quote from the text, a section (IDs from `ideaf show --blocks`), a whole file, or the idea as a whole. "-" reads the body from stdin',
+        'Comment on the latest version: on a quote from the text, a section or a block (IDs from `ideaf show --blocks`), a whole file, or the idea as a whole. "-" reads the body from stdin',
       flags: {
         idea: IDEA,
         quote: {
@@ -295,6 +295,7 @@ const comment: Family = {
         },
         occurrence: { type: 'string', description: 'which match of --quote, from 1' },
         section: { type: 'string', description: 'the section it’s on, by its heading’s ID' },
+        block: { type: 'string', description: 'the block it’s on (a paragraph, a list item, a table…), by its ID' },
         file: { type: 'string', description: 'the file it’s on (ID or path), or where to look for --quote' },
         'whole-idea': { type: 'boolean', description: 'on the idea as a whole, not any one file' },
         pending: { type: 'boolean', description: 'part of your review: only you see it until you submit the review' },
@@ -307,6 +308,7 @@ const comment: Family = {
             ...(str(f, 'quote') !== undefined ? { quote: str(f, 'quote')! } : {}),
             ...(str(f, 'occurrence') ? { occurrence: str(f, 'occurrence')! } : {}),
             ...(str(f, 'section') ? { section: str(f, 'section')! } : {}),
+            ...(str(f, 'block') ? { block: str(f, 'block')! } : {}),
             ...(str(f, 'file') ? { file: str(f, 'file')! } : {}),
             ...(f['whole-idea'] === true ? { wholeIdea: true } : {}),
             ...(f.pending === true ? { pending: true } : {}),

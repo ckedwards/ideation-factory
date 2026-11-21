@@ -12,7 +12,7 @@ import { useLiveSuspenseQuery } from '@tanstack/react-db'
 import { useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { api, meQuery } from '../../../../../api.ts'
-import { sectionAt, toPlain } from './anchors.ts'
+import { blockLabel, sectionAt, toPlain } from './anchors.ts'
 import { IdeaPage } from './IdeaPage.tsx'
 import type { IdeaLinks } from './links.ts'
 import { useEditing } from './editing.tsx'
@@ -91,11 +91,12 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
       .catch(() => {})
   }, [id, version, queryClient])
 
-  // each file of the version, and its sections' titles by their headings' IDs, for what a section comment is on
+  // each file of the version, its sections' titles by their headings' IDs and its blocks' kinds by
+  // theirs, for what a section's or a block's comment is on
   const views = pulled.files.map((f) => {
     const entries = outlines.find((o) => o.id === f.file)?.entries ?? []
     const view: FileView = { id: f.file, path: f.path, source: f.content, unitIds: entries.map((e) => e.id) }
-    const titles = new Map(entries.flatMap((e) => (e.kind === 'heading' ? [[e.id, e.path.at(-1) ?? '']] : [])))
+    const titles = new Map(entries.map((e) => [e.id, e.kind === 'heading' ? (e.path.at(-1) ?? '') : blockLabel(e)]))
     return { view, titles }
   })
   const shown = views.find((f) => f.view.path === path) ?? views[0]!

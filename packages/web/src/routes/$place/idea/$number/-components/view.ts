@@ -4,7 +4,7 @@
 import type { Caller, Operations, Output } from '@ideaf/api'
 import type { Actor, Person } from '@ideaf/ui'
 export { statusOf } from '../../../../../ideas.ts'
-import { headingOffset, toSource } from './anchors.ts'
+import { blockRange, headingOffset, toSource } from './anchors.ts'
 
 export type Thread = Output<Operations['listComments']>[number]
 
@@ -20,6 +20,8 @@ export interface FileView {
 export type Placement =
   | { kind: 'text'; start: number; end: number }
   | { kind: 'section'; heading: number }
+  /** A block: its Markdown, from where it starts to where it ends. */
+  | { kind: 'block'; start: number; end: number }
   | { kind: 'file' }
   | { kind: 'outdated' }
 
@@ -41,6 +43,10 @@ export function place(thread: Thread, file: FileView): Placement | null {
     case 'section': {
       const heading = headingOffset(file.source, file.unitIds, thread.anchor.section)
       return heading === null ? { kind: 'file' } : { kind: 'section', heading }
+    }
+    case 'block': {
+      const range = blockRange(file.source, file.unitIds, thread.anchor.block)
+      return range ? { kind: 'block', ...range } : { kind: 'outdated' }
     }
     case 'file':
       return { kind: 'file' }

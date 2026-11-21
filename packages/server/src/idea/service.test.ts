@@ -90,6 +90,12 @@ describe('editing with a batch', () => {
         REVIEWER,
       ),
     )
+    const block = value(
+      await write(
+        { type: 'comment', version: 1, anchor: { kind: 'block', block: 'b5' }, body: 'How likely?' },
+        REVIEWER,
+      ),
+    )
 
     const edited = value(
       await write({
@@ -120,12 +126,15 @@ describe('editing with a batch', () => {
     ).toEqual([
       ['c1', 'changed', 'red', [2]],
       [(section as { comment: string }).comment, 'moved', 'section', []],
+      // the block moved with its section, and its comment with it
+      [(block as { comment: string }).comment, 'moved', 'block', []],
     ])
     // older versions still show comments where they were then
     const v1 = await service.comments(1)
     expect(v1.map((c) => [c.id, c.state, c.anchor?.kind === 'text' ? c.anchor.quote : c.anchor?.kind])).toEqual([
       ['c1', 'exact', 'brown'],
       ['c2', 'exact', 'section'],
+      ['c3', 'exact', 'block'],
     ])
   })
 
@@ -358,6 +367,10 @@ describe('comments', () => {
     ).toMatchObject({ ok: false, error: { code: 'invalid' } })
     expect(
       await write({ type: 'comment', version: 1, anchor: { kind: 'section', section: 'b3' }, body: 'x' }),
+    ).toMatchObject({ ok: false, error: { code: 'invalid' } })
+    // a block is any but a heading, whose comment is on its section
+    expect(
+      await write({ type: 'comment', version: 1, anchor: { kind: 'block', block: 's4' }, body: 'x' }),
     ).toMatchObject({ ok: false, error: { code: 'invalid' } })
     value(await write({ type: 'comment', version: 1, anchor: { kind: 'file', file: 'f1' }, body: 'Overall: good' }))
     value(await write({ type: 'reply', parent: 'c1', body: 'Thanks' }, REVIEWER))

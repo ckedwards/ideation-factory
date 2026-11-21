@@ -89,6 +89,7 @@ export const IdeaWrite = z.discriminatedUnion('type', [
       z.strictObject({ kind: z.literal('idea') }),
       z.strictObject({ kind: z.literal('file'), file: z.string() }),
       z.strictObject({ kind: z.literal('section'), section: z.string() }),
+      z.strictObject({ kind: z.literal('block'), block: z.string() }),
       z.strictObject({ kind: z.literal('text'), file: z.string(), start: z.number().int(), end: z.number().int() }),
     ]),
     body: z.string().trim().min(1).max(20_000),

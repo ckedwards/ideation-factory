@@ -20,6 +20,7 @@ import {
   renderMermaid,
   SelectionMenu,
   type TextSelection,
+  markSelector,
 } from '@ideaf/ui'
 import { type PageComment, type ThreadActions, ThreadCard } from './ThreadCard.tsx'
 import { CommentBox } from './CommentBox.tsx'
@@ -458,7 +459,7 @@ function Sections(props: {
       {twos.map((heading) => {
         const end = all.find((h) => h.offset > heading.offset && h.level <= heading.level)?.offset ?? Infinity
         const open = props.comments.filter((c) => {
-          const at = c.place.kind === 'text' ? c.place.start : c.place.kind === 'section' ? c.place.heading : -1
+          const at = offsetOf(c)
           return at >= heading.offset && at < end
         }).length
         const here = heading.id === props.current
@@ -512,7 +513,9 @@ function Row(props: RowProps) {
   const sheet = useRef<HTMLElement>(null)
   const text = useRef<HTMLDivElement>(null)
   const prefix = prefixOf(index)
-  const inText = page.comments.filter((c) => c.place.kind === 'text' || c.place.kind === 'section')
+  const inText = page.comments.filter(
+    (c) => c.place.kind === 'text' || c.place.kind === 'section' || c.place.kind === 'block',
+  )
   // the box for a comment on the file, opened from its header
   const [fileBox, setFileBox] = useState(false)
   const commentable = comments && props.actions.canComment && props.onFileComment
@@ -571,6 +574,9 @@ function Row(props: RowProps) {
                 ? [{ id: c.info.id, heading: c.place.heading, active: c.info.id === active }]
                 : [],
             )}
+            blockMarks={inText.flatMap((c) =>
+              c.place.kind === 'block' ? [{ id: c.info.id, block: c.place.start, active: c.info.id === active }] : [],
+            )}
             renderCode={renderMermaid}
             onMarkClick={(id) => comments && props.onActive(id)}
           />
@@ -624,7 +630,7 @@ function Notes(props: {
   const onFile = page.comments.filter((c) => c.place.kind === 'file')
   // in the order of their text: where they're listed under the sheet, that's the order they're read in
   const inText = page.comments
-    .filter((c) => c.place.kind === 'text' || c.place.kind === 'section')
+    .filter((c) => c.place.kind === 'text' || c.place.kind === 'section' || c.place.kind === 'block')
     .sort((a, b) => offsetOf(a) - offsetOf(b))
   const card = (c: PageComment, showTarget = false) => (
     <ThreadCard
@@ -662,7 +668,9 @@ function Notes(props: {
               ? `“${c.info.target.quote}”`
               : c.info.target.kind === 'section'
                 ? `§ ${c.info.target.title}`
-                : null}
+                : c.info.target.kind === 'block'
+                  ? c.info.target.label
+                  : null}
           </p>
           {card(c)}
         </div>
@@ -709,7 +717,7 @@ function Notes(props: {
         if (!element) {
           return []
         }
-        const mark = note.id === 'file' ? null : sheet.querySelector(`[data-comment-id="${CSS.escape(note.id)}"]`)
+        const mark = note.id === 'file' ? null : sheet.querySelector(markSelector(note.id))
         if (note.id !== 'file' && !mark) {
           return []
         }
@@ -782,7 +790,7 @@ function restHeight(element: HTMLElement): number {
 }
 
 function offsetOf(comment: PageComment): number {
-  return comment.place.kind === 'text'
+  return comment.place.kind === 'text' || comment.place.kind === 'block'
     ? comment.place.start
     : comment.place.kind === 'section'
       ? comment.place.heading

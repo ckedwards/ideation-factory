@@ -74,28 +74,35 @@ describe('ideaf comment add', () => {
     expect((await r.ideaf('comment', 'add', 'x', '--quote', 'rain', '--occurrence', '9', '--file', plan)).exit).toBe(2)
   })
 
-  test('on a section or a whole file, and the usage mistakes', async () => {
+  test('on a section, a block or a whole file, and the usage mistakes', async () => {
     const { r, idea, plan } = await started()
     const blocks = (await r.ideaf('show', '--blocks', '--json')).json()
     const risks = blocks.files
       .flatMap((f: { entries: Array<{ id: string; source: string }> }) => f.entries)
       .find((e: { source: string }) => e.source === '## Risks').id
+    const rain = blocks.files
+      .flatMap((f: { entries: Array<{ id: string; source: string }> }) => f.entries)
+      .find((e: { source: string }) => e.source.startsWith('It might rain')).id
 
     expect((await r.ideaf('comment', 'add', 'Expand these', '--section', risks)).out).toBe('Added c1 on v1.')
     expect((await r.ideaf('comment', 'add', 'Whole plan', '--file', 'docs/plan.md')).exit).toBe(0)
     expect((await r.ideaf('comment', 'add', 'By ID', '--file', plan)).exit).toBe(0)
     expect((await r.ideaf('comment', 'add', 'Worth a pilot', '--whole-idea')).out).toBe('Added c4 on v1.')
+    expect((await r.ideaf('comment', 'add', 'How likely?', '--block', rain)).out).toBe('Added c5 on v1.')
     expect((await api(h('riley')).listComments({ idea })).map((c) => c.anchor?.kind)).toEqual([
       'section',
       'file',
       'file',
       'idea',
+      'block',
     ])
+    expect((await r.ideaf('comment', 'list')).out).toContain(`on block ${rain}`)
     expect((await r.ideaf('comment', 'list')).out).toContain('on the idea')
     expect((await r.ideaf('show', '--blocks')).out).toContain('comments on the idea:')
 
     expect((await r.ideaf('comment', 'add', 'On what?')).exit).toBe(2)
     expect((await r.ideaf('comment', 'add', 'x', '--section', risks, '--quote', 'Risks')).exit).toBe(2)
+    expect((await r.ideaf('comment', 'add', 'x', '--block', rain, '--file', plan)).exit).toBe(2)
     expect((await r.ideaf('comment', 'add', 'x', '--whole-idea', '--file', plan)).exit).toBe(2)
     expect((await r.ideaf('comment', 'add', 'x', '--file', 'nope.md')).exit).toBe(5)
     expect((await r.ideaf('comment', 'add', '  ', '--file', plan)).exit).toBe(2)

@@ -28,6 +28,7 @@ import {
   Stack,
   Tabs,
   type TextSelection,
+  markSelector,
   Toc,
 } from '@ideaf/ui'
 import { plural } from '../../../../../plural.ts'
@@ -79,7 +80,7 @@ export function IdeaPage(props: IdeaPageProps) {
     }
     setActive(opened)
     const frame = requestAnimationFrame(() =>
-      window.document.querySelector(`[data-comment-id="${CSS.escape(opened)}"]`)?.scrollIntoView({ block: 'center' }),
+      window.document.querySelector(markSelector(opened))?.scrollIntoView({ block: 'center' }),
     )
     return () => cancelAnimationFrame(frame)
   }, [props.opened])
@@ -128,7 +129,7 @@ export function IdeaPage(props: IdeaPageProps) {
       (showing === 'all' || (showing === 'open') === !c.info.resolved) &&
       (!author || actorKey(c.info.author) === author),
   )
-  const inText = shown.filter((c) => c.place.kind === 'text' || c.place.kind === 'section')
+  const inText = shown.filter((c) => c.place.kind === 'text' || c.place.kind === 'section' || c.place.kind === 'block')
   const onFile = shown.filter((c) => c.place.kind === 'file')
   // keys, as Google Docs has them: J and K for the next and previous comment on the text, R to reply
   // to the open one, E to resolve it, Escape to put it down. Not while typing
@@ -148,7 +149,7 @@ export function IdeaPage(props: IdeaPageProps) {
         event.preventDefault()
         setActive(id)
         window.document
-          .querySelector(`[data-comment-id="${CSS.escape(id)}"]`)
+          .querySelector(markSelector(id))
           ?.scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' })
       }
       const act = (action: string) => {
@@ -238,7 +239,7 @@ export function IdeaPage(props: IdeaPageProps) {
   const jumpTo = (id: string) => {
     setActive(id)
     window.document
-      .querySelector(`[data-comment-id="${CSS.escape(id)}"]`)
+      .querySelector(markSelector(id))
       ?.scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' })
   }
 
@@ -468,6 +469,9 @@ export function IdeaPage(props: IdeaPageProps) {
                   ? [{ id: c.info.id, heading: c.place.heading, active: c.info.id === active }]
                   : [],
               )}
+              blockMarks={inText.flatMap((c) =>
+                c.place.kind === 'block' ? [{ id: c.info.id, block: c.place.start, active: c.info.id === active }] : [],
+              )}
               renderCode={renderMermaid}
               onMarkClick={setActive}
             />
@@ -585,7 +589,7 @@ function sectionEnd(sections: { offset: number; level: number }[], heading: { of
 
 /** Where in the file a comment is: its text's start, or its section's heading; -1 for neither. */
 function at(place: Placement): number {
-  return place.kind === 'text' ? place.start : place.kind === 'section' ? place.heading : -1
+  return place.kind === 'text' || place.kind === 'block' ? place.start : place.kind === 'section' ? place.heading : -1
 }
 
 function within(place: Placement, start: number, end: number): boolean {

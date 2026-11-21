@@ -95,6 +95,7 @@ export async function add(
     wholeIdea?: boolean
     file?: string
     section?: string
+    block?: string
     quote?: string
     occurrence?: string
     pending?: boolean
@@ -103,19 +104,34 @@ export async function add(
   stdin: () => Promise<string>,
 ): Promise<number> {
   const idea = await ctx.ideaId(flags.idea)
-  if (flags.wholeIdea && (flags.section !== undefined || flags.quote !== undefined || flags.file !== undefined)) {
+  if (
+    flags.wholeIdea &&
+    (flags.section !== undefined || flags.block !== undefined || flags.quote !== undefined || flags.file !== undefined)
+  ) {
     throw new CliError(
-      '--whole-idea is on the idea as a whole: leave out --file, --section and --quote',
+      '--whole-idea is on the idea as a whole: leave out --file, --section, --block and --quote',
       EXIT.usage,
       'usage',
     )
   }
-  if (flags.section !== undefined && (flags.quote !== undefined || flags.file !== undefined)) {
-    throw new CliError('--section names the whole section: leave out --file and --quote', EXIT.usage, 'usage')
+  if (
+    flags.section !== undefined &&
+    (flags.block !== undefined || flags.quote !== undefined || flags.file !== undefined)
+  ) {
+    throw new CliError('--section names the whole section: leave out --file, --block and --quote', EXIT.usage, 'usage')
   }
-  if (!flags.wholeIdea && flags.section === undefined && flags.quote === undefined && flags.file === undefined) {
+  if (flags.block !== undefined && (flags.quote !== undefined || flags.file !== undefined)) {
+    throw new CliError('--block names the whole block: leave out --file and --quote', EXIT.usage, 'usage')
+  }
+  if (
+    !flags.wholeIdea &&
+    flags.section === undefined &&
+    flags.block === undefined &&
+    flags.quote === undefined &&
+    flags.file === undefined
+  ) {
     throw new CliError(
-      'say what the comment is on: --quote "<text>" [--file <file>], --section <id>, --file <file>, or --whole-idea',
+      'say what the comment is on: --quote "<text>" [--file <file>], --section <id>, --block <id>, --file <file>, or --whole-idea',
       EXIT.usage,
       'usage',
     )
@@ -270,10 +286,13 @@ type LatestFile = Output<Operations['pull']>['files'][number]
 function anchorFor(
   ctx: Context,
   files: LatestFile[],
-  flags: { file?: string; section?: string; quote?: string; occurrence?: number },
+  flags: { file?: string; section?: string; block?: string; quote?: string; occurrence?: number },
 ): AnchorInput {
   if (flags.section !== undefined) {
     return { kind: 'section', section: flags.section }
+  }
+  if (flags.block !== undefined) {
+    return { kind: 'block', block: flags.block }
   }
   let candidates = files
   if (flags.file !== undefined) {
@@ -437,6 +456,10 @@ function where(thread: Thread, view: View): string {
   if (anchor.kind === 'section') {
     const heading = file?.entries.find((e) => e.id === anchor.section)?.source.replace(/^#+\s*/, '')
     return `on section ${anchor.section}${heading ? ` "${truncate(heading, 50)}"` : ''} in ${path}`
+  }
+  if (anchor.kind === 'block') {
+    const block = file?.entries.find((e) => e.id === anchor.block)?.source
+    return `on block ${anchor.block}${block ? ` "${truncate(block, 50)}"` : ''} in ${path}`
   }
   return `on "${truncate(anchor.quote, 60)}" in ${path}`
 }

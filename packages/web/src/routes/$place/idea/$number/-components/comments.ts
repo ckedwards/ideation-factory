@@ -248,9 +248,11 @@ export function commentsCollection(idea: string, deps: CommentsDeps) {
               ? { kind: 'text', file: anchor.file, start: anchor.start, end: anchor.end }
               : anchor?.kind === 'section'
                 ? { kind: 'section', section: anchor.section }
-                : anchor?.kind === 'file'
-                  ? { kind: 'file', file: anchor.file }
-                  : { kind: 'idea' },
+                : anchor?.kind === 'block'
+                  ? { kind: 'block', block: anchor.block }
+                  : anchor?.kind === 'file'
+                    ? { kind: 'file', file: anchor.file }
+                    : { kind: 'idea' },
           ...(thread.pending ? { pending: true } : {}),
         })
         // a pending comment isn't echoed: only its author sees it

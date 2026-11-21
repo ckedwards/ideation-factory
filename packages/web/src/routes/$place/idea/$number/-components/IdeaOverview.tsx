@@ -279,6 +279,10 @@ function FeedThread({
 
 /** The start of what a thread's on, to tell folded threads apart. */
 function summary(info: Extract<ActivityItem, { kind: 'comment' }>['comment']['info']): string {
+  // a block is named by its kind, not quoted
+  if (info.target.kind === 'block') {
+    return `on a ${info.target.label.toLowerCase()}`
+  }
   const on =
     info.target.kind === 'text'
       ? info.target.quote
