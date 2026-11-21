@@ -41,4 +41,44 @@ describe('notes in the gutter', () => {
       ),
     ).toEqual({ a: -60, b: 50, c: 160 })
   })
+
+  test('a note whose text is in view goes no higher than the floor, and pushes the next one down', () => {
+    expect(
+      tops(
+        [
+          { id: 'a', anchor: 0, end: 20, height: 50 },
+          { id: 'b', anchor: 120, end: 140, height: 50 },
+          { id: 'c', anchor: 400, height: 50 },
+        ],
+        null,
+        10,
+        { top: 100, window: 10 },
+      ),
+    ).toEqual({ a: 100, b: 160, c: 400 })
+  })
+
+  test('a note whose text has gone above the window is left where it was', () => {
+    expect(
+      tops(
+        [
+          { id: 'a', anchor: 0, end: 20, height: 50 },
+          { id: 'b', anchor: 300, end: 320, height: 50 },
+        ],
+        null,
+        10,
+        { top: 250, window: 200 },
+      ),
+    ).toEqual({ a: 0, b: 300 })
+  })
+
+  test('the active note stays level with its text unless that would push one in view under the floor', () => {
+    const notes = [
+      { id: 'a', anchor: 100, end: 120, height: 100 },
+      { id: 'b', anchor: 150, end: 170, height: 50 },
+    ]
+    // room above: pinned as before
+    expect(tops(notes, 'b', 10, { top: 0, window: 0 })).toEqual({ a: 40, b: 150 })
+    // none: as if nothing were active
+    expect(tops(notes, 'b', 10, { top: 100, window: 0 })).toEqual({ a: 100, b: 210 })
+  })
 })
