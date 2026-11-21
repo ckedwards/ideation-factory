@@ -105,6 +105,7 @@ export { ViewInVersion, type ViewInVersionProps } from './comments/ViewInVersion
 export { CommentGutter, type CommentGutterProps } from './comments/CommentGutter.tsx'
 export { layoutNotes, type GutterNote } from './comments/gutter.ts'
 export { markSelector } from './comments/marks.ts'
+export { CommentTicks, type CommentTicksProps } from './comments/CommentTicks.tsx'
 export { type BlockTarget, SelectionMenu, type SelectionMenuProps } from './comments/SelectionMenu.tsx'
 export { selectionInSource, type TextSelection } from './comments/selection.ts'
 
