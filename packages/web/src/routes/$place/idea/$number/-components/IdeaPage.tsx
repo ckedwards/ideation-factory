@@ -99,6 +99,9 @@ export function IdeaPage(props: IdeaPageProps) {
     () => typeof window === 'undefined' || window.matchMedia('(min-width: 75.0625rem)').matches,
   )
   const [author, setAuthor] = useState('')
+  // where the panel comes after the document (IdeaPageLayout's one column), nothing in it is beside
+  // the text: the comments on text are a list instead
+  const narrow = useMatches('(max-width: 62.5rem)')
   // while editing, each where the draft has it
   const editing = props.editing
   const all = editing
@@ -122,19 +125,20 @@ export function IdeaPage(props: IdeaPageProps) {
     ? open.filter((c) => c.info.suggestion?.state === 'open' && !c.info.outdated && !c.pending).map((c) => c.info.id)
     : []
 
-  const card = (comment: PageComment, showTarget = false): ReactNode => (
+  const card = (comment: PageComment, showTarget = false, context = false): ReactNode => (
     <ThreadCard
       comment={comment}
       actions={props}
       active={comment.info.id === active}
       onSelect={() => setActive(comment.info.id)}
       showTarget={showTarget}
+      context={context}
     />
   )
-  const list = (comments: PageComment[], showTarget = false) => (
+  const list = (comments: PageComment[], showTarget = false, context = false) => (
     <Stack gap={2}>
       {comments.map((c) => (
-        <div key={c.info.id}>{card(c, showTarget)}</div>
+        <div key={c.info.id}>{card(c, showTarget, context)}</div>
       ))}
     </Stack>
   )
@@ -190,6 +194,14 @@ export function IdeaPage(props: IdeaPageProps) {
     </div>
   )
 
+  const empty =
+    all.length > 0
+      ? showing === 'resolved'
+        ? 'No resolved comments.'
+        : 'No open comments.'
+      : canComment
+        ? 'No comments yet. Select some text to comment on it.'
+        : 'No comments yet.'
   const comments = base ? (
     // the redline has no marks to sit level with: a list, each saying what it's on
     open.length > 0 ? (
@@ -252,22 +264,26 @@ export function IdeaPage(props: IdeaPageProps) {
           {list(outdated, true)}
         </div>
       )}
-      <CommentGutter
-        documentRef={document}
-        active={active}
-        notes={inText.map((c) => ({ id: c.info.id, content: card(c) }))}
-        empty={
-          onFile.length + outdated.length > 0
-            ? undefined
-            : all.length > 0
-              ? showing === 'resolved'
-                ? 'No resolved comments.'
-                : 'No open comments.'
-              : canComment
-                ? 'No comments yet. Select some text to comment on it.'
-                : 'No comments yet.'
-        }
-      />
+      {narrow ? (
+        inText.length > 0 ? (
+          <div className="idea-comment-list">
+            {list(
+              [...inText].sort((a, b) => at(a.place) - at(b.place)),
+              true,
+              true,
+            )}
+          </div>
+        ) : (
+          onFile.length + outdated.length === 0 && <p className="idea-panel-note">{empty}</p>
+        )
+      ) : (
+        <CommentGutter
+          documentRef={document}
+          active={active}
+          notes={inText.map((c) => ({ id: c.info.id, content: card(c) }))}
+          empty={onFile.length + outdated.length > 0 ? undefined : empty}
+        />
+      )}
     </Stack>
   )
 
@@ -444,7 +460,25 @@ function sectionEnd(sections: { offset: number; level: number }[], heading: { of
   return sections.find((h) => h.offset > heading.offset && h.level <= heading.level)?.offset ?? Infinity
 }
 
+/** Where in the file a comment is: its text's start, or its section's heading; -1 for neither. */
+function at(place: Placement): number {
+  return place.kind === 'text' ? place.start : place.kind === 'section' ? place.heading : -1
+}
+
 function within(place: Placement, start: number, end: number): boolean {
-  const at = place.kind === 'text' ? place.start : place.kind === 'section' ? place.heading : -1
-  return at >= start && at < end
+  const offset = at(place)
+  return offset >= start && offset < end
+}
+
+/** Whether a media query matches, now and as it changes. */
+function useMatches(query: string): boolean {
+  const [matches, setMatches] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches)
+  useEffect(() => {
+    const list = window.matchMedia(query)
+    const changed = () => setMatches(list.matches)
+    changed()
+    list.addEventListener('change', changed)
+    return () => list.removeEventListener('change', changed)
+  }, [query])
+  return matches
 }
