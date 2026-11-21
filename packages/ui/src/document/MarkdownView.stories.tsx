@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { markdownTree } from '@ideaf/core'
-import { expect, within } from 'storybook/test'
+import { expect, fn, within } from 'storybook/test'
 import { MarkdownView, type MarkdownMark } from './MarkdownView.tsx'
 import sample from '../stories/sample.md?raw'
 import frontend from '../../../../docs/mvp/architecture-frontend.md?raw'
@@ -137,5 +137,52 @@ export const CommentAcrossFormatting: Story = {
     // rounded at the comment's ends only
     await expect(getComputedStyle(pieces[0]!).borderTopRightRadius).toBe('0px')
     await expect(getComputedStyle(pieces.at(-1)!).borderTopLeftRadius).toBe('0px')
+  },
+}
+
+// Comments on whole blocks: two corner marks and a count, on a paragraph, a list item, a table, code
+// and a quote. Pointing at a block grows its marks into a rectangle; its comment open, the rectangle
+// fills. A section's comments are counted after its heading. Only the count opens a block's comment:
+// clicking its words is for reading them
+export const BlockComments: Story = {
+  args: {
+    onMarkClick: fn(),
+    blockMarks: [
+      { id: 'b1', block: sample.indexOf('Field technicians lose') },
+      { id: 'b2', block: sample.indexOf('1. Ship behind a flag') },
+      { id: 'b3', block: sample.indexOf('| Case') },
+      { id: 'b4', block: sample.indexOf('```ts'), active: true },
+      { id: 'b5', block: sample.indexOf('> We tried') },
+      { id: 'b6', block: sample.indexOf('> We tried') },
+    ],
+    sectionMarks: [
+      { id: 's1', heading: headingAt('## Rollout') },
+      { id: 's2', heading: headingAt('## Rollout') },
+    ],
+  },
+  play: async ({ args, canvasElement, userEvent }) => {
+    const marked = [...canvasElement.querySelectorAll<HTMLElement>('.md-block-mark')]
+    // in the order of the document: the paragraph, the code, the table, the quote, the list item
+    await expect(marked.map((m) => m.tagName)).toEqual(['P', 'DIV', 'DIV', 'BLOCKQUOTE', 'LI'])
+    const quote = canvasElement.querySelector<HTMLElement>('blockquote.md-block-mark')!
+    await expect(quote.dataset['commentIds']).toBe('b5 b6')
+    await expect(within(quote).getByRole('button', { name: '2 comments on this block' })).toHaveTextContent('2')
+    // at rest, corners; open, the whole rectangle (pointing grows it the same way, through --edge,
+    // which a test's pointer doesn't set off), filled
+    const paragraph = marked[0]!
+    const code = canvasElement.querySelector<HTMLElement>('.md-code-marked')!
+    const size = (element: HTMLElement) => getComputedStyle(element, '::before').backgroundSize
+    await expect(size(paragraph).split(', ')[0]).toBe('12px 2px')
+    await expect(size(code).split(', ')[0]).not.toBe('12px 2px')
+    await expect(getComputedStyle(paragraph, '::before').backgroundColor).toBe('rgba(0, 0, 0, 0)')
+    await expect(getComputedStyle(code, '::before').backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
+    // the section's two comments, counted
+    const rollout = canvasElement.querySelector<HTMLElement>('h2[data-comment-ids="s1 s2"]')!
+    await expect(getComputedStyle(rollout, '::after').content).toBe('"2"')
+    // the count opens the block's comment; its words don't
+    await userEvent.click(paragraph.firstChild as HTMLElement)
+    await expect(args.onMarkClick).not.toHaveBeenCalled()
+    await userEvent.click(within(paragraph).getByRole('button', { name: '1 comment on this block' }))
+    await expect(args.onMarkClick).toHaveBeenCalledWith('b1')
   },
 }
