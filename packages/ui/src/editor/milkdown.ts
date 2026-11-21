@@ -429,19 +429,28 @@ const commentMarks = $prose(
           if (!marks.active) {
             return marks.set
           }
-          // the one that's active, lit: a second decoration over each of its pieces adds the class
-          const lit = marks.set
-            .find(undefined, undefined, (spec: { id?: string }) => spec.id === marks.active)
-            .map((d) =>
-              (d.spec as { heading?: boolean }).heading
-                ? Decoration.node(d.from, d.to, { class: 'is-active' })
-                : Decoration.inline(d.from, d.to, { nodeName: 'mark', class: 'is-active' }),
-            )
-          return marks.set.add(state.doc, lit)
+          // the one that's active, lit: its pieces drawn again with the class (a second decoration
+          // over them would draw a second mark inside the first, which no style is for)
+          const pieces = marks.set.find(undefined, undefined, (spec: MarkSpec) => spec.id === marks.active)
+          const lit = pieces.map((d) => {
+            const spec = d.spec as MarkSpec
+            const attrs = { ...spec.attrs, class: `${spec.attrs.class} is-active` }
+            return spec.heading
+              ? Decoration.node(d.from, d.to, attrs, spec)
+              : Decoration.inline(d.from, d.to, attrs, spec)
+          })
+          return marks.set.remove(pieces).add(state.doc, lit)
         },
       },
     }),
 )
+
+/** What a comment's decoration knows: whose it is, and how it's drawn (to draw it again, lit). */
+interface MarkSpec {
+  id: string
+  heading?: boolean
+  attrs: { class: string; 'data-comment-id': string; nodeName?: string }
+}
 
 /** Where each comment is on a page: its pieces of text (one per run of formatting), or its heading. */
 function markDecorations(doc: Node, marks: PageMark[]): DecorationSet {
@@ -459,14 +468,9 @@ function markDecorations(doc: Node, marks: PageMark[]): DecorationSet {
     if ('heading' in mark) {
       const at = blocks.get(mark.heading)
       if (at && at.node.type.name === 'heading') {
-        out.push(
-          Decoration.node(
-            at.pos,
-            at.pos + at.node.nodeSize,
-            { class: `md-section-mark${resolved}`, 'data-comment-id': mark.id },
-            { id: mark.id, heading: true },
-          ),
-        )
+        const attrs = { class: `md-section-mark${resolved}`, 'data-comment-id': mark.id }
+        const spec: MarkSpec = { id: mark.id, heading: true, attrs }
+        out.push(Decoration.node(at.pos, at.pos + at.node.nodeSize, attrs, spec))
       }
       continue
     }
@@ -487,14 +491,9 @@ function markDecorations(doc: Node, marks: PageMark[]): DecorationSet {
     })
     pieces.forEach(([from, to], i) => {
       const ends = `${i === 0 ? ' is-first' : ''}${i === pieces.length - 1 ? ' is-last' : ''}`
-      out.push(
-        Decoration.inline(
-          from,
-          to,
-          { nodeName: 'mark', class: `md-mark${ends}${resolved}`, 'data-comment-id': mark.id },
-          { id: mark.id },
-        ),
-      )
+      const attrs = { nodeName: 'mark', class: `md-mark${ends}${resolved}`, 'data-comment-id': mark.id }
+      const spec: MarkSpec = { id: mark.id, attrs }
+      out.push(Decoration.inline(from, to, attrs, spec))
     })
   }
   return DecorationSet.create(doc, out)

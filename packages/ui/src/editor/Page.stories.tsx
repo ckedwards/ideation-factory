@@ -37,7 +37,7 @@ const COMMENTS: PageMark[] = [
   { id: 'c2', heading: 's9' },
 ]
 
-function Page({ comments }: { comments?: PageMark[] }) {
+function Page({ comments, active }: { comments?: PageMark[]; active?: string }) {
   // the draft, as the server keeps it: Save applies the changes to it, as change_draft does
   const [idea, setIdea] = useState(() => createIdea([{ path: 'offline.md', source: FILE }]))
   const file = idea.files[0]!
@@ -57,6 +57,7 @@ function Page({ comments }: { comments?: PageMark[] }) {
         saved={saved}
         status="Saved to the draft"
         {...(comments ? { comments } : {})}
+        {...(active ? { activeComment: active } : {})}
       />
       <Button
         size="sm"
@@ -450,5 +451,20 @@ export const Comments: Story = {
     box.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
     await settle()
     await waitFor(() => expect(mark()).toBe('Field teams lose signal i'))
+  },
+}
+
+// The comment whose card is open: its mark lit as the document lights it, one mark, not a second
+// one inside it with none of the page's colors
+export const ActiveComment: Story = {
+  args: { comments: COMMENTS, active: 'c1' },
+  play: async ({ canvasElement }) => {
+    const box = await surface(canvasElement)
+    await waitFor(() =>
+      expect(box.querySelectorAll('mark.md-mark.is-active[data-comment-id="c1"]').length).toBeGreaterThan(0),
+    )
+    await expect(box.querySelectorAll('mark:not(.md-mark)')).toHaveLength(0)
+    await expect(box.querySelector('mark.md-mark mark')).toBeNull()
+    await expect(box.querySelector('h2[data-comment-id="c2"]')).not.toHaveClass('is-active')
   },
 }
