@@ -21,13 +21,41 @@ export interface CommentGutterProps {
 // a note whose text is in the window is never placed above the gutter's top,
 // where it would be cut off: it waits at the top edge, and the ones after it
 // go under it.
+//
+// Pointing at a card lights its text, and pointing at the text lights its card.
 export function CommentGutter({ documentRef, notes, active = null, empty }: CommentGutterProps) {
   const gutter = useRef<HTMLDivElement>(null)
   const inner = useRef<HTMLDivElement>(null)
   const elements = useRef(new Map<string, HTMLDivElement>())
   const [anchors, setAnchors] = useState<Map<string, Anchor>>(new Map())
   const [heights, setHeights] = useState(0)
+  // the comment pointed at, on its text or its card
+  const [lit, setLit] = useState<string | null>(null)
   const ids = notes.map((note) => note.id).join('\n')
+
+  // pointing at a comment's text
+  useEffect(() => {
+    const root = documentRef.current
+    if (!root) {
+      return
+    }
+    const known = new Set(ids.split('\n'))
+    const over = (event: PointerEvent) => {
+      const id = (event.target as Element).closest?.('[data-comment-id]')?.getAttribute('data-comment-id') ?? null
+      setLit(id !== null && known.has(id) ? id : null)
+    }
+    const out = (event: PointerEvent) => {
+      if (!root.contains(event.relatedTarget as Node | null)) {
+        setLit(null)
+      }
+    }
+    root.addEventListener('pointerover', over)
+    root.addEventListener('pointerout', out)
+    return () => {
+      root.removeEventListener('pointerover', over)
+      root.removeEventListener('pointerout', out)
+    }
+  }, [documentRef, ids])
 
   // where each comment's text is, from the top of the document
   useLayoutEffect(() => {
@@ -149,14 +177,30 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
             }}
             className="comment-gutter-note"
             data-note-id={note.id}
+            onPointerEnter={() => setLit(note.id)}
+            onPointerLeave={() => setLit((was) => (was === note.id ? null : was))}
           >
             {note.content}
           </div>
         ))}
       </div>
       {shown.length === 0 && empty && <div className="comment-gutter-empty">{empty}</div>}
+      {lit !== null && anchors.has(lit) && <style>{litStyle(lit)}</style>}
     </div>
   )
+}
+
+/**
+ * The comment pointed at, lit on its text and its card: a rule for its ID, so the marks (drawn by
+ * the document, or by the editor) and the card keep their own classes.
+ */
+function litStyle(id: string): string {
+  const mark = `[data-comment-id="${CSS.escape(id)}"]`
+  return [
+    `.prose ${mark}.md-mark:not(.is-resolved) { background: var(--mark-active); }`,
+    `.prose ${mark}.md-section-mark::after { background: var(--mark-active); }`,
+    `.comment-gutter-note[data-note-id="${CSS.escape(id)}"] .comment-card { border-color: var(--mark-line); }`,
+  ].join('\n')
 }
 
 /** Where a comment's text is, from the top of the document: its first line's top, its last line's foot. */
