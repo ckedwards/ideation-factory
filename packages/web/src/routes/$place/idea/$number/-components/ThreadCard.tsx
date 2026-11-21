@@ -38,15 +38,25 @@ export interface ThreadCardProps {
   active: boolean
   onSelect: () => void
   showTarget?: boolean
+  /** Away from its text (a list): with the words it's on, and their section. */
+  context?: boolean
 }
 
-export function ThreadCard({ comment, actions, active, onSelect, showTarget = false }: ThreadCardProps): ReactNode {
+export function ThreadCard({
+  comment,
+  actions,
+  active,
+  onSelect,
+  showTarget = false,
+  context = false,
+}: ThreadCardProps): ReactNode {
   const { canComment, canDecide = false } = actions
   return (
     <CommentCard
       comment={comment.info}
       active={active}
       showTarget={showTarget}
+      context={context}
       onSelect={onSelect}
       onReply={
         canComment && !comment.pending && actions.onReply

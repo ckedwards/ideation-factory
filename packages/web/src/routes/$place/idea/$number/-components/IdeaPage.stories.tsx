@@ -151,6 +151,26 @@ export const CommentsWide: Story = {
   },
 }
 
+// A narrow screen: the comments come after the document, the ones on text listed in the order
+// of what they're on, each with its quote, rather than placed level with text that isn't beside them
+export const CommentsNarrow: Story = {
+  play: async ({ canvasElement }) => {
+    await atSize(700, 900, async () => {
+      await waitFor(() => expect(canvasElement.querySelector('.comment-gutter')).toBeNull())
+      const list = canvasElement.querySelector<HTMLElement>('.idea-comment-list')!
+      const cards = within(list).getAllByRole('article')
+      await expect(cards.map((c) => c.textContent)).toEqual([
+        expect.stringContaining('oldest first'),
+        expect.stringContaining('Rollout'),
+      ])
+      for (const card of cards) {
+        card.scrollIntoView({ block: 'center' })
+        await expect(shownHeight(card)).toBeGreaterThan(card.getBoundingClientRect().height * 0.8)
+      }
+    })
+  },
+}
+
 // Replying from a comment
 // The panel's filters: open, resolved or all; and a comment on the whole file at its top, one line until
 // it's opened, above the comments level with their text
