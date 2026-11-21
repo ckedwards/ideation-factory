@@ -48,6 +48,12 @@ export function blockRange(source: string, unitIds: readonly string[], block: st
   return unit && unit.kind !== 'heading' ? { start: unit.start, end: unit.end } : null
 }
 
+/** The ID of the block (not a heading) that starts at an offset. */
+export function blockAt(source: string, unitIds: readonly string[], start: number): string | null {
+  const index = parseMarkdown(source).units.findIndex((unit) => unit.kind !== 'heading' && unit.start === start)
+  return index < 0 ? null : (unitIds[index] ?? null)
+}
+
 /** What kind of block a block is, as its comment's card names it: Table, Diagram, List item. */
 export function blockLabel(entry: { kind: string; source: string }): string {
   switch (entry.kind) {
