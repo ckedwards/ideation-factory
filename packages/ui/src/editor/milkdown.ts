@@ -1319,27 +1319,42 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
 
   const blocks = () => identities().map(({ id, source }) => ({ id, source }))
 
-  /** New blocks take the identities the draft gave them: its blocks not on screen, matched by their text. */
+  /**
+   * Blocks take the identities the draft has for them. Where the draft's blocks are the page's, one
+   * for one, each takes its own, whatever it had (the draft discarded, say, back to the same text
+   * with its old blocks); otherwise new blocks take the draft's blocks not on screen, matched by
+   * their text.
+   */
   function adopt(units: Array<{ id: string; source: string }>): void {
     const current = identities()
-    const held = new Set(current.flatMap((b) => (b.id ? [b.id] : [])))
-    const free = units.filter((u) => !held.has(u.id))
     const v = view()
     const tr = v.state.tr
-    for (const block of current) {
-      if (block.id !== null || block.at === null) {
-        continue
-      }
-      const i = free.findIndex((u) => u.source.trim() === block.source.trim())
-      if (i >= 0) {
-        tr.setNodeAttribute(block.at, 'blockId', free[i]!.id)
-        free.splice(i, 1)
+    const same = current.length === units.length && current.every((b, i) => b.source.trim() === units[i]!.source.trim())
+    if (same) {
+      current.forEach((block, i) => {
+        if (block.at !== null && block.id !== units[i]!.id) {
+          tr.setNodeAttribute(block.at, 'blockId', units[i]!.id)
+        }
+      })
+    } else {
+      const held = new Set(current.flatMap((b) => (b.id ? [b.id] : [])))
+      const free = units.filter((u) => !held.has(u.id))
+      for (const block of current) {
+        if (block.id !== null || block.at === null) {
+          continue
+        }
+        const i = free.findIndex((u) => u.source.trim() === block.source.trim())
+        if (i >= 0) {
+          tr.setNodeAttribute(block.at, 'blockId', free[i]!.id)
+          free.splice(i, 1)
+        }
       }
     }
     if (tr.docChanged) {
-      // the same text: nothing to tell the page
+      // the same text: nothing to tell the page. The comments are found again on the blocks as
+      // they're now known
       loading = true
-      v.dispatch(tr.setMeta('addToHistory', false))
+      v.dispatch(tr.setMeta('addToHistory', false).setMeta(RELOADED, true))
       loading = false
     }
   }
