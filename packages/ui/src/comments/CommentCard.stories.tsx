@@ -237,3 +237,113 @@ export const Thread: Story = {
     )
   },
 }
+
+const reply = (id: string, who: CommentInfo['author'], hours: number, words: string) => ({
+  id,
+  author: who,
+  at: ago(hours),
+  body: text(words),
+})
+const longThread: CommentInfo = {
+  ...base,
+  id: 'c10',
+  replies: [
+    reply('r1', { kind: 'person', person: riley }, 2.8, 'The server keeps a hash of each change.'),
+    reply('r2', { kind: 'person', person: devon }, 2.5, 'For how long?'),
+    reply('r3', { kind: 'person', person: riley }, 2.2, 'A month.'),
+    reply('r4', actors.botForPerson, 2, 'The overview says thirty days; I matched it.'),
+    reply('r5', { kind: 'person', person: devon }, 1.5, 'And after that a replay is a new change?'),
+    reply('r6', { kind: 'person', person: riley }, 1, 'Yes, and the device says so before it sends.'),
+  ],
+}
+
+// A long thread: the first comment and the last two replies, the ones between folded until asked for
+export const LongThread: Story = {
+  args: { comment: longThread },
+  play: async ({ canvas, userEvent }) => {
+    const replies = () => canvas.getAllByRole('listitem')
+    await expect(replies()).toHaveLength(2)
+    await expect(replies()[0]).toHaveTextContent('And after that a replay')
+    await userEvent.click(canvas.getByRole('button', { name: '4 earlier replies' }))
+    await expect(replies()).toHaveLength(6)
+    await expect(canvas.queryByRole('button', { name: /earlier repl/ })).toBeNull()
+  },
+}
+
+// A long comment: about six lines, then "Show more"
+export const LongComment: Story = {
+  args: {
+    comment: {
+      ...base,
+      id: 'c11',
+      body: text(
+        'Replaying oldest first means one bad change holds up every change behind it. ' +
+          'On a device that was offline for a week that can be hundreds of changes, and the person ' +
+          'sees none of them arrive. Could the queue skip a change the server refuses, keep it ' +
+          'aside, and say so on the device? Then the rest go through, and the refused one waits ' +
+          'for someone to fix it.\n\nThe same goes for a change that times out: retry it a few ' +
+          'times with a pause, then set it aside like a refused one.',
+      ),
+    },
+  },
+  play: async ({ canvas, canvasElement, userEvent }) => {
+    const body = canvasElement.querySelector<HTMLElement>('.comment-body')!
+    const line = parseFloat(getComputedStyle(body).lineHeight)
+    await expect(body.clientHeight).toBeLessThanOrEqual(line * 6 + 1)
+    await userEvent.click(canvas.getByRole('button', { name: 'Show more' }))
+    await expect(body.scrollHeight).toBe(body.clientHeight)
+    await expect(canvas.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true')
+  },
+}
+
+// A short comment needs no "Show more"
+export const ShortCommentNotClamped: Story = {
+  play: async ({ canvas }) => {
+    await expect(canvas.queryByRole('button', { name: 'Show more' })).toBeNull()
+  },
+}
+
+/** Every card of a list is this tall, whatever is in it. */
+async function sameHeights(canvas: HTMLElement) {
+  const heights = [...canvas.querySelectorAll('.comment-card')].map((c) => c.getBoundingClientRect().height)
+  await expect(new Set(heights).size).toBe(1)
+  return heights[0]!
+}
+
+// Short: who, when, two lines of the comment, and its replies counted with the last one's author.
+// Always the same height, whatever the comment
+export const Short: Story = {
+  render: (args) => (
+    <div style={{ display: 'grid', gap: '0.5rem' }}>
+      {[comments.text, longThread, comments.section, comments.file, comments.bot].map((comment) => (
+        <CommentCard key={comment.id} {...args} comment={comment} size="short" />
+      ))}
+    </div>
+  ),
+  play: async ({ canvas, canvasElement }) => {
+    await sameHeights(canvasElement)
+    await expect(canvas.getByText(/6 replies · Riley Park/)).toBeVisible()
+    await expect(canvas.getByText('§ Proposal › Conflicts')).toBeVisible()
+    await expect(canvas.getByText('Whole file')).toBeVisible()
+    // no Reply or Resolve on a card that isn't open
+    await expect(canvas.queryByRole('button', { name: 'Reply' })).toBeNull()
+  },
+}
+
+// Line: a face, a name, the first words and a count of replies, one line high
+export const Line: Story = {
+  render: (args) => (
+    <div style={{ display: 'grid', gap: '0.25rem' }}>
+      {[comments.text, longThread, comments.section, comments.bot, comments.withReplies].map((comment) => (
+        <CommentCard key={comment.id} {...args} comment={comment} size="line" />
+      ))}
+    </div>
+  ),
+  play: async ({ canvas, canvasElement }) => {
+    const height = await sameHeights(canvasElement)
+    await expect(height).toBeLessThanOrEqual(36)
+    await expect(canvas.getByText('6')).toBeVisible()
+    await expect(canvas.getByText('archbot')).toBeVisible()
+    await expect(canvas.queryByRole('button', { name: 'Reply' })).toBeNull()
+  },
+}
