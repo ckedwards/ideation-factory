@@ -7,6 +7,7 @@
     "./theme.css": "./src/theme/theme.css",
     "./storybook": "./src/storybook/preview.tsx",
     "./fixtures": "./src/stories/fixtures.ts",
+    "./testing": "./src/stories/screen.ts",
     "./editor": "./src/editor/index.ts"
   },
   "scripts": {
