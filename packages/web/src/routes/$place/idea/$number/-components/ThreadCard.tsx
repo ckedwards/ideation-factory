@@ -2,7 +2,7 @@
 // your pending ones, and decide a suggested edit. The Files tab and the focus view draw threads the same
 // way, with the same rules about who may do what.
 import type { ReactNode } from 'react'
-import { Button, CommentCard, type CommentInfo } from '@ideaf/ui'
+import { Button, type CardSize, CommentCard, type CommentInfo } from '@ideaf/ui'
 import type { Placement } from './view.ts'
 
 /** A comment, as shown, and where it goes in the file shown. */
@@ -40,6 +40,8 @@ export interface ThreadCardProps {
   showTarget?: boolean
   /** Away from its text (a list): with the words it's on, and their section. */
   context?: boolean
+  /** How much of it shows (the gutter fits it to the room its text has). */
+  size?: CardSize
 }
 
 export function ThreadCard({
@@ -49,6 +51,7 @@ export function ThreadCard({
   onSelect,
   showTarget = false,
   context = false,
+  size = 'full',
 }: ThreadCardProps): ReactNode {
   const { canComment, canDecide = false } = actions
   return (
@@ -57,6 +60,7 @@ export function ThreadCard({
       active={active}
       showTarget={showTarget}
       context={context}
+      size={size}
       onSelect={onSelect}
       onReply={
         canComment && !comment.pending && actions.onReply
