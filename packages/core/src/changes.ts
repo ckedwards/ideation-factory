@@ -201,9 +201,8 @@ function settle(files: Record<string, EditorBlock[]>, opened: Map<string, string
       if (known) {
         seen.add(block.id!)
       }
-      // emptied, or a block of text with none in it yet (an empty heading is `##`): it's gone, or
-      // isn't there yet
-      if (block.source.trim() === '' || wordless(block.source)) {
+      // emptied: it's gone. An empty bullet, quote or heading (`-`, `>`, `##`) is a block, and saved
+      if (block.source.trim() === '') {
         continue
       }
       const same = known && kindOf(block.source) === kindOf(opened.get(block.id!)!)
@@ -239,14 +238,6 @@ function losesItself(idea: Idea, edit: DraftChange, id: string): boolean {
   }
   const applied = applyBatch(idea, [], { base: 1, steps: built.commands })
   return applied.ok && unitSource(applied.idea, id) === null
-}
-
-// blocks of text: with no words in them, they're nothing yet
-const TEXT = new Set<UnitKind>(['heading', 'paragraph', 'list-item', 'quote'])
-const wordless = (source: string) => {
-  const parsed = parseMarkdown(source)
-  const kind = parsed.units[0]?.kind
-  return kind !== undefined && TEXT.has(kind) && parsed.plain.text.trim() === ''
 }
 
 /** The kind of block some Markdown is (its first). */
@@ -378,7 +369,7 @@ function section(idea: Idea, heading: string): string[] {
   return out
 }
 
-const LIST_ITEM = /^\s*([-*+]|\d+[.)])\s/
+const LIST_ITEM = /^\s*([-*+]|\d+[.)])(\s|$)/
 const listItem = (source: string) => LIST_ITEM.test(source)
 
 /** New blocks as one insertion: list items one under another, the rest a blank line apart. */

@@ -333,10 +333,24 @@ describe('a block made into another kind', () => {
 })
 
 describe('a block with no words yet', () => {
-  test('a new heading, list item or paragraph with no words is not saved until it has some', () => {
-    const idea = open(PLAN)
-    const list = blocks(idea).flatMap((x) => (x.id === 'b3' ? [x, b(null, '##'), b(null, '-')] : [x]))
-    expect(after(idea, { f1: list }).changes).toEqual([])
+  test('a new empty heading, bullet or quote is saved as one, with no words in it yet', () => {
+    const idea = open('# Plan\n\nIntro.\n\n- one\n- two\n\nEnd.\n')
+    // s2 Plan, b3 Intro, b4 b5 the list, b6 End
+    const list = blocks(idea).flatMap((x) =>
+      x.id === 'b3' ? [x, b(null, '##')] : x.id === 'b5' ? [x, b(null, '-')] : x.id === 'b6' ? [x, b(null, '>')] : [x],
+    )
+    const r = after(idea, { f1: list })
+    expect(r.kinds).toEqual(['insert', 'insert', 'insert'])
+    expect(r.sources[0]).toBe('# Plan\n\nIntro.\n\n##\n\n- one\n- two\n-\n\nEnd.\n\n>\n')
+  })
+
+  test('an empty bullet saved, then typed in, is the list item with its words', () => {
+    const idea = open('# Plan\n\n- one\n- two\n-\n\nEnd.\n')
+    // s2 Plan, b3 b4 b5 the list, b5 the empty item, b6 End
+    const list = blocks(idea).map((x) => (x.id === 'b5' ? b('b5', '- three') : x))
+    const r = after(idea, { f1: list })
+    expect(r.kinds).toEqual(['edit'])
+    expect(r.sources[0]).toBe('# Plan\n\n- one\n- two\n- three\n\nEnd.\n')
   })
 
   test('a heading saved with no words, then typed in, stays the heading', () => {

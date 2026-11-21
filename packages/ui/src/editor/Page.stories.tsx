@@ -223,6 +223,19 @@ export const NewParagraph: Story = {
   },
 }
 
+// An empty bullet is a change of its own: a list item, in the list, with its words to come
+export const EmptyBullet: Story = {
+  play: async ({ canvasElement }) => {
+    const box = await surface(canvasElement)
+    const last = textNode(box, 'Conflicts are')
+    await select(box, last, last.length, last, last.length)
+    await typing.keyboard('{Enter}')
+    await expect((await readBack(canvasElement)).changes).toEqual([
+      { kind: 'insert', at: { after: 'b7' }, markdown: '-' },
+    ])
+  },
+}
+
 // The Markdown side has no identities: its blocks are matched to the draft's by their text
 export const MarkdownSide: Story = {
   play: async ({ canvasElement }) => {
@@ -341,8 +354,12 @@ export const NewHeading: Story = {
     // the caret's back in the text, in the new heading, to type its words
     await waitFor(() => expect(box).toHaveFocus())
     await expect(getSelection()!.anchorNode?.nodeName).toBe('H2')
-    await expect((await readBack(canvasElement)).changes).toEqual([])
+    // an empty heading is saved as one, words to come
+    await expect((await readBack(canvasElement)).changes).toEqual([
+      { kind: 'insert', at: { after: 'b3' }, markdown: '##' },
+    ])
     await userEvent.click(canvas.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(box.querySelector('h2[data-block-id="s11"]')).not.toBeNull())
     // back into the empty heading (the page saves by itself; here a button did)
     const empty = [...box.querySelectorAll('h2')].find((h) => h.textContent === '')!
     const range = document.createRange()
@@ -353,7 +370,7 @@ export const NewHeading: Story = {
     await settle()
     await typing.keyboard('ddd')
     await expect((await readBack(canvasElement)).changes).toEqual([
-      { kind: 'insert', at: { after: 'b3' }, markdown: '## ddd' },
+      { kind: 'edit', id: 's11', source: '## ddd', was: '##' },
     ])
     await userEvent.click(canvas.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(box.querySelector('h2[data-block-id="s11"]')).toHaveTextContent('ddd'))
