@@ -98,3 +98,15 @@
 .comment-pile-fan > * {
   min-width: 0;
 }
+
+/* a section comment pointed at, or open: a rectangle around its whole section, filled while open */
+.comment-section-box {
+  position: fixed;
+  z-index: 1;
+  border: calc(var(--hairline) * 2) solid var(--mark-line);
+  border-radius: var(--radius);
+  pointer-events: none;
+}
+.comment-section-box.is-open {
+  background: color-mix(in srgb, var(--mark) 30%, transparent);
+}

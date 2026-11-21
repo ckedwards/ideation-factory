@@ -2,6 +2,7 @@ import { type CSSProperties, type ReactNode, type RefObject, useEffect, useLayou
 import type { CardSize } from './CommentCard.tsx'
 import { fitNotes, type FixedHeights, layoutNotes, type NoteUnit, unitGap } from './gutter.ts'
 import { markForms, markSelector } from './marks.ts'
+import { createPortal } from 'react-dom'
 import './CommentGutter.css'
 
 export interface CommentGutterProps {
@@ -333,8 +334,75 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
       </div>
       {drawn.length === 0 && empty && <div className="comment-gutter-empty">{empty}</div>}
       {lit !== null && anchors.has(lit) && <style>{litStyle(lit)}</style>}
+      <SectionBox documentRef={documentRef} id={lit ?? active} open={(lit ?? active) === active} />
     </div>
   )
+}
+
+/**
+ * A section comment pointed at, or open: a rectangle around its whole section, from its heading to
+ * the next heading at its level or above (filled while it's open). What tells a section comment from
+ * one on its heading's words. Drawn over the document, following it as it scrolls.
+ */
+function SectionBox({
+  documentRef,
+  id,
+  open,
+}: {
+  documentRef: RefObject<HTMLElement | null>
+  id: string | null
+  open: boolean
+}) {
+  const [box, setBox] = useState<DOMRect | null>(null)
+  useLayoutEffect(() => {
+    const root = documentRef.current
+    if (!root || id === null) {
+      setBox(null)
+      return
+    }
+    const measure = () => setBox(sectionBox(root, id))
+    measure()
+    window.addEventListener('scroll', measure, true)
+    window.addEventListener('resize', measure)
+    return () => {
+      window.removeEventListener('scroll', measure, true)
+      window.removeEventListener('resize', measure)
+    }
+  }, [documentRef, id])
+  if (!box) {
+    return null
+  }
+  return createPortal(
+    <div
+      className={`comment-section-box${open ? ' is-open' : ''}`}
+      style={{ top: box.top, left: box.left, width: box.width, height: box.height }}
+      aria-hidden
+    />,
+    document.body,
+  )
+}
+
+/** Where a section comment's section is on screen, or null if the comment isn't on a section. */
+function sectionBox(root: HTMLElement, id: string): DOMRect | null {
+  const heading = [...root.querySelectorAll(markSelector(id))].find((mark) =>
+    mark.classList.contains('md-section-mark'),
+  )
+  if (!heading?.parentElement) {
+    return null
+  }
+  const level = Number(heading.tagName.slice(1))
+  let last: Element = heading
+  for (let at = heading.nextElementSibling; at; at = at.nextElementSibling) {
+    if (/^H[1-6]$/.test(at.tagName) && Number(at.tagName.slice(1)) <= level) {
+      break
+    }
+    last = at
+  }
+  const top = heading.getBoundingClientRect()
+  const bottom = last.getBoundingClientRect()
+  const column = heading.parentElement.getBoundingClientRect()
+  const pad = remToPx(0.5)
+  return new DOMRect(column.left - pad, top.top - pad, column.width + 2 * pad, bottom.bottom - top.top + 2 * pad)
 }
 
 /** A note's place while it's drawn open over the rest: as tall as it is at its size. */
