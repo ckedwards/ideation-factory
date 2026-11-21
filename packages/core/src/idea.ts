@@ -27,6 +27,8 @@ export type Anchor =
   | { kind: 'idea' }
   | { kind: 'file'; file: string }
   | { kind: 'section'; file: string; section: string }
+  /** One block, any but a heading (a paragraph, a list item, a table, code, a quote): by its ID. */
+  | { kind: 'block'; file: string; block: string }
   /** A range of the file's plain-text form [start, end), and the text it covered. */
   | { kind: 'text'; file: string; start: number; end: number; quote: string }
 
@@ -139,6 +141,7 @@ export type AnchorInput =
   | { kind: 'idea' }
   | { kind: 'file'; file: string }
   | { kind: 'section'; section: string }
+  | { kind: 'block'; block: string }
   | { kind: 'text'; file: string; start: number; end: number }
 
 /** Checks a new comment's anchor against this version, returning the full anchor or why it can't be used. */
@@ -155,6 +158,18 @@ export function checkAnchor(
       return { ok: false, message: `${input.section} isn't a section in this version` }
     }
     return { ok: true, anchor: { kind: 'section', file: at.file.id, section: input.section } }
+  }
+  if (input.kind === 'block') {
+    const at = locate(idea, input.block)
+    if (!at || isSectionId(input.block)) {
+      return {
+        ok: false,
+        message: isSectionId(input.block)
+          ? `${input.block} is a heading: comment on its section instead`
+          : `${input.block} isn't a block in this version`,
+      }
+    }
+    return { ok: true, anchor: { kind: 'block', file: at.file.id, block: input.block } }
   }
   const file = fileById(idea, input.file)
   if (!file) {

@@ -3,7 +3,7 @@
 import { describe, expect, test } from 'bun:test'
 import { applyBatch, type BatchResult } from './apply.ts'
 import type { Command } from './batch.ts'
-import { type Comment, createIdea, type Idea, textAnchor } from './idea.ts'
+import { checkAnchor, type Comment, createIdea, type Idea, textAnchor } from './idea.ts'
 import { parseMarkdown } from './markdown.ts'
 
 const PLAN = `# Plan
@@ -560,5 +560,32 @@ describe('batches', () => {
     )
     expect(r.idea.files[0]!.unitIds.at(-1)).toBe('b10')
     expect(r.idea.nextId).toBe(11)
+  })
+})
+
+describe('comments on a block', () => {
+  const on = (block: string): Comment => ({ id: block, anchor: { kind: 'block', file: 'f1', block } })
+
+  test('a block edited keeps its comment; moved with its section, the comment moves; deleted, it is outdated', () => {
+    const idea = plan()
+    const edited = run(idea, [on('b3')], { command: 'replace', in: 'b3', old: 'brown', new: 'red' })
+    expect(outcome(edited, 'b3')).toEqual({ state: 'exact', quote: null, file: 'f1' })
+    const moved = run(idea, [on('b6')], { command: 'move', target: 's4', to: { after: 's8' } })
+    expect(outcome(moved, 'b6').state).toBe('moved')
+    const deleted = run(idea, [on('b5')], { command: 'delete', target: 'b5' })
+    expect(outcome(deleted, 'b5')).toEqual({ state: 'outdated', quote: null, file: null })
+  })
+
+  test('a new comment can be on a block, but not on a heading or a block that isn’t there', () => {
+    const idea = plan()
+    expect(checkAnchor(idea, { kind: 'block', block: 'b6' })).toEqual({
+      ok: true,
+      anchor: { kind: 'block', file: 'f1', block: 'b6' },
+    })
+    expect(checkAnchor(idea, { kind: 'block', block: 's4' })).toEqual({
+      ok: false,
+      message: 's4 is a heading: comment on its section instead',
+    })
+    expect(checkAnchor(idea, { kind: 'block', block: 'b404' }).ok).toBe(false)
   })
 })
