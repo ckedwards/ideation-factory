@@ -277,7 +277,15 @@ export function IdeaPage(props: IdeaPageProps) {
     <IdeaPageLayout
       nav={nav}
       document={
-        <div ref={document}>
+        <div
+          ref={document}
+          // a click off a comment's mark puts its card down
+          onClick={(event) => {
+            if (!(event.target as Element).closest('[data-comment-id]')) {
+              setActive(null)
+            }
+          }}
+        >
           {/* while editing, the editor's own bar is at the top, and the file's name under it */}
           {!props.editing && props.banner}
           {!props.editing && (
@@ -348,7 +356,17 @@ export function IdeaPage(props: IdeaPageProps) {
         props.editing ? (
           // the comments, as they are when reading: what an edit is usually answering; the draft's
           // changes beside them
-          <div id="idea-comments">
+          <div
+            id="idea-comments"
+            // a click in the column, off any card, puts the open one down
+            onClick={(event) => {
+              if (
+                !(event.target as Element).closest('.comment-card, button, a, select, input, textarea, [role="tab"]')
+              ) {
+                setActive(null)
+              }
+            }}
+          >
             <Tabs
               label="Panel"
               tabs={[
@@ -362,7 +380,17 @@ export function IdeaPage(props: IdeaPageProps) {
             </Tabs>
           </div>
         ) : (
-          <div id="idea-comments">
+          <div
+            id="idea-comments"
+            // a click in the column, off any card, puts the open one down
+            onClick={(event) => {
+              if (
+                !(event.target as Element).closest('.comment-card, button, a, select, input, textarea, [role="tab"]')
+              ) {
+                setActive(null)
+              }
+            }}
+          >
             <Tabs
               label="Panel"
               tabs={[
