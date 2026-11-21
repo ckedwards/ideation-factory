@@ -171,6 +171,33 @@ export const CommentsNarrow: Story = {
   },
 }
 
+// Keys, as Google Docs has them: J and K move from comment to comment in the order of the text, R
+// replies to the open one, E resolves it, Escape puts it down; none of them while typing
+export const Keys: Story = {
+  play: async ({ args, canvasElement, userEvent }) => {
+    const page = within(canvasElement)
+    const open = () => canvasElement.querySelector('.comment-card.is-active')?.textContent ?? null
+    window.document.body.focus()
+    await userEvent.keyboard('j')
+    await waitFor(() => expect(open()).toContain('What about a change made offline twice?'))
+    await userEvent.keyboard('j')
+    await waitFor(() => expect(open()).toContain('Which team goes first?'))
+    await userEvent.keyboard('k')
+    await waitFor(() => expect(open()).toContain('What about a change made offline twice?'))
+    await userEvent.keyboard('e')
+    await expect(args.onResolve).toHaveBeenCalledWith('c1', true)
+    await userEvent.keyboard('r')
+    // the reply box is the editor, which loads on first use
+    const box = await page.findByRole('textbox', { name: 'Reply' }, { timeout: 5000 })
+    // typed in the reply, the letters are words, not keys
+    await userEvent.type(box, 'jk')
+    await waitFor(() => expect(open()).toContain('What about a change made offline twice?'))
+    await userEvent.click(page.getByRole('button', { name: 'Cancel' }))
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(open()).toBeNull())
+  },
+}
+
 // Replying from a comment
 // The panel's filters: open, resolved or all; and a comment on the whole file at its top, one line until
 // it's opened, above the comments level with their text

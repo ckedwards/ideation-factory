@@ -118,6 +118,61 @@ export function IdeaPage(props: IdeaPageProps) {
       (!author || actorKey(c.info.author) === author),
   )
   const inText = shown.filter((c) => c.place.kind === 'text' || c.place.kind === 'section')
+  // keys, as Google Docs has them: J and K for the next and previous comment on the text, R to reply
+  // to the open one, E to resolve it, Escape to put it down. Not while typing
+  const order = [...inText].sort((a, b) => at(a.place) - at(b.place)).map((c) => c.info.id)
+  const keys = useRef({ order, active })
+  keys.current = { order, active }
+  useEffect(() => {
+    const press = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || typing(event.target)) {
+        return
+      }
+      const { order, active } = keys.current
+      const open = (id: string | undefined) => {
+        if (id === undefined) {
+          return
+        }
+        event.preventDefault()
+        setActive(id)
+        window.document
+          .querySelector(`[data-comment-id="${CSS.escape(id)}"]`)
+          ?.scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' })
+      }
+      const act = (action: string) => {
+        const button = window.document.querySelector<HTMLElement>(
+          `#idea-comments .comment-card.is-active [data-action="${action}"]`,
+        )
+        if (button) {
+          event.preventDefault()
+          button.click()
+        }
+      }
+      const here = active === null ? -1 : order.indexOf(active)
+      switch (event.key.toLowerCase()) {
+        case 'j':
+          open(order[here < 0 ? 0 : Math.min(here + 1, order.length - 1)])
+          break
+        case 'k':
+          open(order[here < 0 ? order.length - 1 : Math.max(here - 1, 0)])
+          break
+        case 'r':
+          act('reply')
+          break
+        case 'e':
+          act('resolve')
+          break
+        case 'escape':
+          if (active !== null) {
+            event.preventDefault()
+            setActive(null)
+          }
+          break
+      }
+    }
+    window.addEventListener('keydown', press)
+    return () => window.removeEventListener('keydown', press)
+  }, [])
   const onFile = shown.filter((c) => c.place.kind === 'file')
   const outdated = shown.filter((c) => c.place.kind === 'outdated')
   // the suggestions that can be accepted now
@@ -468,6 +523,18 @@ function at(place: Placement): number {
 function within(place: Placement, start: number, end: number): boolean {
   const offset = at(place)
   return offset >= start && offset < end
+}
+
+/** Whether a key went to something being typed in: a box, a menu, or the editor. */
+function typing(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    (target.isContentEditable || target.closest('input, textarea, select, [contenteditable="true"]') !== null)
+  )
+}
+
+function reducedMotion(): boolean {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
 /** Whether a media query matches, now and as it changes. */
