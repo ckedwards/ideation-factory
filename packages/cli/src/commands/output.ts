@@ -22,11 +22,13 @@ export function describeOutcomes(outcomes: Outcome[]): string[] {
         ? `"${o.anchor.quote}"`
         : o.anchor?.kind === 'section'
           ? `section ${o.anchor.section}`
-          : o.anchor?.kind === 'file'
-            ? `file ${o.anchor.file}`
-            : o.anchor?.kind === 'idea'
-              ? 'the idea'
-              : ''
+          : o.anchor?.kind === 'block'
+            ? `block ${o.anchor.block}`
+            : o.anchor?.kind === 'file'
+              ? `file ${o.anchor.file}`
+              : o.anchor?.kind === 'idea'
+                ? 'the idea'
+                : ''
     lines.push(`  ${o.id}  ${o.state}${where ? `, now on ${where}` : ''}`)
   }
   return lines

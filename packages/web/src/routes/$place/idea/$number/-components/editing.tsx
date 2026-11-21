@@ -13,7 +13,7 @@ import { api } from '../../../../../api.ts'
 import { type CommentOutcomeRow, EditActions, EditPanel, type EditPanelProps } from './EditPanel.tsx'
 import { IdeaMode } from './IdeaFrame.tsx'
 import { DraftEditor } from './DraftEditor.tsx'
-import { headingOffset, toSource } from './anchors.ts'
+import { blockRange, headingOffset, toSource } from './anchors.ts'
 import { draftQuery, filesQuery } from './queries.ts'
 import type { DraftVersion } from './VersionList.tsx'
 import type { FileView, Placement, Thread } from './view.ts'
@@ -238,6 +238,12 @@ function placeComments(
       if (heading !== null) {
         marks.push({ id, heading: anchor.section })
       }
+      return
+    }
+    if (anchor.kind === 'block') {
+      // where the draft has its block (its mark in the editor is to come)
+      const range = blockRange(source, ids, anchor.block)
+      places.set(id, range ? { kind: 'block', ...range } : { kind: 'outdated' })
       return
     }
     const range = toSource(source, anchor)

@@ -44,7 +44,9 @@ export async function show(
           ? `on "${truncate(c.anchor.quote, 40)}"`
           : c.anchor?.kind === 'section'
             ? `on section ${c.anchor.section}`
-            : 'on the file'
+            : c.anchor?.kind === 'block'
+              ? `on block ${c.anchor.block}`
+              : 'on the file'
       ctx.say(`    ${c.id.padEnd(4)} ${on}: ${excerpt(c.body, 70)}${replies(c.replies.length)}`)
     }
   }

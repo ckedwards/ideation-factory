@@ -22,6 +22,8 @@ export const Anchor = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('idea') }),
   z.object({ kind: z.literal('file'), file: z.string() }),
   z.object({ kind: z.literal('section'), file: z.string(), section: z.string() }),
+  /** One block (a paragraph, a list item, a table, code, a quote), by its ID; a heading's is its section. */
+  z.object({ kind: z.literal('block'), file: z.string(), block: z.string() }),
   z.object({
     kind: z.literal('text'),
     file: z.string(),
@@ -35,6 +37,7 @@ export const AnchorInput = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('idea') }),
   z.strictObject({ kind: z.literal('file'), file: FileId }),
   z.strictObject({ kind: z.literal('section'), section: z.string() }),
+  z.strictObject({ kind: z.literal('block'), block: z.string() }),
   z.strictObject({
     kind: z.literal('text'),
     file: FileId,
