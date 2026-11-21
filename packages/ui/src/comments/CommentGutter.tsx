@@ -137,8 +137,9 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
             key={note.id}
             ref={(element) => {
               if (element) {
-                // hidden until it's been placed, so it doesn't flash at the top
-                if (!elements.current.has(note.id)) {
+                // hidden until it's first placed, so it doesn't flash at the top (React attaches
+                // the same note again on each drawing, already placed)
+                if (element.style.top === '') {
                   element.style.visibility = 'hidden'
                 }
                 elements.current.set(note.id, element)

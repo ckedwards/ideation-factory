@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { markdownTree } from '@ideaf/core'
-import { expect, waitFor } from 'storybook/test'
+import { expect, waitFor, within } from 'storybook/test'
+import { Button } from '../controls/Button.tsx'
 import { CommentCard, type CommentInfo } from './CommentCard.tsx'
 import { CommentGutter } from './CommentGutter.tsx'
 import { MarkdownView } from '../document/MarkdownView.tsx'
@@ -36,6 +37,8 @@ const comments = [
 function Page({ initial = null }: { initial?: string | null }) {
   const document = useRef<HTMLDivElement>(null)
   const [active, setActive] = useState<string | null>(initial)
+  // drawn again with nothing changed, as a page is when anything else on it changes
+  const [, setDrawn] = useState(0)
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 22rem', height: '40rem' }}>
       <div style={{ overflowY: 'auto', padding: '1rem 2rem' }}>
@@ -52,6 +55,9 @@ function Page({ initial = null }: { initial?: string | null }) {
         </div>
       </div>
       <div style={{ padding: '0 1rem', borderLeft: '1px solid var(--rule)' }}>
+        <Button size="sm" variant="ghost" onClick={() => setDrawn((n) => n + 1)}>
+          Draw again
+        </Button>
         <CommentGutter
           documentRef={document}
           active={active}
@@ -99,5 +105,16 @@ export const Active: Story = {
       const note = canvasElement.querySelector<HTMLElement>('[data-note-id="c3"]')!
       expect(Math.abs(note.getBoundingClientRect().top - mark.getBoundingClientRect().top)).toBeLessThan(2)
     })
+  },
+}
+
+// Drawn again with nothing moved (anything else on the page changing), every note stays shown
+export const DrawnAgain: Story = {
+  play: async ({ canvasElement, userEvent }) => {
+    const notes = () => [...canvasElement.querySelectorAll<HTMLElement>('.comment-gutter-note')]
+    await waitFor(() => expect(notes().every((note) => note.style.visibility === '')).toBe(true))
+    await userEvent.click(within(canvasElement).getByRole('button', { name: 'Draw again' }))
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    await expect(notes().every((note) => getComputedStyle(note).visibility === 'visible')).toBe(true)
   },
 }
