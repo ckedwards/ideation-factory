@@ -15,10 +15,10 @@ import { type RefObject, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '@ideaf/api'
 import { draftChanges, type Idea } from '@ideaf/core'
 import { Button } from '@ideaf/ui'
-import { MarkdownEditor, type MarkdownEditorHandle } from '@ideaf/ui/editor'
+import { MarkdownEditor, type MarkdownEditorHandle, type PageMark } from '@ideaf/ui/editor'
 import { useBlocker } from '@tanstack/react-router'
 import { api } from '../../../../../api.ts'
-import type { Draft } from './editing.tsx'
+import type { Draft, EditingView } from './editing.tsx'
 import './DraftEditor.css'
 
 /** How long typing stops before what's typed is saved. */
@@ -37,6 +37,10 @@ export interface DraftEditorProps {
   flush: RefObject<(() => Promise<boolean>) | null>
   /** Whether something's typed and not saved yet, each time that changes. */
   onUnsaved?: (unsaved: boolean) => void
+  /** The file's comments, where the draft has them. */
+  marks?: PageMark[]
+  /** Which of them the panel shows, the one that's active, and a mark clicked. */
+  view?: EditingView
 }
 
 export function DraftEditor(props: DraftEditorProps) {
@@ -62,6 +66,15 @@ export function DraftEditor(props: DraftEditorProps) {
 
   // the editor's view of the draft as last agreed: a new object only when it's agreed again
   const saved = useMemo(() => ({ source: baseFile.content, ids: baseFile.units.map((u) => u.id) }), [baseFile])
+  // the comments the panel shows, marked: made again when the draft changes (each save) or the panel
+  // shows others, so between saves they stay on their words as they're typed around
+  const marksKey = JSON.stringify(props.marks ?? [])
+  const shownKey = (props.view?.shown ?? []).map((c) => `${c.id}${c.resolved ? ' resolved' : ''}`).join('\n')
+  const comments = useMemo(() => {
+    const shown = new Map((props.view?.shown ?? []).map((c) => [c.id, c.resolved]))
+    return (props.marks ?? []).flatMap((m) => (shown.has(m.id) ? [{ ...m, resolved: shown.get(m.id)! }] : []))
+    // by what they say, not which arrays they came in, and again for each draft
+  }, [marksKey, shownKey, props.draft])
   const changed = useMemo(
     () => file.units.filter((u) => u.origin.kind === 'new' || u.origin.changed).map((u) => u.id),
     [file],
@@ -258,6 +271,10 @@ export function DraftEditor(props: DraftEditorProps) {
         value={text}
         saved={saved}
         changed={changed}
+        comments={comments}
+        activeComment={props.view?.active ?? null}
+        {...(props.view ? { onComment: props.view.onSelect } : {})}
+        lead={<p className="draft-editor-file">{file.path}</p>}
         status={statusText}
         onChange={(next) => {
           setText(next)

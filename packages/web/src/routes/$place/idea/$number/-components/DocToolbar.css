@@ -15,6 +15,12 @@
   background: var(--bg);
   font-family: var(--font-ui);
 }
+/* narrow, the page scrolls, not the pane: pinned under the app's bar, which stays at the window's top */
+@media (max-width: 62.5rem) {
+  .doc-toolbar {
+    top: var(--app-bar-height, 0px);
+  }
+}
 .doc-toolbar-file {
   display: inline-flex;
   align-items: baseline;
@@ -56,10 +62,6 @@
 }
 .doc-toolbar-chip a:hover {
   color: var(--ink);
-}
-.doc-toolbar-hint {
-  color: var(--ink-2);
-  font-size: var(--text-sm);
 }
 /* comparing's menu: Show v3 compared with v1 */
 .doc-toolbar-range {

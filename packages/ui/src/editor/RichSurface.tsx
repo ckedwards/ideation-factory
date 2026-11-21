@@ -20,6 +20,8 @@ export interface RichSurfaceProps {
   onCancel?: (() => void) | undefined
   onLink: () => void
   onContextMenu: RichOptions['onContextMenu']
+  /** A page's: a comment's mark clicked. */
+  onComment?: ((id: string) => void) | undefined
   onSelection: (state: Selection) => void
   /** The editor once it's made, and null once it's gone. */
   onReady: (editor: RichEditor | null) => void
@@ -53,6 +55,9 @@ export default function RichSurface(props: RichSurfaceProps) {
       },
       get onCancel() {
         return latest.current.onCancel
+      },
+      get onComment() {
+        return latest.current.onComment
       },
     }
     void createRichEditor(options).then((made_) => {

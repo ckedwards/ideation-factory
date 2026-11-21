@@ -167,6 +167,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
     open: editing,
     setOpen: setEditing,
     file: file.id,
+    shownFile: file,
     latestFiles: pulled.files,
     threads,
     people,
@@ -264,7 +265,6 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
                     }
                   : null
               }
-              editing={editing}
               onFocusView={
                 base === null && !editing
                   ? () => {

@@ -78,17 +78,3 @@ export const ComparingAnOlderVersion: Story = {
     await expect(bar.getByRole('button', { name: 'Comparing: v1 → v2' })).toBeVisible()
   },
 }
-
-// The editor's open: the bar stays, as tall as before so the document doesn't move, and says so
-export const Editing: Story = {
-  args: { editing: true },
-  play: async ({ canvasElement }) => {
-    const bar = within(canvasElement)
-    await expect(bar.getByText(/saved to the draft as you go/)).toBeVisible()
-    await expect(bar.queryByRole('button', { name: 'Source' })).toBeNull()
-    await expect(bar.queryByRole('button', { name: 'Focus view' })).toBeNull()
-    await expect(
-      canvasElement.querySelector('.doc-toolbar-actions')!.getBoundingClientRect().height,
-    ).toBeGreaterThanOrEqual(28)
-  },
-}

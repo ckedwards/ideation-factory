@@ -6,4 +6,4 @@ export {
   type MarkdownEditorProps,
   preloadMarkdownEditor,
 } from './MarkdownEditor.tsx'
-export type { Action, Flavor } from './milkdown.ts'
+export type { Action, Flavor, PageMark } from './milkdown.ts'

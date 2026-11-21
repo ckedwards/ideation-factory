@@ -3,7 +3,8 @@
 // with their text, or the versions. Selecting text offers commenting on it or
 // its section, or suggesting an edit; people with edit access accept or reject
 // suggestions, one at a time or all together as one version. While editing,
-// the page gives the document and the panel (DraftEditor, EditPanel). Comparing shows the file as a redline against an earlier
+// the page is the editor (DraftEditor), with its comments marked where the draft has them and level
+// with their text as here; the draft's changes are a tab beside them. Comparing shows the file as a redline against an earlier
 // version, with the comments as a list. The route loads the data and does the
 // writing.
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react'
@@ -29,6 +30,7 @@ import {
 } from '@ideaf/ui'
 import { VersionList, type VersionListProps } from './VersionList.tsx'
 import type { Placement } from './view.ts'
+import type { Editing } from './editing.tsx'
 import { CommentBox } from './CommentBox.tsx'
 import { type PageComment, type ThreadActions, ThreadCard } from './ThreadCard.tsx'
 import './IdeaPage.css'
@@ -59,11 +61,12 @@ export interface IdeaPageProps extends ThreadActions {
   suggestionOf?: (selection: TextSelection) => string | null
   onSuggest?: (selection: TextSelection, replacement: string, body: string, pending: boolean) => void
   onSectionComment?: (heading: number, body: string, pending: boolean) => void
-  /** Editing: the document and the panel, in place of the file and its comments. */
-  editing?: { document: ReactNode; panel: ReactNode; bar?: ReactNode } | null
+  /** Editing: the editor in place of the file, its comments where the draft has them, and its changes. */
+  editing?: Pick<Editing, 'document' | 'panel' | 'changes' | 'places'> | null
 }
 
 type Pane = 'comments' | 'versions'
+type EditPane = 'comments' | 'changes'
 
 export function IdeaPage(props: IdeaPageProps) {
   const { source, canComment, compare, canDecide = false } = props
@@ -82,6 +85,7 @@ export function IdeaPage(props: IdeaPageProps) {
     return () => cancelAnimationFrame(frame)
   }, [props.opened])
   const [pane, setPane] = useState<Pane>(compare ? 'versions' : 'comments')
+  const [editPane, setEditPane] = useState<EditPane>('comments')
   const tree = useMemo(() => markdownTree(source), [source])
   const sections = useMemo(() => headings(tree), [tree])
   const base = useMemo(
@@ -97,9 +101,17 @@ export function IdeaPage(props: IdeaPageProps) {
     () => typeof window === 'undefined' || window.matchMedia('(min-width: 75.0625rem)').matches,
   )
   const [author, setAuthor] = useState('')
-  const open = props.comments.filter((comment) => !comment.info.resolved)
-  const authors = [...new Map(props.comments.map((c) => [actorKey(c.info.author), actorName(c.info.author)])).entries()]
-  const shown = props.comments.filter(
+  // while editing, each where the draft has it
+  const editing = props.editing
+  const all = editing
+    ? props.comments.map((c) => {
+        const place = editing.places.get(c.info.id)
+        return place ? { ...c, place } : c
+      })
+    : props.comments
+  const open = all.filter((comment) => !comment.info.resolved)
+  const authors = [...new Map(all.map((c) => [actorKey(c.info.author), actorName(c.info.author)])).entries()]
+  const shown = all.filter(
     (c) =>
       (showing === 'all' || (showing === 'open') === !c.info.resolved) &&
       (!author || actorKey(c.info.author) === author),
@@ -249,7 +261,7 @@ export function IdeaPage(props: IdeaPageProps) {
         empty={
           onFile.length + outdated.length > 0
             ? undefined
-            : props.comments.length > 0
+            : all.length > 0
               ? showing === 'resolved'
                 ? 'No resolved comments.'
                 : 'No open comments.'
@@ -266,7 +278,8 @@ export function IdeaPage(props: IdeaPageProps) {
       nav={nav}
       document={
         <div ref={document}>
-          {props.banner}
+          {/* while editing, the editor's own bar is at the top, and the file's name under it */}
+          {!props.editing && props.banner}
           {!props.editing && (
             // shown only where the comments can't sit beside the text, and come after it (IdeaPage.css)
             <a className="idea-narrow-note" href="#idea-comments">
@@ -286,7 +299,11 @@ export function IdeaPage(props: IdeaPageProps) {
             />
           )}
           {props.editing ? (
-            props.editing.document
+            props.editing.document({
+              shown: inText.map((c) => ({ id: c.info.id, resolved: c.info.resolved })),
+              active,
+              onSelect: setActive,
+            })
           ) : props.showSource ? (
             <pre className="idea-source">
               <code>{source}</code>
@@ -329,16 +346,21 @@ export function IdeaPage(props: IdeaPageProps) {
       }
       panel={
         props.editing ? (
-          // what to do, then the open threads: what an edit is usually answering
-          <Stack gap={5}>
-            {props.editing.panel}
-            {open.length > 0 && (
-              <div className="idea-panel-group">
-                <h3 className="idea-panel-label">Open comments</h3>
-                {list(open, true)}
-              </div>
-            )}
-          </Stack>
+          // the comments, as they are when reading: what an edit is usually answering; the draft's
+          // changes beside them
+          <div id="idea-comments">
+            <Tabs
+              label="Panel"
+              tabs={[
+                { id: 'comments', label: 'Comments', count: open.length },
+                { id: 'changes', label: 'Changes', count: props.editing.changes },
+              ]}
+              value={editPane}
+              onChange={setEditPane}
+            >
+              {editPane === 'comments' ? comments : props.editing.panel}
+            </Tabs>
+          </div>
         ) : (
           <div id="idea-comments">
             <Tabs

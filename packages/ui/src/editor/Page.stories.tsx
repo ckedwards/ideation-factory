@@ -7,6 +7,7 @@ import { buildDraft, createIdea, type DraftChange, draftChanges } from '@ideaf/c
 import { expect, userEvent, waitFor, within } from 'storybook/test'
 import { Button } from '../controls/Button.tsx'
 import { MarkdownEditor, type MarkdownEditorHandle } from './MarkdownEditor.tsx'
+import type { PageMark } from './milkdown.ts'
 
 const FILE = `# Offline mode
 
@@ -30,7 +31,13 @@ Starting a site visit offline.
 // f1: s2 Offline mode, b3 its paragraph, s4 What changes, b5 b6 b7 the items, b8 the table,
 // s9 Not in scope, b10 its paragraph
 
-function Page() {
+// two comments, where the draft has them: on the field paragraph's first words, and on a section
+const COMMENTS: PageMark[] = [
+  { id: 'c1', block: 'b3', from: 0, to: 25, quote: 'Field teams lose signal i' },
+  { id: 'c2', heading: 's9' },
+]
+
+function Page({ comments }: { comments?: PageMark[] }) {
   // the draft, as the server keeps it: Save applies the changes to it, as change_draft does
   const [idea, setIdea] = useState(() => createIdea([{ path: 'offline.md', source: FILE }]))
   const file = idea.files[0]!
@@ -49,6 +56,7 @@ function Page() {
         onChange={setValue}
         saved={saved}
         status="Saved to the draft"
+        {...(comments ? { comments } : {})}
       />
       <Button
         size="sm"
@@ -407,5 +415,40 @@ export const EmptyLine: Story = {
     await expect((await readBack(canvasElement)).changes).toEqual([
       { kind: 'edit', id: 'b11', source: 'Words', was: '<br />' },
     ])
+  },
+}
+
+// Comments are marked as the document marks them, and stay on their words: typed before, and cut
+// and pasted with their text
+export const Comments: Story = {
+  args: { comments: COMMENTS },
+  play: async ({ canvasElement }) => {
+    const box = await surface(canvasElement)
+    const mark = () => [...box.querySelectorAll('mark[data-comment-id="c1"]')].map((m) => m.textContent).join('')
+    await waitFor(() => expect(mark()).toBe('Field teams lose signal i'))
+    await expect(box.querySelector('h2[data-comment-id="c2"]')).toHaveTextContent('Not in scope')
+    // words typed before it
+    const field = textNode(box, 'Field teams')
+    await select(box, field, 0, field, 0)
+    await typing.keyboard('Today, ')
+    await expect(mark()).toBe('Field teams lose signal i')
+    // the paragraph cut, and pasted at the end: its comment goes with it
+    // all of it (the mark splits its text in two)
+    const paragraph = textNode(box, 'Today, ').parentElement!.closest('p')!
+    const all = document.createRange()
+    all.selectNodeContents(paragraph)
+    box.focus()
+    getSelection()!.removeAllRanges()
+    getSelection()!.addRange(all)
+    await settle()
+    const data = new DataTransfer()
+    box.dispatchEvent(new ClipboardEvent('cut', { clipboardData: data, bubbles: true, cancelable: true }))
+    await settle()
+    await expect(mark()).toBe('')
+    const last = textNode(box, 'Starting a site')
+    await select(box, last, last.length, last, last.length)
+    box.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+    await settle()
+    await waitFor(() => expect(mark()).toBe('Field teams lose signal i'))
   },
 }
