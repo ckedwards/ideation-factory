@@ -55,3 +55,25 @@
   background-color: var(--mark-active);
   color: var(--mark-ink);
 }
+
+/* beside the block pointed at, in the margin to its right: a comment on the block, or a heading's section */
+.block-comment-button {
+  position: fixed;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: var(--hairline) solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink-2);
+  box-shadow: var(--shadow-sm, none);
+  cursor: pointer;
+}
+.block-comment-button:hover,
+.block-comment-button:focus-visible {
+  border-color: var(--mark-line);
+  color: var(--ink);
+}
