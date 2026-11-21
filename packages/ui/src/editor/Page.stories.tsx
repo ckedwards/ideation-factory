@@ -39,7 +39,8 @@ const COMMENTS: PageMark[] = [
 
 function Page({ comments, active }: { comments?: PageMark[]; active?: string }) {
   // the draft, as the server keeps it: Save applies the changes to it, as change_draft does
-  const [idea, setIdea] = useState(() => createIdea([{ path: 'offline.md', source: FILE }]))
+  const opened = () => createIdea([{ path: 'offline.md', source: FILE }])
+  const [idea, setIdea] = useState(opened)
   const file = idea.files[0]!
   const [value, setValue] = useState(file.source)
   const editor = useRef<MarkdownEditorHandle>(null)
@@ -90,6 +91,17 @@ function Page({ comments, active }: { comments?: PageMark[]; active?: string }) 
         }}
       >
         Save
+      </Button>
+      <Button
+        size="sm"
+        onClick={() => {
+          // the draft emptied: the file, and its blocks' IDs, as they were
+          const fresh = opened()
+          setIdea(fresh)
+          setValue(fresh.files[0]!.source)
+        }}
+      >
+        Discard
       </Button>
       <output data-testid="read">{read}</output>
     </div>
@@ -488,6 +500,46 @@ export const PasteUndonePastedAgain: Story = {
     await expect(changes).toEqual([
       { kind: 'move', id: 'b3', to: { after: 'b10' }, was: expect.stringMatching(/^Field teams/) },
     ])
+  },
+}
+
+// The draft discarded while its text is what's on the page: the blocks take back the IDs they had,
+// new ones a save gave them or not, and the comments are on their words again
+export const DiscardedToTheSameText: Story = {
+  args: { comments: COMMENTS },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const box = await surface(canvasElement)
+    const mark = () => [...box.querySelectorAll('mark[data-comment-id="c1"]')].map((m) => m.textContent).join('')
+    await waitFor(() => expect(mark()).toBe('Field teams lose signal i'))
+    // the paragraph copied (new text), cut and saved, and the copy pasted where it was and saved: the
+    // same text as the file, its paragraph a new block
+    const field = textNode(box, 'Field teams').parentElement!.closest('p')!
+    const all = document.createRange()
+    all.selectNodeContents(field)
+    box.focus()
+    getSelection()!.removeAllRanges()
+    getSelection()!.addRange(all)
+    await settle()
+    const copied = new DataTransfer()
+    box.dispatchEvent(new ClipboardEvent('copy', { clipboardData: copied, bubbles: true, cancelable: true }))
+    box.dispatchEvent(new ClipboardEvent('cut', { clipboardData: new DataTransfer(), bubbles: true, cancelable: true }))
+    await settle()
+    await userEvent.click(canvas.getByRole('button', { name: 'Save' }))
+    await settle()
+    const next = textNode(box, 'What changes')
+    await select(box, next, 0, next, 0)
+    box.dispatchEvent(new ClipboardEvent('paste', { clipboardData: copied, bubbles: true, cancelable: true }))
+    await settle()
+    await userEvent.click(canvas.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(box.querySelector('p[data-block-id="b11"]')).toHaveTextContent(/^Field teams/))
+    await expect(mark()).toBe('')
+    await userEvent.click(canvas.getByRole('button', { name: 'Discard' }))
+    await waitFor(() => expect(box.querySelector('p[data-block-id="b3"]')).toHaveTextContent(/^Field teams/))
+    await waitFor(() => expect(mark()).toBe('Field teams lose signal i'))
+    const { blocks, changes } = await readBack(canvasElement)
+    await expect(blocks.map((b) => b.id)).toEqual(['s2', 'b3', 's4', 'b5', 'b6', 'b7', 'b8', 's9', 'b10'])
+    await expect(changes).toEqual([])
   },
 }
 
