@@ -557,3 +557,19 @@ export const ActiveComment: Story = {
     await expect(box.querySelector('h2[data-comment-id="c2"]')).not.toHaveClass('is-active')
   },
 }
+
+// A comment on a whole block, while editing: the block's corner marks, as the document draws them;
+// open, the whole rectangle, filled
+export const BlockComment: Story = {
+  args: { comments: [{ id: 'c9', whole: 'b6' }], active: 'c9' },
+  play: async ({ canvasElement }) => {
+    const box = await surface(canvasElement)
+    const item = await waitFor(() => {
+      const element = box.querySelector<HTMLElement>('li.md-block-mark[data-comment-ids="c9"]')
+      expect(element).not.toBeNull()
+      return element!
+    })
+    await expect(item).toHaveTextContent('A banner says the app is offline.')
+    await waitFor(() => expect(item).toHaveClass('is-active'))
+  },
+}

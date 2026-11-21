@@ -347,6 +347,8 @@ const htmlRunSchema = $nodeSchema('ideaf_html_run', () => ({
 export type PageMark =
   | { id: string; block: string; from: number; to: number; quote: string; resolved?: boolean }
   | { id: string; heading: string; resolved?: boolean }
+  /** On a whole block, by its ID: its corner marks, as the document draws them. */
+  | { id: string; whole: string; resolved?: boolean }
 
 interface MarksState {
   marks: PageMark[]
@@ -417,7 +419,8 @@ const commentMarks = $prose(
 interface MarkSpec {
   id: string
   heading?: boolean
-  attrs: { class: string; 'data-comment-id': string; nodeName?: string }
+  // one comment's mark (data-comment-id), or a whole block's, which may be shared (data-comment-ids)
+  attrs: { class: string; 'data-comment-id'?: string; 'data-comment-ids'?: string; nodeName?: string }
 }
 
 /** Where each comment is on a page: its pieces of text (one per run of formatting), or its heading. */
@@ -433,6 +436,16 @@ function markDecorations(doc: Node, marks: PageMark[]): DecorationSet {
   const out: Decoration[] = []
   for (const mark of marks) {
     const resolved = mark.resolved ? ' is-resolved' : ''
+    if ('whole' in mark) {
+      const at = blocks.get(mark.whole)
+      if (at && at.node.type.name !== 'heading') {
+        const attrs = { class: `md-block-mark${resolved}`, 'data-comment-ids': mark.id }
+        // drawn as a node, as a heading's is
+        const spec: MarkSpec = { id: mark.id, heading: true, attrs }
+        out.push(Decoration.node(at.pos, at.pos + at.node.nodeSize, attrs, spec))
+      }
+      continue
+    }
     if ('heading' in mark) {
       const at = blocks.get(mark.heading)
       if (at && at.node.type.name === 'heading') {
