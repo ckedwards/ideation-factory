@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { markdownTree } from '@ideaf/core'
 import { type CommentInfo, MarkdownView } from '@ideaf/ui'
 import { actors, maya, NOW, riley } from '@ideaf/ui/fixtures'
+import { atSize, shownHeight } from '@ideaf/ui/testing'
 import { expect, fn, waitFor, within } from 'storybook/test'
 import { IdeaPage, type PageComment } from './IdeaPage.tsx'
 import { VersionBanner } from './VersionBanner.tsx'
@@ -106,10 +107,25 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+/** Each in-text card whose text is in the window: most of it shows, not cut off by the column. */
+async function cardsOnScreen(canvas: HTMLElement) {
+  await waitFor(() => {
+    for (const id of ['c1', 'c2']) {
+      const text = canvas.querySelector(`[data-comment-id="${id}"]`)!.getBoundingClientRect()
+      if (text.bottom < 0 || text.top > window.innerHeight) {
+        continue
+      }
+      const note = canvas.querySelector(`.comment-gutter-note[data-note-id="${id}"]`)!
+      expect(shownHeight(note), `${id}'s card shows`).toBeGreaterThan(note.getBoundingClientRect().height * 0.8)
+    }
+  })
+}
+
 // Text and section comments level with what they're on; the rest above them;
-// a resolved one not shown
+// a resolved one not shown. Each card whose text is in the window shows, whatever is above it in
+// the column, and after its highlight is clicked
 export const Comments: Story = {
-  play: async ({ canvasElement }) => {
+  play: async ({ canvasElement, userEvent }) => {
     const page = within(canvasElement)
     await expect(page.getByText('What about a change made offline twice?')).toBeVisible()
     await expect(page.getByText('On the whole file')).toBeVisible()
@@ -118,6 +134,20 @@ export const Comments: Story = {
     // the marked text, and the section, carry their comments
     await expect(canvasElement.querySelector('mark[data-comment-id="c1"]')).toHaveTextContent('oldest first')
     await expect(canvasElement.querySelector('h2[data-comment-id="c2"]')).toHaveTextContent('Rollout')
+    await cardsOnScreen(canvasElement)
+    await userEvent.click(canvasElement.querySelector('mark[data-comment-id="c1"]')!)
+    await cardsOnScreen(canvasElement)
+  },
+}
+
+// The same on a wide screen, the three columns side by side
+export const CommentsWide: Story = {
+  play: async ({ canvasElement, userEvent }) => {
+    await atSize(1440, 900, async () => {
+      await cardsOnScreen(canvasElement)
+      await userEvent.click(canvasElement.querySelector('mark[data-comment-id="c1"]')!)
+      await cardsOnScreen(canvasElement)
+    })
   },
 }
 

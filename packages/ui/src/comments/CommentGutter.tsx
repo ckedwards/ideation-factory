@@ -17,13 +17,15 @@ export interface CommentGutterProps {
 // The panel beside the document, with each text comment level with the text
 // it's on. Notes start level with their text and push each other down rather
 // than overlap; the gutter follows the document as it scrolls, and scrolling
-// over it scrolls the document.
+// over it scrolls the document. Whatever is above the gutter in its column,
+// a note whose text is in the window is never placed above the gutter's top,
+// where it would be cut off: it waits at the top edge, and the ones after it
+// go under it.
 export function CommentGutter({ documentRef, notes, active = null, empty }: CommentGutterProps) {
   const gutter = useRef<HTMLDivElement>(null)
   const inner = useRef<HTMLDivElement>(null)
   const elements = useRef(new Map<string, HTMLDivElement>())
-  const [anchors, setAnchors] = useState<Map<string, number>>(new Map())
-  const [tops, setTops] = useState<Map<string, number>>(new Map())
+  const [anchors, setAnchors] = useState<Map<string, Anchor>>(new Map())
   const [heights, setHeights] = useState(0)
   const ids = notes.map((note) => note.id).join('\n')
 
@@ -35,11 +37,14 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
     }
     const measure = () => {
       const top = root.getBoundingClientRect().top
-      const next = new Map<string, number>()
+      const next = new Map<string, Anchor>()
       for (const id of ids.split('\n').filter(Boolean)) {
-        const mark = root.querySelector(`[data-comment-id="${CSS.escape(id)}"]`)
-        if (mark) {
-          next.set(id, mark.getBoundingClientRect().top - top)
+        const marks = root.querySelectorAll(`[data-comment-id="${CSS.escape(id)}"]`)
+        if (marks.length > 0) {
+          next.set(id, {
+            top: marks[0]!.getBoundingClientRect().top - top,
+            end: marks[marks.length - 1]!.getBoundingClientRect().bottom - top,
+          })
         }
       }
       setAnchors((was) => (same(was, next) ? was : next))
@@ -60,18 +65,10 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
     return () => observer.disconnect()
   }, [anchors])
 
-  useLayoutEffect(() => {
-    const placed = [...anchors].map(([id, anchor]) => ({
-      id,
-      anchor,
-      height: elements.current.get(id)?.offsetHeight ?? 0,
-    }))
-    const next = layoutNotes(placed, active, remToPx(0.75))
-    setTops((was) => (same(was, next) ? was : next))
-  }, [anchors, active, heights])
-
-  // follow the document: the notes move as it scrolls, and the gutter fills
-  // the rest of the window
+  // place the notes, and follow the document: they move as it scrolls, and the gutter fills the rest
+  // of the window. Written to the notes directly, as the document scrolls, rather than drawn again
+  const latest = useRef({ anchors, active })
+  latest.current = { anchors, active }
   useLayoutEffect(() => {
     const root = documentRef.current
     const box = gutter.current
@@ -79,21 +76,55 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
     if (!root || !box || !content) {
       return
     }
-    const follow = () => {
-      const offset = root.getBoundingClientRect().top - box.getBoundingClientRect().top
-      content.style.transform = `translateY(${offset}px)`
-      box.style.height = `${Math.max(0, window.innerHeight - Math.max(0, box.getBoundingClientRect().top))}px`
+    const place = () => {
+      const page = root.getBoundingClientRect()
+      const shown = box.getBoundingClientRect()
+      content.style.transform = `translateY(${page.top - shown.top}px)`
+      box.style.height = `${Math.max(0, window.innerHeight - Math.max(0, shown.top))}px`
+      // the top of the window the document is read in, and of the gutter where it can be seen
+      const windowTop = Math.max(0, topOf(scrollerOf(root)))
+      const gutterTop = Math.max(shown.top, windowTop, topOf(scrollerOf(box)))
+      const { anchors, active } = latest.current
+      const tops = layoutNotes(
+        [...anchors].map(([id, anchor]) => ({
+          id,
+          anchor: anchor.top,
+          end: anchor.end,
+          height: elements.current.get(id)?.offsetHeight ?? 0,
+        })),
+        active,
+        remToPx(0.75),
+        { top: gutterTop - page.top, window: windowTop - page.top },
+      )
+      for (const [id, element] of elements.current) {
+        const top = tops.get(id)
+        if (top !== undefined) {
+          element.style.top = `${top}px`
+          element.style.visibility = ''
+        }
+      }
     }
-    follow()
-    window.addEventListener('scroll', follow, true)
-    window.addEventListener('resize', follow)
+    place()
+    // scrolling moves the notes waiting at the top edge with it, at once rather than sliding
+    let still: ReturnType<typeof setTimeout> | undefined
+    const scrolled = () => {
+      box.classList.add('is-scrolling')
+      clearTimeout(still)
+      still = setTimeout(() => box.classList.remove('is-scrolling'), 150)
+      place()
+    }
+    window.addEventListener('scroll', scrolled, true)
+    window.addEventListener('resize', place)
     return () => {
-      window.removeEventListener('scroll', follow, true)
-      window.removeEventListener('resize', follow)
+      clearTimeout(still)
+      window.removeEventListener('scroll', scrolled, true)
+      window.removeEventListener('resize', place)
     }
-  })
+  }, [documentRef, anchors, active, heights, ids])
 
-  const shown = notes.filter((note) => anchors.has(note.id)).sort((a, b) => anchors.get(a.id)! - anchors.get(b.id)!)
+  const shown = notes
+    .filter((note) => anchors.has(note.id))
+    .sort((a, b) => anchors.get(a.id)!.top - anchors.get(b.id)!.top)
   return (
     <div
       ref={gutter}
@@ -106,6 +137,10 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
             key={note.id}
             ref={(element) => {
               if (element) {
+                // hidden until it's been placed, so it doesn't flash at the top
+                if (!elements.current.has(note.id)) {
+                  element.style.visibility = 'hidden'
+                }
                 elements.current.set(note.id, element)
               } else {
                 elements.current.delete(note.id)
@@ -113,8 +148,6 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
             }}
             className="comment-gutter-note"
             data-note-id={note.id}
-            // hidden until it's been placed, so it doesn't flash at the top
-            style={tops.has(note.id) ? { top: tops.get(note.id) } : { visibility: 'hidden' }}
           >
             {note.content}
           </div>
@@ -125,12 +158,29 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
   )
 }
 
-function same(a: Map<string, number>, b: Map<string, number>): boolean {
-  return a.size === b.size && [...a].every(([id, n]) => Math.abs((b.get(id) ?? NaN) - n) < 0.5)
+/** Where a comment's text is, from the top of the document: its first line's top, its last line's foot. */
+interface Anchor {
+  top: number
+  end: number
+}
+
+function same(a: Map<string, Anchor>, b: Map<string, Anchor>): boolean {
+  return (
+    a.size === b.size &&
+    [...a].every(([id, n]) => {
+      const m = b.get(id)
+      return m !== undefined && Math.abs(m.top - n.top) < 0.5 && Math.abs(m.end - n.end) < 0.5
+    })
+  )
 }
 
 function remToPx(rem: number): number {
   return rem * parseFloat(getComputedStyle(document.documentElement).fontSize || '16')
+}
+
+/** The top of an element in the window; the window's own top for the page itself. */
+function topOf(element: HTMLElement | null): number {
+  return element && element !== document.scrollingElement ? element.getBoundingClientRect().top : 0
 }
 
 // the nearest element that scrolls the document

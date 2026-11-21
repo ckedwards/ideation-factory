@@ -12,6 +12,10 @@
   left: 0;
   transition: top 160ms ease;
 }
+/* following the document as it scrolls: at once */
+.comment-gutter.is-scrolling .comment-gutter-note {
+  transition: none;
+}
 @media (prefers-reduced-motion: reduce) {
   .comment-gutter-note {
     transition: none;
