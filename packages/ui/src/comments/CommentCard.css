@@ -182,14 +182,21 @@
   content: '';
 }
 
-/* Short and Line are fixed heights, so a layout can count on them */
+/* Short and Line are fixed heights, so a layout can count on them (the gutter reads them here) */
+:root {
+  --comment-short-height: 5.5rem;
+  --comment-line-height: 2rem;
+  /* a pile: a line, and this much for each of up to three under it */
+  --comment-pile-step: 0.375rem;
+  /* the space above a line or a pile: closer than between cards */
+  --comment-line-gap: 0.25rem;
+}
 .comment-card.is-short,
 .comment-card.is-line {
   overflow: hidden;
   cursor: pointer;
 }
 .comment-card.is-short {
-  --comment-short-height: 5.5rem;
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: var(--space-1);
   height: var(--comment-short-height);
@@ -218,7 +225,6 @@
   margin-right: auto;
 }
 .comment-card.is-line {
-  --comment-line-height: 2rem;
   display: flex;
   align-items: center;
   gap: var(--space-2);

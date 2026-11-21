@@ -693,7 +693,7 @@ function Notes(props: {
           },
         ]
       })
-      const next = layoutNotes(placed, null, GAP)
+      const next = layoutNotes(placed, GAP)
       const bottom = Math.max(0, ...placed.map((p) => (next.get(p.id) ?? 0) + p.height))
       setTops((was) => (same(was, next) ? was : next))
       setFloor(bottom)

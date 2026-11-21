@@ -12,8 +12,8 @@
   left: 0;
   transition: top 160ms ease;
 }
-/* following the document as it scrolls: at once */
-.comment-gutter.is-scrolling .comment-gutter-note {
+/* following the document as it scrolls, or newly fitted: at once */
+.comment-gutter.is-instant .comment-gutter-note {
   transition: none;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -26,4 +26,75 @@
   color: var(--ink-2);
   font-size: var(--text-sm);
   text-align: center;
+}
+
+/* the open card, drawn over its neighbors, which stay where they are */
+.comment-gutter-note.is-open {
+  z-index: 4;
+}
+.comment-gutter-note.is-open .comment-card {
+  box-shadow: var(--shadow-lg, var(--shadow));
+}
+/* from the open card's text down to the card, when it isn't level with it */
+.comment-gutter-tie {
+  position: absolute;
+  left: calc(var(--space-2) * -1);
+  z-index: 2;
+  width: var(--space-2);
+  border-top: var(--hairline) solid var(--mark-line);
+  border-left: var(--hairline) solid var(--mark-line);
+}
+/* a pile: the top line, the edges of up to three under it, and how many */
+.comment-gutter-note.is-pile {
+  height: calc(var(--comment-line-height) + var(--comment-pile-step) * var(--pile-under));
+}
+.comment-pile-top {
+  position: relative;
+}
+.comment-pile-top .comment-card {
+  padding-right: var(--space-7);
+  box-shadow:
+    0 calc(var(--comment-pile-step) * 1) 0 calc(var(--hairline) * -4) var(--surface),
+    0 calc(var(--comment-pile-step) * 1) 0 calc(var(--hairline) * -3) var(--rule-strong),
+    var(--pile-edge-2, 0 0 transparent),
+    var(--pile-edge-3, 0 0 transparent);
+}
+.comment-gutter-note.is-pile[data-under='2'] .comment-pile-top .comment-card,
+.comment-gutter-note.is-pile[data-under='3'] .comment-pile-top .comment-card {
+  --pile-edge-2: 0 calc(var(--comment-pile-step) * 2) 0 calc(var(--hairline) * -8) var(--rule);
+}
+.comment-gutter-note.is-pile[data-under='3'] .comment-pile-top .comment-card {
+  --pile-edge-3: 0 calc(var(--comment-pile-step) * 3) 0 calc(var(--hairline) * -12) var(--rule);
+}
+.comment-pile-count {
+  position: absolute;
+  top: 50%;
+  right: var(--space-2);
+  min-width: 1.25rem;
+  padding: 0 var(--space-1);
+  border: var(--hairline) solid var(--mark-line);
+  border-radius: var(--radius-pill);
+  background: var(--mark);
+  color: var(--mark-ink);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-align: center;
+  transform: translateY(-50%);
+}
+/* pointed at: the lines it stands for, over what's under it */
+.comment-pile-fan {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 3;
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+.comment-pile-fan > * {
+  min-width: 0;
 }
