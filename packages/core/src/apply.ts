@@ -148,12 +148,12 @@ function runStep(idea: Idea, ids: Ids, plan: Plan, tracked: Map<string, Tracked>
     let result: { state: AnchorState; anchor: Anchor | null }
     if (anchor.kind === 'file') {
       result = fileById(next, anchor.file) ? { state: 'exact', anchor } : { state: 'outdated', anchor: null }
-    } else if (anchor.kind === 'section') {
-      const at = locate(next, anchor.section)
-      const heading = locate(idea, anchor.section)
-      const moved = heading
-        ? map.map(heading.file.id, heading.parsed.units[heading.unit]!.start)?.moved === true
-        : false
+    } else if (anchor.kind === 'section' || anchor.kind === 'block') {
+      // a section by its heading, a block by itself: found again by its ID, wherever it went
+      const id = anchor.kind === 'section' ? anchor.section : anchor.block
+      const at = locate(next, id)
+      const was = locate(idea, id)
+      const moved = was ? map.map(was.file.id, was.parsed.units[was.unit]!.start)?.moved === true : false
       result = at
         ? { state: moved ? 'moved' : 'exact', anchor: { ...anchor, file: at.file.id } }
         : { state: 'outdated', anchor: null }

@@ -261,3 +261,46 @@ describe('files', () => {
     }
   })
 })
+
+describe('comments on a block', () => {
+  test('a block moved unchanged keeps its comment, marked moved; edited in place, it keeps it; deleted, it is outdated', () => {
+    const idea = doc()
+    const block: Comment = { id: 'c1', anchor: { kind: 'block', file: 'f1', block: 'b7' } }
+    const moved = upload(
+      idea,
+      [block],
+      [
+        {
+          file: 'f1',
+          path: 'plan.md',
+          content: `# Plan
+
+Cheap enough.
+
+The quick brown fox jumps over the lazy dog.
+
+## Risks
+
+It might rain on the day.
+
+## Costs
+`,
+        },
+      ],
+    )
+    expect(outcome(moved, 'c1')).toEqual({ state: 'moved', quote: null, file: 'f1' })
+    // the same block, its words changed: the comment is on the block, not its words
+    const edited = upload(
+      idea,
+      [block],
+      [{ file: 'f1', path: 'plan.md', content: DOC.replace('Cheap enough.', 'Costly, it turns out.') }],
+    )
+    expect(outcome(edited, 'c1')).toEqual({ state: 'exact', quote: null, file: 'f1' })
+    const deleted = upload(
+      idea,
+      [block],
+      [{ file: 'f1', path: 'plan.md', content: DOC.replace('\nCheap enough.\n', '') }],
+    )
+    expect(outcome(deleted, 'c1').state).toBe('outdated')
+  })
+})

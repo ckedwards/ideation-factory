@@ -106,11 +106,13 @@ export function applyUpload(idea: Idea, comments: Comment[], upload: Upload): Up
       out = { state: 'exact', anchor }
     } else if (anchor.kind === 'file') {
       out = fileById(result, anchor.file) ? { state: 'exact', anchor } : { state: 'outdated', anchor: null }
-    } else if (anchor.kind === 'section') {
-      const at = locate(result, anchor.section)
-      const movedHeading = [...moves.values()].some((m) => m.id === anchor.section)
+    } else if (anchor.kind === 'section' || anchor.kind === 'block') {
+      // a section by its heading, a block by itself: found again by its ID, wherever it went
+      const id = anchor.kind === 'section' ? anchor.section : anchor.block
+      const at = locate(result, id)
+      const moved = [...moves.values()].some((m) => m.id === id)
       out = at
-        ? { state: movedHeading ? 'moved' : 'exact', anchor: { ...anchor, file: at.file.id } }
+        ? { state: moved ? 'moved' : 'exact', anchor: { ...anchor, file: at.file.id } }
         : { state: 'outdated', anchor: null }
     } else {
       out = followText(anchor, mapper, newParsed)
