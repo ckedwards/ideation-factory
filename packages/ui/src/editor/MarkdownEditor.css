@@ -512,21 +512,6 @@
   font: var(--text-xs) var(--font-ui);
   white-space: nowrap;
 }
-/* a block the draft has changed: a rail in the margin beside it */
-.md-editor.is-page .md-editor-surface .is-changed {
-  position: relative;
-}
-.md-editor.is-page .md-editor-surface .is-changed::before {
-  content: '';
-  position: absolute;
-  top: 0.15em;
-  bottom: 0.15em;
-  left: calc(-1 * var(--space-4));
-  width: 3px;
-  border-radius: 2px;
-  background: var(--changed);
-  pointer-events: none;
-}
 /* on a page, the status keeps to the right, beside the switch, on its own line too */
 .md-editor.is-page .md-editor-status {
   margin-left: auto;

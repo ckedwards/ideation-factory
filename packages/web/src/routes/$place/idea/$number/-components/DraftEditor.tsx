@@ -75,10 +75,6 @@ export function DraftEditor(props: DraftEditorProps) {
     return (props.marks ?? []).flatMap((m) => (shown.has(m.id) ? [{ ...m, resolved: shown.get(m.id)! }] : []))
     // by what they say, not which arrays they came in, and again for each draft
   }, [marksKey, shownKey, props.draft])
-  const changed = useMemo(
-    () => file.units.filter((u) => u.origin.kind === 'new' || u.origin.changed).map((u) => u.id),
-    [file],
-  )
 
   const save = async (): Promise<boolean> => {
     if (timer.current) {
@@ -270,7 +266,6 @@ export function DraftEditor(props: DraftEditorProps) {
         label={file.path}
         value={text}
         saved={saved}
-        changed={changed}
         comments={comments}
         activeComment={props.view?.active ?? null}
         {...(props.view ? { onComment: props.view.onSelect } : {})}

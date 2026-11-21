@@ -74,8 +74,6 @@ export interface MarkdownEditorProps {
    * and the Markdown side counts what's changed from it. A new object only when it's saved again.
    */
   saved?: { source: string; ids: string[] }
-  /** A page's: the blocks the draft has changed, marked with a rail. */
-  changed?: string[]
   /**
    * A page's comments, marked on their text as the document marks them, from where the draft has
    * them; they stay on their words as typing moves them. A new array only when they've moved.
@@ -214,9 +212,6 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
     }
     // only when it's saved, not as the text changes
   }, [props.saved, rich])
-  useEffect(() => {
-    rich?.markChanged(props.changed ?? [])
-  }, [props.changed, rich])
   useEffect(() => {
     rich?.markComments(props.comments ?? [])
   }, [props.comments, rich])
