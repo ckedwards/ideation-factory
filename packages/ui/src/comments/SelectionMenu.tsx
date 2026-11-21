@@ -1,5 +1,6 @@
 import { Popover } from '@base-ui/react/popover'
-import { type RefObject, useEffect, useMemo, useRef, useState } from 'react'
+import { type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Button } from '../controls/Button.tsx'
 import { inlineMarkdown } from '../document/MarkdownView.tsx'
 import { MarkdownEditor } from '../editor/MarkdownEditor.tsx'
@@ -23,12 +24,25 @@ export interface SelectionMenuProps {
   onComment?: (selection: TextSelection, body: string, pending: boolean) => void
   onSuggest?: (selection: TextSelection, replacement: string, body: string, pending: boolean) => void
   onSectionComment?: (section: NonNullable<TextSelection['section']>, body: string, pending: boolean) => void
+  // a comment on a whole block, from the button beside it: where it starts and ends in the source, and
+  // what kind it is (a heading's button comments on its section)
+  onBlockComment?: (block: BlockTarget, body: string, pending: boolean) => void
 }
 
-type Mode = 'menu' | 'comment' | 'suggest' | 'section'
+/** A block a comment can be on, from the button beside it. */
+export interface BlockTarget {
+  start: number
+  end: number
+  // what kind of block, as the form names it: "table", "list item"
+  label: string
+}
+
+type Mode = 'menu' | 'comment' | 'suggest' | 'section' | 'block'
 
 interface Pending {
   selection: TextSelection
+  // a whole block, from the button beside it
+  block?: BlockTarget
   range: Range
   // each selection opens the menu afresh
   id: number
@@ -53,6 +67,7 @@ export function SelectionMenu({
   onComment,
   onSuggest,
   onSectionComment,
+  onBlockComment,
 }: SelectionMenuProps) {
   const [pending, setPending] = useState<Pending | null>(null)
   const [mode, setMode] = useState<Mode>('menu')
@@ -152,8 +167,30 @@ export function SelectionMenu({
     [pending, documentRef],
   )
 
+  // the button beside the block pointed at: a comment on the block, or a heading's section
+  const blockButton =
+    enabled && (onBlockComment || onSectionComment) && !pending ? (
+      <BlockButton
+        documentRef={documentRef}
+        sections={onSectionComment !== undefined}
+        blocks={onBlockComment !== undefined}
+        onOpen={(element) => {
+          const opened = blockSelection(element)
+          if (!opened) {
+            return
+          }
+          const range = document.createRange()
+          range.selectNodeContents(element)
+          fromKeyboard.current = true
+          setPending({ ...opened, range, id: ++selections.current })
+          setMode(opened.block ? 'block' : 'section')
+          setBody('')
+        }}
+      />
+    ) : null
+
   if (!pending || !anchor) {
-    return null
+    return blockButton
   }
   const { selection } = pending
   const close = () => {
@@ -161,6 +198,7 @@ export function SelectionMenu({
     window.getSelection()?.removeAllRanges()
   }
   const replaced = original(selection)
+  const pendingBlock = pending.block
   // a suggestion must change something; a comment must say something
   const ready =
     body.length <= COMMENT_LIMIT &&
@@ -175,6 +213,8 @@ export function SelectionMenu({
       onSuggest?.(selection, replacement, body.trim(), pending)
     } else if (mode === 'section' && selection.section) {
       onSectionComment?.(selection.section, body.trim(), pending)
+    } else if (mode === 'block' && pendingBlock) {
+      onBlockComment?.(pendingBlock, body.trim(), pending)
     }
     close()
   }
@@ -250,6 +290,10 @@ export function SelectionMenu({
                 <div className="selection-menu-context">
                   {mode === 'section' ? (
                     <>Section · {selection.section?.title}</>
+                  ) : mode === 'block' && pendingBlock ? (
+                    <>
+                      {capitalized(pendingBlock.label)} · <q>{quote}</q>
+                    </>
                   ) : mode === 'suggest' &&
                     replaced !== null &&
                     replaced !== source?.slice(selection.start, selection.end) ? (
@@ -322,5 +366,158 @@ function remToPx(rem: number): number {
 const HIGHLIGHT = 'selection-pending'
 
 function formTitle(mode: Mode): string {
-  return mode === 'suggest' ? 'Suggest an edit' : mode === 'section' ? 'Comment on the section' : 'Comment'
+  return mode === 'suggest'
+    ? 'Suggest an edit'
+    : mode === 'section'
+      ? 'Comment on the section'
+      : mode === 'block'
+        ? 'Comment on the block'
+        : 'Comment'
+}
+
+function capitalized(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+/** The block of the document an element is in, that a comment can be on: a top-level block, or a list item. */
+function blockOf(root: HTMLElement, element: Element | null): HTMLElement | null {
+  const prose = root.querySelector('.prose')
+  for (let at = element; at && at !== root; at = at.parentElement) {
+    if (
+      at instanceof HTMLElement &&
+      at.dataset['start'] !== undefined &&
+      (at.parentElement === prose || at.tagName === 'LI')
+    ) {
+      return at
+    }
+  }
+  return null
+}
+
+/** What kind of block an element is, as the form names it. */
+function labelOf(element: HTMLElement): string {
+  if (element.tagName === 'LI') {
+    return 'list item'
+  }
+  if (element.tagName === 'BLOCKQUOTE') {
+    return 'quote'
+  }
+  if (element.matches('.md-table') || element.querySelector(':scope > .md-table')) {
+    return 'table'
+  }
+  if (element.querySelector('svg')) {
+    return 'diagram'
+  }
+  if (element.tagName === 'PRE' || element.querySelector(':scope > pre')) {
+    return 'code'
+  }
+  if (element.querySelector('img') && element.textContent?.trim() === '') {
+    return 'image'
+  }
+  return 'paragraph'
+}
+
+/** A block, as a form opens on it: its words, where it is, and the section a heading starts. */
+function blockSelection(element: HTMLElement): Pick<Pending, 'selection' | 'block'> | null {
+  const start = Number(element.dataset['start'])
+  const end = Number(element.dataset['end'])
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    return null
+  }
+  const quote = (element.textContent ?? '').replace(/\s+/g, ' ').trim()
+  if (/^H[1-6]$/.test(element.tagName)) {
+    return { selection: { quote, start, end, section: { title: quote, heading: start } } }
+  }
+  return { selection: { quote, start, end, section: null }, block: { start, end, label: labelOf(element) } }
+}
+
+/**
+ * The button beside the block pointed at, in the margin to its right, level with its first line: a
+ * comment on the block, or on a heading's section. It stays while the pointer goes over to it.
+ */
+function BlockButton({
+  documentRef,
+  sections,
+  blocks,
+  onOpen,
+}: {
+  documentRef: RefObject<HTMLElement | null>
+  sections: boolean
+  blocks: boolean
+  onOpen: (element: HTMLElement) => void
+}) {
+  const [target, setTarget] = useState<HTMLElement | null>(null)
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null)
+  const hide = useRef<number | undefined>(undefined)
+  useEffect(() => {
+    const root = documentRef.current
+    if (!root) {
+      return
+    }
+    const move = (event: PointerEvent) => {
+      const block = blockOf(root, event.target as Element)
+      const heading = block !== null && /^H[1-6]$/.test(block.tagName)
+      if (block && (heading ? sections : blocks)) {
+        window.clearTimeout(hide.current)
+        setTarget(block)
+      }
+    }
+    const leave = () => {
+      hide.current = window.setTimeout(() => setTarget(null), 400)
+    }
+    root.addEventListener('pointermove', move)
+    root.addEventListener('pointerleave', leave)
+    return () => {
+      window.clearTimeout(hide.current)
+      root.removeEventListener('pointermove', move)
+      root.removeEventListener('pointerleave', leave)
+    }
+  }, [documentRef, sections, blocks])
+  useLayoutEffect(() => {
+    if (!target) {
+      setAt(null)
+      return
+    }
+    const place = () => {
+      const box = target.getBoundingClientRect()
+      setAt({ top: box.top, left: box.right + remToPx(0.75) })
+    }
+    place()
+    window.addEventListener('scroll', place, true)
+    window.addEventListener('resize', place)
+    return () => {
+      window.removeEventListener('scroll', place, true)
+      window.removeEventListener('resize', place)
+    }
+  }, [target])
+  if (!target || !at) {
+    return null
+  }
+  const heading = /^H[1-6]$/.test(target.tagName)
+  const label = heading ? 'Comment on this section' : `Comment on this ${labelOf(target)}`
+  return createPortal(
+    <button
+      type="button"
+      className="block-comment-button"
+      style={{ top: at.top, left: at.left }}
+      aria-label={label}
+      title={label}
+      onPointerEnter={() => window.clearTimeout(hide.current)}
+      onPointerLeave={() => {
+        hide.current = window.setTimeout(() => setTarget(null), 400)
+      }}
+      onClick={() => onOpen(target)}
+    >
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
+        <path
+          d="M3 3.5h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H7l-3 2.5v-2.5H3a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>,
+    document.body,
+  )
 }

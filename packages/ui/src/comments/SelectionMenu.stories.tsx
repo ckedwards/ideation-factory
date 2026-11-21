@@ -224,3 +224,35 @@ export const Disabled: Story = {
     await expect(document.body.querySelector('.selection-menu')).toBeNull()
   },
 }
+
+// Point at a block, and a button beside it comments on the whole block: a table here. A heading's
+// button comments on its section
+export const BlockButton: Story = {
+  args: { onBlockComment: fn() },
+  play: async ({ args, canvasElement, userEvent }) => {
+    const page = within(document.body)
+    const table = canvasElement.querySelector<HTMLElement>('.md-table')!
+    table.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }))
+    const button = await page.findByRole('button', { name: 'Comment on this table' })
+    // in the margin to its right, level with its first line
+    const box = table.getBoundingClientRect()
+    await expect(button.getBoundingClientRect().left).toBeGreaterThanOrEqual(box.right)
+    await expect(Math.abs(button.getBoundingClientRect().top - box.top)).toBeLessThan(2)
+    await userEvent.click(button)
+    const form = await page.findByRole('dialog', { name: 'Comment on the block' })
+    await expect(form).toHaveTextContent('Table ·')
+    await userEvent.type(await within(form).findByRole('textbox', { name: 'Comment' }), 'Add a row for edits')
+    await userEvent.click(within(form).getByRole('button', { name: 'Comment' }))
+    await expect(args.onBlockComment).toHaveBeenCalledWith(
+      { start: sample.indexOf('| Case'), end: expect.any(Number), label: 'table' },
+      'Add a row for edits',
+      false,
+    )
+    // a heading's: its section
+    const heading = canvasElement.querySelector<HTMLElement>('#rollout')!
+    heading.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }))
+    await userEvent.click(await page.findByRole('button', { name: 'Comment on this section' }))
+    const section = await page.findByRole('dialog', { name: 'Comment on the section' })
+    await expect(section).toHaveTextContent('Section · Rollout')
+  },
+}
