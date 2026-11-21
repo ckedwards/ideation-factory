@@ -116,5 +116,23 @@ export const DrawnAgain: Story = {
     await userEvent.click(within(canvasElement).getByRole('button', { name: 'Draw again' }))
     await new Promise((resolve) => setTimeout(resolve, 100))
     await expect(notes().every((note) => getComputedStyle(note).visibility === 'visible')).toBe(true)
+
+// Pointing at a card lights its text, and pointing at the text lights its card
+export const PointingTies: Story = {
+  play: async ({ canvasElement, userEvent }) => {
+    const mark = canvasElement.querySelector<HTMLElement>('mark[data-comment-id="c2"]')!
+    const card = () => canvasElement.querySelector<HTMLElement>('[data-note-id="c2"] .comment-card')!
+    const other = () => canvasElement.querySelector<HTMLElement>('[data-note-id="c1"] .comment-card')!
+    await waitFor(() => expect(card().closest<HTMLElement>('.comment-gutter-note')!.style.top).not.toBe(''))
+    const markColor = () => getComputedStyle(mark).backgroundColor
+    const border = (element: HTMLElement) => getComputedStyle(element).borderTopColor
+    const atRest = { mark: markColor(), card: border(card()) }
+    await userEvent.hover(card())
+    await waitFor(() => expect(markColor()).not.toBe(atRest.mark))
+    await userEvent.unhover(card())
+    await waitFor(() => expect(markColor()).toBe(atRest.mark))
+    await userEvent.hover(mark)
+    await waitFor(() => expect(border(card())).not.toBe(atRest.card))
+    await expect(border(other())).toBe(atRest.card)
   },
 }

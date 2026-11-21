@@ -1,8 +1,9 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Button } from '../controls/Button.tsx'
 import { MarkdownEditor } from '../editor/MarkdownEditor.tsx'
 import { Tag } from '../labels/Tag.tsx'
 import { ActorLabel, type Actor } from '../people/ActorLabel.tsx'
+import { Avatar } from '../people/Avatar.tsx'
 import { RelativeTime } from '../time/RelativeTime.tsx'
 import { inlineMarkdown } from '../document/MarkdownView.tsx'
 import { COMMENT_LIMIT } from './limit.ts'
@@ -49,8 +50,16 @@ export interface CommentInfo extends CommentReply {
   replies: CommentReply[]
 }
 
+/**
+ * How much of a thread a card shows. Full: all of it, its long comment clamped and a long thread
+ * folded. Short: who, when, two lines and a count of replies. Line: a face, a name, the first words
+ * and a count. Short and line are a fixed height (CommentCard.css), so a layout can count on them.
+ */
+export type CardSize = 'full' | 'short' | 'line'
+
 export interface CommentCardProps {
   comment: CommentInfo
+  size?: CardSize
   // highlighted with its text in the document
   active?: boolean
   // with what it's on (the quote, the section) above the text
@@ -77,6 +86,7 @@ export interface CommentCardProps {
 // the replies, and Reply and Resolve. Agent comments carry the bot rail.
 export function CommentCard({
   comment,
+  size = 'full',
   active = false,
   showTarget = true,
   context = false,
@@ -92,11 +102,14 @@ export function CommentCard({
 }: CommentCardProps) {
   const [replying, setReplying] = useState(false)
   const [draft, setDraft] = useState('')
+  // a long thread's earlier replies, and a long comment's end, shown
+  const [allReplies, setAllReplies] = useState(false)
   const headingId = useId()
   const { target, suggestion } = comment
   const shown = suggestionShown(suggestion, target)
   const classes = [
     'comment-card',
+    size !== 'full' && `is-${size}`,
     active && 'is-active',
     comment.resolved && 'is-resolved',
     comment.outdated && 'is-outdated',
@@ -111,6 +124,49 @@ export function CommentCard({
       setReplying(false)
     }
   }
+  const tag = target.kind === 'file' ? 'Whole file' : target.kind === 'section' ? `§ ${target.title}` : null
+  const replies = comment.replies.length
+  if (size === 'line') {
+    return (
+      <article className={classes.filter(Boolean).join(' ')} aria-labelledby={headingId} onClick={onSelect}>
+        <span className="comment-line-who" id={headingId}>
+          <Face actor={comment.author} />
+          <span className="comment-line-name">{nameOf(comment.author)}</span>
+        </span>
+        <span className="comment-line-text">
+          {tag && <Tag>{tag}</Tag>} {comment.body}
+        </span>
+        {replies > 0 && (
+          <span className="comment-line-count" title={plural(replies, 'reply', 'replies')}>
+            {replies}
+            <span className="visually-hidden"> {replies === 1 ? 'reply' : 'replies'}</span>
+          </span>
+        )}
+      </article>
+    )
+  }
+  if (size === 'short') {
+    const last = comment.replies.at(-1)
+    return (
+      <article className={classes.filter(Boolean).join(' ')} aria-labelledby={headingId} onClick={onSelect}>
+        <header className="comment-head" id={headingId}>
+          <ActorLabel actor={comment.author} short />
+          {tag && <Tag>{tag}</Tag>}
+          <span className="comment-time">
+            <RelativeTime at={comment.at} />
+          </span>
+        </header>
+        <div className="comment-body">{comment.body}</div>
+        {last && (
+          <p className="comment-summary">
+            {plural(replies, 'reply', 'replies')} · {nameOf(last.author)}, <RelativeTime at={last.at} />
+          </p>
+        )}
+      </article>
+    )
+  }
+  // a long thread: the first comment, then the last two replies, the ones between folded
+  const folded = !allReplies && replies > 2 ? replies - 2 : 0
   return (
     <article className={classes.filter(Boolean).join(' ')} aria-labelledby={headingId} onClick={onSelect}>
       <header className="comment-head" id={headingId}>
@@ -144,7 +200,7 @@ export function CommentCard({
         </div>
       )}
 
-      <div className="comment-body">{comment.body}</div>
+      <Clamped>{comment.body}</Clamped>
 
       {suggestion && target.kind === 'text' && (
         <div className={`suggestion suggestion-${suggestion.state}${shown.source ? ' is-source' : ''}`}>
@@ -179,9 +235,21 @@ export function CommentCard({
         </div>
       )}
 
-      {comment.replies.length > 0 && (
+      {folded > 0 && (
+        <button
+          type="button"
+          className="comment-earlier"
+          onClick={(event) => {
+            event.stopPropagation()
+            setAllReplies(true)
+          }}
+        >
+          {plural(folded, 'earlier reply', 'earlier replies')}
+        </button>
+      )}
+      {replies > 0 && (
         <ol className="comment-replies" aria-label="Replies">
-          {comment.replies.map((reply) => (
+          {comment.replies.slice(folded).map((reply) => (
             <li key={reply.id}>
               <header className="comment-head">
                 <ActorLabel actor={reply.author} short />
@@ -233,12 +301,12 @@ export function CommentCard({
         (onReply || onResolve || extra) && (
           <footer className="comment-actions" onClick={(event) => event.stopPropagation()}>
             {onReply && (
-              <Button variant="link" size="sm" onClick={() => setReplying(true)}>
+              <Button variant="link" size="sm" data-action="reply" onClick={() => setReplying(true)}>
                 Reply
               </Button>
             )}
             {onResolve && (
-              <Button variant="link" size="sm" onClick={() => onResolve(!comment.resolved)}>
+              <Button variant="link" size="sm" data-action="resolve" onClick={() => onResolve(!comment.resolved)}>
                 {comment.resolved ? 'Reopen' : 'Resolve'}
               </Button>
             )}
@@ -248,6 +316,65 @@ export function CommentCard({
       )}
     </article>
   )
+}
+
+/** A comment's text, cut to about six lines with "Show more" when it's longer. */
+function Clamped({ children }: { children: ReactNode }) {
+  const body = useRef<HTMLDivElement>(null)
+  const [long, setLong] = useState(false)
+  const [open, setOpen] = useState(false)
+  useLayoutEffect(() => {
+    const element = body.current
+    if (!element || open) {
+      return
+    }
+    const measure = () => setLong(element.scrollHeight > element.clientHeight + 1)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [open])
+  return (
+    <>
+      <div ref={body} className={`comment-body${open ? '' : ' is-clamped'}`}>
+        {children}
+      </div>
+      {(long || open) && (
+        <button
+          type="button"
+          className="comment-more"
+          aria-expanded={open}
+          onClick={(event) => {
+            event.stopPropagation()
+            setOpen(!open)
+          }}
+        >
+          {open ? 'Show less' : 'Show more'}
+        </button>
+      )}
+    </>
+  )
+}
+
+/** Who wrote it, as a face: a person's avatar, or the bot mark. */
+function Face({ actor }: { actor: Actor }) {
+  if (actor.kind === 'person') {
+    return <Avatar person={actor.person} size="sm" decorative />
+  }
+  return (
+    <span className="bot-mark" aria-hidden>
+      🤖
+    </span>
+  )
+}
+
+/** Who wrote it, in a word or two: a person's name, or a bot's. */
+function nameOf(actor: Actor): string {
+  return actor.kind === 'person' ? actor.person.name : actor.bot
+}
+
+function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`
 }
 
 /**
