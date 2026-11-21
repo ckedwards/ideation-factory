@@ -91,6 +91,14 @@ const meta = {
   title: 'Ideas/IdeaPage',
   component: IdeaPage,
   parameters: { layout: 'fullscreen' },
+  // each starts beside the text, whatever a story before it chose
+  beforeEach: () => {
+    try {
+      localStorage.removeItem('ideaf:comments:view')
+    } catch {
+      // no storage: nothing kept
+    }
+  },
   args: {
     files: [{ path: 'plan.md', href: '#plan', current: true }],
     source,
@@ -121,15 +129,16 @@ async function cardsOnScreen(canvas: HTMLElement) {
   })
 }
 
-// Text and section comments level with what they're on; the rest above them;
-// a resolved one not shown. Each card whose text is in the window shows, whatever is above it in
+// Text and section comments level with what they're on; the file's above them, and the one not in
+// this version counted, in the list; a resolved one not shown. Each card whose text is in the window shows, whatever is above it in
 // the column, and after its highlight is clicked
 export const Comments: Story = {
   play: async ({ canvasElement, userEvent }) => {
     const page = within(canvasElement)
     await expect(page.getByText('What about a change made offline twice?')).toBeVisible()
     await expect(page.getByText('On the whole file')).toBeVisible()
-    await expect(page.getByText('Not in this version')).toBeVisible()
+    await expect(page.getByText(/1 comment not in this version/)).toBeVisible()
+    await expect(page.queryByText('This contradicts the overview.')).toBeNull()
     await expect(page.queryByText('Done.')).toBeNull()
     // the marked text, and the section, carry their comments
     await expect(canvasElement.querySelector('mark[data-comment-id="c1"]')).toHaveTextContent('oldest first')
@@ -151,23 +160,61 @@ export const CommentsWide: Story = {
   },
 }
 
-// A narrow screen: the comments come after the document, the ones on text listed in the order
-// of what they're on, each with its quote, rather than placed level with text that isn't beside them
+// A narrow screen: the comments come after the document, as the list: the file's, then each
+// section's in the order of the text with what they're on, then the ones not in this version, rather
+// than placed level with text that isn't beside them
 export const CommentsNarrow: Story = {
   play: async ({ canvasElement }) => {
     await atSize(700, 900, async () => {
       await waitFor(() => expect(canvasElement.querySelector('.comment-gutter')).toBeNull())
+      await expect(within(canvasElement).queryByRole('radiogroup', { name: 'Comments shown' })).toBeNull()
       const list = canvasElement.querySelector<HTMLElement>('.idea-comment-list')!
-      const cards = within(list).getAllByRole('article')
-      await expect(cards.map((c) => c.textContent)).toEqual([
-        expect.stringContaining('oldest first'),
-        expect.stringContaining('Rollout'),
+      await expect([...list.querySelectorAll('h3')].map((h) => h.textContent)).toEqual([
+        'On the whole file · 1',
+        'Proposal · 1',
+        'Rollout · 1',
+        'Not in this version · 1',
       ])
+      const cards = within(list).getAllByRole('article')
+      await expect(cards[1]).toHaveTextContent('oldest first')
       for (const card of cards) {
         card.scrollIntoView({ block: 'center' })
         await expect(shownHeight(card)).toBeGreaterThan(card.getBoundingClientRect().height * 0.8)
       }
     })
+  },
+}
+
+// The list, chosen beside the filters: every comment with what it's on, grouped by where it is;
+// choosing one opens it and brings its text into view. The choice is kept
+export const List: Story = {
+  play: async ({ canvasElement, userEvent }) => {
+    const page = within(canvasElement)
+    await userEvent.click(page.getByRole('radio', { name: 'List' }))
+    const list = await waitFor(() => {
+      const element = canvasElement.querySelector<HTMLElement>('.idea-comment-list')
+      expect(element).not.toBeNull()
+      return element!
+    })
+    await expect(canvasElement.querySelector('.comment-gutter')).toBeNull()
+    await expect(list.querySelectorAll('section')).toHaveLength(4)
+    await expect(within(list).getByText('This contradicts the overview.')).toBeVisible()
+    await userEvent.click(within(list).getByText('Which team goes first?'))
+    await waitFor(() => expect(canvasElement.querySelector('h2[data-comment-id="c2"]')).toHaveClass('is-active'))
+    await expect(localStorage.getItem('ideaf:comments:view')).toBe('list')
+    // and back beside the text
+    await userEvent.click(page.getByRole('radio', { name: 'Beside the text' }))
+    await waitFor(() => expect(canvasElement.querySelector('.comment-gutter')).not.toBeNull())
+  },
+}
+
+// Beside the text, the comments not in this version are counted, and a link opens the list
+export const OutdatedInTheList: Story = {
+  play: async ({ canvasElement, userEvent }) => {
+    const page = within(canvasElement)
+    await userEvent.click(page.getByRole('button', { name: 'Show in the list' }))
+    await expect(await page.findByText('This contradicts the overview.')).toBeVisible()
+    await expect(page.getByRole('radio', { name: 'List' })).toHaveAttribute('aria-checked', 'true')
   },
 }
 
