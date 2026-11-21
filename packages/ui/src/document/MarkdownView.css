@@ -231,12 +231,12 @@
   color: inherit;
 }
 
-/* comments on a section: a § badge after its heading */
+/* comments on a section: their count after its heading */
 .prose .md-section-mark {
   cursor: pointer;
 }
 .prose .md-section-mark::after {
-  content: '§';
+  content: attr(data-comment-count);
   margin-left: var(--space-2);
   padding: 0 var(--space-2);
   border-radius: var(--radius-pill);
@@ -254,8 +254,85 @@
   background: var(--surface-2);
   color: var(--ink-2);
 }
+/* comments on a block: two corner marks, top left and bottom right, and the count at its top right.
+   Pointing at the block, its count or its card grows the marks along the edges into a rectangle
+   (--edge, which the gutter sets too); its comment open, the rectangle fills with the comment color.
+   The marks sit behind the block's words, a few pixels outside them, and over its own fill (a table's,
+   code's). */
+.prose .md-block-mark {
+  --line: calc(var(--hairline) * 2);
+  --corner: 0.75rem;
+  position: relative;
+  isolation: isolate;
+}
+.prose .md-block-mark::before {
+  position: absolute;
+  inset: calc(var(--space-1) * -1) calc(var(--space-2) * -1);
+  z-index: -1;
+  border-radius: var(--radius-sm);
+  background:
+    linear-gradient(var(--mark-line), var(--mark-line)) left top / var(--edge, var(--corner)) var(--line) no-repeat,
+    linear-gradient(var(--mark-line), var(--mark-line)) left top / var(--line) var(--edge, var(--corner)) no-repeat,
+    linear-gradient(var(--mark-line), var(--mark-line)) right bottom / var(--edge, var(--corner)) var(--line) no-repeat,
+    linear-gradient(var(--mark-line), var(--mark-line)) right bottom / var(--line) var(--edge, var(--corner)) no-repeat;
+  background-color: var(--block-fill, transparent);
+  content: '';
+  pointer-events: none;
+  transition:
+    background-size 120ms ease,
+    background-color 120ms ease;
+}
+.prose .md-block-mark:hover,
+.prose .md-block-mark:focus-within {
+  --edge: 100%;
+}
+.prose .md-block-mark.is-active {
+  --edge: 100%;
+  /* one rule, so the fill can move to pointing if that's what's wanted */
+  --block-fill: var(--mark);
+}
+/* code and tables have fills of their own, which would hide the one behind them: open, the color is
+   laid over their fill instead, under their words */
+.prose .md-block-mark.is-active > pre,
+.prose .md-block-mark.is-active > .md-table {
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--mark) 45%, transparent),
+    color-mix(in srgb, var(--mark) 45%, transparent)
+  );
+}
+.prose .md-block-mark.is-resolved::before {
+  opacity: 0.5;
+}
+/* a table and code have a box of their own, which scrolls: the marks are on the box around them */
+.prose .md-block-mark > .md-table,
+.prose .md-block-mark > pre {
+  margin-block: 0;
+}
+.prose .md-block-count {
+  position: absolute;
+  top: calc(var(--space-1) * -1);
+  right: calc(var(--space-2) * -1);
+  z-index: 1;
+  min-width: 1.25rem;
+  padding: 0 var(--space-1);
+  border: var(--hairline) solid var(--mark-line);
+  border-radius: var(--radius-pill);
+  background: var(--mark);
+  color: var(--mark-ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+  transform: translate(50%, -50%);
+  cursor: pointer;
+}
+.prose .md-block-mark.is-active .md-block-count {
+  background: var(--mark-active);
+}
 @media (prefers-reduced-motion: reduce) {
-  .prose .md-mark {
+  .prose .md-mark,
+  .prose .md-block-mark::before {
     transition: none;
   }
 }

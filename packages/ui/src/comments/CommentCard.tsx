@@ -10,11 +10,13 @@ import { COMMENT_LIMIT } from './limit.ts'
 import { ViewInVersion } from './ViewInVersion.tsx'
 import './CommentCard.css'
 
-// What a comment is on: the idea as a whole, the whole file, a section, or some text.
+// What a comment is on: the idea as a whole, the whole file, a section, a block (its kind: Table,
+// Diagram, List item), or some text.
 export type CommentTarget =
   | { kind: 'idea' }
   | { kind: 'file' }
   | { kind: 'section'; title: string }
+  | { kind: 'block'; label: string }
   | { kind: 'text'; quote: string; section?: string }
 
 // A suggested edit: replace the comment's text with this.
@@ -126,7 +128,15 @@ export function CommentCard({
   }
   // a comment on the whole file is tagged File beside it; away from it (an idea's activity), in full
   const tag =
-    target.kind === 'file' ? (context ? 'Whole file' : 'File') : target.kind === 'section' ? `§ ${target.title}` : null
+    target.kind === 'file'
+      ? context
+        ? 'Whole file'
+        : 'File'
+      : target.kind === 'section'
+        ? `§ ${target.title}`
+        : target.kind === 'block'
+          ? target.label
+          : null
   const replies = comment.replies.length
   if (size === 'line') {
     return (
@@ -192,6 +202,7 @@ export function CommentCard({
           )}
           {target.kind === 'file' && <Tag>{tag}</Tag>}
           {target.kind === 'section' && <Tag>§ {target.title}</Tag>}
+          {target.kind === 'block' && <Tag>{target.label}</Tag>}
           {target.kind === 'text' && context && target.section && <Tag>§ {target.section}</Tag>}
           {target.kind === 'text' && (comment.outdated || context) && <q className="comment-quote">{target.quote}</q>}
           {comment.outdated && comment.lastSeenIn !== undefined && onViewInVersion && (

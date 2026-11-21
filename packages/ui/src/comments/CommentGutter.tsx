@@ -1,6 +1,7 @@
 import { type CSSProperties, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CardSize } from './CommentCard.tsx'
 import { fitNotes, type FixedHeights, layoutNotes, type NoteUnit, unitGap } from './gutter.ts'
+import { markForms, markSelector } from './marks.ts'
 import './CommentGutter.css'
 
 export interface CommentGutterProps {
@@ -88,7 +89,8 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
     }
     const known = new Set(ids.split('\n'))
     const over = (event: PointerEvent) => {
-      const id = (event.target as Element).closest?.('[data-comment-id]')?.getAttribute('data-comment-id') ?? null
+      const mark = (event.target as Element).closest?.('[data-comment-id], [data-comment-ids]')
+      const id = mark?.getAttribute('data-comment-id') ?? mark?.getAttribute('data-comment-ids')?.split(' ')[0] ?? null
       setLit(id !== null && known.has(id) ? id : null)
     }
     const out = (event: PointerEvent) => {
@@ -114,11 +116,11 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
       const top = root.getBoundingClientRect().top
       const next = new Map<string, Anchor>()
       for (const id of ids.split('\n').filter(Boolean)) {
-        const marks = root.querySelectorAll(`[data-comment-id="${CSS.escape(id)}"]`)
+        const marks = [...root.querySelectorAll(markSelector(id))].map((mark) => mark.getBoundingClientRect())
         if (marks.length > 0) {
           next.set(id, {
-            top: marks[0]!.getBoundingClientRect().top - top,
-            end: marks[marks.length - 1]!.getBoundingClientRect().bottom - top,
+            top: Math.min(...marks.map((box) => box.top)) - top,
+            end: Math.max(...marks.map((box) => box.bottom)) - top,
           })
         }
       }
@@ -390,10 +392,22 @@ function useFontsLoaded(): boolean {
  * the document, or by the editor) and the card keep their own classes.
  */
 function litStyle(id: string): string {
-  const mark = `[data-comment-id="${CSS.escape(id)}"]`
+  const forms = markForms(id)
+  const rule = (selectors: string[], declarations: string) => `${selectors.join(', ')} { ${declarations} }`
   return [
-    `.prose ${mark}.md-mark:not(.is-resolved) { background: var(--mark-active); }`,
-    `.prose ${mark}.md-section-mark::after { background: var(--mark-active); }`,
+    rule(
+      forms.map((form) => `.prose ${form}.md-mark:not(.is-resolved)`),
+      'background: var(--mark-active);',
+    ),
+    rule(
+      forms.map((form) => `.prose ${form}.md-section-mark::after`),
+      'background: var(--mark-active);',
+    ),
+    // a block's marks grow into its rectangle
+    rule(
+      forms.map((form) => `.prose ${form}.md-block-mark`),
+      '--edge: 100%;',
+    ),
     `.comment-gutter-note[data-note-id="${CSS.escape(id)}"] .comment-card { border-color: var(--mark-line); }`,
   ].join('\n')
 }

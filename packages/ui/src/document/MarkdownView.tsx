@@ -33,6 +33,15 @@ export interface SectionMark {
   resolved?: boolean
 }
 
+// A comment on a whole block (a paragraph, a list item, a table, code, a quote): the source offset
+// where the block starts. Marked by two corner marks and a count, which opens it.
+export interface BlockMark {
+  id: string
+  block: number
+  active?: boolean
+  resolved?: boolean
+}
+
 // Where a link goes. internal: another file in the idea, or a heading in this
 // one. missing: a file the idea doesn't have.
 export interface ResolvedLink {
@@ -44,6 +53,7 @@ export interface MarkdownViewProps {
   tree: Root
   marks?: MarkdownMark[]
   sectionMarks?: SectionMark[]
+  blockMarks?: BlockMark[]
   // source ranges changed against the target, shown as a rail in the margin
   changed?: { start: number; end: number }[]
   // where a link's URL goes; by default, as written
@@ -242,6 +252,54 @@ function collectDefinitions(tree: Root): Map<string, Definition> {
   return out
 }
 
+/** A block's comments, if it has any: its classes, the attributes that name them, and its count. */
+interface BlockMarked {
+  className: string
+  attrs: Record<string, string>
+  count: ReactNode
+}
+
+function blockMarked(node: Nodes, ctx: Context): BlockMarked | null {
+  const start = node.position?.start.offset
+  const marks = (ctx.props.blockMarks ?? []).filter((mark) => mark.block === start)
+  if (start === undefined || marks.length === 0) {
+    return null
+  }
+  const open = marks.filter((mark) => !mark.resolved)
+  const counted = open.length || marks.length
+  const ids = marks.map((mark) => mark.id)
+  const className = [
+    'md-block-mark',
+    marks.some((mark) => mark.active) && 'is-active',
+    open.length === 0 && 'is-resolved',
+  ]
+    .filter(Boolean)
+    .join(' ')
+  return {
+    className,
+    attrs: { 'data-comment-ids': ids.join(' ') },
+    // the count opens its comment: clicking the block itself is for reading, and selecting its words
+    count: (
+      <span
+        className="md-block-count"
+        data-comment-id={ids[0]}
+        data-comment-ids={ids.join(' ')}
+        role="button"
+        tabIndex={0}
+        aria-label={counted === 1 ? '1 comment on this block' : `${counted} comments on this block`}
+        contentEditable={false}
+      >
+        {counted}
+      </span>
+    ),
+  }
+}
+
+/** A block's classes with its comments' added. */
+function classOf(base: string | undefined, mark: BlockMarked | null, extra?: string): string | undefined {
+  return [base, mark?.className, extra].filter(Boolean).join(' ') || undefined
+}
+
 function offsets(node: Nodes): { 'data-start'?: number; 'data-end'?: number } {
   const start = node.position?.start.offset
   const end = node.position?.end.offset
@@ -383,12 +441,14 @@ function block(node: RootContent, ctx: Context, key: number, top = false): React
     case 'heading': {
       const Tag = `h${node.depth}` as const
       const start = node.position?.start.offset
-      const section = (ctx.props.sectionMarks ?? []).find((mark) => mark.heading === start)
+      const sections = (ctx.props.sectionMarks ?? []).filter((mark) => mark.heading === start)
+      const section = sections[0]
+      const counted = sections.filter((mark) => !mark.resolved).length || sections.length
       const classes = [
         changed,
         section && 'md-section-mark',
-        section?.active && 'is-active',
-        section?.resolved && 'is-resolved',
+        sections.some((mark) => mark.active) && 'is-active',
+        sections.length > 0 && sections.every((mark) => mark.resolved) && 'is-resolved',
       ]
       return (
         <Tag
@@ -396,42 +456,59 @@ function block(node: RootContent, ctx: Context, key: number, top = false): React
           id={slug(plainText(node), ctx)}
           className={classes.filter(Boolean).join(' ') || undefined}
           data-comment-id={section?.id}
+          data-comment-ids={sections.length > 1 ? sections.map((mark) => mark.id).join(' ') : undefined}
+          data-comment-count={section ? counted : undefined}
           {...at}
         >
           {inline(node.children, ctx)}
         </Tag>
       )
     }
-    case 'paragraph':
+    case 'paragraph': {
+      const mark = blockMarked(node, ctx)
       return (
-        <p key={key} className={changed} {...at}>
+        <p key={key} className={classOf(changed, mark)} {...mark?.attrs} {...at}>
           {inline(node.children, ctx)}
+          {mark?.count}
         </p>
       )
-    case 'blockquote':
+    }
+    case 'blockquote': {
+      const mark = blockMarked(node, ctx)
       return (
-        <blockquote key={key} className={changed} {...at}>
+        <blockquote key={key} className={classOf(changed, mark)} {...mark?.attrs} {...at}>
           {blocks(node.children, ctx)}
+          {mark?.count}
         </blockquote>
       )
+    }
     case 'list': {
-      const items = node.children.map((item, i) => (
-        <li key={i} className={item.checked != null ? 'md-task' : undefined} {...offsets(item)}>
-          {item.checked != null && (
-            <input type="checkbox" checked={item.checked} disabled aria-label={item.checked ? 'Done' : 'To do'} />
-          )}
-          {item.children.map((child, j) =>
-            // a tight list's paragraphs are just its text
-            child.type === 'paragraph' && !node.spread ? (
-              <span key={j} {...offsets(child)}>
-                {inline(child.children, ctx)}
-              </span>
-            ) : (
-              block(child, ctx, j)
-            ),
-          )}
-        </li>
-      ))
+      const items = node.children.map((item, i) => {
+        const mark = blockMarked(item, ctx)
+        return (
+          <li
+            key={i}
+            className={classOf(item.checked != null ? 'md-task' : undefined, mark)}
+            {...mark?.attrs}
+            {...offsets(item)}
+          >
+            {item.checked != null && (
+              <input type="checkbox" checked={item.checked} disabled aria-label={item.checked ? 'Done' : 'To do'} />
+            )}
+            {item.children.map((child, j) =>
+              // a tight list's paragraphs are just its text
+              child.type === 'paragraph' && !node.spread ? (
+                <span key={j} {...offsets(child)}>
+                  {inline(child.children, ctx)}
+                </span>
+              ) : (
+                block(child, ctx, j)
+              ),
+            )}
+            {mark?.count}
+          </li>
+        )
+      })
       return node.ordered ? (
         <ol key={key} className={changed} start={node.start ?? undefined} {...at}>
           {items}
@@ -444,30 +521,43 @@ function block(node: RootContent, ctx: Context, key: number, top = false): React
     }
     case 'code': {
       const drawn = ctx.props.renderCode?.(node)
+      const mark = blockMarked(node, ctx)
       if (drawn !== undefined) {
         return (
-          <div key={key} className={changed} {...at}>
+          <div key={key} className={classOf(changed, mark)} {...mark?.attrs} {...at}>
             {drawn}
+            {mark?.count}
           </div>
         )
       }
-      return (
+      const pre = (
         // focusable, so a keyboard can scroll a long line into view
-        <pre key={key} className={changed} tabIndex={0} {...at}>
+        <pre key={key} className={mark ? undefined : changed} tabIndex={0} {...(mark ? {} : at)}>
           <code data-lang={node.lang ?? undefined}>{marked(node.value, node, ctx)}</code>
         </pre>
       )
+      // commented, the code is in a box of its own, which carries the marks (a pre scrolls, and would
+      // cut them off)
+      return mark ? (
+        <div key={key} className={classOf(changed, mark, 'md-code-marked')} {...mark.attrs} {...at}>
+          {pre}
+          {mark.count}
+        </div>
+      ) : (
+        pre
+      )
     }
-    case 'table':
-      return (
+    case 'table': {
+      const mark = blockMarked(node, ctx)
+      const table = (
         // a region you can tab to, so a keyboard can scroll a wide table
         <div
           key={key}
-          className={['md-table', changed].filter(Boolean).join(' ')}
+          className={['md-table', mark ? undefined : changed].filter(Boolean).join(' ')}
           role="region"
           aria-label={tableLabel(node, ctx)}
           tabIndex={0}
-          {...at}
+          {...(mark ? {} : at)}
         >
           <table>
             <thead>
@@ -499,6 +589,17 @@ function block(node: RootContent, ctx: Context, key: number, top = false): React
           </table>
         </div>
       )
+      // commented, the table is in a box of its own, which carries the marks (the table scrolls, and
+      // would cut them off)
+      return mark ? (
+        <div key={key} className={classOf(changed, mark)} {...mark.attrs} {...at}>
+          {table}
+          {mark.count}
+        </div>
+      ) : (
+        table
+      )
+    }
     case 'thematicBreak':
       return <hr key={key} {...at} />
     case 'html':
