@@ -1,0 +1,28 @@
+/* the strip: at the scrolling pane's right edge, as tall as the pane */
+.comment-ticks {
+  position: fixed;
+  z-index: 3;
+  width: var(--space-3);
+  transform: translateX(-100%);
+  pointer-events: none;
+}
+/* one comment: a short line in the comment color, where its text is in the file */
+.comment-tick {
+  position: absolute;
+  right: var(--space-1);
+  width: var(--space-2);
+  height: 0.25rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--mark-line);
+  cursor: pointer;
+  pointer-events: auto;
+  transform: translateY(-50%);
+}
+.comment-tick:hover,
+.comment-tick:focus-visible,
+.comment-tick.is-active {
+  width: var(--space-3);
+  background: var(--ink);
+}
