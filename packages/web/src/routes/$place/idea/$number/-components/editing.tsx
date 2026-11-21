@@ -141,7 +141,7 @@ function describe(change: DraftChange): string {
   const heading = (source: string) => /^\s*#{1,6}\s/.test(source)
   switch (change.kind) {
     case 'insert':
-      return `Added “${excerpt(change.markdown)}”`
+      return EMPTY.test(change.markdown) ? `Added ${empty(change.markdown)}` : `Added “${excerpt(change.markdown)}”`
     case 'suggestion':
       return `Suggestion ${change.comment}: “${excerpt(change.old)}” → “${excerpt(change.new)}”`
     case 'delete':
@@ -161,6 +161,15 @@ function describe(change: DraftChange): string {
 function excerpt(markdown: string): string {
   const text = plainLine(markdown)
   return text.length > 60 ? `${text.slice(0, 60)}…` : text
+}
+
+/** A block with no words yet: a bullet, number, heading or quote marker alone. */
+const EMPTY = /^\s*([-*+]|\d+[.)]|#{1,6}|>)\s*$/
+
+/** A block with no words yet, by its kind: an empty bullet, heading or quote. */
+function empty(markdown: string): string {
+  const line = markdown.trim()
+  return line.startsWith('#') ? 'an empty heading' : line.startsWith('>') ? 'an empty quote' : 'an empty list item'
 }
 
 /** A heading's title: its source without the #s. */
