@@ -241,9 +241,12 @@ function placeComments(
       return
     }
     if (anchor.kind === 'block') {
-      // where the draft has its block (its mark in the editor is to come)
+      // where the draft has its block, marked there by its corners
       const range = blockRange(source, ids, anchor.block)
       places.set(id, range ? { kind: 'block', ...range } : { kind: 'outdated' })
+      if (range) {
+        marks.push({ id, whole: anchor.block })
+      }
       return
     }
     const range = toSource(source, anchor)

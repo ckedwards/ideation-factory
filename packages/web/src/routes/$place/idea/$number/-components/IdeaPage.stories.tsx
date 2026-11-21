@@ -219,6 +219,31 @@ export const OutdatedInTheList: Story = {
   },
 }
 
+// A section's comments are counted after its heading; open one and a rectangle goes round the whole
+// section, from its heading to the end of the file here, filled while it's open
+export const SectionBox: Story = {
+  play: async ({ canvasElement, userEvent }) => {
+    const heading = canvasElement.querySelector<HTMLElement>('h2[data-comment-id="c2"]')!
+    await expect(getComputedStyle(heading, '::after').content).toBe('"1"')
+    await userEvent.click(heading)
+    const box = await waitFor(() => {
+      const element = window.document.querySelector<HTMLElement>('.comment-section-box.is-open')
+      expect(element).not.toBeNull()
+      return element!
+    })
+    // round the section, wherever the page has scrolled to
+    await waitFor(() => {
+      const rect = box.getBoundingClientRect()
+      const last = canvasElement.querySelector('p:last-of-type')!.getBoundingClientRect()
+      expect(rect.top).toBeLessThanOrEqual(heading.getBoundingClientRect().top)
+      expect(rect.bottom).toBeGreaterThanOrEqual(last.bottom)
+    })
+    // put down: no longer filled (still drawn while the pointer's on its heading)
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(window.document.querySelector('.comment-section-box.is-open')).toBeNull())
+  },
+}
+
 // Keys, as Google Docs has them: J and K move from comment to comment in the order of the text, R
 // replies to the open one, E resolves it, Escape puts it down; none of them while typing
 export const Keys: Story = {

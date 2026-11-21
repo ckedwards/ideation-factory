@@ -62,6 +62,8 @@ export interface IdeaPageProps extends ThreadActions {
   suggestionOf?: (selection: TextSelection) => string | null
   onSuggest?: (selection: TextSelection, replacement: string, body: string, pending: boolean) => void
   onSectionComment?: (heading: number, body: string, pending: boolean) => void
+  /** A comment on a block, from the button beside it: where the block starts in the file's Markdown. */
+  onBlockComment?: (start: number, body: string, pending: boolean) => void
   /** Editing: the editor in place of the file, its comments where the draft has them, and its changes. */
   editing?: Pick<Editing, 'document' | 'draft' | 'places'> | null
 }
@@ -489,6 +491,9 @@ export function IdeaPage(props: IdeaPageProps) {
                   onSectionComment: (section, body, pending) =>
                     props.onSectionComment?.(section.heading, body, pending),
                 }
+              : {})}
+            {...(props.onBlockComment
+              ? { onBlockComment: (block, body, pending) => props.onBlockComment?.(block.start, body, pending) }
               : {})}
           />
         </div>

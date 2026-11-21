@@ -12,7 +12,7 @@ import { useLiveSuspenseQuery } from '@tanstack/react-db'
 import { useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { api, meQuery } from '../../../../../api.ts'
-import { blockLabel, sectionAt, toPlain } from './anchors.ts'
+import { blockAt, blockLabel, sectionAt, toPlain } from './anchors.ts'
 import { IdeaPage } from './IdeaPage.tsx'
 import type { IdeaLinks } from './links.ts'
 import { useEditing } from './editing.tsx'
@@ -379,6 +379,12 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
           const section = sectionAt(file.source, file.unitIds, heading)
           if (section) {
             writes.comment({ kind: 'section', file: file.id, section }, body, pending)
+          }
+        }}
+        onBlockComment={(start, body, pending) => {
+          const block = blockAt(file.source, file.unitIds, start)
+          if (block) {
+            writes.comment({ kind: 'block', file: file.id, block }, body, pending)
           }
         }}
         onReply={writes.reply}
