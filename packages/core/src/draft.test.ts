@@ -302,3 +302,55 @@ describe('the draft keeps the difference, not the history', () => {
     expect(list.map((e) => e.change.kind)).toEqual(['edit', 'move-text', 'edit'])
   })
 })
+
+describe('comments on text typed around', () => {
+  const item = () =>
+    createIdea([{ path: 'a.md', source: '# T\n\n- One.\n- A banner says the app is offline, and more.\n' }])
+  const typed = (source: string) => {
+    const idea = item()
+    // s2 T, b3 One, b4 the banner item
+    const comment = { id: 'c1', anchor: textAnchor(idea, 'f1', 'A banner says the app is offline') }
+    const draft = buildDraft(
+      idea,
+      [comment],
+      [{ key: 'k1', change: { kind: 'edit', id: 'b4', source, was: '- A banner says the app is offline, and more.' } }],
+    )
+    return draft.comments[0]!
+  }
+
+  test('words typed just before a comment leave it on all of its words', () => {
+    for (const before of ['New: ', 'New ', 'X']) {
+      expect(typed(`- ${before}A banner says the app is offline, and more.`)).toMatchObject({
+        state: 'exact',
+        anchor: { quote: 'A banner says the app is offline' },
+      })
+    }
+  })
+
+  test('words typed just after one leave it as it was', () => {
+    expect(typed('- A banner says the app is offline now, and more.')).toMatchObject({
+      state: 'exact',
+      anchor: { quote: 'A banner says the app is offline' },
+    })
+  })
+
+  test('words typed into one change it', () => {
+    expect(typed('- A red banner says the app is offline, and more.')).toMatchObject({
+      state: 'changed',
+      anchor: { quote: 'A red banner says the app is offline' },
+    })
+  })
+
+  test('a suggestion that only adds words gives its comment all of its new text', () => {
+    const idea = plan()
+    const comment = { id: 'c1', anchor: textAnchor(idea, 'f1', 'might rain') }
+    const draft = buildDraft(
+      idea,
+      [comment],
+      entries({ kind: 'suggestion', comment: 'c1', old: 'might rain', new: 'might rain hard' }),
+    )
+    expect(draft.comments).toEqual([
+      { id: 'c1', state: 'changed', anchor: expect.objectContaining({ quote: 'might rain hard' }) },
+    ])
+  })
+})

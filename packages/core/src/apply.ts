@@ -186,7 +186,9 @@ function plan(idea: Idea, ids: Ids, command: Command): Plan {
       }
       const start = scope.start + found[0]!
       const end = start + command.old.length
-      out.pieces.set(scope.file.id, replaceRange(scope.file, start, end, command.new))
+      // a suggestion's replace (it addresses its comment) gives the comment all of its new text
+      const addresses = (command.addresses ?? []).length > 0
+      out.pieces.set(scope.file.id, replaceRange(scope.file, start, end, command.new, !addresses))
       return out
     }
     case 'insert': {
@@ -386,7 +388,31 @@ function text(value: string): Piece {
   return { kind: 'text', text: value, replaces: null, explicit: false }
 }
 
-function replaceRange(file: IdeaFile, start: number, end: number, value: string): Piece[] {
+function replaceRange(file: IdeaFile, start: number, end: number, value: string, kept = false): Piece[] {
+  // words typed before or after some text, given as a replace of it (a replace needs text to find):
+  // with `kept`, an insertion, so the text it kept, and the comments on it, aren't counted as changed
+  const old = file.source.slice(start, end)
+  let same = 0
+  while (same < old.length && old[same] === value[same]) {
+    same++
+  }
+  let tail = 0
+  while (tail < old.length - same && old[old.length - 1 - tail] === value[value.length - 1 - tail]) {
+    tail++
+  }
+  if (kept && old && value.length > old.length && same + tail === old.length) {
+    const added = value.slice(same, value.length - tail)
+    const at = start + same
+    return applyEdit(file.id, file.source.length, {
+      deletes: [],
+      inserts: [
+        {
+          at,
+          pieces: [{ kind: 'text', text: added, replaces: { file: file.id, start: at, end: at }, explicit: true }],
+        },
+      ],
+    })
+  }
   return applyEdit(file.id, file.source.length, {
     deletes: [[start, end]],
     inserts: [
