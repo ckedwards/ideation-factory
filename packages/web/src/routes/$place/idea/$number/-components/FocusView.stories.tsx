@@ -226,7 +226,9 @@ export const TwoFilesWithComments: Story = {
     // they fade in, one after the other
     await waitFor(() => expect(notes.getByText('Suggested edit')).toBeVisible())
     const fileNotes = within(view.getByRole('complementary', { name: 'Comments on sync-states.md' }))
-    await waitFor(() => expect(fileNotes.getByText('On the whole file')).toBeVisible())
+    // the file's own, tagged File, beside the sheet's header with its count
+    await waitFor(() => expect(fileNotes.getByText('File', { exact: true })).toBeVisible())
+    await expect(view.getByText(/· 1 comment on the file/)).toBeVisible()
     // threads don't overlap: each starts below the one above
     await waitFor(() => {
       const tops = [...region().querySelectorAll<HTMLElement>('.focus-row:first-child .focus-note')].map((n) =>

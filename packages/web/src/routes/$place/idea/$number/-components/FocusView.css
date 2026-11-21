@@ -556,3 +556,8 @@ html[data-focus='open'] .idea-page-measure .prose {
     animation: none !important;
   }
 }
+
+/* the box for a comment on the file, opened from the sheet's header */
+.focus-file-box {
+  margin-bottom: var(--space-5);
+}

@@ -1,5 +1,5 @@
-// A box for a comment on something as a whole: the whole file, at the top of
-// its comments, or the idea, at the end of its activity. Its buttons are there
+// A box for a comment on something as a whole: the whole file, opened from its
+// line, or the idea, at the end of its activity. Its buttons are there
 // from the start, so it's plain how to send, and work once there's something to.
 // Folded, it's one line that opens it, so a column can start with its comments.
 import { useState } from 'react'
@@ -12,6 +12,7 @@ export function CommentBox({
   onComment,
   addToReview,
   folded = false,
+  onCancel,
 }: {
   /** What it's on, as its placeholder and name: "Comment on the whole file". */
   label: string
@@ -20,6 +21,8 @@ export function CommentBox({
   addToReview: boolean
   /** One line until it's opened. */
   folded?: boolean
+  /** Opened from elsewhere (the file's line): Cancel puts it away, and it starts with the caret in it. */
+  onCancel?: () => void
 }) {
   const [body, setBody] = useState('')
   const [open, setOpen] = useState(!folded)
@@ -35,6 +38,7 @@ export function CommentBox({
     if (sendable) {
       onComment(body.trim(), pending)
       setBody('')
+      onCancel?.()
     }
   }
   return (
@@ -46,7 +50,7 @@ export function CommentBox({
       }}
     >
       <MarkdownEditor
-        autoFocus={folded}
+        autoFocus={folded || onCancel !== undefined}
         rows={2}
         value={body}
         placeholder={label}
@@ -54,8 +58,14 @@ export function CommentBox({
         limit={COMMENT_LIMIT}
         onChange={setBody}
         onSubmit={() => send(false)}
+        {...(onCancel ? { onCancel } : {})}
         footer={
           <>
+            {onCancel && (
+              <Button size="sm" variant="ghost" onClick={onCancel}>
+                Cancel
+              </Button>
+            )}
             {addToReview && (
               <Button size="sm" onClick={() => send(true)} disabled={!sendable}>
                 Add to your review

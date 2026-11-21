@@ -3,11 +3,14 @@
 // source, and edit it. Comparing
 // lives here, a way of looking at the file, not a page of its own. Your review is of the idea, not one
 // file, so its button is in the idea's bar.
+import type { ReactNode } from 'react'
 import { Button, FilterMenu, Select } from '@ideaf/ui'
 import './DocToolbar.css'
 
 export interface DocToolbarProps {
   path: string
+  /** The file's line (its path, its comments, and commenting on it), in place of the path alone. */
+  file?: ReactNode
   version: number
   latest: number
   /** Comparing: with which version, and the way out. */
@@ -31,10 +34,12 @@ export interface DocToolbarProps {
 export function DocToolbar(props: DocToolbarProps) {
   return (
     <div className="doc-toolbar" role="toolbar" aria-label="This file">
-      <span className="doc-toolbar-file">
-        <span className="doc-toolbar-path">{props.path}</span>
-        {props.version !== props.latest && <span className="doc-toolbar-version">@ v{props.version}</span>}
-      </span>
+      {props.file ?? (
+        <span className="doc-toolbar-file">
+          <span className="doc-toolbar-path">{props.path}</span>
+          {props.version !== props.latest && <span className="doc-toolbar-version">@ v{props.version}</span>}
+        </span>
+      )}
       <span className="doc-toolbar-actions">
         {props.onFocusView && (
           <Button className="doc-toolbar-focus" onClick={props.onFocusView}>

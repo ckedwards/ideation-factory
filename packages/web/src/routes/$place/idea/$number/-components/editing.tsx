@@ -22,6 +22,8 @@ export type Draft = Output<Operations['getDraft']>
 
 export interface UseEditingArgs {
   idea: string
+  /** Over the editor's text: the file's line. */
+  lead?: ReactNode
   draft: Draft | undefined
   /** Whether the draft is open for editing on the page. */
   open: boolean
@@ -189,6 +191,7 @@ export function useEditing(args: UseEditingArgs): Editing | null {
             onUnsaved={setUnsaved}
             marks={placed.marks}
             view={view}
+            {...(args.lead ? { lead: args.lead } : {})}
           />
         )
       ),
