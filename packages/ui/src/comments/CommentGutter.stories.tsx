@@ -116,6 +116,8 @@ export const DrawnAgain: Story = {
     await userEvent.click(within(canvasElement).getByRole('button', { name: 'Draw again' }))
     await new Promise((resolve) => setTimeout(resolve, 100))
     await expect(notes().every((note) => getComputedStyle(note).visibility === 'visible')).toBe(true)
+  },
+}
 
 // Pointing at a card lights its text, and pointing at the text lights its card
 export const PointingTies: Story = {
