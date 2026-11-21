@@ -78,6 +78,10 @@ import { htmlRuns, sanitizeHtml, SLOT } from '../document/html.ts'
 import { clipboardIdentity, identifiedSchemas, type MovedWords } from './identity.ts'
 import { tableHandler, tableStyle } from './tables.ts'
 
+/** An empty line between a page's blocks, as it's written: Markdown has none of its own. */
+const EMPTY_LINE_SOURCE = '<br />'
+const EMPTY_LINE = /^\s*<br\s*\/?>\s*$/i
+
 /** full: a comment; inline: a suggestion's replacement (marks and links); page: a whole file, in the draft. */
 export type Flavor = 'full' | 'inline' | 'page'
 
@@ -814,6 +818,8 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
       }),
   )
 
+  // Milkdown's empty lines put `<br />` in every empty paragraph, a list item's and a table cell's
+  // too; a page keeps only its own empty lines, between blocks (write and open)
   const preset = commonmark.filter(
     (plugin) => plugin !== remarkPreserveEmptyLinePlugin.plugin && plugin !== remarkPreserveEmptyLinePlugin.options,
   )
@@ -964,6 +970,11 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
           i = draw.to
           continue
         }
+        // an empty line, as a page writes one: drawn as one, to type in
+        if (options.flavor === 'page' && child.type === 'html' && EMPTY_LINE.test(child.value)) {
+          out.push({ nodes: [schema.nodes['paragraph']!.create()], first: i, last: i })
+          continue
+        }
         if (RAW.has(child.type)) {
           const kind = draw?.draw === 'alone' ? 'html' : 'source'
           out.push({
@@ -1020,7 +1031,10 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
         parts.push({ text: from.source, from, node, pos })
         return
       }
-      const text = node.type.name === 'paragraph' && node.content.size === 0 ? '' : serialize(node)
+      // an empty line: Markdown has none, so a page's is written as `<br />`, drawn as one; a
+      // comment's closes up, as it does once it's posted
+      const empty = node.type.name === 'paragraph' && node.content.size === 0
+      const text = empty ? (options.flavor === 'page' ? EMPTY_LINE_SOURCE : '') : serialize(node)
       if (text) {
         parts.push({ text, from: null, node, pos })
       }

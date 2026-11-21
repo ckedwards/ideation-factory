@@ -377,3 +377,35 @@ export const NewHeading: Story = {
     await expect((await readBack(canvasElement)).changes).toEqual([])
   },
 }
+
+// An empty line is a change too: Markdown has none, so it's written as its placeholder, `<br />`,
+// opened again as the empty line it was, and typed in, it's that block edited
+export const EmptyLine: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const box = await surface(canvasElement)
+    const field = textNode(box, 'Field teams')
+    await select(box, field, field.length, field, field.length)
+    await typing.keyboard('{Enter}')
+    await expect((await readBack(canvasElement)).changes).toEqual([
+      { kind: 'insert', at: { after: 'b3' }, markdown: '<br />' },
+    ])
+    await userEvent.click(canvas.getByRole('button', { name: 'Save' }))
+    const empty = await waitFor(() => {
+      const p = box.querySelector<HTMLElement>('p[data-block-id="b11"]')
+      expect(p).not.toBeNull()
+      expect(p).toHaveTextContent('')
+      return p!
+    })
+    const range = document.createRange()
+    range.setStart(empty, 0)
+    box.focus()
+    getSelection()!.removeAllRanges()
+    getSelection()!.addRange(range)
+    await settle()
+    await typing.keyboard('Words')
+    await expect((await readBack(canvasElement)).changes).toEqual([
+      { kind: 'edit', id: 'b11', source: 'Words', was: '<br />' },
+    ])
+  },
+}
