@@ -1,0 +1,30 @@
+.file-line {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+}
+.file-line-path {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.file-line-version {
+  color: var(--warn);
+  font-weight: 600;
+}
+.file-line-count {
+  color: var(--ink-2);
+}
+.file-line-comment {
+  align-self: center;
+}
+/* the box for a comment on the file, opened from its line: a row of its own under it */
+.file-line-box {
+  flex-basis: 100%;
+  order: 1;
+  margin-top: var(--space-2);
+}

@@ -21,6 +21,8 @@ import { commentsQuery, draftQuery, filesQuery, ideaQuery, outlineQuery, reviews
 import { commentInfo, commentWrites, usePeople } from './shared.tsx'
 import { VersionBanner } from './VersionBanner.tsx'
 import { DocToolbar } from './DocToolbar.tsx'
+import { CommentBox } from './CommentBox.tsx'
+import { FileLine } from './FileLine.tsx'
 import { type FocusPhase, FocusView } from './FocusView.tsx'
 import { actorOf, type FileView, place, type Thread } from './view.ts'
 
@@ -161,8 +163,33 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
   const drafted = draft.data
     ? new Set(draft.data.changes.flatMap((c) => (c.change.kind === 'suggestion' ? [c.change.comment] : [])))
     : undefined
+  // the file's line: its path, its comments as a whole, and commenting on it (on the latest version,
+  // not while comparing), the box opening under it
+  const [fileBox, setFileBox] = useState(false)
+  const onFile = threads.filter((t) => t.anchor?.kind === 'file' && t.anchor.file === file.id)
+  const fileLine = (
+    <>
+      <FileLine
+        path={file.path}
+        version={version !== latest ? version : undefined}
+        count={onFile.filter((t) => !t.resolved).length}
+        onComment={idea.you.view && !older && base === null ? () => setFileBox(true) : undefined}
+      />
+      {fileBox && (
+        <div className="file-line-box">
+          <CommentBox
+            label="Comment on the whole file"
+            addToReview
+            onComment={(body, pending) => writes.comment({ kind: 'file', file: file.id }, body, pending)}
+            onCancel={() => setFileBox(false)}
+          />
+        </div>
+      )}
+    </>
+  )
   const editor = useEditing({
     idea: id,
+    lead: fileLine,
     draft: draft.data,
     open: editing,
     setOpen: setEditing,
@@ -229,6 +256,10 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
             path: f.path,
             href: base !== null ? links.changes(base, shownV, f.path) : links.files({ v: shownV, file: f.path }),
             current: f.file === file.id,
+            // its open comments, on its text and as a whole
+            comments: threads.filter(
+              (t) => !t.resolved && t.state !== 'outdated' && t.anchor?.kind !== 'idea' && t.anchor?.file === f.file,
+            ).length,
             ...(base !== null && baseFiles.data ? { changed: before?.hash !== f.hash } : {}),
           }
         })}
@@ -239,6 +270,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
           <>
             <DocToolbar
               path={file.path}
+              file={fileLine}
               version={version}
               latest={latest}
               compare={base !== null ? { base, stopHref: links.files({ v: shownV, file: path }) } : null}
@@ -342,7 +374,6 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
         onSuggest={(selection, replacement, body, pending) => suggestIn(file, selection, replacement, body, pending)}
         onAddToDraft={addToDraft}
         onReject={writes.reject}
-        onFileComment={(body, pending) => writes.comment({ kind: 'file', file: file.id }, body, pending)}
         onSectionComment={(heading, body, pending) => {
           const section = sectionAt(file.source, file.unitIds, heading)
           if (section) {
@@ -411,6 +442,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
               suggestIn(at, selection, replacement, body, pending)
             }
           }}
+          onFileComment={(page, body, pending) => writes.comment({ kind: 'file', file: page }, body, pending)}
         />
       )}
       {/* the editor's words and actions, in the idea's bar while it's open */}

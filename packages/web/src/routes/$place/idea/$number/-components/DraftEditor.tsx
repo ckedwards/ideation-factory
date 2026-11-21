@@ -11,7 +11,7 @@
 // Someone else's changes reach the page when it has nothing unsaved: it opens the draft as it now is.
 // With something unsaved, the next save is checked against what the blocks read when typing started:
 // one they changed meanwhile is refused as outdated, and the person picks theirs or their own.
-import { type RefObject, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '@ideaf/api'
 import { draftChanges, type Idea } from '@ideaf/core'
 import { Button } from '@ideaf/ui'
@@ -41,6 +41,8 @@ export interface DraftEditorProps {
   marks?: PageMark[]
   /** Which of them the panel shows, the one that's active, and a mark clicked. */
   view?: EditingView
+  /** Over the text: the file's line; its path alone without one. */
+  lead?: ReactNode
 }
 
 export function DraftEditor(props: DraftEditorProps) {
@@ -269,7 +271,7 @@ export function DraftEditor(props: DraftEditorProps) {
         comments={comments}
         activeComment={props.view?.active ?? null}
         {...(props.view ? { onComment: props.view.onSelect } : {})}
-        lead={<p className="draft-editor-file">{file.path}</p>}
+        lead={<div className="draft-editor-file">{props.lead ?? file.path}</div>}
         status={statusText}
         onChange={(next) => {
           setText(next)

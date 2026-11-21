@@ -22,6 +22,8 @@ import {
   type TextSelection,
 } from '@ideaf/ui'
 import { type PageComment, type ThreadActions, ThreadCard } from './ThreadCard.tsx'
+import { CommentBox } from './CommentBox.tsx'
+import { FileLine } from './FileLine.tsx'
 import './FocusView.css'
 
 /** still: open from the start (its address opened directly), nothing to carry from. */
@@ -54,6 +56,8 @@ export interface FocusViewProps {
   suggestionOf?: (page: string, selection: TextSelection) => string | null
   onComment?: (page: string, selection: TextSelection, body: string, pending: boolean) => void
   onSuggest?: (page: string, selection: TextSelection, replacement: string, body: string, pending: boolean) => void
+  /** A comment on a page's file as a whole, from the button in its header. */
+  onFileComment?: (page: string, body: string, pending: boolean) => void
 }
 
 const DURATION = 300
@@ -418,6 +422,9 @@ export function FocusView(props: FocusViewProps) {
                     props.onSuggest!(page.id, s, r, body, p),
                 }
               : {})}
+            {...(props.onFileComment
+              ? { onFileComment: (body: string, p: boolean) => props.onFileComment!(page.id, body, p) }
+              : {})}
           />
         ))}
       </div>
@@ -496,6 +503,7 @@ interface RowProps {
   suggestionOf?: (selection: TextSelection) => string | null
   onComment?: (selection: TextSelection, body: string, pending: boolean) => void
   onSuggest?: (selection: TextSelection, replacement: string, body: string, pending: boolean) => void
+  onFileComment?: (body: string, pending: boolean) => void
 }
 
 /** A page: its sheet, and its threads beside it. */
@@ -505,6 +513,9 @@ function Row(props: RowProps) {
   const text = useRef<HTMLDivElement>(null)
   const prefix = prefixOf(index)
   const inText = page.comments.filter((c) => c.place.kind === 'text' || c.place.kind === 'section')
+  // the box for a comment on the file, opened from its header
+  const [fileBox, setFileBox] = useState(false)
+  const commentable = comments && props.actions.canComment && props.onFileComment
   return (
     <div
       className={`focus-row${props.carried ? ' is-carried' : ''}`}
@@ -521,11 +532,27 @@ function Row(props: RowProps) {
         }}
       >
         <header className="focus-sheet-head">
-          <span id={`${prefix}name`}>{page.path}</span>
+          <span id={`${prefix}name`}>
+            <FileLine
+              path={page.path}
+              count={page.comments.filter((c) => c.place.kind === 'file').length}
+              onComment={commentable ? () => setFileBox(true) : undefined}
+            />
+          </span>
           <span className="focus-sheet-n">
             {index + 1} of {props.of}
           </span>
         </header>
+        {fileBox && props.onFileComment && (
+          <div className="focus-file-box">
+            <CommentBox
+              label="Comment on the whole file"
+              addToReview={props.actions.addToReview ?? false}
+              onComment={props.onFileComment}
+              onCancel={() => setFileBox(false)}
+            />
+          </div>
+        )}
         <div ref={text}>
           <MarkdownView
             tree={props.tree}
@@ -599,12 +626,13 @@ function Notes(props: {
   const inText = page.comments
     .filter((c) => c.place.kind === 'text' || c.place.kind === 'section')
     .sort((a, b) => offsetOf(a) - offsetOf(b))
-  const card = (c: PageComment) => (
+  const card = (c: PageComment, showTarget = false) => (
     <ThreadCard
       comment={c}
       actions={props.actions}
       active={c.info.id === active}
       onSelect={() => props.onActive(c.info.id)}
+      showTarget={showTarget}
     />
   )
   const notes: Note[] = [
@@ -612,12 +640,12 @@ function Notes(props: {
       ? [
           {
             id: 'file',
+            // level with the sheet's header, each tagged File
             node: (
               <>
-                <h3 className="focus-note-label">On the whole file</h3>
                 {onFile.map((c) => (
                   <div key={c.info.id} className="focus-thread">
-                    {card(c)}
+                    {card(c, true)}
                   </div>
                 ))}
               </>

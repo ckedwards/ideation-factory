@@ -7,6 +7,7 @@ import { expect, fn, waitFor, within } from 'storybook/test'
 import { IdeaPage, type PageComment } from './IdeaPage.tsx'
 import { VersionBanner } from './VersionBanner.tsx'
 import { DocToolbar } from './DocToolbar.tsx'
+import { FileLine } from './FileLine.tsx'
 import type { VersionListProps } from './VersionList.tsx'
 
 const source = `# Offline sync
@@ -136,7 +137,7 @@ export const Comments: Story = {
   play: async ({ canvasElement, userEvent }) => {
     const page = within(canvasElement)
     await expect(page.getByText('What about a change made offline twice?')).toBeVisible()
-    await expect(page.getByText('On the whole file')).toBeVisible()
+    await expect(page.getByText('Is there a diagram of the flow?')).toBeVisible()
     await expect(page.getByText(/1 comment not in this version/)).toBeVisible()
     await expect(page.queryByText('This contradicts the overview.')).toBeNull()
     await expect(page.queryByText('Done.')).toBeNull()
@@ -225,6 +226,9 @@ export const Keys: Story = {
     const page = within(canvasElement)
     const open = () => canvasElement.querySelector('.comment-card.is-active')?.textContent ?? null
     window.document.body.focus()
+    // the file's own comment first, then those on its text
+    await userEvent.keyboard('j')
+    await waitFor(() => expect(open()).toContain('Is there a diagram of the flow?'))
     await userEvent.keyboard('j')
     await waitFor(() => expect(open()).toContain('What about a change made offline twice?'))
     await userEvent.keyboard('j')
@@ -246,28 +250,43 @@ export const Keys: Story = {
 }
 
 // Replying from a comment
-// The panel's filters: open, resolved or all; and a comment on the whole file at its top, one line until
-// it's opened, above the comments level with their text
-export const FiltersAndAFileComment: Story = {
-  args: { onFileComment: fn() },
-  play: async ({ args, canvasElement, userEvent }) => {
+// The panel's filters: open, resolved or all
+export const Filters: Story = {
+  play: async ({ canvasElement, userEvent }) => {
     const page = within(canvasElement)
     // resolved comments wait behind the filter
     await expect(page.queryByText('Done.')).toBeNull()
     await userEvent.selectOptions(page.getByRole('combobox', { name: 'Show' }), 'resolved')
     await expect(await page.findByText('Done.')).toBeVisible()
     await userEvent.selectOptions(page.getByRole('combobox', { name: 'Show' }), 'open')
-    // one line until it's opened, so the column starts with its comments
-    const open = page.getByRole('button', { name: 'Comment on the whole file' })
-    const gutter = canvasElement.querySelector('.comment-gutter')!
-    await expect(open.getBoundingClientRect().top).toBeLessThan(gutter.getBoundingClientRect().top)
-    await expect(open.getBoundingClientRect().height).toBeLessThan(32)
-    await userEvent.click(open)
-    const box = await page.findByRole('textbox', { name: 'Comment on the whole file' })
-    await waitFor(() => expect(box).toHaveFocus())
-    await userEvent.type(box, 'Needs a summary.')
-    await userEvent.click(page.getByRole('button', { name: 'Comment' }))
-    await expect(args.onFileComment).toHaveBeenCalledWith('Needs a summary.', false)
+    await waitFor(() => expect(page.queryByText('Done.')).toBeNull())
+  },
+}
+
+// A comment on the whole file sits beside the file's line, as the first card, tagged File, rather than
+// in a group of its own at the top of the column
+export const FileComments: Story = {
+  args: {
+    banner: <FileLine path="plan.md" count={1} onComment={fn()} />,
+  },
+  play: async ({ canvasElement }) => {
+    const page = within(canvasElement)
+    await expect(page.getByText('· 1 comment on the file')).toBeVisible()
+    await expect(page.queryByText('On the whole file')).toBeNull()
+    const note = await waitFor(() => {
+      const element = canvasElement.querySelector<HTMLElement>('.comment-gutter-note[data-note-id="c3"]')
+      expect(element).not.toBeNull()
+      expect(element!.style.top).not.toBe('')
+      return element!
+    })
+    // as near its line as the column lets it: under the panel's tabs and filters, shown whole
+    await expect(shownHeight(note)).toBeGreaterThan(note.getBoundingClientRect().height * 0.8)
+    await expect(within(note).getByText('File', { exact: true })).toBeVisible()
+    // the first card in the column
+    const tops = [...canvasElement.querySelectorAll<HTMLElement>('.comment-gutter-note')].map(
+      (n) => n.getBoundingClientRect().top,
+    )
+    await expect(Math.min(...tops)).toBe(note.getBoundingClientRect().top)
   },
 }
 

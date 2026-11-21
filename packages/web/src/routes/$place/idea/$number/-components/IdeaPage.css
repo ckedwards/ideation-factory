@@ -18,6 +18,15 @@
   color: var(--ink);
   font-weight: 600;
 }
+.idea-file-comments {
+  margin-left: var(--space-2);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--mark);
+  color: var(--mark-ink);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
 .idea-file-changed {
   color: var(--changed);
   font-size: var(--text-xs);
@@ -158,4 +167,15 @@
   .idea-contents > summary::before {
     transition: none;
   }
+}
+
+/* the whole file's comments are on its top line: anchors for the gutter, taking no room */
+.idea-file-anchors {
+  display: block;
+  height: 0;
+  overflow: hidden;
+}
+.idea-file-anchors > span {
+  display: block;
+  height: 1px;
 }

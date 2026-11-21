@@ -30,10 +30,10 @@ import {
   type TextSelection,
   Toc,
 } from '@ideaf/ui'
+import { plural } from '../../../../../plural.ts'
 import { VersionList, type VersionListProps } from './VersionList.tsx'
 import type { Placement } from './view.ts'
 import type { Editing } from './editing.tsx'
-import { CommentBox } from './CommentBox.tsx'
 import { type PageComment, type ThreadActions, ThreadCard } from './ThreadCard.tsx'
 import './IdeaPage.css'
 
@@ -45,7 +45,7 @@ export interface IdeaPageProps extends ThreadActions {
   /** A comment to open where it is (a link from the overview): active, and its text scrolled to. */
   opened?: string | undefined
   /** The idea's files; listed when there's more than one. `changed`: since the version compared against. */
-  files: { path: string; href: string; current: boolean; changed?: boolean }[]
+  files: { path: string; href: string; current: boolean; changed?: boolean; comments?: number }[]
   /** The file shown, as Markdown. */
   source: string
   /** Comparing: the file as it was in an earlier version (empty if it didn't exist then). */
@@ -57,8 +57,6 @@ export interface IdeaPageProps extends ThreadActions {
   comments: PageComment[]
   /** `pending`: added to the review rather than sent now. */
   onComment?: (selection: TextSelection, body: string, pending: boolean) => void
-  /** A comment on the whole file: the box at the end of the comments. */
-  onFileComment?: (body: string, pending: boolean) => void
   /** What a suggestion on a selection replaces (whole formatting), or null where there can't be one. */
   suggestionOf?: (selection: TextSelection) => string | null
   onSuggest?: (selection: TextSelection, replacement: string, body: string, pending: boolean) => void
@@ -131,9 +129,10 @@ export function IdeaPage(props: IdeaPageProps) {
       (!author || actorKey(c.info.author) === author),
   )
   const inText = shown.filter((c) => c.place.kind === 'text' || c.place.kind === 'section')
+  const onFile = shown.filter((c) => c.place.kind === 'file')
   // keys, as Google Docs has them: J and K for the next and previous comment on the text, R to reply
   // to the open one, E to resolve it, Escape to put it down. Not while typing
-  const order = [...inText].sort((a, b) => at(a.place) - at(b.place)).map((c) => c.info.id)
+  const order = [...onFile, ...[...inText].sort((a, b) => at(a.place) - at(b.place))].map((c) => c.info.id)
   const keys = useRef({ order, active })
   keys.current = { order, active }
   useEffect(() => {
@@ -186,7 +185,6 @@ export function IdeaPage(props: IdeaPageProps) {
     window.addEventListener('keydown', press)
     return () => window.removeEventListener('keydown', press)
   }, [])
-  const onFile = shown.filter((c) => c.place.kind === 'file')
   const outdated = shown.filter((c) => c.place.kind === 'outdated')
   // the suggestions that can be accepted now
   const acceptable = canDecide
@@ -271,6 +269,11 @@ export function IdeaPage(props: IdeaPageProps) {
                     {file.path}
                   </Link>
                   {file.changed && <span className="idea-file-changed"> · changed</span>}
+                  {(file.comments ?? 0) > 0 && (
+                    <span className="idea-file-comments" title={plural(file.comments!, 'open comment')}>
+                      {file.comments}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -355,15 +358,6 @@ export function IdeaPage(props: IdeaPageProps) {
           />
         )}
       </div>
-      {/* at the top, in what's often empty space above the first comment level with its text */}
-      {canComment && props.onFileComment && (
-        <CommentBox
-          label="Comment on the whole file"
-          onComment={props.onFileComment}
-          addToReview={props.addToReview ?? false}
-          folded
-        />
-      )}
       {listed ? (
         // every comment with what it's on: the file's, each section's in the order of the text, and
         // the ones not in this version at the end
@@ -387,12 +381,6 @@ export function IdeaPage(props: IdeaPageProps) {
         )
       ) : (
         <>
-          {onFile.length > 0 && (
-            <div className="idea-panel-group">
-              <h3 className="idea-panel-label">On the whole file</h3>
-              {list(onFile)}
-            </div>
-          )}
           {outdated.length > 0 && (
             <p className="idea-panel-note idea-outdated-note">
               {outdated.length === 1 ? '1 comment' : `${outdated.length} comments`} not in this version ·{' '}
@@ -404,8 +392,12 @@ export function IdeaPage(props: IdeaPageProps) {
           <CommentGutter
             documentRef={document}
             active={active}
-            notes={inText.map((c) => ({ id: c.info.id, content: (size: CardSize) => card(c, false, false, size) }))}
-            empty={onFile.length + outdated.length > 0 ? undefined : empty}
+            // the file's own beside its line (FileLine, in the toolbar), then the rest beside their text
+            notes={[
+              ...onFile.map((c) => ({ id: c.info.id, content: (size: CardSize) => card(c, true, false, size) })),
+              ...inText.map((c) => ({ id: c.info.id, content: (size: CardSize) => card(c, false, false, size) })),
+            ]}
+            empty={outdated.length > 0 ? undefined : empty}
           />
         </>
       )}
@@ -425,6 +417,12 @@ export function IdeaPage(props: IdeaPageProps) {
             }
           }}
         >
+          {/* where the whole file's comments are, for the gutter: the top of the file, by its line */}
+          <span className="idea-file-anchors" aria-hidden>
+            {onFile.map((c) => (
+              <span key={c.info.id} data-comment-id={c.info.id} />
+            ))}
+          </span>
           {/* while editing, the editor's own bar is at the top, and the file's name under it */}
           {!props.editing && props.banner}
           {!props.editing && (
