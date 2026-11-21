@@ -32,6 +32,8 @@ export interface EditPanelProps {
   outcomes: CommentOutcomeRow[]
   previewing: boolean
   committing: boolean
+  /** Typed on the page and not saved yet: Commit and Preview save it first, so they can go ahead. */
+  unsaved?: boolean
   onUndo: (key: string) => void
   onPreview: (on: boolean) => void
   onCommit: () => void
@@ -105,16 +107,14 @@ export function EditActions(props: EditPanelProps) {
   const { changes } = props
   const [discarding, setDiscarding] = useState(false)
   const outdated = changes.filter((c) => c.problem).length
+  // anything typed counts at once, before its save is in
+  const changed = changes.length > 0 || props.unsaved === true
   return (
     <>
-      <Button
-        variant="primary"
-        disabled={changes.length === 0 || outdated > 0 || props.committing}
-        onClick={props.onCommit}
-      >
+      <Button variant="primary" disabled={!changed || outdated > 0 || props.committing} onClick={props.onCommit}>
         {props.committing ? 'Committing…' : `Commit as v${props.version + 1}`}
       </Button>
-      <Button disabled={changes.length === 0} onClick={() => props.onPreview(!props.previewing)}>
+      <Button disabled={!changed} onClick={() => props.onPreview(!props.previewing)}>
         {props.previewing ? 'Back to editing' : 'Preview'}
       </Button>
       {changes.length > 0 && (

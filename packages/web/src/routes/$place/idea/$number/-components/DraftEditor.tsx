@@ -1,6 +1,7 @@
 // A file of the idea's draft as one page in the editor (ui's MarkdownEditor, its page flavor): typed
 // in place, blocks added and taken away by typing, and saved to the draft by itself, after a pause in
-// typing, when focus leaves the page, and before Commit, Preview or Close editor (flush).
+// typing, when focus leaves the page, before Commit, Preview or Close editor (flush), and before
+// going anywhere else in the app, which waits for it. Closing the tab asks first if anything's unsaved.
 //
 // What's on screen is the truth while it's being typed in: each save is the difference between it
 // and the draft as it last agreed with it (`base`), worked out by core's draftChanges from the blocks
@@ -15,6 +16,7 @@ import { ApiError } from '@ideaf/api'
 import { draftChanges, type Idea } from '@ideaf/core'
 import { Button } from '@ideaf/ui'
 import { MarkdownEditor, type MarkdownEditorHandle } from '@ideaf/ui/editor'
+import { useBlocker } from '@tanstack/react-router'
 import { api } from '../../../../../api.ts'
 import type { Draft } from './editing.tsx'
 import './DraftEditor.css'
@@ -29,16 +31,24 @@ export interface DraftEditorProps {
   draft: Draft
   /** The file shown (its ID). */
   file: string
-  /** The draft read again, once a save is in. */
-  reread: () => Promise<unknown>
+  /** The draft read again, once a save is in: as it now is. */
+  reread: () => Promise<Draft | undefined>
   /** Set to a save of whatever's unsaved: the bar's Commit, Preview and Close editor wait for it. */
   flush: RefObject<(() => Promise<boolean>) | null>
+  /** Whether something's typed and not saved yet, each time that changes. */
+  onUnsaved?: (unsaved: boolean) => void
 }
 
 export function DraftEditor(props: DraftEditorProps) {
   const file = props.draft.files.find((f) => f.file === props.file) ?? props.draft.files[0]!
   // the draft the page last agreed with: what a save is the difference from
   const [base, setBase] = useState(props.draft)
+  // the same, as soon as it changes: a save waiting on another counts from what that one left
+  const baseNow = useRef(props.draft)
+  const rebase = (draft: Draft) => {
+    baseNow.current = draft
+    setBase(draft)
+  }
   const baseFile = base.files.find((f) => f.file === file.file) ?? file
   const [text, setText] = useState(file.content)
   const [status, setStatus] = useState<Status>('saved')
@@ -71,7 +81,12 @@ export function DraftEditor(props: DraftEditorProps) {
     }
     const run = (async () => {
       const { text: sent, props: now } = latest.current
-      let from = latest.current.base
+      // nothing since the last save: a save that waited on it (leaving as focus left) has none to send
+      if (same(sent, agreed.current)) {
+        setStatus('saved')
+        return true
+      }
+      let from = baseNow.current
       const blocks = handle.blocks()
       // a cut saved as deletions, then pasted: until it's pasted a cut is a deletion, and pasted, it's
       // a move. Its blocks are back on the page with their IDs, so their deletions come out of the
@@ -90,7 +105,7 @@ export function DraftEditor(props: DraftEditorProps) {
             await api.undoDraftChange({ idea: now.idea, key: c.key })
           }
           from = await api.getDraft({ idea: now.idea })
-          setBase(from)
+          rebase(from)
         } catch (error) {
           setStatus({ problem: error instanceof Error ? error.message : String(error) })
           return false
@@ -110,7 +125,12 @@ export function DraftEditor(props: DraftEditorProps) {
       try {
         await api.changeDraft({ idea: now.idea, changes: made.changes })
         agreed.current = sent
-        await now.reread()
+        // the draft as this save left it is the next one's base, if no one else changed the file meanwhile
+        const fresh = await now.reread()
+        const freshFile = fresh?.files.find((f) => f.file === file.file)
+        if (fresh && freshFile && same(freshFile.content, sent)) {
+          rebase(fresh)
+        }
         setStatus('saved')
         return true
       } catch (error) {
@@ -129,6 +149,29 @@ export function DraftEditor(props: DraftEditorProps) {
   }
   props.flush.current = save
 
+  // typed and not in the draft yet: waiting to be sent, on its way, or refused
+  const unsaved = () =>
+    timer.current !== null || inFlight.current !== null || !same(latest.current.text, agreed.current)
+  const onUnsaved = props.onUnsaved
+  useEffect(() => {
+    onUnsaved?.(!same(text, agreed.current))
+  }, [text, status, onUnsaved])
+
+  // going elsewhere in the app waits for the save; one that fails asks first. Closing the tab or
+  // reloading can't wait, so the browser asks
+  useBlocker({
+    shouldBlockFn: async () => {
+      if (!unsaved()) {
+        return false
+      }
+      if (await save()) {
+        return false
+      }
+      return !window.confirm('What you typed isn’t saved to the draft. Leave anyway?')
+    },
+    enableBeforeUnload: unsaved,
+  })
+
   // the draft read again: after a save of ours, the new base; someone else's, opened if nothing's unsaved
   useEffect(() => {
     const now = props.draft.files.find((f) => f.file === file.file)
@@ -141,7 +184,7 @@ export function DraftEditor(props: DraftEditorProps) {
         setText(now.content)
         agreed.current = now.content
       }
-      setBase(props.draft)
+      rebase(props.draft)
     }
     // otherwise something of ours is unsaved: the next save is checked against the base it was typed on
   }, [props.draft, file.file])
@@ -175,7 +218,7 @@ export function DraftEditor(props: DraftEditorProps) {
             const content = now.files.find((f) => f.file === file.file)?.content ?? ''
             agreed.current = content
             setText(content)
-            setBase(now)
+            rebase(now)
             setStatus('saved')
           }}
         >
@@ -186,7 +229,7 @@ export function DraftEditor(props: DraftEditorProps) {
           variant="link"
           onClick={() => {
             // mine: counted from the draft as it now is, so it goes over theirs
-            setBase(latest.current.props.draft)
+            rebase(latest.current.props.draft)
             setTimeout(() => void save())
           }}
         >
