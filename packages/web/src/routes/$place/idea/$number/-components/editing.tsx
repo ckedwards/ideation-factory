@@ -38,13 +38,18 @@ export function useEditing(args: UseEditingArgs): { document: ReactNode; panel: 
   const queryClient = useQueryClient()
   const [previewing, setPreviewing] = useState(false)
   const [committing, setCommitting] = useState(false)
+  // typed on the page and not saved yet
+  const [unsaved, setUnsaved] = useState(false)
   // the page's save of whatever's unsaved: the bar's actions wait for it
   const flush = useRef<(() => Promise<boolean>) | null>(null)
   if (!args.open || !draft) {
     return null
   }
 
-  const reread = () => queryClient.invalidateQueries({ queryKey: draftQuery(idea).queryKey, exact: true })
+  const reread = async () => {
+    await queryClient.invalidateQueries({ queryKey: draftQuery(idea).queryKey, exact: true })
+    return queryClient.getQueryData(draftQuery(idea).queryKey)
+  }
   const failed = (error: unknown) => {
     const problem = error instanceof ApiError ? (error.details as { problem?: string } | undefined)?.problem : undefined
     args.onNote(
@@ -61,6 +66,12 @@ export function useEditing(args: UseEditingArgs): { document: ReactNode; panel: 
     setCommitting(true)
     try {
       if (!(await saved())) {
+        return
+      }
+      // what was typed may change nothing in the file (an empty line has no Markdown)
+      const now = queryClient.getQueryData(draftQuery(idea).queryKey)
+      if (now && now.changes.length === 0) {
+        args.onNote('Nothing to commit: the file reads as it did.')
         return
       }
       const done = await api.commitDraft({ idea })
@@ -103,6 +114,7 @@ export function useEditing(args: UseEditingArgs): { document: ReactNode; panel: 
     }),
     previewing,
     committing,
+    unsaved,
     onUndo: (key) =>
       void api
         .undoDraftChange({ idea, key })
@@ -128,7 +140,17 @@ export function useEditing(args: UseEditingArgs): { document: ReactNode; panel: 
         renderCode={renderMermaid}
       />
     ) : (
-      file && <DraftEditor key={file.file} idea={idea} draft={draft} file={file.file} reread={reread} flush={flush} />
+      file && (
+        <DraftEditor
+          key={file.file}
+          idea={idea}
+          draft={draft}
+          file={file.file}
+          reread={reread}
+          flush={flush}
+          onUnsaved={setUnsaved}
+        />
+      )
     ),
     panel: <EditPanel {...panelProps} />,
     // the editor's words and actions in the idea's bar, while it's open

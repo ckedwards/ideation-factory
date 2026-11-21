@@ -79,6 +79,17 @@ export const Empty: Story = {
   },
 }
 
+// Typed on the page, not saved yet: Commit is there at once, and saves it first
+export const Unsaved: Story = {
+  args: { changes: [], outcomes: [], unsaved: true },
+  play: async ({ args, canvasElement, userEvent }) => {
+    const page = within(canvasElement)
+    await expect(page.getByRole('button', { name: 'Preview' })).toBeEnabled()
+    await userEvent.click(page.getByRole('button', { name: 'Commit as v4' }))
+    await expect(args.onCommit).toHaveBeenCalled()
+  },
+}
+
 // A version made elsewhere changed a block the draft had changed: committing waits
 export const Outdated: Story = {
   args: {
