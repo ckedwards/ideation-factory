@@ -12,6 +12,7 @@ import { markdownTree } from '@ideaf/core'
 import {
   type Actor,
   Button,
+  type CardSize,
   changedRanges,
   CommentGutter,
   headings,
@@ -180,7 +181,7 @@ export function IdeaPage(props: IdeaPageProps) {
     ? open.filter((c) => c.info.suggestion?.state === 'open' && !c.info.outdated && !c.pending).map((c) => c.info.id)
     : []
 
-  const card = (comment: PageComment, showTarget = false, context = false): ReactNode => (
+  const card = (comment: PageComment, showTarget = false, context = false, size: CardSize = 'full'): ReactNode => (
     <ThreadCard
       comment={comment}
       actions={props}
@@ -188,6 +189,7 @@ export function IdeaPage(props: IdeaPageProps) {
       onSelect={() => setActive(comment.info.id)}
       showTarget={showTarget}
       context={context}
+      size={size}
     />
   )
   const list = (comments: PageComment[], showTarget = false, context = false) => (
@@ -335,7 +337,7 @@ export function IdeaPage(props: IdeaPageProps) {
         <CommentGutter
           documentRef={document}
           active={active}
-          notes={inText.map((c) => ({ id: c.info.id, content: card(c) }))}
+          notes={inText.map((c) => ({ id: c.info.id, content: (size: CardSize) => card(c, false, false, size) }))}
           empty={onFile.length + outdated.length > 0 ? undefined : empty}
         />
       )}
