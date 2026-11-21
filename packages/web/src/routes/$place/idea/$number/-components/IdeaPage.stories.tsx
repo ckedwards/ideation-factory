@@ -244,6 +244,25 @@ export const SectionBox: Story = {
   },
 }
 
+// Ticks down the document's right edge, one per comment, where its text is in the file; a click on
+// one opens its comment
+export const Ticks: Story = {
+  play: async ({ canvasElement, userEvent }) => {
+    const ticks = await within(window.document.body).findByRole('navigation', { name: 'Comments in this file' })
+    const buttons = within(ticks).getAllByRole('button')
+    await expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual([
+      'Maya Ortiz on the whole file',
+      'Maya Ortiz on “oldest first”',
+      'planbot for Riley Park on § Rollout',
+    ])
+    // in the order of the file, down the pane
+    const tops = buttons.map((b) => b.getBoundingClientRect().top)
+    await expect([...tops].sort((a, b) => a - b)).toEqual(tops)
+    await userEvent.click(buttons[2]!)
+    await waitFor(() => expect(canvasElement.querySelector('h2[data-comment-id="c2"]')).toHaveClass('is-active'))
+  },
+}
+
 // Keys, as Google Docs has them: J and K move from comment to comment in the order of the text, R
 // replies to the open one, E resolves it, Escape puts it down; none of them while typing
 export const Keys: Story = {
