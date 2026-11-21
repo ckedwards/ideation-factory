@@ -22,6 +22,7 @@ import {
   Redline,
   redline,
   renderMermaid,
+  SegmentedControl,
   Select,
   SelectionMenu,
   Stack,
@@ -103,6 +104,17 @@ export function IdeaPage(props: IdeaPageProps) {
   // where the panel comes after the document (IdeaPageLayout's one column), nothing in it is beside
   // the text: the comments on text are a list instead
   const narrow = useMatches('(max-width: 62.5rem)')
+  // beside the text, or a list of every comment with what it's on (a narrow screen has only the list)
+  const [view, setView] = useState<'beside' | 'list'>(storedView)
+  const listed = narrow || view === 'list'
+  const chooseView = (next: 'beside' | 'list') => {
+    setView(next)
+    try {
+      localStorage.setItem(VIEW_KEY, next)
+    } catch {
+      // no storage: the choice lasts as long as the page
+    }
+  }
   // while editing, each where the draft has it
   const editing = props.editing
   const all = editing
@@ -181,12 +193,18 @@ export function IdeaPage(props: IdeaPageProps) {
     ? open.filter((c) => c.info.suggestion?.state === 'open' && !c.info.outdated && !c.pending).map((c) => c.info.id)
     : []
 
-  const card = (comment: PageComment, showTarget = false, context = false, size: CardSize = 'full'): ReactNode => (
+  const card = (
+    comment: PageComment,
+    showTarget = false,
+    context = false,
+    size: CardSize = 'full',
+    onSelect = () => setActive(comment.info.id),
+  ): ReactNode => (
     <ThreadCard
       comment={comment}
       actions={props}
       active={comment.info.id === active}
-      onSelect={() => setActive(comment.info.id)}
+      onSelect={onSelect}
       showTarget={showTarget}
       context={context}
       size={size}
@@ -199,6 +217,32 @@ export function IdeaPage(props: IdeaPageProps) {
       ))}
     </Stack>
   )
+
+  // the list: the file's comments, then each section's in the order of the text, then the ones not
+  // in this version
+  const sectionOf = (offset: number) => sections.findLast((heading) => heading.offset <= offset)
+  const groups: { key: string; title: string; comments: PageComment[] }[] = []
+  if (onFile.length > 0) {
+    groups.push({ key: 'file', title: 'On the whole file', comments: onFile })
+  }
+  for (const c of [...inText].sort((a, b) => at(a.place) - at(b.place))) {
+    const section = sectionOf(at(c.place))
+    const key = section ? `section:${section.offset}` : 'top'
+    if (groups.at(-1)?.key !== key) {
+      groups.push({ key, title: section?.title ?? 'Before the first heading', comments: [] })
+    }
+    groups.at(-1)!.comments.push(c)
+  }
+  if (outdated.length > 0) {
+    groups.push({ key: 'outdated', title: 'Not in this version', comments: outdated })
+  }
+  // a comment chosen in the list: open, and its text in view
+  const jumpTo = (id: string) => {
+    setActive(id)
+    window.document
+      .querySelector(`[data-comment-id="${CSS.escape(id)}"]`)
+      ?.scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' })
+  }
 
   // the file's sections, for its contents
   const contents = sections
@@ -279,6 +323,17 @@ export function IdeaPage(props: IdeaPageProps) {
         </div>
       )}
       <div className="idea-comment-filters" role="group" aria-label="Which comments">
+        {!narrow && (
+          <SegmentedControl
+            label="Comments shown"
+            options={[
+              { value: 'beside', label: 'Beside the text' },
+              { value: 'list', label: 'List' },
+            ]}
+            value={view}
+            onChange={chooseView}
+          />
+        )}
         <Select
           size="sm"
           aria-label="Show"
@@ -309,37 +364,50 @@ export function IdeaPage(props: IdeaPageProps) {
           folded
         />
       )}
-      {onFile.length > 0 && (
-        <div className="idea-panel-group">
-          <h3 className="idea-panel-label">On the whole file</h3>
-          {list(onFile)}
-        </div>
-      )}
-      {outdated.length > 0 && (
-        <div className="idea-panel-group">
-          <h3 className="idea-panel-label">Not in this version</h3>
-          {list(outdated, true)}
-        </div>
-      )}
-      {narrow ? (
-        inText.length > 0 ? (
+      {listed ? (
+        // every comment with what it's on: the file's, each section's in the order of the text, and
+        // the ones not in this version at the end
+        groups.length > 0 ? (
           <div className="idea-comment-list">
-            {list(
-              [...inText].sort((a, b) => at(a.place) - at(b.place)),
-              true,
-              true,
-            )}
+            {groups.map((group) => (
+              <section key={group.key} className="idea-panel-group" aria-label={group.title}>
+                <h3 className="idea-panel-label">
+                  {group.title} · {group.comments.length}
+                </h3>
+                <Stack gap={2}>
+                  {group.comments.map((c) => (
+                    <div key={c.info.id}>{card(c, true, true, 'full', () => jumpTo(c.info.id))}</div>
+                  ))}
+                </Stack>
+              </section>
+            ))}
           </div>
         ) : (
-          onFile.length + outdated.length === 0 && <p className="idea-panel-note">{empty}</p>
+          <p className="idea-panel-note">{empty}</p>
         )
       ) : (
-        <CommentGutter
-          documentRef={document}
-          active={active}
-          notes={inText.map((c) => ({ id: c.info.id, content: (size: CardSize) => card(c, false, false, size) }))}
-          empty={onFile.length + outdated.length > 0 ? undefined : empty}
-        />
+        <>
+          {onFile.length > 0 && (
+            <div className="idea-panel-group">
+              <h3 className="idea-panel-label">On the whole file</h3>
+              {list(onFile)}
+            </div>
+          )}
+          {outdated.length > 0 && (
+            <p className="idea-panel-note idea-outdated-note">
+              {outdated.length === 1 ? '1 comment' : `${outdated.length} comments`} not in this version ·{' '}
+              <Button variant="link" size="sm" onClick={() => chooseView('list')}>
+                Show in the list
+              </Button>
+            </p>
+          )}
+          <CommentGutter
+            documentRef={document}
+            active={active}
+            notes={inText.map((c) => ({ id: c.info.id, content: (size: CardSize) => card(c, false, false, size) }))}
+            empty={onFile.length + outdated.length > 0 ? undefined : empty}
+          />
+        </>
       )}
     </Stack>
   )
@@ -525,6 +593,17 @@ function at(place: Placement): number {
 function within(place: Placement, start: number, end: number): boolean {
   const offset = at(place)
   return offset >= start && offset < end
+}
+
+/** Where the choice of beside the text or a list is kept, for this browser. */
+const VIEW_KEY = 'ideaf:comments:view'
+
+function storedView(): 'beside' | 'list' {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'beside'
+  } catch {
+    return 'beside'
+  }
 }
 
 /** Whether a key went to something being typed in: a box, a menu, or the editor. */

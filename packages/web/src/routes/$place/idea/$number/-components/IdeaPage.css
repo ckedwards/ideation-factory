@@ -93,6 +93,23 @@
 .idea-comment-filters > * {
   width: 100%;
 }
+/* beside the text, or a list: a row of its own above the filters */
+.idea-comment-filters > .segmented {
+  grid-column: 1 / -1;
+  justify-self: start;
+  width: auto;
+}
+/* the list: its groups, each a label and its cards */
+.idea-comment-list {
+  display: grid;
+  gap: var(--space-5);
+}
+.idea-outdated-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1);
+}
 .idea-panel-group {
   display: grid;
   gap: var(--space-2);
