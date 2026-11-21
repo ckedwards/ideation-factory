@@ -324,7 +324,7 @@ export const Short: Story = {
     await sameHeights(canvasElement)
     await expect(canvas.getByText(/6 replies · Riley Park/)).toBeVisible()
     await expect(canvas.getByText('§ Proposal › Conflicts')).toBeVisible()
-    await expect(canvas.getByText('Whole file')).toBeVisible()
+    await expect(canvas.getByText('File', { exact: true })).toBeVisible()
     // no Reply or Resolve on a card that isn't open
     await expect(canvas.queryByRole('button', { name: 'Reply' })).toBeNull()
   },

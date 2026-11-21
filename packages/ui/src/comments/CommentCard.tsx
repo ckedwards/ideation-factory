@@ -124,7 +124,9 @@ export function CommentCard({
       setReplying(false)
     }
   }
-  const tag = target.kind === 'file' ? 'Whole file' : target.kind === 'section' ? `§ ${target.title}` : null
+  // a comment on the whole file is tagged File beside it; away from it (an idea's activity), in full
+  const tag =
+    target.kind === 'file' ? (context ? 'Whole file' : 'File') : target.kind === 'section' ? `§ ${target.title}` : null
   const replies = comment.replies.length
   if (size === 'line') {
     return (
@@ -188,7 +190,7 @@ export function CommentCard({
               Outdated
             </Tag>
           )}
-          {target.kind === 'file' && <Tag>Whole file</Tag>}
+          {target.kind === 'file' && <Tag>{tag}</Tag>}
           {target.kind === 'section' && <Tag>§ {target.title}</Tag>}
           {target.kind === 'text' && context && target.section && <Tag>§ {target.section}</Tag>}
           {target.kind === 'text' && (comment.outdated || context) && <q className="comment-quote">{target.quote}</q>}
