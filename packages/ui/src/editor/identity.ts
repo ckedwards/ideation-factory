@@ -8,8 +8,10 @@
 // - **Cut:** the identities ride along, and the cut is noted on the page (any page editor on it can
 //   take it), with the blocks it took whole, or the block and Markdown a few words left.
 // - **Copy:** the identities are stripped before they reach the clipboard: a copy is new text.
-// - **Paste:** a paste whose identities belong to a cut not yet pasted is a move: they're kept, and
-//   the cut is spent. Anything else (a second paste, a copy, text from elsewhere, ⌘⇧V) is new text.
+// - **Paste:** a paste whose identities belong to a cut, and aren't on the page, is a move: they're
+//   kept. Pasted again while they're there, it's new text, as a copy, text from elsewhere and ⌘⇧V
+//   are; with the paste undone, they're gone again, and the next paste is the move.
+//   A few words cut are moved by their first paste.
 // - **A block's whole text is the block:** a cut, copy or drag from the start of a block's text to
 //   the end of a block's text takes the blocks, as Google Docs' triple click takes the line break.
 // - **Whole blocks are pasted here,** ahead of Milkdown's paste, which makes a lone paragraph of
@@ -191,6 +193,7 @@ interface Cut {
   ids: Set<string>
   /** A few words of one block: which, and its Markdown before they were cut. */
   words: { from: string; text: string; before: string } | null
+  /** The words were pasted (whole blocks are pasted as long as they're not on the page). */
   pasted: boolean
 }
 
@@ -292,18 +295,19 @@ export function clipboardIdentity(hooks: IdentityHooks): MilkdownPlugin {
             return view.dragging.move ? slice : stripped(slice)
           }
           const text = slice.content.textBetween(0, slice.content.size)
+          // a cut's blocks, any of them not on the page; or a cut's words, not pasted yet
           const cut = plain
             ? undefined
-            : cuts.find(
-                (c) =>
-                  !c.pasted &&
-                  ((ids.length > 0 && ids.every((id) => c.ids.has(id))) || (c.words !== null && text === c.words.text)),
+            : cuts.find((c) =>
+                c.words === null
+                  ? ids.length > 0 && ids.every((id) => c.ids.has(id)) && ids.some((id) => !onPage.has(id))
+                  : !c.pasted && text === c.words.text,
               )
           if (!cut) {
             return stripped(slice)
           }
-          cut.pasted = true
           if (cut.words) {
+            cut.pasted = true
             const to = blockAt(view, view.state.selection.from)
             if (to && to !== cut.words.from) {
               landing = { cut: cut.words, to, before: hooks.sourceOf(to) ?? '' }

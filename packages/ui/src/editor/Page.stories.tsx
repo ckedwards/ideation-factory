@@ -454,6 +454,43 @@ export const Comments: Story = {
   },
 }
 
+// A cut pasted, the paste undone, and pasted again: the second paste is the move, as the first was,
+// and the comment comes back with its words
+export const PasteUndonePastedAgain: Story = {
+  args: { comments: COMMENTS },
+  play: async ({ canvasElement }) => {
+    const box = await surface(canvasElement)
+    const mark = () => [...box.querySelectorAll('mark[data-comment-id="c1"]')].map((m) => m.textContent).join('')
+    await waitFor(() => expect(mark()).toBe('Field teams lose signal i'))
+    const field = textNode(box, 'Field teams').parentElement!.closest('p')!
+    const all = document.createRange()
+    all.selectNodeContents(field)
+    box.focus()
+    getSelection()!.removeAllRanges()
+    getSelection()!.addRange(all)
+    await settle()
+    const data = new DataTransfer()
+    box.dispatchEvent(new ClipboardEvent('cut', { clipboardData: data, bubbles: true, cancelable: true }))
+    await settle()
+    const last = textNode(box, 'Starting a site')
+    await select(box, last, last.length, last, last.length)
+    box.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+    await settle()
+    await waitFor(() => expect(mark()).toBe('Field teams lose signal i'))
+    await typing.keyboard('{Control>}z{/Control}')
+    await waitFor(() => expect(mark()).toBe(''))
+    await expect(box.querySelector('[data-block-id="b3"]')).toBeNull()
+    box.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+    await settle()
+    await expect(box.querySelector('p[data-block-id="b3"]')).toHaveTextContent(/^Field teams/)
+    await waitFor(() => expect(mark()).toBe('Field teams lose signal i'))
+    const { changes } = await readBack(canvasElement)
+    await expect(changes).toEqual([
+      { kind: 'move', id: 'b3', to: { after: 'b10' }, was: expect.stringMatching(/^Field teams/) },
+    ])
+  },
+}
+
 // The comment whose card is open: its mark lit as the document lights it, one mark, not a second
 // one inside it with none of the page's colors
 export const ActiveComment: Story = {
