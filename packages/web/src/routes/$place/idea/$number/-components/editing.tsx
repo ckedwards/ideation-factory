@@ -5,15 +5,17 @@
 // Committing makes one version.
 import { type ReactNode, useRef, useState } from 'react'
 import { ApiError, type Operations, type Output } from '@ideaf/api'
-import { type DraftChange, markdownTree, plainLine } from '@ideaf/core'
+import { type DraftChange, markdownTree, parseMarkdown, plainLine } from '@ideaf/core'
 import { type Person, Redline, renderMermaid } from '@ideaf/ui'
+import type { PageMark } from '@ideaf/ui/editor'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../../../api.ts'
 import { type CommentOutcomeRow, EditActions, EditPanel, type EditPanelProps } from './EditPanel.tsx'
 import { IdeaMode } from './IdeaFrame.tsx'
 import { DraftEditor } from './DraftEditor.tsx'
+import { headingOffset, toSource } from './anchors.ts'
 import { draftQuery } from './queries.ts'
-import type { Thread } from './view.ts'
+import type { FileView, Placement, Thread } from './view.ts'
 
 export type Draft = Output<Operations['getDraft']>
 
@@ -25,6 +27,8 @@ export interface UseEditingArgs {
   setOpen: (open: boolean) => void
   /** The file shown, and the latest version's files (what the preview compares with). */
   file: string
+  /** The file as the page shows it (the latest version): where a comment the draft doesn't place is. */
+  shownFile: FileView
   latestFiles: Array<{ file: string; content: string }>
   threads: Thread[]
   people: Map<string, Person>
@@ -33,7 +37,26 @@ export interface UseEditingArgs {
   onCommitted: (version: number) => void
 }
 
-export function useEditing(args: UseEditingArgs): { document: ReactNode; panel: ReactNode; bar: ReactNode } | null {
+/** What the editor shows of the comments: those the panel shows, the one that's active, and a mark clicked. */
+export interface EditingView {
+  shown: Array<{ id: string; resolved: boolean }>
+  active: string | null
+  onSelect: (id: string) => void
+}
+
+export interface Editing {
+  /** The page, marked with the comments the panel shows. */
+  document: (view: EditingView) => ReactNode
+  /** The draft's changes, and where comments go once it's committed. */
+  panel: ReactNode
+  /** How many changes the draft has. */
+  changes: number
+  bar: ReactNode
+  /** Where each comment is in the draft, as the page places them. */
+  places: Map<string, Placement>
+}
+
+export function useEditing(args: UseEditingArgs): Editing | null {
   const { idea, draft } = args
   const queryClient = useQueryClient()
   const [previewing, setPreviewing] = useState(false)
@@ -59,6 +82,7 @@ export function useEditing(args: UseEditingArgs): { document: ReactNode; panel: 
     )
   }
   const file = draft.files.find((f) => f.file === args.file) ?? draft.files[0]
+  const placed = file ? placeComments(draft, file, args.shownFile, args.threads) : { places: new Map(), marks: [] }
   /** What's typed, saved first; false if it couldn't be (the page says why). */
   const saved = async () => (flush.current ? flush.current() : true)
 
@@ -133,29 +157,103 @@ export function useEditing(args: UseEditingArgs): { document: ReactNode; panel: 
     onClose: () => void close(),
   }
   return {
-    document: previewing ? (
-      <Redline
-        base={{ source: before, tree: markdownTree(before) }}
-        current={{ source: after, tree: markdownTree(after) }}
-        renderCode={renderMermaid}
-      />
-    ) : (
-      file && (
-        <DraftEditor
-          key={file.file}
-          idea={idea}
-          draft={draft}
-          file={file.file}
-          reread={reread}
-          flush={flush}
-          onUnsaved={setUnsaved}
+    document: (view) =>
+      previewing ? (
+        <Redline
+          base={{ source: before, tree: markdownTree(before) }}
+          current={{ source: after, tree: markdownTree(after) }}
+          renderCode={renderMermaid}
         />
-      )
-    ),
+      ) : (
+        file && (
+          <DraftEditor
+            key={file.file}
+            idea={idea}
+            draft={draft}
+            file={file.file}
+            reread={reread}
+            flush={flush}
+            onUnsaved={setUnsaved}
+            marks={placed.marks}
+            view={view}
+          />
+        )
+      ),
     panel: <EditPanel {...panelProps} />,
+    changes: draft.changes.length,
+    places: placed.places,
     // the editor's words and actions in the idea's bar, while it's open
     bar: <IdeaMode label={`Editing the draft, on v${draft.version}`} actions={<EditActions {...panelProps} />} />,
   }
+}
+
+/**
+ * Where each comment on the file is in the draft, as the page places them, and its marks for the
+ * editor: a mark for each block its text is in, or its heading. The draft places every comment it
+ * keeps; a pending one (in someone's review) is where it is in the latest version, whose blocks the
+ * draft knows by the same IDs.
+ */
+function placeComments(
+  draft: Draft,
+  file: Draft['files'][number],
+  shownFile: FileView,
+  threads: Thread[],
+): { places: Map<string, Placement>; marks: PageMark[] } {
+  const places = new Map<string, Placement>()
+  const marks: PageMark[] = []
+  const at = (id: string, anchor: Thread['anchor'], source: string, ids: readonly string[]) => {
+    if (!anchor || anchor.kind === 'idea' || anchor.file !== file.file) {
+      return
+    }
+    if (anchor.kind === 'file') {
+      places.set(id, { kind: 'file' })
+      return
+    }
+    if (anchor.kind === 'section') {
+      const heading = headingOffset(source, ids, anchor.section)
+      places.set(id, heading === null ? { kind: 'file' } : { kind: 'section', heading })
+      if (heading !== null) {
+        marks.push({ id, heading: anchor.section })
+      }
+      return
+    }
+    const range = toSource(source, anchor)
+    if (!range) {
+      places.set(id, { kind: 'outdated' })
+      return
+    }
+    places.set(id, { kind: 'text', ...range })
+    const parsed = parseMarkdown(source)
+    parsed.units.forEach((unit, i) => {
+      const from = Math.max(anchor.start, unit.plainStart)
+      const to = Math.min(anchor.end, unit.plainEnd)
+      const block = ids[i]
+      if (to > from && block) {
+        marks.push({
+          id,
+          block,
+          from: from - unit.plainStart,
+          to: to - unit.plainStart,
+          quote: parsed.plain.text.slice(from, to),
+        })
+      }
+    })
+  }
+  const ids = file.units.map((u) => u.id)
+  for (const outcome of draft.comments) {
+    if (outcome.state === 'outdated' || !outcome.anchor) {
+      places.set(outcome.id, { kind: 'outdated' })
+    } else {
+      at(outcome.id, outcome.anchor, file.content, ids)
+    }
+  }
+  const kept = new Set(draft.comments.map((o) => o.id))
+  for (const thread of threads) {
+    if (!kept.has(thread.id) && thread.state !== 'outdated' && shownFile.id === file.file) {
+      at(thread.id, thread.anchor, shownFile.source, shownFile.unitIds)
+    }
+  }
+  return { places, marks }
 }
 
 /** A change as the list of changes names it. */

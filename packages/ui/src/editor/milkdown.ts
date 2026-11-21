@@ -139,6 +139,8 @@ export interface RichOptions {
    * drawn HTML. Where, on the screen, and what's there. Elsewhere the browser's own menu shows.
    */
   onContextMenu: (at: { x: number; y: number }, here: { table: boolean; link: string | null; html: boolean }) => void
+  /** A page's: a comment's mark clicked, by its ID. */
+  onComment?: ((id: string) => void) | undefined
 }
 
 export interface Selection {
@@ -174,6 +176,10 @@ export interface RichEditor {
   movedWords: () => MovedWords[]
   /** A page's blocks the draft has changed, by their IDs: marked with a rail. */
   markChanged: (ids: string[]) => void
+  /** A page's comments, marked on their text as the document marks them, from where the draft has them. */
+  markComments: (marks: PageMark[]) => void
+  /** The comment that's active, lit: the one its card is open for. */
+  activeComment: (id: string | null) => void
   run: (action: Exclude<Action, 'link' | 'table' | 'heading'>) => void
   /** The caret's block made a heading of this level, 1 to 6, or back into text with 0. */
   heading: (level: number) => void
@@ -365,6 +371,194 @@ const changedRail = $prose(
       },
     }),
 )
+
+/**
+ * A comment shown on a page: on some of a block's text (where, as plain-text offsets in the block,
+ * and its words, to find them again if the block's text moved), or on a heading's section.
+ */
+export type PageMark =
+  | { id: string; block: string; from: number; to: number; quote: string; resolved?: boolean }
+  | { id: string; heading: string; resolved?: boolean }
+
+interface MarksState {
+  marks: PageMark[]
+  set: DecorationSet
+  active: string | null
+}
+const marksKey = new PluginKey<MarksState>('ideaf-comments')
+/** A transaction that opened the page again: its marks are found again in what it opened. */
+const RELOADED = 'ideaf-reloaded'
+
+// a page's comments, marked as the document marks them: made from where the draft has them, and
+// kept on their words as typing moves them, until the draft says where they are again
+const commentMarks = $prose(
+  () =>
+    new Plugin<MarksState>({
+      key: marksKey,
+      state: {
+        init: () => ({ marks: [], set: DecorationSet.empty, active: null }),
+        apply: (tr, was, _old, state) => {
+          const meta = tr.getMeta(marksKey) as Partial<Pick<MarksState, 'marks' | 'active'>> | undefined
+          const marks = meta?.marks ?? was.marks
+          const active = meta && 'active' in meta ? (meta.active ?? null) : was.active
+          if (meta?.marks || tr.getMeta(RELOADED)) {
+            return { marks, set: markDecorations(state.doc, marks), active }
+          }
+          if (!tr.docChanged) {
+            return { marks, set: was.set, active }
+          }
+          const set = was.set.map(tr.mapping, tr.doc)
+          // pasted or dropped: a cut's blocks are back with their identities, and their comments with them
+          const event = tr.getMeta('uiEvent') as string | undefined
+          if (event === 'paste' || event === 'drop') {
+            const there = new Set(set.find().map((d) => (d.spec as { id: string }).id))
+            const missing = marks.filter((m) => !there.has(m.id))
+            if (missing.length > 0) {
+              return { marks, set: set.add(state.doc, markDecorations(state.doc, missing).find()), active }
+            }
+          }
+          return { marks, set, active }
+        },
+      },
+      props: {
+        decorations: (state) => {
+          const marks = marksKey.getState(state)
+          if (!marks || marks.set === DecorationSet.empty) {
+            return null
+          }
+          if (!marks.active) {
+            return marks.set
+          }
+          // the one that's active, lit: a second decoration over each of its pieces adds the class
+          const lit = marks.set
+            .find(undefined, undefined, (spec: { id?: string }) => spec.id === marks.active)
+            .map((d) =>
+              (d.spec as { heading?: boolean }).heading
+                ? Decoration.node(d.from, d.to, { class: 'is-active' })
+                : Decoration.inline(d.from, d.to, { nodeName: 'mark', class: 'is-active' }),
+            )
+          return marks.set.add(state.doc, lit)
+        },
+      },
+    }),
+)
+
+/** Where each comment is on a page: its pieces of text (one per run of formatting), or its heading. */
+function markDecorations(doc: Node, marks: PageMark[]): DecorationSet {
+  const blocks = new Map<string, { node: Node; pos: number }>()
+  doc.descendants((node, pos) => {
+    const id = node.attrs['blockId'] as string | null | undefined
+    if (id) {
+      blocks.set(id, { node, pos })
+    }
+    return node.type.name !== 'table'
+  })
+  const out: Decoration[] = []
+  for (const mark of marks) {
+    const resolved = mark.resolved ? ' is-resolved' : ''
+    if ('heading' in mark) {
+      const at = blocks.get(mark.heading)
+      if (at && at.node.type.name === 'heading') {
+        out.push(
+          Decoration.node(
+            at.pos,
+            at.pos + at.node.nodeSize,
+            { class: `md-section-mark${resolved}`, 'data-comment-id': mark.id },
+            { id: mark.id, heading: true },
+          ),
+        )
+      }
+      continue
+    }
+    const at = blocks.get(mark.block)
+    if (!at) {
+      continue
+    }
+    const range = inBlock(at.node, at.pos, mark)
+    if (!range) {
+      continue
+    }
+    const pieces: Array<[number, number]> = []
+    doc.nodesBetween(range[0], range[1], (node, pos) => {
+      if (node.isText) {
+        pieces.push([Math.max(pos, range[0]), Math.min(pos + node.nodeSize, range[1])])
+      }
+      return true
+    })
+    pieces.forEach(([from, to], i) => {
+      const ends = `${i === 0 ? ' is-first' : ''}${i === pieces.length - 1 ? ' is-last' : ''}`
+      out.push(
+        Decoration.inline(
+          from,
+          to,
+          { nodeName: 'mark', class: `md-mark${ends}${resolved}`, 'data-comment-id': mark.id },
+          { id: mark.id },
+        ),
+      )
+    })
+  }
+  return DecorationSet.create(doc, out)
+}
+
+/**
+ * A comment's words in a block, as positions in the document: at its offsets in the block's text if
+ * its words are there, or else where its words are nearest them; null if they aren't in it.
+ */
+function inBlock(block: Node, pos: number, mark: { from: number; to: number; quote: string }): [number, number] | null {
+  // each character of the block's text, as its plain text counts them, and where it is (-1 between
+  // paragraphs and at a line break, which count as one)
+  const at: number[] = []
+  let text = ''
+  let started = false
+  block.descendants((node, offset) => {
+    // a nested list's items are blocks of their own
+    if (node !== block && (node.type.name === 'bullet_list' || node.type.name === 'ordered_list')) {
+      return false
+    }
+    if (node.isTextblock) {
+      if (started) {
+        at.push(-1)
+        text += '\n'
+      }
+      started = true
+    } else if (node.isText) {
+      for (let i = 0; i < node.text!.length; i++) {
+        at.push(pos + 1 + offset + i)
+      }
+      text += node.text
+    } else if (node.type.name === 'hardbreak') {
+      at.push(-1)
+      text += '\n'
+    }
+    return true
+  })
+  let from = mark.from
+  let to = mark.to
+  if (text.slice(from, to) !== mark.quote) {
+    // its words moved in the block: the nearest place they are
+    let best = -1
+    for (let i = text.indexOf(mark.quote); i >= 0 && mark.quote; i = text.indexOf(mark.quote, i + 1)) {
+      if (best < 0 || Math.abs(i - mark.from) < Math.abs(best - mark.from)) {
+        best = i
+      }
+    }
+    if (best < 0) {
+      return null
+    }
+    from = best
+    to = best + mark.quote.length
+  }
+  while (from < to && at[from] === -1) {
+    from++
+  }
+  while (to > from && at[to - 1] === -1) {
+    to--
+  }
+  if (from >= to || at[from] === undefined || at[to - 1] === undefined) {
+    return null
+  }
+  return [at[from]!, at[to - 1]! + 1]
+}
 
 // a run drawn as its HTML with the blocks between where it left off, none of it typed in
 const htmlRunView = $view(htmlRunSchema.node, () => (node) => {
@@ -631,6 +825,22 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
       }),
   )
 
+  // a click on a comment's mark opens its card, as on the page; the caret goes where it was clicked
+  const commentClicks = $prose(
+    () =>
+      new Plugin({
+        props: {
+          handleClick: (_view, _pos, event) => {
+            const id = (event.target as Element).closest('[data-comment-id]')?.getAttribute('data-comment-id')
+            if (id) {
+              options.onComment?.(id)
+            }
+            return false
+          },
+        },
+      }),
+  )
+
   // a right click in a table, on a link or on drawn HTML: the editor's menu for it, at the click
   const contextMenu = $prose(
     () =>
@@ -887,6 +1097,7 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
     .use(keepHtml)
     .use(hold)
     .use(contextMenu)
+    .use(commentClicks)
     .use(preset)
     .use(gfm)
     // the draft's blocks can carry their identity (identity.ts)
@@ -906,6 +1117,7 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
     )
     .use(clipboard)
     .use(changedRail)
+    .use(commentMarks)
     .use(placeholder)
     .use(watch)
     .create()
@@ -1190,6 +1402,8 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
       // the caret at the end of the text, or at its start when it ends in a block that isn't typed in
       tr.setSelection(tr.doc.lastChild?.isTextblock ? TextSelection.atEnd(tr.doc) : TextSelection.atStart(tr.doc))
     }
+    // its comments, found again in what's opened
+    tr.setMeta(RELOADED, true)
     loading = true
     v.dispatch(tr)
     loading = false
@@ -1228,6 +1442,16 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
     markChanged: (ids) => {
       const v = view()
       v.dispatch(v.state.tr.setMeta(changedKey, new Set(ids)))
+    },
+    markComments: (marks) => {
+      const v = view()
+      v.dispatch(v.state.tr.setMeta(marksKey, { marks }))
+    },
+    activeComment: (id) => {
+      const v = view()
+      if (marksKey.getState(v.state)?.active !== id) {
+        v.dispatch(v.state.tr.setMeta(marksKey, { active: id }))
+      }
     },
     movedWords: () => {
       const out = moved

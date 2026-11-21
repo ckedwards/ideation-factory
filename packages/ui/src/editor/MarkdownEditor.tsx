@@ -26,7 +26,7 @@ import {
 } from 'react'
 import { TextArea } from '../controls/TextArea.tsx'
 import { MarkdownView } from '../document/MarkdownView.tsx'
-import type { Action, Flavor, RichEditor, Selection, TableOp } from './milkdown.ts'
+import type { Action, Flavor, PageMark, RichEditor, Selection, TableOp } from './milkdown.ts'
 import { type PlainEdit, plainEdit, plainHeading, plainLink, plainShortcut, plainTable } from './plain.ts'
 import { ContextMenu, type ContextMenuAt } from './ContextMenu.tsx'
 import { EditorOwner } from './owner.ts'
@@ -76,6 +76,17 @@ export interface MarkdownEditorProps {
   saved?: { source: string; ids: string[] }
   /** A page's: the blocks the draft has changed, marked with a rail. */
   changed?: string[]
+  /**
+   * A page's comments, marked on their text as the document marks them, from where the draft has
+   * them; they stay on their words as typing moves them. A new array only when they've moved.
+   */
+  comments?: PageMark[]
+  /** A page's: the comment whose card is open, its mark lit. */
+  activeComment?: string | null
+  /** A page's: a comment's mark clicked. */
+  onComment?: (id: string) => void
+  /** A page's: under its toolbar, before the text (the file's name). */
+  lead?: ReactNode
   /** A page's, at the right of its toolbar: how saving is going ("Saved to the draft"). */
   status?: ReactNode
   /** A page's: its blocks and the words moved between them, read when it's saved. */
@@ -206,6 +217,12 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
   useEffect(() => {
     rich?.markChanged(props.changed ?? [])
   }, [props.changed, rich])
+  useEffect(() => {
+    rich?.markComments(props.comments ?? [])
+  }, [props.comments, rich])
+  useEffect(() => {
+    rich?.activeComment(props.activeComment ?? null)
+  }, [props.activeComment, rich])
   useImperativeHandle(
     props.ref,
     () => ({
@@ -422,6 +439,7 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
             },
           }}
         />
+        {props.lead}
         {markdown ? (
           box
         ) : (
@@ -439,6 +457,7 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
               onCancel={props.onCancel}
               onLink={openLink}
               onContextMenu={(at, here) => setContext({ ...at, ...here })}
+              onComment={props.onComment}
               onSelection={setSelection}
               onReady={setRich}
             />

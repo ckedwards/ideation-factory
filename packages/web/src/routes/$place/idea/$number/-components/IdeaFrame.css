@@ -102,6 +102,10 @@
   .idea-frame {
     height: auto;
   }
+  /* the window scrolls, so what's pinned to the top (a file's toolbar) pins to the window's */
+  .idea-frame-page {
+    overflow: visible;
+  }
   .idea-bar-where {
     flex-wrap: wrap;
   }

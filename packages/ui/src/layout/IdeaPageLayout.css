@@ -21,9 +21,10 @@
   background: var(--surface-2);
 }
 .idea-page-document {
-  /* its top padding, which what's pinned to its top (a toolbar) reaches back over */
+  /* its top and side padding, which what's pinned to its top (a toolbar) reaches back over */
   --idea-document-top: var(--space-6);
-  padding: var(--idea-document-top) var(--space-7) var(--space-8);
+  --idea-document-side: var(--space-7);
+  padding: var(--idea-document-top) var(--idea-document-side) var(--space-8);
   outline: none;
 }
 /* a comfortable line length: about 70 characters of the reading face */
@@ -55,7 +56,8 @@
   }
   .idea-page-document {
     --idea-document-top: var(--space-5);
-    padding: var(--idea-document-top) var(--space-5) var(--space-7);
+    --idea-document-side: var(--space-5);
+    padding: var(--idea-document-top) var(--idea-document-side) var(--space-7);
   }
 }
 /* narrow: one column, the page scrolls; the comments come after the document */
@@ -78,7 +80,8 @@
   }
   .idea-page-document {
     --idea-document-top: var(--space-5);
-    padding: var(--idea-document-top) var(--space-4) var(--space-7);
+    --idea-document-side: var(--space-4);
+    padding: var(--idea-document-top) var(--idea-document-side) var(--space-7);
   }
   .idea-page-panel {
     border-left: none;

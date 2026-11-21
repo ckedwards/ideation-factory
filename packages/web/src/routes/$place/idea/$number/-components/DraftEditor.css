@@ -6,14 +6,31 @@
   color: var(--del-ink);
 }
 
-/* the page's toolbar across the whole document pane, pinned to its top as it scrolls; the text stays
-   at the document's measure */
+/* the page's toolbar across the whole document pane, at its top and pinned there as it scrolls; the
+   text stays at the document's measure */
 .idea-page-document:has(.draft-editor) {
   container-type: inline-size;
 }
 .draft-editor .md-editor.is-page .md-editor-bar {
   top: calc(-1 * var(--idea-document-top));
-  margin-inline: calc((100% - 100cqw) / 2 - var(--space-7));
+  margin-top: calc(-1 * var(--idea-document-top));
+  margin-inline: calc((100% - 100cqw) / 2 - var(--idea-document-side));
+}
+/* narrow, the page scrolls, not the pane: pinned under the app's bar, which stays at the window's top */
+@media (max-width: 62.5rem) {
+  .draft-editor .md-editor.is-page .md-editor-bar {
+    top: var(--app-bar-height, 0px);
+  }
+}
+/* the file's name, under the toolbar, as reading shows it */
+.draft-editor-file {
+  margin: var(--space-5) 0 0;
+  padding-bottom: var(--space-3);
+  border-bottom: var(--hairline) solid var(--rule);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
 }
 .draft-editor .md-editor.is-page .md-editor-surface,
 .draft-editor .md-editor.is-page .md-editor-standin {
