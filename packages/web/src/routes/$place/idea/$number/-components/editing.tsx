@@ -8,13 +8,14 @@ import { ApiError, type Operations, type Output } from '@ideaf/api'
 import { type DraftChange, markdownTree, parseMarkdown, plainLine } from '@ideaf/core'
 import { type Person, Redline, renderMermaid } from '@ideaf/ui'
 import type { PageMark } from '@ideaf/ui/editor'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../../../api.ts'
 import { type CommentOutcomeRow, EditActions, EditPanel, type EditPanelProps } from './EditPanel.tsx'
 import { IdeaMode } from './IdeaFrame.tsx'
 import { DraftEditor } from './DraftEditor.tsx'
 import { headingOffset, toSource } from './anchors.ts'
-import { draftQuery } from './queries.ts'
+import { draftQuery, filesQuery } from './queries.ts'
+import type { DraftVersion } from './VersionList.tsx'
 import type { FileView, Placement, Thread } from './view.ts'
 
 export type Draft = Output<Operations['getDraft']>
@@ -47,10 +48,8 @@ export interface EditingView {
 export interface Editing {
   /** The page, marked with the comments the panel shows. */
   document: (view: EditingView) => ReactNode
-  /** The draft's changes, and where comments go once it's committed. */
-  panel: ReactNode
-  /** How many changes the draft has. */
-  changes: number
+  /** The draft, heading the list of versions: its changes, and comparing it with any version. */
+  draft: DraftVersion
   bar: ReactNode
   /** Where each comment is in the draft, as the page places them. */
   places: Map<string, Placement>
@@ -59,7 +58,15 @@ export interface Editing {
 export function useEditing(args: UseEditingArgs): Editing | null {
   const { idea, draft } = args
   const queryClient = useQueryClient()
-  const [previewing, setPreviewing] = useState(false)
+  // the version the draft's compared with, in place of the editor; null while it's edited
+  const [comparedWith, setComparedWith] = useState<number | null>(null)
+  const previewing = comparedWith !== null
+  const setPreviewing = (on: boolean) => setComparedWith(on && draft ? draft.version : null)
+  // an earlier version's files, to compare with (the latest's are the page's own)
+  const earlier = useQuery({
+    ...filesQuery(idea, comparedWith ?? 0),
+    enabled: comparedWith !== null && draft !== undefined && comparedWith !== draft.version,
+  })
   const [committing, setCommitting] = useState(false)
   // typed on the page and not saved yet
   const [unsaved, setUnsaved] = useState(false)
@@ -110,7 +117,8 @@ export function useEditing(args: UseEditingArgs): Editing | null {
     }
   }
 
-  const before = args.latestFiles.find((f) => f.file === file?.file)?.content ?? ''
+  const compareFiles = comparedWith === draft.version ? args.latestFiles : (earlier.data?.files ?? [])
+  const before = compareFiles.find((f) => f.file === file?.file)?.content ?? ''
   const after = file?.content ?? ''
   const close = async () => {
     if (await saved()) {
@@ -159,11 +167,16 @@ export function useEditing(args: UseEditingArgs): Editing | null {
   return {
     document: (view) =>
       previewing ? (
-        <Redline
-          base={{ source: before, tree: markdownTree(before) }}
-          current={{ source: after, tree: markdownTree(after) }}
-          renderCode={renderMermaid}
-        />
+        <>
+          <p className="draft-editor-file">
+            {file?.path} <span className="draft-editor-compared">· the draft compared with v{comparedWith}</span>
+          </p>
+          <Redline
+            base={{ source: before, tree: markdownTree(before) }}
+            current={{ source: after, tree: markdownTree(after) }}
+            renderCode={renderMermaid}
+          />
+        </>
       ) : (
         file && (
           <DraftEditor
@@ -179,8 +192,15 @@ export function useEditing(args: UseEditingArgs): Editing | null {
           />
         )
       ),
-    panel: <EditPanel {...panelProps} />,
-    changes: draft.changes.length,
+    draft: {
+      on: draft.version,
+      changes: draft.changes.length,
+      by: [...new Set(draft.changes.map((c) => args.people.get(c.by.user)?.name ?? 'someone'))],
+      open: true,
+      comparedWith,
+      onCompare: (version) => void saved().then((ok) => ok && setComparedWith(version)),
+      detail: <EditPanel {...panelProps} />,
+    },
     places: placed.places,
     // the editor's words and actions in the idea's bar, while it's open
     bar: <IdeaMode label={`Editing the draft, on v${draft.version}`} actions={<EditActions {...panelProps} />} />,

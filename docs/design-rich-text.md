@@ -115,7 +115,7 @@ These are the rules the rest follows from.
 
 ## The page editor
 
-![The file as one editable page under a toolbar: undo and redo, a text style menu, formatting, lists, quote, code block and table, then Saved to the draft and the Markdown switch. Two changed blocks carry a rail, and both are listed in the draft panel](design-review/rich-page-editor.png)
+![The file as one editable page under a toolbar: undo and redo, a text style menu, formatting, lists, quote, code block and table, then Saved to the draft and the Markdown switch. Two changed blocks carry a rail, and both are listed in the draft panel. Since then the rail is gone and the draft heads the Versions tab](design-review/rich-page-editor.png)
 
 *Edit on the Files tab. The toolbar runs across the top of the document pane, from its top edge, and stays there as it scrolls (under the app's bar where the window scrolls instead).*
 
@@ -134,9 +134,11 @@ Edit turns the file into one surface: click anywhere and type, Enter makes a par
 
 It's the comment box's toolbar with history, the style menu and code block added. A button is lit when the caret is in that kind of text.
 
-**What stays as it is:** the idea's bar (Editing the draft, Commit, Preview, Close editor), the draft panel with each change and its Undo, the rail beside changed blocks, and the file list. The file's name is under the toolbar.
+**What stays as it is:** the idea's bar (Editing the draft, Commit, Preview, Close editor), the draft's list of changes with each one's Undo, and the file list. The file's name is under the toolbar. Changed blocks aren't marked in the text: the page is for writing, and what changed is a comparison away (below).
 
-**Comments stay in view while editing,** since they're usually what an edit answers. They're marked on their text as reading marks them, and their cards sit level with it in the side column, with the same filters. The marks come from where the draft has each comment (a pending one, not in the draft yet, from where the latest version has it), stay on their words as typing moves them, and are found again after each save, and in pasted text whose cut carried them. A mark clicked opens its card. The draft panel is the column's second tab, Changes, beside Comments.
+**Comments stay in view while editing,** since they're usually what an edit answers. They're marked on their text as reading marks them, and their cards sit level with it in the side column, with the same filters. The marks come from where the draft has each comment (a pending one, not in the draft yet, from where the latest version has it), stay on their words as typing moves them, and are found again after each save, and in pasted text whose cut carried them. A mark clicked opens its card.
+
+**The draft is in the Versions tab,** at the top of the timeline, as what the next version will be: the version it's on, how many changes, and by whom. Reading, it has Open the draft. While it's open, it lists its changes, each with Undo, and where comments will go, and it can be compared with any version (Compare with v5 on the draft, Compare with the draft on each version): the editor gives way to the redline of the draft against that version, and the timeline marks the range, until Back to editing.
 
 **Each kind of block:**
 
