@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { actors, NOW } from '@ideaf/ui/fixtures'
-import { expect, within } from 'storybook/test'
+import { expect, fn, within } from 'storybook/test'
 import { VersionList } from './VersionList.tsx'
 
 const hours = (n: number) => NOW - n * 3_600_000
@@ -26,12 +26,12 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-// Reading the latest: each earlier version offers its changes since
+// Reading the latest: each earlier version can be compared with it
 export const Latest: Story = {
   play: async ({ canvasElement }) => {
     const list = within(canvasElement)
-    await expect(list.getByRole('link', { name: 'v4' })).toHaveAttribute('aria-current', 'page')
-    await expect(list.getAllByRole('link', { name: 'Changes since' })).toHaveLength(3)
+    await expect(list.getByRole('link', { name: 'Version 4' })).toHaveAttribute('aria-current', 'page')
+    await expect(list.getAllByRole('link', { name: 'Compare with v4' })).toHaveLength(3)
     await expect(list.getByText('Edited with 3 commands')).toBeVisible()
     await expect(list.getByText('Edited with 1 command')).toBeVisible()
   },
@@ -46,6 +46,59 @@ export const Older: Story = {
   play: async ({ canvasElement }) => {
     const list = within(canvasElement)
     await expect(list.getByText('latest')).toBeVisible()
-    await expect(list.getAllByRole('link', { name: 'Changes since' })).toHaveLength(1)
+    await expect(list.getAllByRole('link', { name: 'Compare with v2' })).toHaveLength(1)
+  },
+}
+
+// A draft, reading: what the next version will be, at the top, to open
+export const WithADraft: Story = {
+  args: { draft: { on: 4, changes: 3, by: ['Riley Park', 'Maya Chen'], onOpen: fn() } },
+  play: async ({ args, canvasElement, userEvent }) => {
+    const list = within(canvasElement)
+    await expect(list.getByText('not committed')).toBeVisible()
+    await expect(list.getByText('3 changes')).toBeVisible()
+    await expect(list.getByText('by Riley Park, Maya Chen')).toBeVisible()
+    await userEvent.click(list.getByRole('button', { name: 'Open the draft' }))
+    await expect(args.draft!.onOpen).toHaveBeenCalled()
+  },
+}
+
+// The draft open: its changes listed, and compared with any version from here
+export const EditingTheDraft: Story = {
+  args: {
+    draft: {
+      on: 4,
+      changes: 2,
+      by: ['Riley Park'],
+      open: true,
+      comparedWith: null,
+      onCompare: fn(),
+      detail: <p>Edited “Field technicians lose signal underground.” · Riley Park</p>,
+    },
+  },
+  play: async ({ args, canvasElement, userEvent }) => {
+    const list = within(canvasElement)
+    await expect(list.getByText('editing')).toBeVisible()
+    await expect(list.getByText(/Field technicians lose signal/)).toBeVisible()
+    // no version's shown while the draft is
+    await expect(list.queryByText('viewing')).toBeNull()
+    await expect(list.getAllByRole('button', { name: 'Compare with the draft' })).toHaveLength(4)
+    await userEvent.click(list.getAllByRole('button', { name: 'Compare with the draft' })[2]!)
+    await expect(args.draft!.onCompare).toHaveBeenCalledWith(2)
+    await userEvent.click(list.getByRole('button', { name: 'Compare with v4' }))
+    await expect(args.draft!.onCompare).toHaveBeenCalledWith(4)
+  },
+}
+
+// The draft compared with v2: the range marked, and the way back to editing
+export const ComparingTheDraft: Story = {
+  args: {
+    draft: { on: 4, changes: 2, by: ['Riley Park'], open: true, comparedWith: 2, onCompare: fn() },
+  },
+  play: async ({ canvasElement }) => {
+    const list = within(canvasElement)
+    await expect(list.getByText('comparing')).toBeVisible()
+    await expect(list.getByText('compared with the draft')).toBeVisible()
+    await expect(list.getAllByRole('button', { name: 'Back to editing' })).toHaveLength(2)
   },
 }

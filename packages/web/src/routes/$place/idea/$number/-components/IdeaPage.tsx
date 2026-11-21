@@ -4,7 +4,7 @@
 // its section, or suggesting an edit; people with edit access accept or reject
 // suggestions, one at a time or all together as one version. While editing,
 // the page is the editor (DraftEditor), with its comments marked where the draft has them and level
-// with their text as here; the draft's changes are a tab beside them. Comparing shows the file as a redline against an earlier
+// with their text as here; the draft heads the list of versions, with its changes. Comparing shows the file as a redline against an earlier
 // version, with the comments as a list. The route loads the data and does the
 // writing.
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react'
@@ -62,11 +62,10 @@ export interface IdeaPageProps extends ThreadActions {
   onSuggest?: (selection: TextSelection, replacement: string, body: string, pending: boolean) => void
   onSectionComment?: (heading: number, body: string, pending: boolean) => void
   /** Editing: the editor in place of the file, its comments where the draft has them, and its changes. */
-  editing?: Pick<Editing, 'document' | 'panel' | 'changes' | 'places'> | null
+  editing?: Pick<Editing, 'document' | 'draft' | 'places'> | null
 }
 
 type Pane = 'comments' | 'versions'
-type EditPane = 'comments' | 'changes'
 
 export function IdeaPage(props: IdeaPageProps) {
   const { source, canComment, compare, canDecide = false } = props
@@ -85,7 +84,6 @@ export function IdeaPage(props: IdeaPageProps) {
     return () => cancelAnimationFrame(frame)
   }, [props.opened])
   const [pane, setPane] = useState<Pane>(compare ? 'versions' : 'comments')
-  const [editPane, setEditPane] = useState<EditPane>('comments')
   const tree = useMemo(() => markdownTree(source), [source])
   const sections = useMemo(() => headings(tree), [tree])
   const base = useMemo(
@@ -353,57 +351,33 @@ export function IdeaPage(props: IdeaPageProps) {
         </div>
       }
       panel={
-        props.editing ? (
-          // the comments, as they are when reading: what an edit is usually answering; the draft's
-          // changes beside them
-          <div
-            id="idea-comments"
-            // a click in the column, off any card, puts the open one down
-            onClick={(event) => {
-              if (
-                !(event.target as Element).closest('.comment-card, button, a, select, input, textarea, [role="tab"]')
-              ) {
-                setActive(null)
-              }
-            }}
+        // while editing too: the comments, what an edit usually answers, and the versions, headed by
+        // the draft with its changes
+        <div
+          id="idea-comments"
+          // a click in the column, off any card, puts the open one down
+          onClick={(event) => {
+            if (!(event.target as Element).closest('.comment-card, button, a, select, input, textarea, [role="tab"]')) {
+              setActive(null)
+            }
+          }}
+        >
+          <Tabs
+            label="Panel"
+            tabs={[
+              { id: 'comments', label: 'Comments', count: open.length },
+              { id: 'versions', label: 'Versions' },
+            ]}
+            value={pane}
+            onChange={setPane}
           >
-            <Tabs
-              label="Panel"
-              tabs={[
-                { id: 'comments', label: 'Comments', count: open.length },
-                { id: 'changes', label: 'Changes', count: props.editing.changes },
-              ]}
-              value={editPane}
-              onChange={setEditPane}
-            >
-              {editPane === 'comments' ? comments : props.editing.panel}
-            </Tabs>
-          </div>
-        ) : (
-          <div
-            id="idea-comments"
-            // a click in the column, off any card, puts the open one down
-            onClick={(event) => {
-              if (
-                !(event.target as Element).closest('.comment-card, button, a, select, input, textarea, [role="tab"]')
-              ) {
-                setActive(null)
-              }
-            }}
-          >
-            <Tabs
-              label="Panel"
-              tabs={[
-                { id: 'comments', label: 'Comments', count: open.length },
-                { id: 'versions', label: 'Versions' },
-              ]}
-              value={pane}
-              onChange={setPane}
-            >
-              {pane === 'comments' ? comments : <VersionList {...props.versions} />}
-            </Tabs>
-          </div>
-        )
+            {pane === 'comments' ? (
+              comments
+            ) : (
+              <VersionList {...props.versions} {...(props.editing ? { draft: props.editing.draft } : {})} />
+            )}
+          </Tabs>
+        </div>
       }
     />
   )

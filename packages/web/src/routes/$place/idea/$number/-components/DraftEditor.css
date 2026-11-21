@@ -22,6 +22,11 @@
     top: var(--app-bar-height, 0px);
   }
 }
+/* comparing the draft: what with, after the file's name */
+.draft-editor-compared {
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+}
 /* the file's name, under the toolbar, as reading shows it */
 .draft-editor-file {
   margin: var(--space-5) 0 0;

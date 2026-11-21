@@ -1,43 +1,59 @@
-/* a timeline: a rail down the left, a dot per version */
+/* a timeline: a rail down the left, a dot for each version, the draft's dashed above them */
 .version-list {
+  --version-dot: 0.625rem;
+  /* the dot's middle, from the left and from an entry's top (level with its name) */
+  --version-x: 0.75rem;
+  --version-y: calc(var(--space-3) + 0.625rem);
   display: grid;
   gap: var(--space-1);
   margin: 0;
   padding: 0;
   list-style: none;
+  font-family: var(--font-ui);
   font-size: var(--text-sm);
 }
 .version {
   position: relative;
   display: grid;
   gap: var(--space-1);
-  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-5);
+  padding: var(--space-3) var(--space-3) var(--space-3) calc(var(--version-x) * 2 + var(--space-2));
   border-radius: var(--radius);
+  transition: background 120ms;
 }
+.version:hover {
+  background: var(--surface-2);
+}
+/* the rail, from this dot to the next */
 .version::before {
   content: '';
   position: absolute;
-  top: 0;
-  bottom: calc(var(--space-1) * -1);
-  left: var(--space-2);
-  border-left: var(--rail) solid var(--rule);
+  top: var(--version-y);
+  bottom: calc(var(--version-y) * -1 - var(--space-1));
+  left: calc(var(--version-x) - 1px);
+  border-left: 2px solid var(--rule);
 }
 .version:last-child::before {
-  bottom: 50%;
+  display: none;
 }
 .version::after {
   content: '';
   position: absolute;
-  top: calc(var(--space-2) + 0.35rem);
-  left: calc(var(--space-2) - 0.25rem + var(--rail) / 2);
-  width: 0.5rem;
-  height: 0.5rem;
-  border: var(--hairline) solid var(--rule-strong);
+  top: calc(var(--version-y) - var(--version-dot) / 2);
+  left: calc(var(--version-x) - var(--version-dot) / 2);
+  box-sizing: border-box;
+  width: var(--version-dot);
+  height: var(--version-dot);
+  border: 2px solid var(--rule-strong);
   border-radius: 50%;
-  background: var(--surface);
+  background: var(--rule-strong);
 }
+/* what's compared: the rail between the two marked */
 .version.in-range::before {
-  border-color: var(--changed);
+  border-left-color: var(--changed);
+}
+.version.is-latest::after {
+  border-color: var(--accent);
+  background: var(--bg);
 }
 .version.is-viewing {
   background: var(--surface);
@@ -46,10 +62,21 @@
 .version.is-viewing::after {
   border-color: var(--accent);
   background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .version.is-base::after {
   border-color: var(--warn);
   background: var(--warn);
+}
+/* the draft: not a version yet */
+.version.is-draft:not(.is-viewing) {
+  outline: var(--hairline) dashed var(--rule-strong);
+  outline-offset: calc(var(--hairline) * -1);
+}
+.version.is-draft::after {
+  border-style: dashed;
+  border-color: var(--accent);
+  background: var(--bg);
 }
 .version-head {
   display: flex;
@@ -57,36 +84,80 @@
   align-items: center;
   gap: var(--space-2);
 }
-.version-head > a {
+.version-name {
   color: var(--ink);
   font-weight: 600;
+  text-decoration: none;
+}
+a.version-name:hover {
+  text-decoration: underline;
 }
 .version-time {
   margin-left: auto;
   color: var(--ink-3);
   font-size: var(--text-xs);
+  white-space: nowrap;
 }
-.version-how {
-  color: var(--ink-2);
-}
-.version-foot {
+.version-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
+  gap: var(--space-1) var(--space-2);
   color: var(--ink-2);
+  font-size: var(--text-xs);
+}
+.version-how::before {
+  content: '·';
+  margin-right: var(--space-2);
+  color: var(--ink-3);
+}
+.version-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
 }
 .version-compare {
+  color: var(--accent);
   font-size: var(--text-xs);
+}
+/* a version's own action shows as it's pointed at or tabbed to, so the list reads as versions, not
+   a column of links; where nothing can point (a touch screen), always */
+@media (hover: hover) {
+  .version-actions.is-quiet {
+    opacity: 0;
+    transition: opacity 120ms;
+  }
+  .version:hover .version-actions.is-quiet,
+  .version:focus-within .version-actions.is-quiet {
+    opacity: 1;
+  }
+}
+/* the draft's changes, open: the panel's own headings as small labels, the count being in the head */
+.version-detail {
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: var(--hairline) solid var(--rule);
+}
+.version-detail .page-section-head h2 {
+  margin: 0 0 var(--space-2);
+  color: var(--ink-3);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+@media (prefers-reduced-motion: reduce) {
+  .version,
+  .version-actions.is-quiet {
+    transition: none;
+  }
 }
 @media (forced-colors: active) {
   .version.is-viewing {
     outline: var(--hairline) solid CanvasText;
   }
-}
-.version-compare {
-  color: var(--accent);
 }
 /* the two pickers above the list: what's shown, and what it's compared with */
 .version-range {

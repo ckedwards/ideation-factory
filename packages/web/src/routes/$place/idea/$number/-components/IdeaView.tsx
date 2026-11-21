@@ -305,6 +305,16 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
           base,
           viewHref: (n) => links.files({ v: n === latest ? undefined : n, file: path }),
           compareHref: (b) => links.changes(b, shownV, path),
+          // the draft, for those who can edit: what the next version will be
+          draft:
+            idea.you.edit && draft.data && draftChanges.length > 0
+              ? {
+                  on: draft.data.version,
+                  changes: draftChanges.length,
+                  by: drafters,
+                  onOpen: canEdit ? () => setEditing(true) : undefined,
+                }
+              : undefined,
         }}
         comments={threads.flatMap((thread) => {
           const where = place(thread, file)
