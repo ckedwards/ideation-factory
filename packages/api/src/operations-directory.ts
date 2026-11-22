@@ -360,12 +360,16 @@ export const directoryOperations = {
     mcp: true,
     summary: 'Mark ideas read or done',
     description:
-      'Marks ideas in your inbox read (`read: true`), done (`done: true`: cleared until something new happens) or back in the inbox (`done: false`). Without `ideas`, it applies to every idea in the list it moves them out of (or, for `read`, all of them).',
+      "Marks ideas in your inbox read (`read: true`), done (`done: true`: cleared until something new happens) or back in the inbox (`done: false`). Without `ideas`, it applies to every idea in the list it moves them out of (or, for `read`, all of them); `team` keeps that to one team's ideas, and `owner` to one person's outside any team, as the inbox grouped by team shows them.",
     method: 'POST',
     path: '/notifications/mark',
     kind: 'write',
     input: z.strictObject({
       ideas: z.array(IdeaId).max(100).optional(),
+      /** Only this team's ideas. */
+      team: Ref.optional(),
+      /** Only this person's ideas outside any team. */
+      owner: Ref.optional(),
       read: z.literal(true).optional(),
       done: z.boolean().optional(),
     }),

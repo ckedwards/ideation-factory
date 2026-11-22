@@ -44,6 +44,7 @@ import type {
   TeamDefaults,
   TeamRequirements,
   InboxFilter,
+  InboxScope,
   NotificationSettings,
   NotifyBatch,
   WatchLevel,
@@ -122,8 +123,13 @@ export const directory = actor({
     inbox: (c, user: string, filter?: InboxFilter, token?: string | null) => directoryOf(c).inbox(user, filter, token),
     unreadCount: (c, user: string, token?: string | null) => directoryOf(c).unreadCount(user, token),
     inboxCounts: (c, user: string, token?: string | null) => directoryOf(c).inboxCounts(user, token),
-    markInbox: (c, user: string, ideas: string[] | null, change: { read?: boolean; done?: boolean }) =>
-      directoryOf(c).markInbox(user, ideas, change),
+    markInbox: (
+      c,
+      user: string,
+      ideas: string[] | null,
+      change: { read?: boolean; done?: boolean },
+      within?: InboxScope,
+    ) => directoryOf(c).markInbox(user, ideas, change, within),
     subscription: (c, user: string, idea: string) => directoryOf(c).subscription(user, idea),
     setSubscription: (c, user: string, idea: string, subscribed: boolean) =>
       directoryOf(c).setSubscription(user, idea, subscribed),
