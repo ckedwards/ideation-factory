@@ -24,6 +24,8 @@ CREATE TABLE "inbox_events" ("id" text primary key, "idea" text not null, "kind"
 CREATE INDEX "inbox_events_idea" on "inbox_events" ("idea", "at");
 CREATE TABLE "inbox" ("user" text not null, "idea" text not null, "reason" text not null, "event" text not null, "new_count" integer not null, "done" integer not null, "updated_at" bigint not null, constraint "inbox_pk" primary key ("user", "idea"));
 CREATE INDEX "inbox_user" on "inbox" ("user", "done", "updated_at", "idea");
+CREATE TABLE "notices" ("id" text primary key, "user" text not null, "kind" text not null, "team" text, "group" text, "actor" text not null, "at" bigint not null, "detail" text not null, "read" integer not null, "done" integer not null);
+CREATE INDEX "notices_user" on "notices" ("user", "done", "at", "id");
 CREATE TABLE "subscriptions" ("user" text not null, "idea" text not null, "state" text not null, "at" bigint not null, constraint "subscriptions_pk" primary key ("user", "idea"));
 CREATE INDEX "subscriptions_idea" on "subscriptions" ("idea", "state");
 CREATE TABLE "watches" ("user" text not null, "team" text not null, "level" text not null, "at" bigint not null, constraint "watches_pk" primary key ("user", "team"));

@@ -3,7 +3,7 @@
 // beside them filters, each with how many: the inbox, what's unread, done, why
 // you hear about them, and which team they're in. In a narrower window the
 // same filters are a row above the list (InboxBar), so the list keeps its room.
-import { type Caller, ideaPath, type Notification } from '@ideaf/api'
+import { type Caller, type IdeaNotification, ideaPath } from '@ideaf/api'
 import { Link, Page, PageHeader, SegmentedControl, Select } from '@ideaf/ui'
 import {
   infiniteQueryOptions,
@@ -21,7 +21,7 @@ import { actorOf } from '../$place/idea/$number/-components/view.ts'
 import { usePeople } from '../$place/idea/$number/-components/shared.tsx'
 import { InboxList, type InboxRowView, type InboxScope } from './-components/InboxList.tsx'
 
-type Reason = Notification['reason']
+type Reason = IdeaNotification['reason']
 type Filter = { done: boolean; reason?: Reason | undefined; unread: boolean; team?: string | undefined }
 
 export const notificationsQuery = (filter: Filter) =>
@@ -80,7 +80,8 @@ function Notifications() {
   }
   const counts = useQuery(countsQuery).data
   const list = useInfiniteQuery(notificationsQuery(filter))
-  const items = list.data?.pages.flatMap((p) => p.items) ?? []
+  // the ideas' rows (the notices about teams and groups come next)
+  const items = (list.data?.pages.flatMap((p) => p.items) ?? []).flatMap((n) => (n.kind === 'idea' ? [n] : []))
   const people = usePeople(items.flatMap((n) => (n.latest.actor.user ? [n.latest.actor.user] : [])))
   const go = (next: Partial<Filter>) => {
     const f = { ...filter, ...next }
@@ -310,7 +311,7 @@ function Choice(props: {
 }
 
 /** The latest update, in words (after who did it). */
-function updateWords(n: Notification): string {
+function updateWords(n: IdeaNotification): string {
   const { kind, detail, actor } = n.latest
   const said = typeof detail.body === 'string' && detail.body ? `: “${detail.body}”` : ''
   switch (kind) {

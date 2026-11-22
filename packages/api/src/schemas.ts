@@ -504,6 +504,10 @@ export const InboxReason = z.enum([
 ])
 export type InboxReason = z.infer<typeof InboxReason>
 
+/** What the inbox can be filtered by: why you hear about an idea, or `teams`, its notices about teams and groups. */
+export const InboxShow = z.enum([...InboxReason.options, 'teams'])
+export type InboxShow = z.infer<typeof InboxShow>
+
 /** What reaches you by email: everything the inbox has for ideas you're involved in, only review requests, or nothing. */
 export const EmailChoice = z.enum(['involved', 'review-requests', 'off'])
 /** An email per idea once it goes quiet for a few minutes, or one digest a day. */
@@ -524,7 +528,8 @@ export type NotificationSettings = z.infer<typeof NotificationSettings>
  * the latest of them (its `detail` by kind: a version's number, a comment's
  * ID and the start of its text, a verdict, a status…).
  */
-export const Notification = z.object({
+export const IdeaNotification = z.object({
+  kind: z.literal('idea'),
   idea: IdeaRow,
   reason: InboxReason,
   newCount: z.number().int(),
@@ -547,6 +552,42 @@ export const Notification = z.object({
     detail: z.record(z.string(), z.unknown()),
   }),
 })
+export type IdeaNotification = z.infer<typeof IdeaNotification>
+
+/** What a notice is about: a group joined or left a team, or you were added to or taken out of a team or a group. */
+export const NoticeKind = z.enum(['group-joined', 'group-left', 'added', 'removed'])
+export type NoticeKind = z.infer<typeof NoticeKind>
+
+/** A team or a group as a notice names it: its name as it was then, and its handle now (for a link) if it's still there. */
+export const NoticeSubject = z.object({ id: z.string(), handle: z.string().nullable(), name: z.string() })
+
+/**
+ * An inbox row about a team or a group, not an idea: one per thing that happened, newest first among the
+ * ideas. `as`: why it's yours (you're an admin of the team, or of the group, or it's about you); `role`: the
+ * one given (a group's in the team, or yours when you were added).
+ */
+export const NoticeNotification = z.object({
+  kind: z.literal('notice'),
+  id: z.string(),
+  notice: z.object({
+    kind: NoticeKind,
+    team: NoticeSubject.nullable(),
+    group: NoticeSubject.nullable(),
+    role: z.string().nullable(),
+    as: z.enum(['team-admin', 'group-admin', 'you']),
+    actor: Caller,
+  }),
+  reason: z.literal('teams'),
+  /** 1 until it's read. */
+  newCount: z.number().int(),
+  done: z.boolean(),
+  updatedAt: z.number(),
+})
+
+export type NoticeNotification = z.infer<typeof NoticeNotification>
+
+/** An inbox row: an idea (one row however much happened to it), or a notice about a team or a group. */
+export const Notification = z.discriminatedUnion('kind', [IdeaNotification, NoticeNotification])
 export type Notification = z.infer<typeof Notification>
 
 /** Where an idea is found: `mobile/idea/9`, or `@riley/idea/3` for someone's own. */

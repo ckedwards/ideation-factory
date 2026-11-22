@@ -30,6 +30,9 @@ import {
   type InboxEvent,
   type InboxFilter,
   type InboxScope,
+  type InboxShow,
+  type NoticeInboxRow,
+  type NoticeKind,
   type InboxReason,
   type InboxRow,
   type NotifyBatch,
@@ -125,6 +128,14 @@ const fail = <T>(code: 'not_found' | 'exists' | 'invalid' | 'forbidden', message
 
 /** How far back a watcher's inbox looks for a watched team's events (scale concern 5). */
 const WATCH_HORIZON_MS = 30 * 24 * 60 * 60 * 1000
+
+/** What a notice keeps of what it reports: why it's theirs, the names as they were, and the role given. */
+interface NoticeDetail {
+  as: 'team-admin' | 'group-admin' | 'you'
+  team?: string
+  group?: string
+  role?: string
+}
 
 function newId(prefix: string): string {
   const bytes = crypto.getRandomValues(new Uint8Array(8))
@@ -1174,16 +1185,20 @@ export class SqlDirectory implements Directory {
     const after: [number, string] | null = cursor ? [Number(cursor[0]), String(cursor[1])] : null
     const newer = (r: { updatedAt: number; idea: string }) =>
       !after || r.updatedAt < after[0] || (r.updatedAt === after[0] && r.idea < after[1])
+    // the notices about teams and groups, or only those
+    const ideasToo = filter.reason !== 'teams'
+    const noticeRows =
+      filter.reason && filter.reason !== 'teams' ? [] : await this.#noticeRows(user, filter, after, limit + 1)
     // one team's: every row read and filtered by its idea's team before paging (an inbox is one row an idea)
     const inTeam = filter.team ? await this.#ideasInTeam(filter.team) : null
     const direct =
-      filter.reason === 'watching'
+      filter.reason === 'watching' || !ideasToo
         ? []
         : (await this.#direct(user, filter, token ?? null, after, inTeam ? null : limit + 1)).filter(
             (r) => !inTeam || inTeam.has(r.idea),
           )
     const watched =
-      filter.reason && filter.reason !== 'watching'
+      (filter.reason && filter.reason !== 'watching') || !ideasToo
         ? []
         : (await this.#watched(user, token ?? null)).filter(
             (r) =>
@@ -1192,14 +1207,19 @@ export class SqlDirectory implements Directory {
               newer(r) &&
               (!inTeam || inTeam.has(r.idea)),
           )
-    // both newest first; take a page from the two together
-    const rows = [...direct, ...watched]
+    // all newest first; take a page from them together (a notice's ID stands in for an idea's, for the order)
+    const rows = [
+      ...direct.map((r) => ({ ...r, notice: null })),
+      ...watched.map((r) => ({ ...r, notice: null })),
+      ...noticeRows.map((n) => ({ idea: n.id, updatedAt: n.updatedAt, event: null, notice: n })),
+    ]
       .sort((a, b) => b.updatedAt - a.updatedAt || (a.idea < b.idea ? 1 : a.idea > b.idea ? -1 : 0))
       .slice(0, limit + 1)
-    const page = rows.slice(0, limit)
-    if (page.length === 0) {
+    const all = rows.slice(0, limit)
+    if (all.length === 0) {
       return { items: [], next: null }
     }
+    const page = all.flatMap((r) => (r.notice ? [] : [r as (typeof direct)[number]]))
     const ideas = await this.#db
       .selectFrom('ideas')
       .selectAll()
@@ -1244,8 +1264,13 @@ export class SqlDirectory implements Directory {
       .execute()
     const latestOf = (r: (typeof page)[number]) =>
       events.find((e) => (r.event ? e.id === r.event : e.idea === r.idea && Number(e.at) === r.updatedAt))
+    const notices = await this.#noticesShown(all.flatMap((r) => (r.notice ? [r.notice] : [])))
     return {
-      items: page.flatMap((r) => {
+      items: all.flatMap((row): InboxRow[] => {
+        if (row.notice) {
+          return [notices.get(row.notice.id)!]
+        }
+        const r = row as (typeof direct)[number]
         const idea = listings.get(r.idea)
         const e = latestOf(r)
         if (!idea || !e) {
@@ -1253,6 +1278,7 @@ export class SqlDirectory implements Directory {
         }
         return [
           {
+            kind: 'idea',
             idea,
             reason: r.reason,
             newCount: r.newCount,
@@ -1267,12 +1293,12 @@ export class SqlDirectory implements Directory {
           },
         ]
       }),
-      next: rows.length > limit ? encodeCursor([page.at(-1)!.updatedAt, page.at(-1)!.idea]) : null,
+      next: rows.length > limit ? encodeCursor([all.at(-1)!.updatedAt, all.at(-1)!.idea]) : null,
     }
   }
 
   /** The ideas in one section of an inbox grouped by team: a team's, or a person's outside any team. */
-  async #ideasWithin(within: InboxScope): Promise<Set<string>> {
+  async #ideasWithin(within: Exclude<InboxScope, { group: string }>): Promise<Set<string>> {
     if ('team' in within) {
       return this.#ideasInTeam(within.team)
     }
@@ -1283,6 +1309,138 @@ export class SqlDirectory implements Directory {
       .where('owner', '=', within.owner)
       .execute()
     return new Set(rows.map((r) => r.id))
+  }
+
+  /** A person's notices in the list a filter shows, newest first: a page after `after`. */
+  async #noticeRows(user: string, filter: InboxFilter, after: [number, string] | null, limit: number) {
+    let q = this.#db
+      .selectFrom('notices')
+      .selectAll()
+      .where('user', '=', user)
+      .where('done', '=', filter.done ? 1 : 0)
+    if (filter.unread) {
+      q = q.where('read', '=', 0)
+    }
+    if (filter.team) {
+      q = q.where('team', '=', filter.team)
+    }
+    if (after) {
+      q = q.where((eb) => eb.or([eb('at', '<', after[0]), eb.and([eb('at', '=', after[0]), eb('id', '<', after[1])])]))
+    }
+    const rows = await q.orderBy('at', 'desc').orderBy('id', 'desc').limit(limit).execute()
+    return rows.map((r) => ({ ...r, updatedAt: Number(r.at) }))
+  }
+
+  /** Notices as an inbox shows them: the team and the group by their names then, with their handles now. */
+  async #noticesShown(rows: Array<DB['notices']>): Promise<Map<string, NoticeInboxRow>> {
+    const teamIds = [...new Set(rows.flatMap((r) => (r.team ? [r.team] : [])))]
+    const groupIds = [...new Set(rows.flatMap((r) => (r.group ? [r.group] : [])))]
+    const teams = new Map(
+      (teamIds.length
+        ? await this.#db.selectFrom('teams').select(['id', 'handle']).where('id', 'in', teamIds).execute()
+        : []
+      ).map((t) => [t.id, t.handle]),
+    )
+    const groups = new Map(
+      (groupIds.length
+        ? await this.#db
+            .selectFrom('groups')
+            .select(['id', 'handle'])
+            .where('id', 'in', groupIds)
+            .where('deleted_at', 'is', null)
+            .execute()
+        : []
+      ).map((g) => [g.id, g.handle]),
+    )
+    return new Map(
+      rows.map((r) => {
+        const detail = JSON.parse(r.detail) as NoticeDetail
+        return [
+          r.id,
+          {
+            kind: 'notice',
+            id: r.id,
+            notice: {
+              kind: r.kind as NoticeKind,
+              team: r.team ? { id: r.team, handle: teams.get(r.team) ?? null, name: detail.team ?? '' } : null,
+              group: r.group ? { id: r.group, handle: groups.get(r.group) ?? null, name: detail.group ?? '' } : null,
+              role: detail.role ?? null,
+              as: detail.as,
+              actor: { user: r.actor, bot: null, purpose: 'me' },
+            },
+            reason: 'teams',
+            newCount: r.read === 1 ? 0 : 1,
+            done: r.done === 1,
+            updatedAt: Number(r.at),
+          },
+        ]
+      }),
+    )
+  }
+
+  /**
+   * Writes a notice for each person it's for, in the same transaction as the change it reports: `to` maps
+   * each to why it's theirs. Not to whoever made the change.
+   */
+  async #notify(
+    db: Kysely<DB>,
+    actor: string,
+    kind: NoticeKind,
+    about: { team?: { id: string; name: string }; group?: { id: string; name: string }; role?: string },
+    to: Map<string, NoticeDetail['as']>,
+  ): Promise<void> {
+    const at = this.#now()
+    const rows = [...to].flatMap(([user, as]) =>
+      user === actor
+        ? []
+        : [
+            {
+              id: newId('nt'),
+              user,
+              kind,
+              team: about.team?.id ?? null,
+              group: about.group?.id ?? null,
+              actor,
+              at,
+              detail: JSON.stringify({
+                as,
+                ...(about.team ? { team: about.team.name } : {}),
+                ...(about.group ? { group: about.group.name } : {}),
+                ...(about.role ? { role: about.role } : {}),
+              } satisfies NoticeDetail),
+              read: 0,
+              done: 0,
+            },
+          ],
+    )
+    if (rows.length > 0) {
+      await db.insertInto('notices').values(rows).execute()
+    }
+  }
+
+  /** Who hears of a group joining or leaving a team: both's admins, a group's own for those who are both. */
+  async #bothSides(db: Kysely<DB>, team: string, group: string): Promise<Map<string, NoticeDetail['as']>> {
+    const to = new Map<string, NoticeDetail['as']>()
+    for (const user of await this.#adminsOf(db, 'team', team)) {
+      to.set(user, 'team-admin')
+    }
+    for (const user of await this.#adminsOf(db, 'group', group)) {
+      to.set(user, 'group-admin')
+    }
+    return to
+  }
+
+  /** The admins of a team or a group, directly (a group in a team doesn't make its admins the team's). */
+  async #adminsOf(db: Kysely<DB>, kind: ContainerKind, container: string): Promise<string[]> {
+    return (
+      await db
+        .selectFrom('memberships')
+        .select('user')
+        .where('kind', '=', kind)
+        .where('container', '=', container)
+        .where('role', '=', 'admin')
+        .execute()
+    ).map((r) => r.user)
   }
 
   /** The ideas in a team, for filtering an inbox by it. */
@@ -1296,9 +1454,19 @@ export class SqlDirectory implements Directory {
       ...(await this.#direct(user, {}, token ?? null, null, null)),
       ...(await this.#watched(user, token ?? null)).filter((r) => !r.done),
     ]
-    const reasons: Partial<Record<InboxReason, number>> = {}
+    const reasons: Partial<Record<InboxShow, number>> = {}
     for (const r of rows) {
       reasons[r.reason] = (reasons[r.reason] ?? 0) + 1
+    }
+    // and the notices: under their own reason, and in their team's count
+    const notices = await this.#db
+      .selectFrom('notices')
+      .select(['id', 'team', 'read'])
+      .where('user', '=', user)
+      .where('done', '=', 0)
+      .execute()
+    if (notices.length > 0) {
+      reasons.teams = notices.length
     }
     const ideas = rows.length
       ? await this.#db
@@ -1318,9 +1486,18 @@ export class SqlDirectory implements Directory {
       t.count++
       teams.set(i.team, t)
     }
+    const noticeTeams = [...new Set(notices.flatMap((n) => (n.team ? [n.team] : [])))]
+    for (const t of noticeTeams.length
+      ? await this.#db.selectFrom('teams').select(['id', 'handle', 'name']).where('id', 'in', noticeTeams).execute()
+      : []) {
+      teams.set(t.id, {
+        ...(teams.get(t.id) ?? { id: t.id, handle: t.handle, name: t.name, count: 0 }),
+        count: (teams.get(t.id)?.count ?? 0) + notices.filter((n) => n.team === t.id).length,
+      })
+    }
     return {
-      all: rows.length,
-      unread: rows.filter((r) => r.newCount > 0).length,
+      all: rows.length + notices.length,
+      unread: rows.filter((r) => r.newCount > 0).length + notices.filter((n) => n.read === 0).length,
       reasons,
       teams: [...teams.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
     }
@@ -1329,7 +1506,14 @@ export class SqlDirectory implements Directory {
   async unreadCount(user: string, token?: string | null): Promise<number> {
     const row = (await Q.unread(this.#db, { user, ...(token ? { token } : {}) }))[0]
     const watched = (await this.#watched(user, token ?? null)).filter((r) => !r.done && r.newCount > 0).length
-    return Number(row?.n ?? 0) + watched
+    const notices = await this.#db
+      .selectFrom('notices')
+      .select((eb) => eb.fn.countAll<number>().as('n'))
+      .where('user', '=', user)
+      .where('done', '=', 0)
+      .where('read', '=', 0)
+      .executeTakeFirstOrThrow()
+    return Number(row?.n ?? 0) + watched + Number(notices.n)
   }
 
   async markInbox(
@@ -1337,8 +1521,28 @@ export class SqlDirectory implements Directory {
     ideas: string[] | null,
     change: { read?: boolean; done?: boolean },
     within?: InboxScope,
+    notices?: string[],
   ): Promise<number> {
-    if (ideas?.length === 0 || (!change.read && change.done === undefined)) {
+    if (!change.read && change.done === undefined) {
+      return 0
+    }
+    // these rows by their IDs, or (with neither) every row in the list they move out of
+    const named = ideas !== null || notices !== undefined
+    const ideasNamed = ideas ?? (named ? [] : null)
+    const changed =
+      (within && 'group' in within ? 0 : await this.#markIdeas(user, ideasNamed, change, within)) +
+      (within && 'owner' in within ? 0 : await this.#markNotices(user, named ? (notices ?? []) : null, change, within))
+    return changed
+  }
+
+  /** Marks your rows for ideas: these, or all in the list they move out of, within a team's or a person's. */
+  async #markIdeas(
+    user: string,
+    ideas: string[] | null,
+    change: { read?: boolean; done?: boolean },
+    within?: Exclude<InboxScope, { group: string }>,
+  ): Promise<number> {
+    if (ideas?.length === 0) {
       return 0
     }
     // only one section's: a team's ideas, or a person's outside any team
@@ -1402,6 +1606,47 @@ export class SqlDirectory implements Directory {
       await this.#syncEmailQueue(this.#db, [user], these ?? undefined)
     }
     return chosen.length + watched.length
+  }
+
+  /** Marks your notices: these, or all in the list they move out of, within a team's or a group's. */
+  async #markNotices(
+    user: string,
+    notices: string[] | null,
+    change: { read?: boolean; done?: boolean },
+    within?: Exclude<InboxScope, { owner: string }>,
+  ): Promise<number> {
+    if (notices?.length === 0) {
+      return 0
+    }
+    // which of your notices: these, or every one in the list they move out of, in one section
+    let which = this.#db.selectFrom('notices').select('id').where('user', '=', user)
+    if (notices) {
+      which = which.where('id', 'in', notices)
+    } else if (change.done !== undefined) {
+      which = which.where('done', '=', change.done ? 0 : 1)
+    }
+    if (change.read && change.done === undefined) {
+      which = which.where('read', '=', 0)
+    }
+    if (within && 'team' in within) {
+      which = which.where('team', '=', within.team)
+    } else if (within && 'group' in within) {
+      // a group's own section: its notices that aren't about a team (those are in the team's)
+      which = which.where('group', '=', within.group).where('team', 'is', null)
+    }
+    const chosen = (await which.execute()).map((r) => r.id)
+    if (chosen.length > 0) {
+      await this.#db
+        .updateTable('notices')
+        .set({
+          ...(change.read ? { read: 1 } : {}),
+          ...(change.done !== undefined ? { done: change.done ? 1 : 0 } : {}),
+        })
+        .where('user', '=', user)
+        .where('id', 'in', chosen)
+        .execute()
+    }
+    return chosen.length
   }
 
   async subscription(user: string, ideaId: string): Promise<{ subscribed: boolean; reason: InboxReason | null }> {
@@ -2060,11 +2305,29 @@ export class SqlDirectory implements Directory {
     if (!group || group.deleted) {
       return fail('not_found', `no group ${groupRef}`)
     }
-    await this.#db
-      .insertInto('team_groups')
-      .values({ team: team.id, group: group.id, role, added_by: actor, created_at: this.#now() })
-      .onConflict((oc) => oc.columns(['team', 'group']).doUpdateSet({ role }))
-      .execute()
+    await this.#transaction(async (db) => {
+      const already = await db
+        .selectFrom('team_groups')
+        .select('role')
+        .where('team', '=', team.id)
+        .where('group', '=', group.id)
+        .executeTakeFirst()
+      await db
+        .insertInto('team_groups')
+        .values({ team: team.id, group: group.id, role, added_by: actor, created_at: this.#now() })
+        .onConflict((oc) => oc.columns(['team', 'group']).doUpdateSet({ role }))
+        .execute()
+      // newly in it: the group's admins hear (they didn't choose it), and the team's other admins
+      if (!already) {
+        await this.#notify(
+          db,
+          actor,
+          'group-joined',
+          { team, group, role },
+          await this.#bothSides(db, team.id, group.id),
+        )
+      }
+    })
     const added = (await this.teamGroups(team.id)) as { ok: true; value: TeamGroup[] }
     return ok(added.value.find((g) => g.group.id === group.id)!)
   }
@@ -2084,7 +2347,19 @@ export class SqlDirectory implements Directory {
     if (!teamAdmin && !groupAdmin) {
       return fail('forbidden', 'only the team’s admins, or the group’s, can take a group out of a team')
     }
-    await this.#db.deleteFrom('team_groups').where('team', '=', team.id).where('group', '=', group.id).execute()
+    await this.#transaction(async (db) => {
+      const was = await db
+        .selectFrom('team_groups')
+        .select('role')
+        .where('team', '=', team.id)
+        .where('group', '=', group.id)
+        .executeTakeFirst()
+      await db.deleteFrom('team_groups').where('team', '=', team.id).where('group', '=', group.id).execute()
+      // it was in it: the admins of the other side hear, and the other admins of this one
+      if (was) {
+        await this.#notify(db, actor, 'group-left', { team, group }, await this.#bothSides(db, team.id, group.id))
+      }
+    })
     return ok(null)
   }
 
@@ -2253,6 +2528,16 @@ export class SqlDirectory implements Directory {
         .values({ kind, container: container.id, user, role, created_at: this.#now() })
         .onConflict((oc) => oc.columns(['kind', 'container', 'user']).doUpdateSet({ role }))
         .execute()
+      // added by someone else (not a role changed): they hear of it
+      if (!theirs) {
+        await this.#notify(
+          db,
+          actor,
+          'added',
+          { [kind]: { id: container.id, name: container.name }, role },
+          new Map([[person.id, 'you' as const]]),
+        )
+      }
       await db
         .deleteFrom('join_requests')
         .where('kind', '=', kind)
@@ -2314,6 +2599,16 @@ export class SqlDirectory implements Directory {
         .where('container', '=', container.id)
         .where('user', '=', user)
         .execute()
+      // taken out by someone else (not leaving): they hear of it
+      if (!leaving) {
+        await this.#notify(
+          db,
+          actor,
+          'removed',
+          { [kind]: { id: container.id, name: container.name } },
+          new Map([[user, 'you' as const]]),
+        )
+      }
       return ok(null)
     })
   }

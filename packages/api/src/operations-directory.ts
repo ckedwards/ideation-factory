@@ -29,6 +29,7 @@ import {
   IdeaRow,
   IdeaStatus,
   InboxReason,
+  InboxShow,
   Limit,
   Member,
   Memberships,
@@ -314,14 +315,14 @@ export const directoryOperations = {
     mcp: true,
     summary: 'Your inbox',
     description:
-      "What's happened to the ideas you hear about: one row per idea (newest first, 25 at a time), with why you hear about it (you wrote it, were asked to review it by name or through a group, took part, or subscribed), how many updates are new, and the latest. `done` lists the ones you've cleared instead. Ideas you can no longer see aren't listed.",
+      "What's happened to the ideas you hear about: one row per idea (newest first, 25 at a time), with why you hear about it (you wrote it, were asked to review it by name or through a group, took part, or subscribed), how many updates are new, and the latest. Among them, notices about your teams and groups (`kind: 'notice'`: a group joined or left a team, or you were added to or taken out of one), each its own row; `reason: 'teams'` lists only those. `done` lists the ones you've cleared instead. Ideas you can no longer see aren't listed.",
     method: 'GET',
     path: '/notifications',
     kind: 'read',
     input: z.strictObject({
       done: Flag.optional(),
-      reason: InboxReason.optional(),
-      /** Only ideas in this team. */
+      reason: InboxShow.optional(),
+      /** Only ideas in this team, and notices about it. */
       team: Ref.optional(),
       unread: Flag.optional(),
       cursor: Cursor,
@@ -333,7 +334,7 @@ export const directoryOperations = {
     name: 'count_notifications',
     summary: 'Count your inbox',
     description:
-      'How many ideas your inbox has (not done): in all, with unread updates, by why you hear about them, and by team.',
+      'How many rows your inbox has (not done): in all, with unread updates, by why (`teams` for the notices about teams and groups), and by team.',
     method: 'GET',
     path: '/notifications/counts',
     kind: 'read',
@@ -341,14 +342,15 @@ export const directoryOperations = {
     output: z.object({
       all: z.number().int(),
       unread: z.number().int(),
-      reasons: z.partialRecord(InboxReason, z.number().int()),
+      reasons: z.partialRecord(InboxShow, z.number().int()),
       teams: z.array(z.object({ id: z.string(), handle: z.string(), name: z.string(), count: z.number().int() })),
     }),
   }),
   unreadNotifications: defineOperation({
     name: 'count_unread_notifications',
     summary: 'How many ideas have news',
-    description: 'How many ideas in your inbox have updates you haven’t read: ideas, not events.',
+    description:
+      'How many rows in your inbox have something you haven’t read: ideas (not events), and notices about teams and groups.',
     method: 'GET',
     path: '/notifications/unread',
     kind: 'read',
@@ -358,18 +360,21 @@ export const directoryOperations = {
   markNotifications: defineOperation({
     name: 'mark_notifications',
     mcp: true,
-    summary: 'Mark ideas read or done',
+    summary: 'Mark ideas and notices read or done',
     description:
-      "Marks ideas in your inbox read (`read: true`), done (`done: true`: cleared until something new happens) or back in the inbox (`done: false`). Without `ideas`, it applies to every idea in the list it moves them out of (or, for `read`, all of them); `team` keeps that to one team's ideas, and `owner` to one person's outside any team, as the inbox grouped by team shows them.",
+      "Marks rows of your inbox read (`read: true`), done (`done: true`: cleared until something new happens) or back in the inbox (`done: false`): `ideas` and `notices` by their IDs, or, without them, every row in the list they move out of (or, for `read`, all of them). `team` keeps that to one team's ideas and notices, `owner` to one person's ideas outside any team, and `group` to a group's own notices, as the inbox grouped by team shows them.",
     method: 'POST',
     path: '/notifications/mark',
     kind: 'write',
     input: z.strictObject({
       ideas: z.array(IdeaId).max(100).optional(),
-      /** Only this team's ideas. */
+      notices: z.array(z.string().min(1).max(64)).max(100).optional(),
+      /** Only this team's ideas, and notices about it. */
       team: Ref.optional(),
       /** Only this person's ideas outside any team. */
       owner: Ref.optional(),
+      /** Only this group's own notices (not about a team). */
+      group: Ref.optional(),
       read: z.literal(true).optional(),
       done: z.boolean().optional(),
     }),

@@ -32,6 +32,10 @@ export * as schemas from './schemas.ts'
 export {
   type Caller,
   type IdeaStatus,
+  type IdeaNotification,
+  type InboxShow,
+  type NoticeKind,
+  type NoticeNotification,
   type Notification,
   type NotificationSettings,
   LIVE_CLOSE,

@@ -108,8 +108,44 @@ export interface NotifyBatch {
   id?: string
 }
 
-/** An inbox row: the idea as lists show it, and what's happened since you last looked. */
-export interface InboxRow {
+/** What an inbox can be filtered by: why you hear about an idea, or `teams`, its notices about teams and groups. */
+export type InboxShow = InboxReason | 'teams'
+
+/** What a notice is about: a group joined or left a team, or someone was added to or taken out of one. */
+export type NoticeKind = 'group-joined' | 'group-left' | 'added' | 'removed'
+
+/** A team or a group as a notice names it: its name as it was then, its handle now if it's still there. */
+export interface NoticeSubject {
+  id: string
+  handle: string | null
+  name: string
+}
+
+/** An inbox row about a team or a group: what happened, why it's yours, and whether you've read it. */
+export interface NoticeInboxRow {
+  kind: 'notice'
+  id: string
+  notice: {
+    kind: NoticeKind
+    team: NoticeSubject | null
+    group: NoticeSubject | null
+    role: string | null
+    as: 'team-admin' | 'group-admin' | 'you'
+    actor: ActorRef
+  }
+  reason: 'teams'
+  /** 1 until it's read. */
+  newCount: number
+  done: boolean
+  updatedAt: number
+}
+
+/** An inbox row: an idea's, or a notice about a team or a group. */
+export type InboxRow = IdeaInboxRow | NoticeInboxRow
+
+/** An inbox row for an idea: the idea as lists show it, and what's happened since you last looked. */
+export interface IdeaInboxRow {
+  kind: 'idea'
   idea: IdeaListing
   reason: InboxReason
   /** Events since it was last read; 0 once read. */
@@ -122,19 +158,22 @@ export interface InboxRow {
 export interface InboxCounts {
   all: number
   unread: number
-  reasons: Partial<Record<InboxReason, number>>
-  /** Each team with ideas in it, most first. */
+  reasons: Partial<Record<InboxShow, number>>
+  /** Each team with ideas (or notices) in it, most first. */
   teams: Array<{ id: string; handle: string; name: string; count: number }>
 }
 
-/** One section of an inbox grouped by team: a team's ideas (its ID), or a person's outside any team (their ID). */
-export type InboxScope = { team: string } | { owner: string }
+/**
+ * One section of an inbox grouped by team: a team's ideas and notices (its ID), a person's ideas outside any
+ * team (their ID), or a group's own notices (its ID).
+ */
+export type InboxScope = { team: string } | { owner: string } | { group: string }
 
 export interface InboxFilter {
   /** The Done list, rather than the inbox. */
   done?: boolean
-  reason?: InboxReason
-  /** Only ideas in this team (its ID). */
+  reason?: InboxShow
+  /** Only ideas in this team, and notices about it (its ID). */
   team?: string
   /** Only ideas with something new. */
   unread?: boolean
@@ -588,17 +627,16 @@ export interface Directory {
   inboxCounts(user: string, token?: string | null): Promise<InboxCounts>
   /** How many ideas in the inbox have something new. */
   unreadCount(user: string, token?: string | null): Promise<number>
-  /** Marks ideas in a person's inbox read, done or back in the inbox; `null` for all of them. Says how many changed. */
   /**
-   * Marks your inbox's rows read or done (or back): these ideas, or every one in the list they move out of;
-   * `within` keeps it to one team's ideas, or one person's outside any team (a section of the inbox grouped by
-   * team).
+   * Marks your inbox's rows read or done (or back): these ideas and notices, or (with neither) every row in the
+   * list they move out of; `within` keeps that to one section of the inbox grouped by team.
    */
   markInbox(
     user: string,
     ideas: string[] | null,
     change: { read?: boolean; done?: boolean },
     within?: InboxScope,
+    notices?: string[],
   ): Promise<number>
   /** Whether a person hears about an idea, and why (null when they don't). */
   subscription(user: string, idea: string): Promise<{ subscribed: boolean; reason: InboxReason | null }>
