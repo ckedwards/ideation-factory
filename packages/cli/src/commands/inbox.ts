@@ -1,11 +1,20 @@
 // ideaf inbox …, subscribe and unsubscribe: what's happened to the ideas you
-// hear about, one line per idea however much happened, and clearing them.
-import { type IdeaNotification, ideaPath } from '@ideaf/api'
+// hear about, one line per idea however much happened, and the notices about
+// your teams and groups among them; and clearing them.
+import { type IdeaNotification, ideaPath, type NoticeNotification } from '@ideaf/api'
 import { CliError, type Context, EXIT } from '../context.ts'
 import { truncate } from './output.ts'
 import { Names } from './subjects.ts'
 
-const REASONS = ['author', 'review-requested', 'group-review', 'participating', 'subscribed', 'watching'] as const
+const REASONS = [
+  'author',
+  'review-requested',
+  'group-review',
+  'participating',
+  'subscribed',
+  'watching',
+  'teams',
+] as const
 type Reason = (typeof REASONS)[number]
 
 const WHY: Record<Reason, string> = {
@@ -15,6 +24,13 @@ const WHY: Record<Reason, string> = {
   participating: 'participating',
   subscribed: 'subscribed',
   watching: 'watching a team',
+  teams: 'teams and groups',
+}
+
+const AS: Record<NoticeNotification['notice']['as'], string> = {
+  'team-admin': 'team admin',
+  'group-admin': 'group admin',
+  you: 'you',
 }
 
 export async function show(
@@ -37,8 +53,16 @@ export async function show(
     return EXIT.ok
   }
   const names = new Names(ctx)
-  // the ideas' rows (the notices about teams and groups come next)
-  for (const n of page.items.flatMap((row) => (row.kind === 'idea' ? [row] : []))) {
+  for (const n of page.items) {
+    if (n.kind === 'notice') {
+      // a notice: its ID (to mark it), its team or group, what happened, and who did it
+      const words = noticeWords(n.notice)
+      ctx.say(
+        `${(n.newCount > 0 ? '● new' : '  read').padEnd(9)} ${n.id}  ${words.where}  ${truncate(words.title, 50)}  (${AS[n.notice.as]})`,
+      )
+      ctx.say(`          ${await who(n.notice.actor, names)} ${words.update}`)
+      continue
+    }
     const mark = n.newCount > 0 ? `● ${n.newCount} new` : '  read'
     ctx.say(
       `${mark.padEnd(9)} ${n.idea.id}  ${ideaPath(n.idea.place, n.idea.number)}  ${truncate(n.idea.title, 50)}  (${WHY[n.reason]})`,
@@ -49,6 +73,47 @@ export async function show(
     ctx.say(`\nMore: ideaf inbox show --cursor ${page.next}`)
   }
   return EXIT.ok
+}
+
+/**
+ * A notice in words: where (its team's handle, or its group's), what happened, and what its actor did, from the
+ * reader's side ("your group" to a group's admin). A team or group that's gone is named as it was.
+ */
+export function noticeWords(notice: NoticeNotification['notice']): { where: string; title: string; update: string } {
+  const team = notice.team?.name ?? 'a team'
+  const group = notice.group?.name ?? 'a group'
+  const theGroup = notice.as === 'group-admin' ? 'your group' : group
+  const where = notice.team ? (notice.team.handle ?? notice.team.name) : `group ${notice.group?.handle ?? group}`
+  const container = notice.team ? team : group
+  const kind = notice.team ? 'team' : 'group'
+  switch (notice.kind) {
+    case 'group-joined':
+      return {
+        where,
+        title: `${group} joined ${team}${notice.role ? `, as ${notice.role}s` : ''}`,
+        update: `added ${theGroup} to ${team}`,
+      }
+    case 'group-left':
+      return { where, title: `${group} left ${team}`, update: `took ${theGroup} out of ${team}` }
+    case 'added':
+      return {
+        where,
+        title: `You joined ${container}${notice.role ? `, as ${/^[aeiou]/.test(notice.role) ? 'an' : 'a'} ${notice.role}` : ''}`,
+        update: `added you to the ${kind}`,
+      }
+    case 'removed':
+      return { where, title: `You’re no longer in ${container}`, update: `took you out of the ${kind}` }
+  }
+}
+
+/** Who did something, as the inbox names them. */
+async function who(actor: IdeaNotification['latest']['actor'], names: Names): Promise<string> {
+  const user = actor.user ? await names.label({ kind: 'user', id: actor.user }) : 'its team’s rules'
+  return actor.purpose === 'bot'
+    ? `${actor.bot ?? 'a bot'} (bot)`
+    : actor.purpose === 'bot-for-me'
+      ? `${actor.bot ?? 'a bot'} for ${user}`
+      : user
 }
 
 /** The latest update, in words. */
@@ -88,27 +153,37 @@ async function latest(n: IdeaNotification, names: Names): Promise<string> {
 
 export async function mark(
   ctx: Context,
-  ideas: string[],
-  flags: { all?: boolean; team?: string; owner?: string },
+  ids: string[],
+  flags: { all?: boolean; team?: string; owner?: string; group?: string },
   change: { read?: true; done?: boolean },
 ): Promise<number> {
-  const chosen = [ideas.length > 0, flags.all === true, flags.team !== undefined, flags.owner !== undefined]
+  const chosen = [
+    ids.length > 0,
+    flags.all === true,
+    flags.team !== undefined,
+    flags.owner !== undefined,
+    flags.group !== undefined,
+  ]
   if (chosen.filter(Boolean).length !== 1) {
     throw new CliError(
-      'name the ideas (their IDs, from `ideaf inbox show`), or pass one of --all, --team or --owner',
+      'name the ideas or notices (their IDs, from `ideaf inbox show`), or pass one of --all, --team, --owner or --group',
       EXIT.usage,
       'usage',
     )
   }
+  // a notice's ID starts nt; an idea's doesn't
+  const notices = ids.filter((id) => id.startsWith('nt'))
+  const ideas = ids.filter((id) => !id.startsWith('nt'))
   const { changed } = await ctx.api.markNotifications({
-    ...(ideas.length > 0 ? { ideas } : {}),
+    ...(ids.length > 0 ? { ideas, notices } : {}),
     ...(flags.team ? { team: flags.team } : {}),
     ...(flags.owner ? { owner: flags.owner } : {}),
+    ...(flags.group ? { group: flags.group } : {}),
     ...change,
   })
   const what = change.read ? 'read' : change.done ? 'done' : 'back in the inbox'
   // ideas by their IDs; a whole list or section may hold notices about teams and groups too
-  const noun = ideas.length > 0 ? 'idea' : 'notification'
+  const noun = ids.length > 0 && notices.length === 0 ? 'idea' : 'notification'
   ctx.say(`${changed === 1 ? `1 ${noun}` : `${changed} ${noun}s`} marked ${what}.`)
   ctx.result({ changed })
   return EXIT.ok
