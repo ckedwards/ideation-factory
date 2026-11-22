@@ -28,6 +28,7 @@ import {
   type Skipped,
   type Suggestion,
   type FileOutline,
+  type OutlineEntry,
   type Idea,
   type StepResult,
 } from '@ideaf/core'
@@ -248,6 +249,7 @@ export type ThreadShape = CommentShape & {
   anchor: Anchor | null
   lastVersion: number | null
   lastAnchor: Anchor | null
+  lastUnit: OutlineEntry | null
   addressedIn: number[]
   /** A suggested edit's change; null for a plain comment. */
   suggestion: SuggestionShape | null
@@ -848,6 +850,7 @@ export class IdeaService {
             anchor,
             lastVersion: meta.latest,
             lastAnchor: null,
+            lastUnit: null,
             addressedIn: [],
             suggestion,
             pending: false,
@@ -1633,6 +1636,24 @@ export class IdeaService {
             .filter((a) => a.anchor !== null && Number(a.version) === last.get(a.comment))
             .map((a) => [a.comment, JSON.parse(a.anchor!) as Anchor]),
     )
+    // and, for one on a section or a block, that heading or block as it was there: its outline, read once
+    // for each version
+    const outlines = new Map<number, Promise<FileOutline[]>>()
+    const lastUnits = new Map<string, OutlineEntry>()
+    for (const [comment, anchor] of lastAnchors) {
+      const version = last.get(comment)
+      if ((anchor.kind !== 'section' && anchor.kind !== 'block') || version === undefined) {
+        continue
+      }
+      if (!outlines.has(version)) {
+        outlines.set(version, this.outline(version))
+      }
+      const id = anchor.kind === 'section' ? anchor.section : anchor.block
+      const unit = (await outlines.get(version)!).find((f) => f.id === anchor.file)?.entries.find((e) => e.id === id)
+      if (unit) {
+        lastUnits.set(comment, unit)
+      }
+    }
     const addressed = new Map<string, number[]>()
     for (const step of await this.#db
       .selectFrom('steps')
@@ -1672,6 +1693,7 @@ export class IdeaService {
           anchor: at?.anchor ? (JSON.parse(at.anchor) as Anchor) : null,
           lastVersion: last.get(r.id) ?? null,
           lastAnchor: at?.anchor ? null : (lastAnchors.get(r.id) ?? null),
+          lastUnit: at?.anchor ? null : (lastUnits.get(r.id) ?? null),
           addressedIn: addressed.get(r.id) ?? [],
           suggestion: suggestionOf(r, v, drafted.has(r.id)),
           replies: (replies.get(r.id) ?? []).map(shape),

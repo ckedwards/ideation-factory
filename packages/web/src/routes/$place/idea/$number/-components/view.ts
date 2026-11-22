@@ -4,7 +4,7 @@
 import type { Caller, Operations, Output } from '@ideaf/api'
 import type { Actor, CommentTarget, Person } from '@ideaf/ui'
 export { statusOf } from '../../../../../ideas.ts'
-import { blockRange, headingOffset, toSource } from './anchors.ts'
+import { blockLabel, blockRange, headingOffset, toSource } from './anchors.ts'
 
 export type Thread = Output<Operations['listComments']>[number]
 
@@ -27,7 +27,8 @@ export type Placement =
 
 /**
  * What a comment is on, as its card tags it; `titles` names sections and blocks by ID. One that's
- * outdated is tagged with what it was on where it was last, not as on the whole file.
+ * outdated is tagged with what it was on where it was last, not as on the whole file: a section or
+ * a block gone since is named as it was there.
  */
 export function targetOf(thread: Thread, titles: Map<string, string>): CommentTarget {
   const anchor = thread.anchor ?? thread.lastAnchor
@@ -35,9 +36,15 @@ export function targetOf(thread: Thread, titles: Map<string, string>): CommentTa
     case 'text':
       return { kind: 'text', quote: anchor.quote }
     case 'section':
-      return { kind: 'section', title: titles.get(anchor.section) ?? 'A section' }
+      return {
+        kind: 'section',
+        title: titles.get(anchor.section) ?? thread.lastUnit?.path.at(-1) ?? 'A section',
+      }
     case 'block':
-      return { kind: 'block', label: titles.get(anchor.block) ?? 'Block' }
+      return {
+        kind: 'block',
+        label: titles.get(anchor.block) ?? (thread.lastUnit ? blockLabel(thread.lastUnit) : 'Block'),
+      }
     case 'file':
       return { kind: 'file' }
     default:

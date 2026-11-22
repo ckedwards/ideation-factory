@@ -224,6 +224,8 @@ export const CommentThread = CommentBase.extend({
   lastVersion: z.number().int().nullable(),
   /** Where it was in that version, for one that's outdated (its anchor is null): what it was on. */
   lastAnchor: Anchor.nullable(),
+  /** For one outdated on a section or a block: that heading or block as it was there, as show_blocks lists it. */
+  lastUnit: OutlineEntry.nullable(),
   /** Versions whose steps said they address this comment. */
   addressedIn: z.array(z.number().int()),
   /** A suggested edit's change; null for a plain comment. */
