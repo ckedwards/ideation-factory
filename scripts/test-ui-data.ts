@@ -65,6 +65,14 @@ export const groups: GroupSeed[] = [
     admin: 'riley',
     members: { priya: 'member', noor: 'member' },
   },
+  {
+    handle: 'pager',
+    name: 'Pager',
+    description: 'Who carries the pager this month.',
+    admin: 'devon',
+    // riley is taken out at the end (lastChanges); it reviews nothing, so being in it changes nothing else
+    members: { sam: 'member', riley: 'member' },
+  },
 ]
 
 export interface TeamSeed {
@@ -95,6 +103,8 @@ export const teams: TeamSeed[] = [
     description: 'APIs, jobs, data and the infrastructure under them.',
     admin: 'riley',
     members: { maya: 'maintainer', sam: 'member', devon: 'member', ben: 'member', kai: 'member' },
+    // Security leaves at the end (lastChanges)
+    groups: { security: 'member' },
     requirements: { approvals: 1, anyOf: ['security'], resolved: false },
   },
   {
@@ -116,6 +126,25 @@ export const teams: TeamSeed[] = [
     requirements: { approvals: 0, resolved: false },
   },
   commentsTeam,
+]
+
+/**
+ * Made last, once everyone's notices from the setup are read: a change of each kind that gives riley an
+ * unread notice about her teams and groups.
+ */
+export const lastChanges: Array<
+  | { by: string; groupJoins: { team: string; group: string } }
+  | { by: string; groupLeaves: { team: string; group: string } }
+  | { by: string; adds: { team?: string; group?: string; person: string } }
+  | { by: string; removes: { team?: string; group?: string; person: string } }
+> = [
+  // to riley as Leads's admin
+  { by: 'noor', groupJoins: { team: 'product', group: 'leads' } },
+  // to riley as Platform's admin
+  { by: 'sam', groupLeaves: { team: 'platform', group: 'security' } },
+  // to riley, about her
+  { by: 'noor', adds: { team: 'product', person: 'riley' } },
+  { by: 'devon', removes: { group: 'pager', person: 'riley' } },
 ]
 
 /** People asking to join, for their admins to decide. */
@@ -660,8 +689,32 @@ Anyone can join, and there's no preparation beyond the reading.
         replies: [
           { by: 'maya', body: "We'll take notes and add them here; recordings tend to go unwatched." },
           { by: 'alex', body: 'Count me in too.' },
+          // taking part: maya's ideas, a section of riley's inbox grouped by team
+          { by: 'riley', body: "I'll come for the Dynamo paper." },
+          { by: 'maya', body: 'Thursday at four, then. I’ll send the paper round.' },
         ],
       },
+    ],
+  },
+  {
+    // someone else's own idea, outside any team: alex's ideas, a section of riley's inbox grouped by team
+    by: 'alex',
+    title: 'Offline maps for site visits',
+    description: 'Download the day’s maps before a technician sets off.',
+    review: true,
+    reviewers: ['@riley'],
+    files: {
+      'offline-maps.md': `# Offline maps for site visits
+
+Technicians lose signal on site, and the map goes with it. The app could download the maps around the day's jobs each morning, over Wi-Fi, before anyone leaves.
+
+## Size
+
+A city's tiles at street level come to about 80 MB. Only the areas around the day's jobs are needed, a few megabytes each.
+`,
+    },
+    discussion: [
+      { by: 'alex', on: 'over Wi-Fi', body: 'Riley, does this fit with the offline sync work, or is it separate?' },
     ],
   },
   {
