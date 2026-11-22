@@ -1,6 +1,7 @@
 // Ticks down the document's right edge, one per comment, each where its text is in the whole file:
 // where the comments are in a long file, at a glance, and a click to each. The strip is the height of
-// the pane the document scrolls in, so a tick halfway down is a comment halfway through the file.
+// the pane the document scrolls in, and a tick halfway down it is a comment halfway through the file
+// (not through what scrolls, which may have room after the file).
 import { type RefObject, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { markSelector } from './marks.ts'
@@ -33,14 +34,13 @@ export function CommentTicks({ documentRef, comments, active = null, onSelect }:
     }
     const measure = () => {
       const box = pane.getBoundingClientRect()
-      // where the pane's content starts, in the window, wherever it's scrolled to
-      const content = box.top - pane.scrollTop
+      const file = root.getBoundingClientRect()
       const ticks = comments.flatMap((comment) => {
         const mark = root.querySelector(markSelector(comment.id))
         if (!mark) {
           return []
         }
-        const at = (mark.getBoundingClientRect().top - content) / Math.max(1, pane.scrollHeight)
+        const at = (mark.getBoundingClientRect().top - file.top) / Math.max(1, file.height)
         return [{ ...comment, at: Math.min(1, Math.max(0, at)) }]
       })
       setShown({
