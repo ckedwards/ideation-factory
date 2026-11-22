@@ -307,7 +307,7 @@ Only a group's admins (or a site admin) can delete it. Before deleting, the sett
 
 ## Groups in teams
 
-**Status:** built. Its notices are being built: the server writes them and the API lists them (below, under Notifications), while the web app, the cli and email show them next. The team's Groups tab and the group's page show who added each group, and when.
+**Status:** built, with its notices in the inbox and by email (below, under Notifications). The team's Groups tab and the group's page show who added each group, and when.
 
 A team's admins can **add a group to the team**, the way GitLab shares a project with a group: the group's members become the team's members, with a role the team chooses, for as long as they're in the group. Organizations manage people in groups. Adding the same people to each team by hand, and keeping every team in step when someone joins or leaves, is what this saves.
 
@@ -417,7 +417,7 @@ Notifications are in the app (the inbox) and, where the deployment has email set
 
 The inbox works like GitHub's: one entry per idea (its latest update, how many are new, and why you're subscribed), not one per event. It can be grouped by date or by team, filtered by reason (review requested, participating, watching a team) and by team, and each idea can be marked read, marked **Done** (cleared from the inbox until something new happens) or **unsubscribed**. Every idea page has a Subscribe / Unsubscribe button that says why you're subscribed. Unsubscribing stops notifications for that idea, except when someone asks you to review it.
 
-**Notices about teams and groups** sit among the ideas, each its own row (they're rare, so nothing is bundled), with the reason "teams": a group joined or left a team (to the admins of both, but not whoever did it), or someone else added you to a team or a group, or took you out. Each is written by the directory in the same transaction as the change, keeps the names as they were, and is read, done and counted like an idea's row. Grouped by team, a notice about a team is in its section, and one about a group alone in the group's.
+**Notices about teams and groups** sit among the ideas, each its own row (they're rare, so nothing is bundled), with the reason "teams": a group joined or left a team (to the admins of both, but not whoever did it), or someone else added you to a team or a group, or took you out. Each is written by the directory in the same transaction as the change, keeps the names as they were, and is read, done and counted like an idea's row. Email follows the same settings as being involved: each notice is its own email once it has been quiet a while (or goes in the daily digest), unless it's read first. Grouped by team, a notice about a team is in its section, and one about a group alone in the group's.
 
 # Scale
 
