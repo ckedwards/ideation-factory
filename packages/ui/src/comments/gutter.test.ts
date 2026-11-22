@@ -41,7 +41,7 @@ describe('notes in the gutter', () => {
     ).toEqual({ a: 100, b: 160, c: 400 })
   })
 
-  test('a note whose text has gone above the window is left where it was', () => {
+  test('a note whose text has gone above the window slides up with it, not jumping back to its text', () => {
     expect(
       tops(
         [
@@ -51,7 +51,8 @@ describe('notes in the gutter', () => {
         10,
         { top: 250, window: 200 },
       ),
-    ).toEqual({ a: 0, b: 300 })
+      // a's text ended 180 above the window's top: a is 180 above the gutter's top
+    ).toEqual({ a: 70, b: 300 })
   })
 })
 
@@ -116,5 +117,14 @@ describe('fitting notes to the page', () => {
       'n2:line',
       'n3:line',
     ])
+  })
+
+  test('a pile holds only notes whose texts are close: one far down its run stays out, and grows back', () => {
+    // six on one line, and a seventh pushed into their run while they were full, its text further down
+    const notes = [
+      ...Array.from({ length: 6 }, (_, i) => ({ id: `n${i}`, anchor: i * 2, full: 100 })),
+      { id: 'far', anchor: 300, full: 100 },
+    ]
+    expect(sizes(fitNotes(notes, heights, 10, 48))).toEqual(['n0+n1+n2+n3+n4+n5:pile', 'far:full'])
   })
 })

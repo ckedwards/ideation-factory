@@ -23,9 +23,18 @@ export interface GutterFloor {
 }
 
 /**
+ * How high a note can go: while its text is in view, no higher than the gutter's top; once its text
+ * has gone above the window, up from there as far as its text has gone, so it slides away with it
+ * rather than jumping.
+ */
+export function lowestOf(note: { anchor: number; end?: number }, floor: GutterFloor | null): number {
+  return floor === null ? -Infinity : floor.top - Math.max(0, floor.window - (note.end ?? note.anchor))
+}
+
+/**
  * Each note's top. In document order, each starts level with its text, or
  * just below the one before. With a floor, a note whose text is in view sits
- * at or below it. Nothing is pinned: an open note is drawn over the rest,
+ * at or below it, and one whose text has gone slides up with it. Nothing is pinned: an open note is drawn over the rest,
  * which are laid out as if it were closed.
  */
 export function layoutNotes(notes: GutterNote[], gap = 12, floor: GutterFloor | null = null): Map<string, number> {
@@ -33,8 +42,7 @@ export function layoutNotes(notes: GutterNote[], gap = 12, floor: GutterFloor | 
   const tops = new Map<string, number>()
   let bottom = -Infinity
   for (const note of sorted) {
-    const inView = floor !== null && (note.end ?? note.anchor) > floor.window
-    const top = Math.max(note.anchor, bottom + (note.gap ?? gap), inView ? floor.top : -Infinity)
+    const top = Math.max(note.anchor, bottom + (note.gap ?? gap), lowestOf(note, floor))
     tops.set(note.id, top)
     bottom = top + note.height
   }
@@ -68,6 +76,8 @@ export interface FixedHeights {
 export interface NoteUnit {
   ids: string[]
   size: NoteSize
+  // as small as it goes: a line on its own, its text too far from the rest of its run to share a pile
+  last?: boolean
 }
 
 /** The space above a unit: a line or a pile sits closer to what's above it than a card does. */
@@ -128,7 +138,7 @@ export function fitNotes(notes: FitNote[], heights: FixedHeights, gap: number, s
       Math.max(...run.map((i) => tops.get(units[i]!.ids[0]!)! - byId.get(units[i]!.ids[0]!)!.anchor))
     return {
       drift,
-      crowded: runs.filter((run) => drift(run) > slack && units[run[0]!]!.size !== 'pile'),
+      crowded: runs.filter((run) => drift(run) > slack && units[run[0]!]!.size !== 'pile' && !units[run[0]!]!.last),
       // the units level with their text, each starting a run
       level: new Set(runs.map((run) => run[0]!)),
     }
@@ -144,10 +154,9 @@ export function fitNotes(notes: FitNote[], heights: FixedHeights, gap: number, s
       const unit = units[i]!
       return { ...unit, size: SIZES[Math.min(SIZES.indexOf(unit.size) + 1, SIZES.length - 1)]! }
     })
-    // a run that's become piles is one pile
-    const merged: NoteUnit[] = stepped.every((unit) => unit.size === 'pile')
-      ? [{ ids: stepped.flatMap((unit) => unit.ids), size: 'pile' }]
-      : stepped
+    // a run that's become piles: a pile for each stretch of it whose texts are close (the next one's
+    // within the pile as it would stand), and a line for one on its own
+    const merged: NoteUnit[] = stepped.every((unit) => unit.size === 'pile') ? piles(stepped) : stepped
     units = [...units.slice(0, worst[0]!), ...merged, ...units.slice(worst.at(-1)! + 1)]
   }
   // a note stepped down with a run it was pushed into, and level with its text once the run was
@@ -156,7 +165,7 @@ export function fitNotes(notes: FitNote[], heights: FixedHeights, gap: number, s
   for (let i = 0; i < units.length; i++) {
     while (units[i]!.size !== 'full' && units[i]!.size !== 'pile' && look(units).level.has(i)) {
       const grown = [...units]
-      grown[i] = { ...units[i]!, size: SIZES[SIZES.indexOf(units[i]!.size) - 1]! }
+      grown[i] = { ids: units[i]!.ids, size: SIZES[SIZES.indexOf(units[i]!.size) - 1]! }
       if (look(grown).crowded.length > 0) {
         break
       }
@@ -164,4 +173,28 @@ export function fitNotes(notes: FitNote[], heights: FixedHeights, gap: number, s
     }
   }
   return units
+
+  function piles(run: NoteUnit[]): NoteUnit[] {
+    const out: NoteUnit[] = []
+    let group: string[] = []
+    let top = 0
+    const close = () => {
+      if (group.length > 0) {
+        out.push(group.length === 1 ? { ids: group, size: 'line', last: true } : { ids: group, size: 'pile' })
+      }
+    }
+    for (const unit of run) {
+      const anchor = byId.get(unit.ids[0]!)!.anchor
+      const reach = top + unitHeight({ ids: [...group, ...unit.ids], size: 'pile' }, full, heights) + heights.lineGap
+      if (group.length > 0 && anchor <= reach) {
+        group.push(...unit.ids)
+      } else {
+        close()
+        group = [...unit.ids]
+        top = anchor
+      }
+    }
+    close()
+    return out
+  }
 }
