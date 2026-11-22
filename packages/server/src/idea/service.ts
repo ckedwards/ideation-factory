@@ -247,6 +247,7 @@ export type ThreadShape = CommentShape & {
   state: AnchorState
   anchor: Anchor | null
   lastVersion: number | null
+  lastAnchor: Anchor | null
   addressedIn: number[]
   /** A suggested edit's change; null for a plain comment. */
   suggestion: SuggestionShape | null
@@ -846,6 +847,7 @@ export class IdeaService {
             state: 'exact',
             anchor,
             lastVersion: meta.latest,
+            lastAnchor: null,
             addressedIn: [],
             suggestion,
             pending: false,
@@ -1614,6 +1616,23 @@ export class IdeaService {
           .execute()
       ).map((r) => [r.comment, Number(r.version)]),
     )
+    // where each outdated one was in the last version it was attached in
+    const outdated = rows.filter((r) => !r.parent && !anchors.get(r.id)?.anchor && last.has(r.id)).map((r) => r.id)
+    const lastAnchors = new Map(
+      outdated.length === 0
+        ? []
+        : (
+            await this.#db
+              .selectFrom('anchors')
+              .select(['comment', 'version', 'anchor'])
+              .where('comment', 'in', outdated)
+              .where('state', '!=', 'outdated')
+              .where('version', '<=', v)
+              .execute()
+          )
+            .filter((a) => a.anchor !== null && Number(a.version) === last.get(a.comment))
+            .map((a) => [a.comment, JSON.parse(a.anchor!) as Anchor]),
+    )
     const addressed = new Map<string, number[]>()
     for (const step of await this.#db
       .selectFrom('steps')
@@ -1652,6 +1671,7 @@ export class IdeaService {
           state: (at?.state ?? 'outdated') as AnchorState,
           anchor: at?.anchor ? (JSON.parse(at.anchor) as Anchor) : null,
           lastVersion: last.get(r.id) ?? null,
+          lastAnchor: at?.anchor ? null : (lastAnchors.get(r.id) ?? null),
           addressedIn: addressed.get(r.id) ?? [],
           suggestion: suggestionOf(r, v, drafted.has(r.id)),
           replies: (replies.get(r.id) ?? []).map(shape),

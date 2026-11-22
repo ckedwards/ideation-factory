@@ -19,6 +19,7 @@ const thread = (id: string, extra: Partial<Thread> = {}): Thread => ({
   state: 'exact',
   anchor: { kind: 'text', file: 'f1', start: 0, end: 4, quote: 'Ship' },
   lastVersion: 1,
+  lastAnchor: null,
   addressedIn: [],
   suggestion: null,
   replies: [],
