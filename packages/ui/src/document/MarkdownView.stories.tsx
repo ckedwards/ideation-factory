@@ -174,8 +174,11 @@ export const BlockComments: Story = {
     const size = (element: HTMLElement) => getComputedStyle(element, '::before').backgroundSize
     await expect(size(paragraph).split(', ')[0]).toBe('12px 2px')
     await expect(size(code).split(', ')[0]).not.toBe('12px 2px')
-    await expect(getComputedStyle(paragraph, '::before').backgroundColor).toBe('rgba(0, 0, 0, 0)')
-    await expect(getComputedStyle(code, '::before').backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
+    await expect(getComputedStyle(paragraph, '::after').backgroundColor).toBe('rgba(0, 0, 0, 0)')
+    await expect(getComputedStyle(code, '::after').backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
+    // the lines over the block (code's fill can't cover them), the fill under its words
+    await expect(getComputedStyle(code, '::before').zIndex).toBe('1')
+    await expect(getComputedStyle(code, '::after').zIndex).toBe('-1')
     // the section's two comments, counted
     const rollout = canvasElement.querySelector<HTMLElement>('h2[data-comment-ids="s1 s2"]')!
     await expect(getComputedStyle(rollout, '::after').content).toBe('"2"')
