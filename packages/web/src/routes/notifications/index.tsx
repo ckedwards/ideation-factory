@@ -14,11 +14,12 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useState } from 'react'
 import { api, meQuery } from '../../api.ts'
 import { statusOf } from '../../ideas.ts'
 import { actorOf } from '../$place/idea/$number/-components/view.ts'
 import { usePeople } from '../$place/idea/$number/-components/shared.tsx'
-import { InboxList, type InboxRowView } from './-components/InboxList.tsx'
+import { InboxList, type InboxRowView, type InboxScope } from './-components/InboxList.tsx'
 
 type Reason = Notification['reason']
 type Filter = { done: boolean; reason?: Reason | undefined; unread: boolean; team?: string | undefined }
@@ -93,25 +94,46 @@ function Notifications() {
       replace: true,
     })
   }
-  const mark = (change: { read?: true; done?: boolean }) => (ids: string[] | null) =>
+  const mark = (change: { read?: true; done?: boolean }) => (ids: string[] | null, scope?: InboxScope) =>
     void api
-      .markNotifications({ ...(ids ? { ideas: ids } : {}), ...change })
+      .markNotifications({ ...(ids ? { ideas: ids } : {}), ...(ids ? {} : (scope ?? {})), ...change })
       .finally(() => void queryClient.invalidateQueries({ queryKey: ['notifications'] }))
+  // by day or by team, as this browser last had it
+  const [groupBy, setGroupBy] = useState<'date' | 'team'>(storedGroupBy)
+  const chooseGroupBy = (by: 'date' | 'team') => {
+    setGroupBy(by)
+    try {
+      localStorage.setItem(GROUP_KEY, by)
+    } catch {
+      // kept for this visit only
+    }
+  }
 
-  const rows = items.map((n): InboxRowView => ({
-    id: n.idea.id,
-    title: n.idea.title,
-    href: ideaPath(n.idea.place, n.idea.number),
-    where: n.idea.team ? n.idea.team.name : n.idea.owner.id === me.id ? 'Your ideas' : `${n.idea.owner.name}’s ideas`,
-    status: statusOf(n.idea.status),
-    reason: WHY[n.reason],
-    asked: n.reason === 'review-requested' || n.reason === 'group-review',
-    kind: n.latest.kind,
-    actor: n.latest.actor.user ? actorOf(n.latest.actor as Caller, people) : null,
-    update: updateWords(n),
-    newCount: n.newCount,
-    at: n.updatedAt,
-  }))
+  const rows = items.map((n): InboxRowView => {
+    const where = n.idea.team
+      ? n.idea.team.name
+      : n.idea.owner.id === me.id
+        ? 'Your ideas'
+        : `${n.idea.owner.name}’s ideas`
+    return {
+      id: n.idea.id,
+      // grouped by team: a team's section, or one for each person's ideas outside any team
+      section: n.idea.team
+        ? { key: `team:${n.idea.team.id}`, name: where, scope: { team: n.idea.team.handle } }
+        : { key: `owner:${n.idea.owner.id}`, name: where, scope: { owner: n.idea.owner.id } },
+      title: n.idea.title,
+      href: ideaPath(n.idea.place, n.idea.number),
+      where,
+      status: statusOf(n.idea.status),
+      reason: WHY[n.reason],
+      asked: n.reason === 'review-requested' || n.reason === 'group-review',
+      kind: n.latest.kind,
+      actor: n.latest.actor.user ? actorOf(n.latest.actor as Caller, people) : null,
+      update: updateWords(n),
+      newCount: n.newCount,
+      at: n.updatedAt,
+    }
+  })
 
   return (
     <Page width="wide">
@@ -172,12 +194,25 @@ function Notifications() {
           onRead={mark({ read: true })}
           onDone={mark({ done: true })}
           onBack={mark({ done: false })}
+          groupBy={groupBy}
+          onGroupBy={chooseGroupBy}
           empty={filter.done ? 'Nothing marked done.' : 'Nothing new. You’re all caught up.'}
           more={list.hasNextPage ? { loading: list.isFetchingNextPage, onMore: () => void list.fetchNextPage() } : null}
         />
       </div>
     </Page>
   )
+}
+
+const GROUP_KEY = 'ideaf.inbox.groupBy'
+
+/** How this browser last grouped the inbox: by day unless someone switched to team. */
+function storedGroupBy(): 'date' | 'team' {
+  try {
+    return localStorage.getItem(GROUP_KEY) === 'team' ? 'team' : 'date'
+  } catch {
+    return 'date'
+  }
 }
 
 /** The filters as a row: which list as tabs, then why and which team as selects, each with how many. */
