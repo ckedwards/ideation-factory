@@ -130,6 +130,47 @@ It might rain on the day.
     expect(ids(r)).toEqual(['s2', 'b7', 'b3', 's4', 'b5', 's6'])
   })
 
+  test('after a paragraph rewritten at its end: both end in a full stop, and every block is followed', () => {
+    // the diff could keep either full stop; keeping the moved block's would leave a character of it
+    // in place, and it wouldn't count as moved
+    const source =
+      '# Plan\n\nThe team writes it in three passes over a month.\n\nEach pass ends with a review by the whole team.\n\n## Steps\n\n- Draft it.\n- Argue.\n\n## Later\n\nNothing here yet.\n'
+    // IDs: f1; s2 Plan, b3, b4 Each pass, s5 Steps, b6, b7, s8 Later, b9
+    const idea = createIdea([{ path: 'plan.md', source }])
+    const content = source
+      .replace('three passes over a month', 'two passes')
+      .replace('\n\nEach pass ends with a review by the whole team.\n', '\n')
+      .replace('Nothing here yet.', 'Nothing here yet.\n\nEach pass ends with a review by the whole team.')
+    const r = upload(
+      idea,
+      [
+        { id: 'c1', anchor: { kind: 'block', file: 'f1', block: 'b4' } },
+        { id: 'c2', anchor: textAnchor(idea, 'f1', 'the whole team') },
+      ],
+      [{ file: 'f1', path: 'plan.md', content }],
+    )
+    // the diff keeps the longer text in place, so Steps and Later are what moved, past it: each
+    // section and block keeps its ID, and the comments stay on the block
+    expect(ids(r)).toEqual(['s2', 'b3', 's5', 'b6', 'b7', 's8', 'b9', 'b4'])
+    expect(outcome(r, 'c1')).toEqual({ state: 'exact', quote: null, file: 'f1' })
+    expect(outcome(r, 'c2')).toEqual({ state: 'exact', quote: 'the whole team', file: 'f1' })
+  })
+
+  test('a section moved past a paragraph rewritten at its end keeps its ID, heading and body', () => {
+    const source =
+      '# Plan\n\nIt takes three passes over a month.\n\nEach pass ends with a review.\n\n## Later\n\nNothing yet.\n'
+    // IDs: f1; s2 Plan, b3, b4, s5 Later, b6
+    const idea = createIdea([{ path: 'plan.md', source }])
+    const content = '# Plan\n\nIt takes two passes.\n\n## Later\n\nNothing yet.\n\nEach pass ends with a review.\n'
+    const r = upload(
+      idea,
+      [{ id: 'c1', anchor: { kind: 'section', file: 'f1', section: 's5' } }],
+      [{ file: 'f1', path: 'plan.md', content }],
+    )
+    expect(ids(r)).toEqual(['s2', 'b3', 's5', 'b6', 'b4'])
+    expect(outcome(r, 'c1')).toEqual({ state: 'moved', quote: null, file: 'f1' })
+  })
+
   test('into another file of the idea', () => {
     const idea = createIdea([
       { path: 'a.md', source: '# A\n\nKeep this.\n\nMove this paragraph.\n' },

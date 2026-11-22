@@ -6,7 +6,7 @@
 //
 // The same structure describes a command (built precisely) and an upload
 // (built from a diff), in either source offsets or plain-text offsets.
-import { cleanupSemantic, DIFF_DELETE, DIFF_EQUAL, DIFF_INSERT, makeDiff } from '@sanity/diff-match-patch'
+import { cleanupSemantic, type Diff, DIFF_DELETE, DIFF_EQUAL, DIFF_INSERT, makeDiff } from '@sanity/diff-match-patch'
 
 export type Piece =
   | { kind: 'copy'; file: string; start: number; end: number; moved: boolean }
@@ -185,6 +185,59 @@ export function identity(file: string, length: number): Piece[] {
 }
 
 /**
+ * The same diff, with lines deleted or inserted whole where it can be. A diff may keep one of two
+ * equal characters ending lines (a full stop, say) where either would do: an edit that ends a line
+ * deleting "month.\nEach pass ends with a review" before an unchanged ".\nSteps" keeps the
+ * second full stop, so a line deleted (moved elsewhere) seems to have a character left in place.
+ * Where what's kept up to the next line break also ends a line in the edit, the edit keeps that
+ * one instead, and the rest of the edit is the lines after it, whole. Both diffs make the same
+ * text: nothing is guessed.
+ */
+export function wholeLines(diffs: Diff[]): Diff[] {
+  const out: Diff[] = []
+  let group: Diff[] = []
+  diffs.forEach((diff, i) => {
+    if (diff[0] !== DIFF_EQUAL) {
+      group.push(diff)
+      return
+    }
+    const kept = diff[1]
+    const lineEnd = kept.indexOf('\n')
+    // what's kept up to its first line break (or its end, at the very end)
+    const m = lineEnd >= 0 ? lineEnd : i === diffs.length - 1 ? kept.length : -1
+    const p = m > 0 ? kept.slice(0, m) : null
+    let rotated = false
+    if (p !== null) {
+      for (let g = 0; g < group.length && !rotated; g++) {
+        const [op, text] = group[g]!
+        for (let n = text.indexOf('\n'); n >= 0; n = text.indexOf('\n', n + 1)) {
+          if (n >= m && text.slice(n - m, n) === p) {
+            const before = text.slice(0, n - m)
+            const rest: Diff[] = [
+              ...group.slice(0, g),
+              ...(before ? [[op, before] as Diff] : []),
+              ...group.slice(g + 1),
+            ]
+            out.push(...rest, [DIFF_EQUAL, p], [op, text.slice(n) + p])
+            if (kept.length > m) {
+              out.push([DIFF_EQUAL, kept.slice(m)])
+            }
+            rotated = true
+            break
+          }
+        }
+      }
+    }
+    if (!rotated) {
+      out.push(...group, diff)
+    }
+    group = []
+  })
+  out.push(...group)
+  return out
+}
+
+/**
  * Pieces from a diff of `before` to `after`, for text with no command saying
  * what happened (an upload, or rewriting a section's body). A deletion
  * directly followed by an insertion becomes new text that replaces it, but not
@@ -193,7 +246,7 @@ export function identity(file: string, length: number): Piece[] {
  * rewritten rather than keeping scattered letters.
  */
 export function diffPieces(file: string, before: string, after: string, offset = 0): Piece[] {
-  const diffs = cleanupSemantic(makeDiff(before, after, { timeout: 0, checkLines: true }))
+  const diffs = wholeLines(cleanupSemantic(makeDiff(before, after, { timeout: 0, checkLines: true })))
   const pieces: Piece[] = []
   let pos = 0
   for (let i = 0; i < diffs.length; i++) {

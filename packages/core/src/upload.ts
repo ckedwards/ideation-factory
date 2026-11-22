@@ -278,7 +278,8 @@ function matchMovedUnits(
     })
   }
   // blocks first; then a heading only if its whole body moved unchanged with it,
-  // so a section moved and edited in the same upload isn't followed
+  // so a section moved and edited in the same upload isn't followed. Blocks after its body that
+  // were themselves followed (a block that stayed, or moved in, now at the end of it) aren't edits
   for (const pair of pairs) {
     if (!pair.heading) {
       record(pair)
@@ -293,11 +294,16 @@ function matchMovedUnits(
     const section = parsed.sections.find((s) => s.heading === pair.from.unit)!
     const newSection = next.get(pair.to.file)!.sections.find((s) => s.heading === pair.to.unit)!
     const body = section.bodyLast - section.heading
-    if (body === 0 || newSection.bodyLast - newSection.heading !== body) {
+    const ids = matched.get(pair.to.file)!
+    if (body === 0 || newSection.bodyLast - newSection.heading < body) {
       continue
     }
-    const ids = matched.get(pair.to.file)!
     let together = true
+    for (let i = pair.to.unit + body + 1; i <= newSection.bodyLast; i++) {
+      if (!ids[i]) {
+        together = false
+      }
+    }
     for (let i = 1; i <= body; i++) {
       const moved = moves.get(`${pair.from.file}:${pair.from.unit + i}`)
       if (
