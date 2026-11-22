@@ -70,6 +70,10 @@
     align-items: center;
     gap: var(--space-1) var(--space-3);
   }
+  /* a notice has no status: on this line, nothing holds its place */
+  .inbox-state:empty {
+    display: none;
+  }
 }
 /* unread: a dot and a bold title; read rows are plain */
 .inbox-row.is-unread .inbox-title a {

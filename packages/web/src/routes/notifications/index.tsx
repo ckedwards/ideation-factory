@@ -3,7 +3,7 @@
 // beside them filters, each with how many: the inbox, what's unread, done, why
 // you hear about them, and which team they're in. In a narrower window the
 // same filters are a row above the list (InboxBar), so the list keeps its room.
-import { type Caller, type IdeaNotification, ideaPath } from '@ideaf/api'
+import { type Caller, type IdeaNotification, type InboxShow, ideaPath } from '@ideaf/api'
 import { Link, Page, PageHeader, SegmentedControl, Select } from '@ideaf/ui'
 import {
   infiniteQueryOptions,
@@ -20,8 +20,9 @@ import { statusOf } from '../../ideas.ts'
 import { actorOf } from '../$place/idea/$number/-components/view.ts'
 import { usePeople } from '../$place/idea/$number/-components/shared.tsx'
 import { InboxList, type InboxRowView, type InboxScope } from './-components/InboxList.tsx'
+import { noticeWords } from './-components/notice.ts'
 
-type Reason = IdeaNotification['reason']
+type Reason = InboxShow
 type Filter = { done: boolean; reason?: Reason | undefined; unread: boolean; team?: string | undefined }
 
 export const notificationsQuery = (filter: Filter) =>
@@ -46,6 +47,7 @@ const WHY: Record<Reason, string> = {
   participating: 'Participating',
   subscribed: 'Subscribed',
   watching: 'Watching a team',
+  teams: 'Teams and groups',
 }
 
 /** How many of each, for the filter column. */
@@ -80,9 +82,15 @@ function Notifications() {
   }
   const counts = useQuery(countsQuery).data
   const list = useInfiniteQuery(notificationsQuery(filter))
-  // the ideas' rows (the notices about teams and groups come next)
-  const items = (list.data?.pages.flatMap((p) => p.items) ?? []).flatMap((n) => (n.kind === 'idea' ? [n] : []))
-  const people = usePeople(items.flatMap((n) => (n.latest.actor.user ? [n.latest.actor.user] : [])))
+  const items = list.data?.pages.flatMap((p) => p.items) ?? []
+  const people = usePeople(
+    items.flatMap((n) => {
+      const actor = n.kind === 'idea' ? n.latest.actor : n.notice.actor
+      return actor.user ? [actor.user] : []
+    }),
+  )
+  // which rows are notices, for marking those ticked
+  const noticeIds = new Set(items.flatMap((n) => (n.kind === 'notice' ? [n.id] : [])))
   const go = (next: Partial<Filter>) => {
     const f = { ...filter, ...next }
     void navigate({
@@ -97,7 +105,12 @@ function Notifications() {
   }
   const mark = (change: { read?: true; done?: boolean }) => (ids: string[] | null, scope?: InboxScope) =>
     void api
-      .markNotifications({ ...(ids ? { ideas: ids } : {}), ...(ids ? {} : (scope ?? {})), ...change })
+      .markNotifications({
+        ...(ids
+          ? { ideas: ids.filter((id) => !noticeIds.has(id)), notices: ids.filter((id) => noticeIds.has(id)) }
+          : (scope ?? {})),
+        ...change,
+      })
       .finally(() => void queryClient.invalidateQueries({ queryKey: ['notifications'] }))
   // by day or by team, as this browser last had it
   const [groupBy, setGroupBy] = useState<'date' | 'team'>(storedGroupBy)
@@ -111,6 +124,22 @@ function Notifications() {
   }
 
   const rows = items.map((n): InboxRowView => {
+    if (n.kind === 'notice') {
+      const words = noticeWords(n.notice)
+      return {
+        id: n.id,
+        section: words.section,
+        title: words.title,
+        href: words.href,
+        where: words.where,
+        reason: words.reason,
+        kind: 'notice',
+        actor: n.notice.actor.user ? actorOf(n.notice.actor as Caller, people) : null,
+        update: words.update,
+        newCount: n.newCount,
+        at: n.updatedAt,
+      }
+    }
     const where = n.idea.team
       ? n.idea.team.name
       : n.idea.owner.id === me.id
@@ -138,7 +167,10 @@ function Notifications() {
 
   return (
     <Page width="wide">
-      <PageHeader title="Notifications" sub="What’s happened to the ideas you hear about, one row each." />
+      <PageHeader
+        title="Notifications"
+        sub="What’s happened to the ideas you hear about, one row each, and changes to your teams and groups."
+      />
       <div className="inbox-layout">
         <InboxBar filter={filter} counts={counts} go={go} />
         <nav className="inbox-side" aria-label="Show">

@@ -1,11 +1,13 @@
-// The inbox as a list: one row per idea, however much happened, like
-// GitHub's notifications, grouped by day, or by team (a section per team, and
-// per person for ideas outside any team, each read or done as a whole). Each row says what kind of update
-// came last (an icon), what the idea is, the latest update (and how many are
-// new), where the idea stands now, why you hear about it (a review asked of you
-// stands out), and when: in columns when the list has room for the title, and
-// otherwise on one line under it. An unread row has a dot and a bold title.
-// Ticking rows acts on them; with none ticked, the toolbar acts on the whole list.
+// The inbox as a list: one row per idea, however much happened, like GitHub's
+// notifications, and a row for each notice about a team or a group; grouped by
+// day, or by team (a section per team, per person for ideas outside any team,
+// and per group for its own notices, each read or done as a whole). Each row
+// says what kind of update came last (an icon), what the idea is, the latest
+// update (and how many are new), where the idea stands now (a notice has no
+// status), why you hear about it (a review asked of you stands out), and when:
+// in columns when the list has room for the title, and otherwise on one line
+// under it. An unread row has a dot and a bold title. Ticking rows acts on
+// them; with none ticked, the toolbar acts on the whole list.
 import { type ReactNode, useState } from 'react'
 import {
   type Actor,
@@ -21,8 +23,8 @@ import {
 import type { ShownStatus } from '../../../ideas.ts'
 import './InboxList.css'
 
-/** A section of the inbox grouped by team: a team's ideas, or a person's outside any team. */
-export type InboxScope = { team: string } | { owner: string }
+/** A section of the inbox grouped by team: a team's ideas, a person's outside any team, or a group's own notices. */
+export type InboxScope = { team: string } | { owner: string } | { group: string }
 
 export interface InboxSection {
   key: string
@@ -36,16 +38,18 @@ export interface InboxRowView {
   /** The team it's in, or whose idea outside any team it is: its section, grouped by team. */
   section: InboxSection
   title: string
-  href: string
-  /** Its team, or whose own idea it is. */
+  /** Where it's seen; null for a notice about a team or group that's gone. */
+  href: string | null
+  /** Its team, or whose own idea it is (a notice's team, or its group). */
   where: string
-  status: ShownStatus
+  /** Where an idea stands now; a notice has none. */
+  status?: ShownStatus
   /** Why you hear about it, in words. */
   reason: string
   /** You're asked to review it: it stands out. */
   asked?: boolean
-  /** The kind of the latest update, for its icon. */
-  kind?: UpdateKind
+  /** The kind of the latest update, for its icon; `notice` for a notice about a team or a group. */
+  kind?: UpdateKind | 'notice'
   /** The latest update: who, and what they did. */
   actor: Actor | null
   update: ReactNode
@@ -212,7 +216,7 @@ export function InboxList({
                   onChange={(event) => tick(row.id, event.target.checked)}
                 />
                 <span className={`inbox-icon is-${row.kind ?? 'update'}`}>
-                  <Icon name={row.kind ?? 'update'} />
+                  <Icon name={row.kind === 'notice' ? 'group' : (row.kind ?? 'update')} />
                 </span>
                 <div className="inbox-main">
                   <div className="inbox-title">
@@ -224,7 +228,7 @@ export function InboxList({
                           <span className="visually-hidden">Unread: </span>
                         </span>
                       )}
-                      <Link href={row.href}>{row.title}</Link>
+                      {row.href ? <Link href={row.href}>{row.title}</Link> : row.title}
                     </span>
                   </div>
                   <div className="inbox-update">
@@ -235,10 +239,12 @@ export function InboxList({
                 {/* columns of their own when there's room; a line under the title when there isn't */}
                 <div className="inbox-meta">
                   <span className="inbox-state">
-                    <StatusPill
-                      status={row.status.status}
-                      {...(row.status.reason ? { reason: row.status.reason } : {})}
-                    />
+                    {row.status && (
+                      <StatusPill
+                        status={row.status.status}
+                        {...(row.status.reason ? { reason: row.status.reason } : {})}
+                      />
+                    )}
                   </span>
                   <span className={`inbox-reason${row.asked ? ' is-asked' : ''}`}>{row.reason}</span>
                 </div>
