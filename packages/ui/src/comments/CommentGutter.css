@@ -2,6 +2,10 @@
   position: relative;
   overflow: hidden;
 }
+/* scrolling with the document: nothing to cut off, and an open card can stand past the last note */
+.comment-gutter.is-scrolling-with {
+  overflow: visible;
+}
 .comment-gutter-inner {
   position: relative;
   will-change: transform;
@@ -28,9 +32,33 @@
   text-align: center;
 }
 
-/* the open card, drawn over its neighbors, which stay where they are */
+/* a comment open: the other cards fade behind a veil of the page's color, and come back while pointed
+   at or in focus (their words keep their own colors, under it) */
+.comment-gutter-note::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  content: '';
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+.comment-gutter.has-open .comment-gutter-note:not(.is-open, :hover, :focus-within)::after {
+  opacity: 0.65;
+}
+@media (prefers-reduced-motion: reduce) {
+  .comment-gutter-note::after {
+    transition: none;
+  }
+}
+/* the open card, drawn over its neighbors, which stay where they are; with the others on its mark
+   (a section's or a block's), one under another */
 .comment-gutter-note.is-open {
   z-index: 4;
+  display: grid;
+  gap: var(--space-2);
 }
 .comment-gutter-note.is-open .comment-card {
   box-shadow: var(--shadow-lg, var(--shadow));
@@ -99,10 +127,11 @@
   min-width: 0;
 }
 
-/* a section comment pointed at, or open: a rectangle around its whole section, filled while open */
+/* a section comment pointed at, or open: a rectangle around its whole section, filled while open,
+   under the document's words and counts (.prose is a layer above it) */
 .comment-section-box {
-  position: fixed;
-  z-index: 1;
+  position: absolute;
+  z-index: 0;
   border: calc(var(--hairline) * 2) solid var(--mark-line);
   border-radius: var(--radius);
   pointer-events: none;
