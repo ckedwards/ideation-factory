@@ -9,7 +9,7 @@ const actor = { user: 'u-jordan', bot: null, purpose: 'me' as const }
 test('a group joining a team: "your group" to its admins, its name to the team’s, each linked to their side', () => {
   const notice = { kind: 'group-joined' as const, team, group, role: 'member', actor }
   expect(noticeWords({ ...notice, as: 'group-admin' })).toMatchObject({
-    title: 'Design reviewers joined Mobile, as members',
+    title: 'The Design reviewers group joined Mobile, as members',
     update: 'added your group to Mobile',
     where: 'Mobile',
     href: '/groups/design-reviewers',
@@ -17,7 +17,7 @@ test('a group joining a team: "your group" to its admins, its name to the team�
     section: { key: 'team:t1', name: 'Mobile', scope: { team: 'mobile' } },
   })
   expect(noticeWords({ ...notice, as: 'team-admin' })).toMatchObject({
-    update: 'added Design reviewers to Mobile',
+    update: 'added the Design reviewers group to Mobile',
     href: '/mobile/settings?tab=groups',
     reason: 'Team admin',
   })
@@ -25,31 +25,31 @@ test('a group joining a team: "your group" to its admins, its name to the team�
 
 test('a group leaving a team', () => {
   expect(noticeWords({ kind: 'group-left', team, group, role: null, as: 'team-admin', actor })).toMatchObject({
-    title: 'Design reviewers left Mobile',
-    update: 'took Design reviewers out of Mobile',
+    title: 'The Design reviewers group left Mobile',
+    update: 'took the Design reviewers group out of Mobile',
   })
 })
 
 test('you, added to a team or taken out of a group alone: the group’s own section', () => {
   expect(noticeWords({ kind: 'added', team, group: null, role: 'admin', as: 'you', actor })).toMatchObject({
-    title: 'You joined Mobile, as an admin',
+    title: 'You joined the Mobile team, as an admin',
     update: 'added you to the team',
     href: '/mobile',
     reason: 'You',
   })
   expect(noticeWords({ kind: 'removed', team: null, group, role: null, as: 'you', actor })).toMatchObject({
-    title: 'You’re no longer in Design reviewers',
+    title: 'You’re no longer in the Design reviewers group',
     update: 'took you out of the group',
     where: 'Design reviewers',
     href: '/groups/design-reviewers',
-    section: { key: 'group:g1', name: 'Design reviewers', scope: { group: 'design-reviewers' } },
+    section: { key: 'group:g1', name: 'Design reviewers', scope: { group: 'design-reviewers' }, group: true },
   })
 })
 
 test('a team that’s gone: named as it was, with nothing to link to', () => {
-  const gone = { id: 't9', handle: null, name: 'Old team' }
+  const gone = { id: 't9', handle: null, name: 'Payments' }
   expect(noticeWords({ kind: 'removed', team: gone, group: null, role: null, as: 'you', actor })).toMatchObject({
-    title: 'You’re no longer in Old team',
+    title: 'You’re no longer in the Payments team',
     href: null,
     section: { scope: { team: 't9' } },
   })

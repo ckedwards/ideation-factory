@@ -19,6 +19,7 @@ import {
   RelativeTime,
   SegmentedControl,
   StatusPill,
+  Tag,
 } from '@ideaf/ui'
 import type { ShownStatus } from '../../../ideas.ts'
 import './InboxList.css'
@@ -28,9 +29,11 @@ export type InboxScope = { team: string } | { owner: string } | { group: string 
 
 export interface InboxSection {
   key: string
-  /** "Mobile", "Your ideas", "Alex Romero’s ideas". */
+  /** "Mobile", "Your ideas", "Alex Romero’s ideas", or a group's name. */
   name: string
   scope: InboxScope
+  /** A group's own section (its notices), tagged as a group: its name alone doesn't say. */
+  group?: boolean
 }
 
 export interface InboxRowView {
@@ -287,6 +290,7 @@ function SectionHead({
   return (
     <div className="inbox-section-head">
       <h3 className="inbox-section-title">{section.name}</h3>
+      {section.group && <Tag tone="faint">Group</Tag>}
       {unread > 0 && <span className="inbox-section-unread">{unread} unread</span>}
       <span className="inbox-section-actions">
         {showing === 'inbox' ? (

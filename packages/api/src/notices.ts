@@ -6,7 +6,7 @@ import type { NoticeNotification } from './schemas.ts'
 type Notice = NoticeNotification['notice']
 
 export interface NoticeText {
-  /** "Design reviewers joined Mobile, as members". */
+  /** "The Design reviewers group joined Mobile, as members". */
   title: string
   /** After who did it: "added your group to Mobile". */
   update: string
@@ -22,27 +22,30 @@ export function noticeText(notice: Notice): NoticeText {
   const team = notice.team?.name ?? 'a team'
   const group = notice.group?.name ?? 'a group'
   // a group's admins read "your group"; anyone else its name
-  const theGroup = notice.as === 'group-admin' ? 'your group' : group
-  // what a notice about you is about: the team, or the group alone
-  const container = notice.team ? team : group
+  const theGroup = notice.as === 'group-admin' ? 'your group' : `the ${group} group`
+  // what a notice about you is about: the team, or the group alone, named with which it is ("the Pager
+  // group"), as a name alone doesn't say
   const kind = notice.team ? 'team' : 'group'
+  const container = notice.team ? team : group
+  const named = notice.team ? `the ${team} team` : `the ${group} group`
   const base = { where: container, as: AS[notice.as] }
   switch (notice.kind) {
+    // a group only ever joins or leaves a team: the group is named as one, the team needn't be
     case 'group-joined':
       return {
         ...base,
-        title: `${group} joined ${team}${notice.role ? `, as ${notice.role}s` : ''}`,
+        title: `The ${group} group joined ${team}${notice.role ? `, as ${notice.role}s` : ''}`,
         update: `added ${theGroup} to ${team}`,
       }
     case 'group-left':
-      return { ...base, title: `${group} left ${team}`, update: `took ${theGroup} out of ${team}` }
+      return { ...base, title: `The ${group} group left ${team}`, update: `took ${theGroup} out of ${team}` }
     case 'added':
       return {
         ...base,
-        title: `You joined ${container}${notice.role ? `, as ${/^[aeiou]/i.test(notice.role) ? 'an' : 'a'} ${notice.role}` : ''}`,
+        title: `You joined ${named}${notice.role ? `, as ${/^[aeiou]/i.test(notice.role) ? 'an' : 'a'} ${notice.role}` : ''}`,
         update: `added you to the ${kind}`,
       }
     case 'removed':
-      return { ...base, title: `You’re no longer in ${container}`, update: `took you out of the ${kind}` }
+      return { ...base, title: `You’re no longer in ${named}`, update: `took you out of the ${kind}` }
   }
 }
