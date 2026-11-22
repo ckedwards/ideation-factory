@@ -568,6 +568,7 @@ export const NoticeSubject = z.object({ id: z.string(), handle: z.string().nulla
  */
 export const NoticeNotification = z.object({
   kind: z.literal('notice'),
+  /** Starts with `nt`, which no idea's ID does. */
   id: z.string(),
   notice: z.object({
     kind: NoticeKind,

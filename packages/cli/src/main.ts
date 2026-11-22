@@ -544,20 +544,23 @@ const reviewFamily: Family = {
 
 /** Marking one section of the inbox, as the web app's grouping by team has them. */
 const SECTION = {
-  team: { type: 'string', description: 'all of one team’s ideas' },
+  team: { type: 'string', description: 'all of one team’s ideas, and the notices about it' },
   owner: { type: 'string', description: 'all of one person’s ideas outside any team' },
+  group: { type: 'string', description: 'a group’s own notices (not about a team)' },
 } as const
 
 const section = (f: Values) => ({
   all: f.all === true,
   ...(str(f, 'team') ? { team: str(f, 'team')! } : {}),
   ...(str(f, 'owner') ? { owner: str(f, 'owner')! } : {}),
+  ...(str(f, 'group') ? { group: str(f, 'group')! } : {}),
 })
 
 /** ideaf inbox …: what's happened to the ideas you hear about. */
 const inboxFamily: Family = {
   name: 'inbox',
-  summary: 'Your inbox: one line per idea you hear about, what happened, and marking them read or done',
+  summary:
+    'Your inbox: one line per idea you hear about, and per notice about your teams and groups; marking them read or done',
   subcommands: [
     {
       name: 'show',
@@ -568,7 +571,8 @@ const inboxFamily: Family = {
         unread: { type: 'boolean', description: 'only those with something new' },
         reason: {
           type: 'string',
-          description: 'only these: author, review-requested, group-review, participating, subscribed or watching',
+          description:
+            'only these: author, review-requested, group-review, participating, subscribed, watching, or teams (the notices about teams and groups)',
         },
         team: { type: 'string', description: 'only ideas in this team' },
         cursor: { type: 'string', description: 'the next page, from the last list' },
@@ -584,21 +588,21 @@ const inboxFamily: Family = {
     },
     {
       name: 'read',
-      usage: 'ideaf inbox read <idea>… | --all | --team <team> | --owner <person>',
+      usage: 'ideaf inbox read <idea or notice>… | --all | --team <team> | --owner <person> | --group <group>',
       summary: 'Mark ideas read',
       flags: { all: { type: 'boolean', description: 'every idea in the inbox' }, ...SECTION },
       run: (ctx, f, a) => inbox.mark(ctx, a, section(f), { read: true }),
     },
     {
       name: 'done',
-      usage: 'ideaf inbox done <idea>… | --all | --team <team> | --owner <person>',
+      usage: 'ideaf inbox done <idea or notice>… | --all | --team <team> | --owner <person> | --group <group>',
       summary: 'Clear ideas from the inbox until something new happens',
       flags: { all: { type: 'boolean', description: 'every idea in the inbox' }, ...SECTION },
       run: (ctx, f, a) => inbox.mark(ctx, a, section(f), { done: true }),
     },
     {
       name: 'back',
-      usage: 'ideaf inbox back <idea>… | --all | --team <team> | --owner <person>',
+      usage: 'ideaf inbox back <idea or notice>… | --all | --team <team> | --owner <person> | --group <group>',
       summary: 'Move ideas marked done back into the inbox',
       flags: { all: { type: 'boolean', description: 'every idea marked done' }, ...SECTION },
       run: (ctx, f, a) => inbox.mark(ctx, a, section(f), { done: false }),

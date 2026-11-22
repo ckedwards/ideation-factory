@@ -116,7 +116,12 @@ describe('the inbox', () => {
     expect((await api(h('ines')).countNotifications({})).reasons.teams).toBe(1)
     expect((await api(h('ines')).unreadNotifications({})).count).toBe(1)
     const id = notices[0]!.kind === 'notice' ? notices[0]!.id : ''
-    expect((await api(h('ines')).markNotifications({ notices: [id], read: true })).changed).toBe(1)
+    // in the cli: the notice's ID (to mark it), its team, what happened, and who did it, in her words
+    const ines = await repoAs('ines')
+    const shown = (await ines.ideaf('inbox', 'show', '--reason', 'teams')).out
+    expect(shown).toMatch(new RegExp(`● new +${id} +${team} +Reviewers joined Noticed, as members +\\(group admin\\)`))
+    expect(shown).toContain(`@${h('riley')} added your group to Noticed`)
+    expect((await ines.ideaf('inbox', 'read', id)).out).toContain('1 notification marked read')
     expect((await api(h('ines')).unreadNotifications({})).count).toBe(0)
     // its group's section can't be marked with ideas by ID too
     await expect(api(h('ines')).markNotifications({ notices: [id], group, done: true })).rejects.toThrow()
