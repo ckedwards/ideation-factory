@@ -108,6 +108,56 @@ export function IdeaPage(props: IdeaPageProps) {
   const narrow = useMatches('(max-width: 62.5rem)')
   // beside the text, or a list of every comment with what it's on (a narrow screen has only the list)
   const [view, setView] = useState<'beside' | 'list'>(storedView)
+  // after the file, just the room its last heading needs to come to the top (as the contents takes it
+  // there): what's visible of the pane, less the heading's margin and what of the file follows it. Or,
+  // if more, the room an open comment longer than the window needs to be read to its end, the page
+  // scrolling it into view: how far down the file the comments reach (CommentGutter)
+  const scrollPast = useRef<HTMLDivElement>(null)
+  const [reach, setReach] = useState(0)
+  useEffect(() => {
+    const root = document.current
+    const room = scrollPast.current
+    const pane = root?.closest<HTMLElement>('.idea-page-document')
+    if (!root || !room || !pane) {
+      return
+    }
+    const fit = () => {
+      const padding = parseFloat(getComputedStyle(pane).paddingBottom) || 0
+      const start = room.getBoundingClientRect().top
+      // the comments' reach, and a little under it, from where the file starts
+      const comments =
+        reach > 0
+          ? reach +
+            parseFloat(getComputedStyle(globalThis.document.documentElement).fontSize) -
+            (start - root.getBoundingClientRect().top) -
+            padding
+          : 0
+      const headings = root.querySelectorAll<HTMLElement>('.prose :is(h1, h2, h3, h4, h5, h6)')
+      const last = headings[headings.length - 1]
+      if (!last) {
+        room.style.height = `${Math.max(0, comments)}px`
+        return
+      }
+      const margin = parseFloat(getComputedStyle(last).scrollMarginTop) || 0
+      // what scrolls after the heading's top, the room aside: the rest of the file and its margins (up
+      // to where the room starts), and the pane's padding
+      const after = start - last.getBoundingClientRect().top + padding
+      // the pane as it shows, never more than the window (where the page scrolls as one, it's as tall
+      // as what's in it)
+      const shown = Math.min(pane.clientHeight, window.innerHeight)
+      room.style.height = `${Math.max(0, shown - margin - after, comments)}px`
+    }
+    fit()
+    // the file reflowing, and the pane changing height (the window, the bars above it)
+    const observer = new ResizeObserver(fit)
+    observer.observe(root)
+    observer.observe(pane)
+    window.addEventListener('resize', fit)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', fit)
+    }
+  }, [reach])
   const listed = narrow || view === 'list'
   const chooseView = (next: 'beside' | 'list') => {
     setView(next)
@@ -402,6 +452,7 @@ export function IdeaPage(props: IdeaPageProps) {
               ...inText.map((c) => ({ id: c.info.id, content: (size: CardSize) => card(c, false, false, size) })),
             ]}
             empty={outdated.length > 0 ? undefined : empty}
+            onReach={setReach}
           />
         </>
       )}
@@ -412,104 +463,110 @@ export function IdeaPage(props: IdeaPageProps) {
     <IdeaPageLayout
       nav={nav}
       document={
-        <div
-          ref={document}
-          // a click off a comment's mark puts its card down
-          onClick={(event) => {
-            if (!(event.target as Element).closest('[data-comment-id]')) {
-              setActive(null)
-            }
-          }}
-        >
-          {/* where the whole file's comments are, for the gutter: the top of the file, by its line */}
-          <span className="idea-file-anchors" aria-hidden>
-            {onFile.map((c) => (
-              <span key={c.info.id} data-comment-id={c.info.id} />
-            ))}
-          </span>
-          {/* while editing, the editor's own bar is at the top, and the file's name under it */}
-          {!props.editing && props.banner}
-          {!props.editing && (
-            // shown only where the comments can't sit beside the text, and come after it (IdeaPage.css)
-            <a className="idea-narrow-note" href="#idea-comments">
-              {open.length === 0 ? 'Comments' : open.length === 1 ? '1 comment' : `${open.length} comments`} ↓
-            </a>
-          )}
-          {base && !props.editing && !props.showSource && (
-            <ChangeSummary
-              sections={
-                sections.filter((h) => {
-                  const end = sectionEnd(sections, h)
-                  return h.level >= 2 && changed.some((range) => range.start < end && h.offset < range.end)
-                }).length
+        <>
+          <div
+            ref={document}
+            // a click off a comment's mark puts its card down
+            onClick={(event) => {
+              if (!(event.target as Element).closest('[data-comment-id]')) {
+                setActive(null)
               }
-              changes={changed.length}
-              root={document}
-            />
-          )}
-          {props.editing ? (
-            props.editing.document({
-              shown: inText.map((c) => ({ id: c.info.id, resolved: c.info.resolved })),
-              active,
-              onSelect: setActive,
-            })
-          ) : props.showSource ? (
-            <pre className="idea-source">
-              <code>{source}</code>
-            </pre>
-          ) : base ? (
-            <Redline base={base} current={{ source, tree }} renderCode={renderMermaid} />
-          ) : (
-            <MarkdownView
-              tree={tree}
-              marks={inText.flatMap((c) =>
-                c.place.kind === 'text'
-                  ? [{ id: c.info.id, start: c.place.start, end: c.place.end, active: c.info.id === active }]
-                  : [],
-              )}
-              sectionMarks={inText.flatMap((c) =>
-                c.place.kind === 'section'
-                  ? [{ id: c.info.id, heading: c.place.heading, active: c.info.id === active }]
-                  : [],
-              )}
-              blockMarks={inText.flatMap((c) =>
-                c.place.kind === 'block' ? [{ id: c.info.id, block: c.place.start, active: c.info.id === active }] : [],
-              )}
-              renderCode={renderMermaid}
-              onMarkClick={setActive}
-            />
-          )}
-          {!narrow && !base && !props.showSource && (
-            // where the comments are in the whole file, down its right edge, a click to each
-            <CommentTicks
-              documentRef={document}
-              comments={order.flatMap((id) => {
-                const c = all.find((one) => one.info.id === id)
-                return c ? [{ id, label: tickLabel(c) }] : []
-              })}
-              active={active}
-              onSelect={jumpTo}
-            />
-          )}
-          <SelectionMenu
-            documentRef={document}
-            source={source}
-            enabled={canComment && !base && !props.editing && !props.showSource}
-            addToReview={props.addToReview ?? false}
-            {...(props.onComment ? { onComment: props.onComment } : {})}
-            {...(props.onSuggest ? { onSuggest: props.onSuggest } : {})}
-            {...(props.suggestionOf ? { suggestionOf: props.suggestionOf } : {})}
-            {...(props.onSectionComment
-              ? {
-                  onSectionComment: (section, body, pending) =>
-                    props.onSectionComment?.(section.heading, body, pending),
+            }}
+          >
+            {/* where the whole file's comments are, for the gutter: the top of the file, by its line */}
+            <span className="idea-file-anchors" aria-hidden>
+              {onFile.map((c) => (
+                <span key={c.info.id} data-comment-id={c.info.id} />
+              ))}
+            </span>
+            {/* while editing, the editor's own bar is at the top, and the file's name under it */}
+            {!props.editing && props.banner}
+            {!props.editing && (
+              // shown only where the comments can't sit beside the text, and come after it (IdeaPage.css)
+              <a className="idea-narrow-note" href="#idea-comments">
+                {open.length === 0 ? 'Comments' : open.length === 1 ? '1 comment' : `${open.length} comments`} ↓
+              </a>
+            )}
+            {base && !props.editing && !props.showSource && (
+              <ChangeSummary
+                sections={
+                  sections.filter((h) => {
+                    const end = sectionEnd(sections, h)
+                    return h.level >= 2 && changed.some((range) => range.start < end && h.offset < range.end)
+                  }).length
                 }
-              : {})}
-            {...(props.onBlockComment
-              ? { onBlockComment: (block, body, pending) => props.onBlockComment?.(block.start, body, pending) }
-              : {})}
-          />
-        </div>
+                changes={changed.length}
+                root={document}
+              />
+            )}
+            {props.editing ? (
+              props.editing.document({
+                shown: inText.map((c) => ({ id: c.info.id, resolved: c.info.resolved })),
+                active,
+                onSelect: setActive,
+              })
+            ) : props.showSource ? (
+              <pre className="idea-source">
+                <code>{source}</code>
+              </pre>
+            ) : base ? (
+              <Redline base={base} current={{ source, tree }} renderCode={renderMermaid} />
+            ) : (
+              <MarkdownView
+                tree={tree}
+                marks={inText.flatMap((c) =>
+                  c.place.kind === 'text'
+                    ? [{ id: c.info.id, start: c.place.start, end: c.place.end, active: c.info.id === active }]
+                    : [],
+                )}
+                sectionMarks={inText.flatMap((c) =>
+                  c.place.kind === 'section'
+                    ? [{ id: c.info.id, heading: c.place.heading, active: c.info.id === active }]
+                    : [],
+                )}
+                blockMarks={inText.flatMap((c) =>
+                  c.place.kind === 'block'
+                    ? [{ id: c.info.id, block: c.place.start, active: c.info.id === active }]
+                    : [],
+                )}
+                renderCode={renderMermaid}
+                onMarkClick={setActive}
+              />
+            )}
+            {!narrow && !base && !props.showSource && (
+              // where the comments are in the whole file, down its right edge, a click to each
+              <CommentTicks
+                documentRef={document}
+                comments={order.flatMap((id) => {
+                  const c = all.find((one) => one.info.id === id)
+                  return c ? [{ id, label: tickLabel(c) }] : []
+                })}
+                active={active}
+                onSelect={jumpTo}
+              />
+            )}
+            <SelectionMenu
+              documentRef={document}
+              source={source}
+              enabled={canComment && !base && !props.editing && !props.showSource}
+              addToReview={props.addToReview ?? false}
+              {...(props.onComment ? { onComment: props.onComment } : {})}
+              {...(props.onSuggest ? { onSuggest: props.onSuggest } : {})}
+              {...(props.suggestionOf ? { suggestionOf: props.suggestionOf } : {})}
+              {...(props.onSectionComment
+                ? {
+                    onSectionComment: (section, body, pending) =>
+                      props.onSectionComment?.(section.heading, body, pending),
+                  }
+                : {})}
+              {...(props.onBlockComment
+                ? { onBlockComment: (block, body, pending) => props.onBlockComment?.(block.start, body, pending) }
+                : {})}
+            />
+          </div>
+          {/* room to scroll past the end: the last heading can come to the top, as the contents takes it */}
+          <div ref={scrollPast} className="idea-scroll-past" aria-hidden />
+        </>
       }
       panel={
         // while editing too: the comments, what an edit usually answers, and the versions, headed by

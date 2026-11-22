@@ -179,3 +179,16 @@
   display: block;
   height: 1px;
 }
+
+/* after the file, room to scroll its last heading to the top (as the contents takes it there): its
+   height is measured (IdeaPage). Not where the page scrolls as one, the comments after it */
+@media (max-width: 62.5rem) {
+  .idea-scroll-past {
+    display: none;
+  }
+}
+
+/* a heading jumped to (from the contents) stops below the toolbar pinned at the pane's top */
+.idea-page-document .prose :is(h1, h2, h3, h4, h5, h6) {
+  scroll-margin-top: 5rem;
+}

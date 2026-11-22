@@ -263,6 +263,103 @@ export const Ticks: Story = {
   },
 }
 
+// Two comments on one section: its count says 2, and opening it opens both, one under the other,
+// rather than the first over the second
+export const SharedMark: Story = {
+  args: {
+    comments: [
+      ...comments,
+      {
+        info: comment('c6', 'Start with the pilot team.', { kind: 'section', title: 'Rollout' }),
+        place: { kind: 'section', heading: source.indexOf('## Rollout') },
+      },
+    ],
+  },
+  play: async ({ canvasElement, userEvent }) => {
+    const heading = canvasElement.querySelector<HTMLElement>('h2[data-comment-ids="c2 c6"]')!
+    await expect(getComputedStyle(heading, '::after').content).toBe('"2"')
+    await userEvent.click(heading)
+    const open = await waitFor(() => {
+      const element = canvasElement.querySelector<HTMLElement>('.comment-gutter-note.is-open')
+      expect(element).not.toBeNull()
+      return element!
+    })
+    await expect(within(open).getByText('Which team goes first?')).toBeVisible()
+    await expect(within(open).getByText('Start with the pilot team.')).toBeVisible()
+  },
+}
+
+// A block's count is on top of every mark around it: the topmost thing at its middle
+export const CountOnTop: Story = {
+  args: {
+    comments: [
+      ...comments,
+      {
+        info: comment('c7', 'Which devices?', { kind: 'block', label: 'Paragraph' }),
+        place: { kind: 'block', start: source.indexOf('Field technicians'), end: source.indexOf('plant rooms.') + 12 },
+      },
+      {
+        info: comment('c8', 'Name the flag.', { kind: 'section', title: 'Rollout' }),
+        place: { kind: 'section', heading: source.indexOf('## Proposal') },
+      },
+    ],
+  },
+  play: async ({ canvasElement, userEvent }) => {
+    // the section's rectangle drawn round the paragraph's neighbor, and the paragraph's lines grown
+    await userEvent.click(canvasElement.querySelector<HTMLElement>('h2[data-comment-id="c8"]')!)
+    const count = await waitFor(() => {
+      const element = canvasElement.querySelector<HTMLElement>('.md-block-count')
+      expect(element).not.toBeNull()
+      return element!
+    })
+    const box = count.getBoundingClientRect()
+    await expect(window.document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)).toBe(count)
+  },
+}
+
+// One comment open: the other cards fade, so it stands out, and come back while pointed at; and a
+// section's rectangle stands clear of the blocks' counts
+export const OthersFade: Story = {
+  play: async ({ canvasElement, userEvent }) => {
+    const note = (id: string) =>
+      canvasElement.querySelector<HTMLElement>(`.comment-gutter-note[data-note-id="${id}"]:not(.is-open)`)!
+    await waitFor(() => expect(note('c1').style.top).not.toBe(''))
+    const veil = (element: HTMLElement) => getComputedStyle(element, '::after').opacity
+    await expect(veil(note('c1'))).toBe('0')
+    await userEvent.click(canvasElement.querySelector<HTMLElement>('h2[data-comment-id="c2"]')!)
+    await waitFor(() => expect(veil(note('c1'))).toBe('0.65'))
+    const open = canvasElement.querySelector<HTMLElement>('.comment-gutter-note.is-open')!
+    await expect(veil(open)).toBe('0')
+    // put down: all back
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(veil(note('c1'))).toBe('0'))
+  },
+}
+
+// The last section chosen in the contents comes to the top, though it's at the end of the file:
+// there's room to scroll past the end
+export const ScrollToTheLastSection: Story = {
+  // as tall as the window, as in the app: the document scrolls in its pane
+  decorators: [
+    (Story) => (
+      <div style={{ height: '100vh' }}>
+        <Story />
+      </div>
+    ),
+  ],
+  play: async ({ canvasElement, userEvent }) => {
+    await userEvent.click(within(canvasElement.querySelector<HTMLElement>('.idea-contents')!).getByText('Rollout'))
+    const heading = canvasElement.querySelector<HTMLElement>('h2#rollout')!
+    const pane = canvasElement.querySelector<HTMLElement>('.idea-page-document')!
+    // near the top of the pane, below where the toolbar pins
+    await waitFor(() => {
+      const below = heading.getBoundingClientRect().top - pane.getBoundingClientRect().top
+      expect(below).toBeGreaterThan(40)
+      expect(below).toBeLessThan(100)
+    })
+  },
+}
+
 // Keys, as Google Docs has them: J and K move from comment to comment in the order of the text, R
 // replies to the open one, E resolves it, Escape puts it down; none of them while typing
 export const Keys: Story = {
