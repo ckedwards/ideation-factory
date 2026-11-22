@@ -204,10 +204,12 @@ export const TwoFiles: Story = {
     await expect(sheets).toHaveLength(2)
     await expect(sheets[0]).toHaveTextContent('1 of 2')
     await expect(sheets[1]).toHaveTextContent('2 of 2')
-    await expect(view.getByRole('button', { name: /Comments/ })).toHaveAttribute('aria-pressed', 'false')
-    await expect(view.getByRole('button', { name: /Comments/ })).toHaveTextContent('4')
-    // the threads are there, but out of reach until comments are on
+    const modes = within(view.getByRole('radiogroup', { name: 'Comments' }))
+    await expect(modes.getByRole('radio', { name: 'Off' })).toHaveAttribute('aria-checked', 'true')
+    await expect(region().querySelector('.focus-count')).toHaveTextContent('4')
+    // no comments beside the sheets, and none to reach
     await expect(region().querySelector('.focus-notes')).toHaveAttribute('inert')
+    await expect(region().querySelector('.comment-gutter')).toBeNull()
     // the page being read is marked, with its sections under it
     const pages = within(view.getByRole('navigation', { name: 'Pages' }))
     await expect(pages.getByRole('link', { name: /offline\.md/ })).toHaveAttribute('aria-current', 'page')
@@ -215,70 +217,90 @@ export const TwoFiles: Story = {
   },
 }
 
-// Comments on: each thread beside its text, the highlights back, a suggested edit among them; and off again
-export const TwoFilesWithComments: Story = {
+/** The comment opened, once it's been placed beside its text. */
+const placedOpen = () =>
+  waitFor(() => {
+    const open = region().querySelector<HTMLElement>('.comment-gutter-note.is-open')
+    expect(open).not.toBeNull()
+    expect(open!.style.visibility).toBe('')
+    expect(open!.style.top).not.toBe('')
+    return open!
+  })
+
+/** Chooses how the comments show. */
+async function show(mode: 'Off' | 'Selected' | 'All', userEvent: { click: (e: Element) => Promise<void> }) {
+  const view = within(region())
+  await userEvent.click(within(view.getByRole('radiogroup', { name: 'Comments' })).getByRole('radio', { name: mode }))
+}
+
+// All the comments, as the Files tab has them: each beside its text and fitted to the room, the
+// highlights back, the file's own tagged File; a suggested edit, opened, in full; and off again
+export const AllComments: Story = {
   play: async ({ userEvent }) => {
     const view = within(region())
-    await userEvent.click(view.getByRole('button', { name: /Comments/ }))
-    await expect(view.getByRole('button', { name: /Comments/ })).toHaveAttribute('aria-pressed', 'true')
+    await show('All', userEvent)
     await expect(region().querySelector('.focus-notes')).not.toHaveAttribute('inert')
     const notes = within(view.getByRole('complementary', { name: 'Comments on offline.md' }))
-    // they fade in, one after the other
+    await waitFor(() => expect(notes.getByText(/Name the months/)).toBeVisible())
+    await userEvent.click(region().querySelector<HTMLElement>('mark[data-comment-id="c1"]')!)
     await waitFor(() => expect(notes.getByText('Suggested edit')).toBeVisible())
     const fileNotes = within(view.getByRole('complementary', { name: 'Comments on sync-states.md' }))
-    // the file's own, tagged File, beside the sheet's header with its count
     await waitFor(() => expect(fileNotes.getByText('File', { exact: true })).toBeVisible())
     await expect(view.getByText(/· 1 comment on the file/)).toBeVisible()
-    // threads don't overlap: each starts below the one above
+    // each level with its text, or under the one above: none overlap
     await waitFor(() => {
-      const tops = [...region().querySelectorAll<HTMLElement>('.focus-row:first-child .focus-note')].map((n) =>
-        n.getBoundingClientRect(),
-      )
-      tops.sort((a, b) => a.top - b.top)
-      for (let i = 1; i < tops.length; i++) {
-        expect(tops[i]!.top).toBeGreaterThanOrEqual(tops[i - 1]!.bottom)
+      const boxes = [
+        ...region().querySelectorAll<HTMLElement>('.focus-row:first-child .comment-gutter-note:not(.is-open)'),
+      ]
+        .map((n) => n.getBoundingClientRect())
+        .sort((x, y) => x.top - y.top)
+      expect(boxes.length).toBeGreaterThan(1)
+      for (let i = 1; i < boxes.length; i++) {
+        expect(boxes[i]!.top).toBeGreaterThanOrEqual(boxes[i - 1]!.bottom - 0.5)
       }
     })
-    await userEvent.click(view.getByRole('button', { name: /Comments/ }))
+    await show('Off', userEvent)
     await expect(region().querySelector('.focus-notes')).toHaveAttribute('inert')
   },
 }
 
-// A thread's buttons take no room at rest; they open with focus in it, growing over what's below and moving
-// nothing. (The pointer resting on it opens them by the same rule; a story's pointer can't trigger :hover.)
-export const ButtonsOnFocus: Story = {
+// Only the selected comment: nothing beside the text until a highlight is chosen, then its comment
+// alone, level with it
+export const SelectedComment: Story = {
   play: async ({ userEvent }) => {
     const view = within(region())
-    await userEvent.click(view.getByRole('button', { name: /Comments/ }))
-    const card = region().querySelector<HTMLElement>('.focus-thread')!
-    const actions = card.querySelector<HTMLElement>('.suggestion-actions')!
-    await waitFor(() => expect(actions.getBoundingClientRect().height).toBe(0))
-    const next = card.closest<HTMLElement>('.focus-note')!.nextElementSibling!
-    await waitFor(() => expect(getComputedStyle(next).opacity).toBe('1'))
-    const top = next.getBoundingClientRect().top
-    within(card).getByRole('button', { name: 'Reply', hidden: true }).focus()
-    await waitFor(() => expect(actions.getBoundingClientRect().height).toBeGreaterThan(0))
-    await expect(within(card).getByRole('button', { name: 'Add to draft' })).toBeVisible()
-    // nothing else moved
-    await new Promise((resolve) => setTimeout(resolve, 300))
-    await expect(next.getBoundingClientRect().top).toBe(top)
+    await show('Selected', userEvent)
+    const notes = within(view.getByRole('complementary', { name: 'Comments on offline.md' }))
+    await waitFor(() => expect(notes.getByText('Select a highlight to see its comment.')).toBeVisible())
+    const mark = region().querySelector<HTMLElement>('mark[data-comment-id="c2"]')!
+    await userEvent.click(mark)
+    const card = await placedOpen()
+    await expect(card).toHaveTextContent('same banner')
+    await expect(
+      region().querySelectorAll('.focus-row:first-child .comment-gutter-note:not(.is-open) .comment-card'),
+    ).toHaveLength(0)
+    // both found again: drawn anew as the comment opened
+    await waitFor(() => {
+      const open = region().querySelector<HTMLElement>('.comment-gutter-note.is-open')!
+      const text = region().querySelector<HTMLElement>('mark[data-comment-id="c2"]')!
+      expect(Math.abs(open.getBoundingClientRect().top - text.getBoundingClientRect().top)).toBeLessThan(4)
+    })
   },
 }
 
 // Resolving a thread takes it and its highlight out
 export const Resolving: Story = {
   play: async ({ args, userEvent }) => {
-    const view = within(region())
-    await userEvent.click(view.getByRole('button', { name: /Comments/ }))
+    await show('All', userEvent)
     await expect(region().querySelector('[data-comment-id="c2"]')).not.toBeNull()
-    const card = [...region().querySelectorAll<HTMLElement>('.focus-thread')].find((t) =>
-      t.textContent?.includes('same banner'),
-    )!
-    await userEvent.hover(card)
-    await userEvent.click(within(card).getByRole('button', { name: 'Resolve' }))
+    // opened, in full, with its buttons
+    await userEvent.click(region().querySelector<HTMLElement>('mark[data-comment-id="c2"]')!)
+    await expect(await placedOpen()).toHaveTextContent('same banner')
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    await userEvent.click(within(await placedOpen()).getByRole('button', { name: 'Resolve' }))
     await expect(args.actions.onResolve).toHaveBeenCalledWith('c2', true)
     await waitFor(() => expect(region().querySelector('[data-comment-id="c2"]')).toBeNull())
-    await expect(view.getByRole('button', { name: /Comments/ })).toHaveTextContent('3')
+    await expect(region().querySelector('.focus-count')).toHaveTextContent('3')
   },
 }
 
@@ -305,16 +327,34 @@ export const OneLongFile: Story = {
   },
 }
 
-// The long file with comments on: a thread on a section sits level with its heading
+// The long file with all its comments: a thread on a section sits level with its heading
 export const OneLongFileWithComments: Story = {
   args: { title: 'Handbook: being on call', pages: oneLongFile, file: 'on-call.md' },
   play: async ({ userEvent }) => {
-    const view = within(region())
-    await userEvent.click(view.getByRole('button', { name: /Comments/ }))
+    await show('All', userEvent)
     await waitFor(() => {
       const heading = region().querySelector<HTMLElement>('[data-comment-id="l1"]')!.getBoundingClientRect()
-      const note = region().querySelectorAll<HTMLElement>('.focus-note')[1]!.getBoundingClientRect()
-      expect(Math.abs(note.top - (heading.top - 12))).toBeLessThan(2)
+      const note = region()
+        .querySelector<HTMLElement>('.comment-gutter-note[data-note-id="l1"]')!
+        .getBoundingClientRect()
+      expect(Math.abs(note.top - heading.top)).toBeLessThan(4)
     })
+  },
+}
+
+// The last section chosen in the page list comes to the top, though it's near the end of the file:
+// there's room to scroll past the end
+export const ScrollToTheLastSection: Story = {
+  args: { title: 'Handbook: being on call', pages: oneLongFile, file: 'on-call.md' },
+  play: async ({ userEvent }) => {
+    const view = within(region())
+    await userEvent.click(
+      within(view.getByRole('navigation', { name: 'Pages' })).getByRole('link', { name: /^New joiners/ }),
+    )
+    const heading = [...region().querySelectorAll<HTMLElement>('.focus-sheet h2')].find(
+      (h) => h.textContent === 'New joiners',
+    )!
+    const top = region().querySelector<HTMLElement>('.focus-top')!.getBoundingClientRect().bottom
+    await waitFor(() => expect(Math.abs(heading.getBoundingClientRect().top - top)).toBeLessThan(40))
   },
 }

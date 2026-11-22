@@ -1,9 +1,9 @@
 // The focus view: an idea's files with everything else out of the way. Each
 // file is a page on a sheet of its own, one under the other in one scroll, with
-// the pages' names down the left. Comments are hidden until asked for; then each
-// page's open threads sit beside it, level with their text, and can be acted on
-// as on the Files tab, their buttons opening only when the pointer rests on one
-// or focus is in it. Getting in and out carries the text you were reading
+// the pages' names down the left. Comments are hidden until asked for: then
+// either only the one selected (its highlight clicked) sits beside its text, or
+// every open thread does, fitted to the room as on the Files tab (CommentGutter),
+// and they can be acted on there too. Getting in and out carries the text you were reading
 // between the Files tab and its sheet, so it never jumps or shows twice.
 //
 // It's drawn over the whole window, above the app's bar and the idea's, with
@@ -13,19 +13,23 @@ import { createPortal } from 'react-dom'
 import { markdownTree } from '@ideaf/core'
 import {
   Button,
+  type CardSize,
+  CommentGutter,
   defaultResolveLink,
   headings,
-  layoutNotes,
   MarkdownView,
   renderMermaid,
+  SegmentedControl,
   SelectionMenu,
   type TextSelection,
-  markSelector,
 } from '@ideaf/ui'
 import { type PageComment, type ThreadActions, ThreadCard } from './ThreadCard.tsx'
 import { CommentBox } from './CommentBox.tsx'
 import { FileLine } from './FileLine.tsx'
 import './FocusView.css'
+
+/** How the comments show: not at all, only the one selected, or all of them as the Files tab has them. */
+export type FocusComments = 'off' | 'selected' | 'all'
 
 /** still: open from the start (its address opened directly), nothing to carry from. */
 export type FocusPhase = 'still' | 'entering' | 'open' | 'leaving'
@@ -62,14 +66,11 @@ export interface FocusViewProps {
 }
 
 const DURATION = 300
-const COMMENTS = 240
 const EASE = 'cubic-bezier(.4, 0, .2, 1)'
 // how far the text can be carried; further, and its sheet fades in place
 const CARRY = 600
 // the page and heading being read are the last whose top is above this line
 const SPY = 140
-// the gap between threads
-const GAP = 12
 
 const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 // the Files tab's text, which entering carries from and leaving carries to
@@ -86,7 +87,8 @@ export function FocusView(props: FocusViewProps) {
   const running = useRef<Animation[]>([])
   // focus view's own look: open (the ground, the sheets in place) and comments on
   const [open, setOpen] = useState(phase === 'still')
-  const [comments, setComments] = useState(false)
+  const [mode, setMode] = useState<FocusComments>('off')
+  const comments = mode !== 'off'
   // no transitions for a change that's measured, not shown (comments off on the way out)
   const [still, setStill] = useState(phase === 'still')
   // the page whose text is carried in: in place from the first frame, not rising with the others
@@ -214,7 +216,7 @@ export function FocusView(props: FocusViewProps) {
     const sheet = page && sheets.current.get(page.id)
     const showing = sheet?.getBoundingClientRect()
     setStill(true)
-    setComments(false)
+    setMode('off')
     let carry: (() => void) | null = null
     if (view && sheet && showing && !reduced()) {
       carry = () => {
@@ -319,14 +321,51 @@ export function FocusView(props: FocusViewProps) {
     return () => document.removeEventListener('keydown', key)
   })
 
+  // after the last sheet, just the room its last heading needs to come to the top (as the page list
+  // takes it there): the view's height, less the heading's margin and what follows it
+  useEffect(() => {
+    const view = root.current
+    const list = view?.querySelector<HTMLElement>('.focus-pages')
+    if (!view || !list) {
+      return
+    }
+    const fit = () => {
+      const rows = list.querySelectorAll<HTMLElement>('.focus-row')
+      const row = rows[rows.length - 1]
+      const headings = row?.querySelectorAll<HTMLElement>('.focus-sheet .prose :is(h1, h2, h3, h4, h5, h6)')
+      const last = headings?.[headings.length - 1]
+      if (!row || !last) {
+        list.style.removeProperty('--scroll-past')
+        return
+      }
+      const margin = parseFloat(getComputedStyle(last).scrollMarginTop) || 0
+      // what scrolls after the heading's top, the room (the list's foot) aside: the rest of the sheets,
+      // up to where the room starts
+      const room = parseFloat(getComputedStyle(list).paddingBottom) || 0
+      const after = list.getBoundingClientRect().bottom - room - last.getBoundingClientRect().top
+      list.style.setProperty('--scroll-past', `${Math.max(remToPx(6), view.clientHeight - margin - after)}px`)
+    }
+    fit()
+    const observer = new ResizeObserver(fit)
+    observer.observe(list)
+    // and once the sheets are still: they slide in as it opens, and move as the comments come and go
+    view.addEventListener('transitionend', fit)
+    const settled = window.setTimeout(fit, DURATION + 50)
+    return () => {
+      observer.disconnect()
+      view.removeEventListener('transitionend', fit)
+      window.clearTimeout(settled)
+    }
+  }, [open, mode])
+
   const exit = () => {
     const page = latest.current.pages.find((p) => p.id === current.page)
     props.onExit(page?.path ?? props.file)
   }
-  const toggle = () => {
+  const choose = (next: FocusComments) => {
     cancel()
     setStill(false)
-    setComments(!comments)
+    setMode(next)
   }
   const go = (id: string) => {
     setPagesOpen(false)
@@ -359,9 +398,21 @@ export function FocusView(props: FocusViewProps) {
           <span className="focus-version">{props.version}</span>
         </div>
         <div className="focus-tools">
-          <Button aria-pressed={comments} onClick={toggle}>
-            Comments <span className="focus-count">{count}</span>
-          </Button>
+          <span className="focus-comments">
+            <span className="focus-comments-label">
+              Comments <span className="focus-count">{count}</span>
+            </span>
+            <SegmentedControl
+              label="Comments"
+              options={[
+                { value: 'off', label: 'Off' },
+                { value: 'selected', label: 'Selected' },
+                { value: 'all', label: 'All' },
+              ]}
+              value={mode}
+              onChange={choose}
+            />
+          </span>
           <Button variant="ghost" onClick={exit}>
             Exit focus view <kbd aria-hidden>Esc</kbd>
           </Button>
@@ -407,6 +458,7 @@ export function FocusView(props: FocusViewProps) {
             page={page}
             tree={trees.get(page.id)!}
             comments={comments}
+            mode={mode}
             carried={carried === page.id}
             active={active}
             onActive={setActive}
@@ -495,6 +547,7 @@ interface RowProps {
   page: FocusPage
   tree: ReturnType<typeof markdownTree>
   comments: boolean
+  mode: FocusComments
   carried: boolean
   active: string | null
   onActive: (id: string) => void
@@ -557,6 +610,14 @@ function Row(props: RowProps) {
           </div>
         )}
         <div ref={text}>
+          {/* where the whole file's comments are, for the comments beside it: the top of the text */}
+          <span className="focus-file-anchors" aria-hidden>
+            {page.comments
+              .filter((c) => c.place.kind === 'file')
+              .map((c) => (
+                <span key={c.info.id} data-comment-id={c.info.id} />
+              ))}
+          </span>
           <MarkdownView
             tree={props.tree}
             idPrefix={prefix}
@@ -591,10 +652,10 @@ function Row(props: RowProps) {
           />
         </div>
       </article>
-      <Notes
+      <SheetComments
         page={page}
-        sheet={sheet}
-        shown={comments}
+        text={text}
+        mode={props.mode}
         active={active}
         onActive={props.onActive}
         actions={props.actions}
@@ -603,190 +664,94 @@ function Row(props: RowProps) {
   )
 }
 
-interface Note {
-  id: string
-  // where its text is, from the top of the sheet; the whole file's threads come first
-  node: ReactNode
-}
-
 /**
- * A page's threads, beside its sheet: each level with its text, or under the one above it. Laid out
- * from each thread's height at rest, so a thread's buttons opening grow it over the next one and move
- * nothing; a reply box opening does move the ones below. A thread dealt with fades out to the right.
+ * A page's comments, beside its sheet: none, the one selected (with any others on its section or
+ * block), or all of them, each level with its text and fitted to the room as on the Files tab. On a
+ * narrow screen, listed under the sheet, each quoting what it's on.
  */
-function Notes(props: {
+function SheetComments(props: {
   page: FocusPage
-  sheet: RefObject<HTMLElement | null>
-  shown: boolean
+  text: RefObject<HTMLElement | null>
+  mode: FocusComments
   active: string | null
   onActive: (id: string) => void
   actions: ThreadActions
 }) {
-  const { page, shown, active } = props
-  const column = useRef<HTMLDivElement>(null)
-  const elements = useRef(new Map<string, HTMLElement>())
-  const [tops, setTops] = useState<Map<string, number>>(new Map())
-  const [floor, setFloor] = useState(0)
-  const onFile = page.comments.filter((c) => c.place.kind === 'file')
-  // in the order of their text: where they're listed under the sheet, that's the order they're read in
-  const inText = page.comments
-    .filter((c) => c.place.kind === 'text' || c.place.kind === 'section' || c.place.kind === 'block')
-    .sort((a, b) => offsetOf(a) - offsetOf(b))
-  const card = (c: PageComment, showTarget = false) => (
+  const { page, mode, active } = props
+  const narrow = useMatches('(max-width: 62.5rem)')
+  // the file's first, then the rest in the order of their text
+  const all = [
+    ...page.comments.filter((c) => c.place.kind === 'file'),
+    ...page.comments
+      .filter((c) => c.place.kind === 'text' || c.place.kind === 'section' || c.place.kind === 'block')
+      .sort((a, b) => offsetOf(a) - offsetOf(b)),
+  ]
+  const shown = mode === 'all' ? all : mode === 'selected' && active !== null ? together(all, active) : []
+  const card = (c: PageComment, size: CardSize, context = false) => (
     <ThreadCard
       comment={c}
       actions={props.actions}
       active={c.info.id === active}
       onSelect={() => props.onActive(c.info.id)}
-      showTarget={showTarget}
+      showTarget={context || c.place.kind === 'file'}
+      context={context}
+      size={size}
     />
   )
-  const notes: Note[] = [
-    ...(onFile.length > 0
-      ? [
-          {
-            id: 'file',
-            // level with the sheet's header, each tagged File
-            node: (
-              <>
-                {onFile.map((c) => (
-                  <div key={c.info.id} className="focus-thread">
-                    {card(c, true)}
-                  </div>
-                ))}
-              </>
-            ),
-          },
-        ]
-      : []),
-    ...inText.map((c) => ({
-      id: c.info.id,
-      node: (
-        <div className="focus-thread">
-          <p className="focus-note-where">
-            {c.info.target.kind === 'text'
-              ? `“${c.info.target.quote}”`
-              : c.info.target.kind === 'section'
-                ? `§ ${c.info.target.title}`
-                : c.info.target.kind === 'block'
-                  ? c.info.target.label
-                  : null}
-          </p>
-          {card(c)}
-        </div>
-      ),
-    })),
-  ]
-  const ids = notes.map((n) => n.id).join('\n')
-
-  // threads dealt with, kept a moment to fade out
-  const last = useRef(new Map<string, ReactNode>())
-  const [going, setGoing] = useState<Map<string, ReactNode>>(new Map())
-  useLayoutEffect(() => {
-    const now = new Set(notes.map((n) => n.id))
-    const gone = [...last.current].filter(([id]) => !now.has(id) && !id.startsWith('pending-') && id !== 'file')
-    last.current = new Map(notes.map((n) => [n.id, n.node]))
-    if (gone.length === 0 || !shown) {
-      return
-    }
-    setGoing((was) => new Map([...was, ...gone]))
-    window.setTimeout(
-      () =>
-        setGoing((was) => {
-          const next = new Map(was)
-          for (const [id] of gone) {
-            next.delete(id)
-          }
-          return next
-        }),
-      COMMENTS,
+  if (mode === 'off') {
+    return <aside className="focus-notes" aria-label={`Comments on ${page.path}`} inert />
+  }
+  if (narrow) {
+    return (
+      <aside className="focus-notes is-list" aria-label={`Comments on ${page.path}`}>
+        {shown.map((c) => (
+          <div key={c.info.id}>{card(c, 'full', true)}</div>
+        ))}
+      </aside>
     )
-  }, [ids])
-
-  // where each thread goes: level with its text, or under the one above
-  useLayoutEffect(() => {
-    const sheet = props.sheet.current
-    if (!sheet) {
-      return
-    }
-    const hover = !window.matchMedia('(hover: none)').matches
-    const layout = () => {
-      const top = sheet.getBoundingClientRect().top
-      const placed = notes.flatMap((note) => {
-        const element = elements.current.get(note.id)
-        if (!element) {
-          return []
-        }
-        const mark = note.id === 'file' ? null : sheet.querySelector(markSelector(note.id))
-        if (note.id !== 'file' && !mark) {
-          return []
-        }
-        return [
-          {
-            id: note.id,
-            anchor: mark ? mark.getBoundingClientRect().top - top - GAP : -1,
-            height: hover ? restHeight(element) : element.offsetHeight,
-          },
-        ]
-      })
-      const next = layoutNotes(placed, GAP)
-      const bottom = Math.max(0, ...placed.map((p) => (next.get(p.id) ?? 0) + p.height))
-      setTops((was) => (same(was, next) ? was : next))
-      setFloor(bottom)
-    }
-    layout()
-    const observer = new ResizeObserver(layout)
-    observer.observe(sheet)
-    for (const element of elements.current.values()) {
-      observer.observe(element)
-    }
-    void document.fonts?.ready.then(layout)
-    return () => observer.disconnect()
-  }, [ids, page.source, props.sheet])
-
-  let shownIndex = 0
+  }
   return (
-    <aside
-      className="focus-notes"
-      aria-label={`Comments on ${page.path}`}
-      ref={column}
-      inert={!shown}
-      style={{ ['--notes-h' as string]: `${floor}px` }}
-    >
-      {notes.map((note) => {
-        const top = tops.get(note.id)
-        return (
-          <div
-            key={note.id}
-            className={`focus-note${top === undefined ? ' is-unplaced' : ''}`}
-            ref={(element) => setIn(elements.current, note.id, element)}
-            style={{ top: `${Math.max(0, top ?? 0)}px`, ['--i' as string]: Math.min(shownIndex++, 8) }}
-          >
-            {note.node}
-          </div>
-        )
-      })}
-      {[...going].map(([id, node]) => (
-        <div key={`going-${id}`} className="focus-note is-going" style={{ top: `${tops.get(id) ?? 0}px` }} aria-hidden>
-          {node}
-        </div>
-      ))}
+    <aside className="focus-notes" aria-label={`Comments on ${page.path}`}>
+      <CommentGutter
+        documentRef={props.text}
+        follows={false}
+        active={active}
+        notes={shown.map((c) => ({ id: c.info.id, content: (size: CardSize) => card(c, size) }))}
+        {...(mode === 'selected' ? { empty: 'Select a highlight to see its comment.' } : {})}
+      />
     </aside>
   )
 }
 
-/** A thread's height with its buttons closed, however far open they are. */
-function restHeight(element: HTMLElement): number {
-  let height = element.offsetHeight
-  for (const actions of element.querySelectorAll<HTMLElement>('.comment-actions, .suggestion-actions')) {
-    // closed, their row in the card's grid is empty: what they add is their height less the negative margin
-    // they close with, and never less than nothing
-    height -= Math.max(
-      0,
-      actions.getBoundingClientRect().height + (parseFloat(getComputedStyle(actions).marginTop) || 0),
-    )
+/** The comment selected, and any others on the same section or block, which open with it. */
+function together(all: PageComment[], id: string): PageComment[] {
+  const chosen = all.find((c) => c.info.id === id)
+  if (!chosen) {
+    return []
   }
-  return Math.round(height)
+  const place = chosen.place
+  return all.filter((c) =>
+    c === chosen
+      ? true
+      : place.kind === 'section'
+        ? c.place.kind === 'section' && c.place.heading === place.heading
+        : place.kind === 'block'
+          ? c.place.kind === 'block' && c.place.start === place.start
+          : false,
+  )
+}
+
+/** Whether a media query matches, now and as it changes. */
+function useMatches(query: string): boolean {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches)
+  useEffect(() => {
+    const list = window.matchMedia(query)
+    const changed = () => setMatches(list.matches)
+    changed()
+    list.addEventListener('change', changed)
+    return () => list.removeEventListener('change', changed)
+  }, [query])
+  return matches
 }
 
 function offsetOf(comment: PageComment): number {
@@ -795,10 +760,6 @@ function offsetOf(comment: PageComment): number {
     : comment.place.kind === 'section'
       ? comment.place.heading
       : -1
-}
-
-function same(a: Map<string, number>, b: Map<string, number>) {
-  return a.size === b.size && [...a].every(([k, v]) => Math.abs((b.get(k) ?? NaN) - v) < 0.5)
 }
 
 function setIn<T>(map: Map<string, T>, key: string, value: T | null) {
