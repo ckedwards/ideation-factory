@@ -70,9 +70,12 @@ function Page({
   initial = null,
   list = comments,
   sized = false,
+  blocks = [],
 }: {
   initial?: string | null
   list?: CommentInfo[]
+  // comments on whole blocks, by where each block starts
+  blocks?: Array<{ comment: CommentInfo; start: number }>
   // drawn at the size the gutter fits them to
   sized?: boolean
 }) {
@@ -80,29 +83,41 @@ function Page({
   const [active, setActive] = useState<string | null>(initial)
   // drawn again with nothing changed, as a page is when anything else on it changes
   const [, setDrawn] = useState(0)
+  // comments whose words were taken out of the text (as editing does): their marks go first, the
+  // comments only once the draft is saved
+  const [gone, setGone] = useState<string[]>([])
+  const shownList = list.filter((c) => !gone.includes(c.id))
+  // room after the document for the comments to be read to their end, as the idea page gives
+  const [reach, setReach] = useState(0)
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 22rem', height: '40rem' }}>
-      <div style={{ overflowY: 'auto', padding: '1rem 2rem' }}>
-        <div ref={document}>
-          <MarkdownView
-            tree={tree}
-            marks={list.map((c) => ({
-              id: c.id,
-              ...at((c.target as { quote: string }).quote),
-              active: c.id === active,
-            }))}
-            onMarkClick={setActive}
-          />
+      <div data-story-document style={{ overflowY: 'auto', padding: '1rem 2rem' }}>
+        <div style={{ minHeight: reach > 0 ? `calc(${reach}px + 1rem)` : undefined }}>
+          <div ref={document}>
+            <MarkdownView
+              tree={tree}
+              marks={shownList.map((c) => ({
+                id: c.id,
+                ...at((c.target as { quote: string }).quote),
+                active: c.id === active,
+              }))}
+              blockMarks={blocks.map((b) => ({ id: b.comment.id, block: b.start, active: b.comment.id === active }))}
+              onMarkClick={setActive}
+            />
+          </div>
         </div>
       </div>
       <div style={{ padding: '0 1rem', borderLeft: '1px solid var(--rule)' }}>
         <Button size="sm" variant="ghost" onClick={() => setDrawn((n) => n + 1)}>
           Draw again
         </Button>
+        <Button size="sm" variant="ghost" onClick={() => setGone((was) => [...was, list[1]!.id])}>
+          Take some words out
+        </Button>
         <CommentGutter
           documentRef={document}
           active={active}
-          notes={list.map((c) => {
+          notes={[...list, ...blocks.map((b) => b.comment)].map((c) => {
             const card = (size: 'full' | 'short' | 'line') => (
               <CommentCard
                 comment={c}
@@ -115,6 +130,7 @@ function Page({
             return { id: c.id, content: sized ? card : card('full') }
           })}
           empty="No comments on the text of this file."
+          onReach={setReach}
         />
       </div>
     </div>
@@ -303,5 +319,97 @@ export const Opened: Story = {
     const { before, after, open, mark } = await opening(canvasElement, 'k5', userEvent)
     await expect(Math.abs(open.getBoundingClientRect().top - mark.getBoundingClientRect().top)).toBeLessThan(2)
     await expect(after).toEqual(before)
+  },
+}
+
+// A block pointed at draws its rectangle, which can run into the count of the block under it: that
+// count fades while the rectangle is drawn, so it doesn't read as a second count on this block
+export const NeighborCountFades: Story = {
+  args: {
+    list: [],
+    blocks: [
+      {
+        comment: { ...comment('t1', '', 'Add a row for edits.'), target: { kind: 'block', label: 'Table' } },
+        start: sample.indexOf('| Case'),
+      },
+      {
+        comment: { ...comment('q1', '', 'Which pilot?'), target: { kind: 'block', label: 'Quote' } },
+        start: sample.indexOf('> We tried'),
+      },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    const table = await waitFor(() => {
+      const element = canvasElement.querySelector<HTMLElement>('.md-block-mark[data-comment-ids="t1"]')
+      expect(element).not.toBeNull()
+      return element!
+    })
+    const quote = canvasElement.querySelector<HTMLElement>('.md-block-mark[data-comment-ids="q1"]')!
+    const own = table.querySelector<HTMLElement>(':scope > .md-block-count')!
+    const neighbor = quote.querySelector<HTMLElement>(':scope > .md-block-count')!
+    await expect(neighbor).not.toHaveClass('is-faded')
+    table.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }))
+    await waitFor(() => expect(neighbor).toHaveClass('is-faded'))
+    await expect(own).not.toHaveClass('is-faded')
+    table.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, relatedTarget: document.body }))
+    await waitFor(() => expect(neighbor).not.toHaveClass('is-faded'))
+  },
+}
+
+// A comment's words taken out of the text while the page is fitted (as editing does, before the
+// draft is saved): its mark goes before it does, and the gutter draws the rest without it
+export const MarkGoes: Story = {
+  args: { list: crowded, sized: true },
+  play: async ({ canvasElement, userEvent }) => {
+    await settled(canvasElement)
+    const gone = crowded[1]!.id
+    await userEvent.click(within(canvasElement).getByRole('button', { name: 'Take some words out' }))
+    await waitFor(() => expect(canvasElement.querySelector(`[data-comment-id="${gone}"]`)).toBeNull())
+    await settled(canvasElement)
+    await expect(
+      [...canvasElement.querySelectorAll<HTMLElement>('.comment-gutter-note')].some(
+        (note) => note.dataset['noteId'] === gone || note.dataset['pile']?.split(' ').includes(gone),
+      ),
+    ).toBe(false)
+  },
+}
+
+// A thread too long for the window, opened and unfolded: its card ends at the window's foot and
+// scrolls on its own, so its last reply can be read
+export const LongThreadOpen: Story = {
+  args: {
+    initial: 'long',
+    list: [
+      {
+        ...comment('long', 'stops working', 'Which parts stop working?', person(maya)),
+        replies: Array.from({ length: 30 }, (_, i) => ({
+          id: `long-r${i}`,
+          author: person(i % 2 === 0 ? sam : riley),
+          at: NOW - (60 - i) * 60_000,
+          body: body(i === 29 ? 'The last word on it.' : `Reply ${i + 1}: saving, and the list of jobs with it.`),
+        })),
+      },
+    ],
+  },
+  play: async ({ canvasElement, userEvent }) => {
+    const open = await waitFor(() => {
+      const element = canvasElement.querySelector<HTMLElement>('.comment-gutter-note.is-open')
+      expect(element).not.toBeNull()
+      expect(element!.style.top).not.toBe('')
+      return element!
+    })
+    await userEvent.click(within(open).getByRole('button', { name: '28 earlier replies' }))
+    // all of it is drawn, running on below the window: it doesn't scroll on its own
+    const last = within(open).getByText('The last word on it.')
+    const scroller = canvasElement.querySelector<HTMLElement>('[data-story-document]')!
+    await waitFor(() =>
+      expect(last.getBoundingClientRect().top).toBeGreaterThan(scroller.getBoundingClientRect().bottom),
+    )
+    await expect(open.scrollHeight).toBeLessThanOrEqual(open.clientHeight + 1)
+    // the document scrolls far enough to bring its end into view, the card going up with its text
+    await waitFor(() => {
+      scroller.scrollTop = scroller.scrollHeight
+      expect(last.getBoundingClientRect().bottom).toBeLessThanOrEqual(scroller.getBoundingClientRect().bottom)
+    })
   },
 }

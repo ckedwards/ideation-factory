@@ -1,6 +1,6 @@
 import { type CSSProperties, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CardSize } from './CommentCard.tsx'
-import { fitNotes, type FixedHeights, layoutNotes, type NoteUnit, unitGap } from './gutter.ts'
+import { fitNotes, type FixedHeights, layoutNotes, lowestOf, type NoteUnit, unitGap } from './gutter.ts'
 import { markForms, markSelector } from './marks.ts'
 import { createPortal } from 'react-dom'
 import './CommentGutter.css'
@@ -16,6 +16,12 @@ export interface CommentGutterProps {
   active?: string | null
   // when there are none
   empty?: ReactNode
+  // how far down the document (from its top) the notes reach, once their text has scrolled away: the
+  // page needs to scroll that far for all of a long card to be read
+  onReach?: (bottom: number) => void
+  // follow the document as it scrolls in a pane of its own, the gutter as tall as the window (the
+  // idea page); or scroll with it, the gutter as tall as its notes need (the focus view)
+  follows?: boolean
 }
 
 // The panel beside the document, with each text comment level with the text
@@ -33,7 +39,14 @@ export interface CommentGutterProps {
 // place among them at its size, and a line ties it to its text when it can't be level with it.
 //
 // Pointing at a card lights its text, and pointing at the text lights its card.
-export function CommentGutter({ documentRef, notes, active = null, empty }: CommentGutterProps) {
+export function CommentGutter({
+  documentRef,
+  notes,
+  active = null,
+  empty,
+  follows = true,
+  onReach,
+}: CommentGutterProps) {
   const gutter = useRef<HTMLDivElement>(null)
   const inner = useRef<HTMLDivElement>(null)
   // each unit's element (a note, or a pile), by its first note's ID; and the open card's, drawn over
@@ -60,7 +73,18 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
   const [units, setUnits] = useState<NoteUnit[] | null>(null)
   // each note's height drawn full, as last fitted: the open card's place keeps it
   const fullHeights = useRef(new Map<string, number>())
-  const fitKey = `${ids}|${width}|${fonts}|${anchors.size}`
+  // the gutter's own width too: it can change without the window's (the focus view's column opening)
+  const [columnWidth, setColumnWidth] = useState(0)
+  useEffect(() => {
+    const box = gutter.current
+    if (!box) {
+      return
+    }
+    const observer = new ResizeObserver(() => setColumnWidth(Math.round(box.clientWidth)))
+    observer.observe(box)
+    return () => observer.disconnect()
+  }, [])
+  const fitKey = `${ids}|${width}|${columnWidth}|${fonts}|${anchors.size}`
   useLayoutEffect(() => {
     setUnits(null)
   }, [fitKey])
@@ -131,13 +155,91 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
     // text reflows when the window or the text size changes, and when diagrams land
     const observer = new ResizeObserver(measure)
     observer.observe(root)
-    return () => observer.disconnect()
+    // and marks come and go without that: a comment's words edited away, a comment marked again
+    let pending = 0
+    const marks = new MutationObserver(() => {
+      cancelAnimationFrame(pending)
+      pending = requestAnimationFrame(measure)
+    })
+    marks.observe(root, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['data-comment-id', 'data-comment-ids'],
+    })
+    return () => {
+      observer.disconnect()
+      marks.disconnect()
+      cancelAnimationFrame(pending)
+    }
   }, [documentRef, ids])
 
   // what's drawn: while fitting, every note full; then each unit at its size, the open one keeping its
   // place at its size, drawn again over the rest
-  const drawn: NoteUnit[] = units ?? [...anchors.keys()].map((id): NoteUnit => ({ ids: [id], size: 'full' }))
+  // A fit is made again a drawing after the comments change, so until then it may name one whose
+  // mark has gone (resolved, or its text edited away): only those with a mark are drawn
+  const drawn: NoteUnit[] = (units ?? [...anchors.keys()].map((id): NoteUnit => ({ ids: [id], size: 'full' }))).flatMap(
+    (unit) => {
+      const ids = unit.ids.filter((id) => anchors.has(id))
+      if (ids.length === 0) {
+        return []
+      }
+      return [{ ids, size: unit.size === 'pile' && ids.length === 1 ? 'line' : unit.size }]
+    },
+  )
   const over = units !== null && active !== null && anchors.has(active) ? active : null
+  // open together: the comment opened, and every other on its mark (a section's, or a block's, that
+  // several comments share), each drawn whole, so none is hidden under the others
+  const [together, setTogether] = useState<string[]>([])
+  useLayoutEffect(() => {
+    const root = documentRef.current
+    if (!root || over === null) {
+      setTogether((was) => (was.length === 0 ? was : []))
+      return
+    }
+    const shared = new Set([over])
+    for (const mark of root.querySelectorAll(markSelector(over))) {
+      for (const id of (mark.getAttribute('data-comment-ids') ?? '').split(' ').filter(Boolean)) {
+        shared.add(id)
+      }
+    }
+    const next = ids.split('\n').filter((id) => shared.has(id) && anchors.has(id))
+    setTogether((was) => (was.join(' ') === next.join(' ') ? was : next))
+  }, [documentRef, over, ids, anchors])
+  const opened = over === null ? [] : together.includes(over) ? together : [over]
+
+  // a block's rectangle drawn (pointed at, or its comment open) can run into a neighbor's count, which
+  // then reads as a second count on it: those fade while it's drawn
+  useLayoutEffect(() => {
+    const root = documentRef.current
+    if (!root) {
+      return
+    }
+    const drawn = [lit, active].flatMap((id) =>
+      id === null
+        ? []
+        : [...root.querySelectorAll<HTMLElement>(markSelector(id))].filter((m) =>
+            m.classList.contains('md-block-mark'),
+          ),
+    )
+    const boxes = drawn.map((block) => {
+      const box = block.getBoundingClientRect()
+      // the rectangle sits a little outside the block (MarkdownView.css)
+      return { block, box: new DOMRect(box.left - 12, box.top - 8, box.width + 24, box.height + 16) }
+    })
+    for (const count of root.querySelectorAll<HTMLElement>('.md-block-count')) {
+      const at = count.getBoundingClientRect()
+      const hit = boxes.some(
+        ({ block, box }) =>
+          !block.contains(count) &&
+          at.left < box.right &&
+          at.right > box.left &&
+          at.top < box.bottom &&
+          at.bottom > box.top,
+      )
+      count.classList.toggle('is-faded', hit)
+    }
+  }, [documentRef, lit, active, anchors])
   const drawnKey = drawn.map((unit) => `${unit.size}:${unit.ids.join(',')}`).join(' ')
 
   // a note grows when its replies open
@@ -152,9 +254,34 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
     return () => observer.disconnect()
   }, [drawnKey, over])
 
+  // following the document, a wheel over the gutter scrolls the document, and only it: not the panel
+  // the gutter is in (whose scrolling would carry the notes away from their text). Not passive, to
+  // keep it from the panel
+  useEffect(() => {
+    const box = gutter.current
+    if (!follows || !box) {
+      return
+    }
+    const wheel = (event: WheelEvent) => {
+      if (event.ctrlKey) {
+        return
+      }
+      event.preventDefault()
+      // in lines, as some mice give it, or pages
+      const unit = event.deltaMode === 1 ? remToPx(1.5) : event.deltaMode === 2 ? window.innerHeight : 1
+      scrollerOf(documentRef.current)?.scrollBy({ left: 0, top: event.deltaY * unit })
+    }
+    box.addEventListener('wheel', wheel, { passive: false })
+    return () => box.removeEventListener('wheel', wheel)
+  }, [documentRef, follows])
+
   // place the notes, and follow the document: they move as it scrolls, and the gutter fills the rest
   // of the window. Written to the notes directly, as the document scrolls, rather than drawn again
   const latest = useRef({ anchors, drawn, over })
+  // the reach last reported, and where to
+  const reported = useRef(0)
+  const latestReach = useRef(onReach)
+  latestReach.current = onReach
   // the fit last placed
   const placedFit = useRef<NoteUnit[] | null | undefined>(undefined)
   latest.current = { anchors, drawn, over }
@@ -168,28 +295,39 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
     const place = () => {
       const page = root.getBoundingClientRect()
       const shown = box.getBoundingClientRect()
-      content.style.transform = `translateY(${page.top - shown.top}px)`
-      box.style.height = `${Math.max(0, window.innerHeight - Math.max(0, shown.top))}px`
-      // the top of the window the document is read in, and of the gutter where it can be seen
+      const offset = page.top - shown.top
+      content.style.transform = `translateY(${offset}px)`
+      if (follows) {
+        box.style.height = `${Math.max(0, window.innerHeight - Math.max(0, shown.top))}px`
+        // reaching the window's foot, it would run into the end padding of the panel it's in, and let
+        // the panel scroll (moving the gutter, which grows to the window again, and on): it takes the
+        // padding back
+        const panel = clipperOf(box.parentElement)
+        box.style.marginBottom = panel ? `${-(parseFloat(getComputedStyle(panel).paddingBottom) || 0)}px` : ''
+      }
+      // the top of the window the document is read in, and of the gutter where it can be seen; scrolling
+      // with the document, nothing cuts a note off, so there's no floor
       const windowTop = Math.max(0, topOf(scrollerOf(root)))
       const gutterTop = Math.max(shown.top, windowTop, topOf(scrollerOf(box)))
-      const floor = { top: gutterTop - page.top, window: windowTop - page.top }
+      const floor = follows
+        ? { top: gutterTop - page.top, window: windowTop - page.top }
+        : { top: -Infinity, window: Infinity }
       const { anchors, drawn, over } = latest.current
       const fixed = fixedHeights()
-      const tops = layoutNotes(
-        drawn.map((unit) => {
-          const anchor = anchors.get(unit.ids[0]!)!
-          return {
-            id: unit.ids[0]!,
-            anchor: anchor.top,
-            end: anchor.end,
-            height: elements.current.get(unit.ids[0]!)?.offsetHeight ?? 0,
-            gap: unitGap(unit, fixed, remToPx(0.75)),
-          }
-        }),
-        remToPx(0.75),
-        floor,
-      )
+      const items = drawn.flatMap((unit) => {
+        const anchor = anchors.get(unit.ids[0]!)
+        if (!anchor) {
+          return []
+        }
+        return {
+          id: unit.ids[0]!,
+          anchor: anchor.top,
+          end: anchor.end,
+          height: elements.current.get(unit.ids[0]!)?.offsetHeight ?? 0,
+          gap: unitGap(unit, fixed, remToPx(0.75)),
+        }
+      })
+      const tops = layoutNotes(items, remToPx(0.75), floor)
       for (const [id, element] of elements.current) {
         const top = tops.get(id)
         if (top !== undefined) {
@@ -201,7 +339,7 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
       // and tied to its text by a line when it isn't level with it
       const anchor = over === null ? undefined : anchors.get(over)
       if (anchor && overlay.current) {
-        const top = anchor.end > floor.window ? Math.max(anchor.top, floor.top) : anchor.top
+        const top = Math.max(anchor.top, lowestOf({ anchor: anchor.top, end: anchor.end }, floor))
         overlay.current.style.top = `${top}px`
         overlay.current.style.visibility = ''
         if (tie.current) {
@@ -209,6 +347,32 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
           tie.current.style.height = `${Math.max(0, top - anchor.top)}px`
           tie.current.hidden = top - anchor.top < 2
         }
+      }
+      // how far down the document the notes reach once their texts have scrolled above the window
+      // (where each then stays, relative to the document): laid out as if every text were above it
+      if (follows) {
+        const above = 1e7
+        const below = floor.top - floor.window
+        const placed = layoutNotes(items, remToPx(0.75), { top: above + below, window: above })
+        let reach = 0
+        for (const item of items) {
+          reach = Math.max(reach, (placed.get(item.id) ?? 0) + item.height)
+        }
+        if (anchor && overlay.current) {
+          reach = Math.max(reach, Math.max(anchor.top, anchor.end + below) + overlay.current.offsetHeight)
+        }
+        if (Math.abs(reach - reported.current) > 1) {
+          reported.current = reach
+          latestReach.current?.(reach)
+        }
+      }
+      // scrolling with the document: as tall as its last note, so what comes after starts below it
+      if (!follows) {
+        let bottom = 0
+        for (const element of [...elements.current.values(), ...(overlay.current ? [overlay.current] : [])]) {
+          bottom = Math.max(bottom, element.offsetTop + element.offsetHeight)
+        }
+        box.style.minHeight = `${Math.max(0, bottom + offset)}px`
       }
     }
     // a new fit (and the first) is placed at once: its notes were drawn full to be measured, and
@@ -237,7 +401,7 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
       window.removeEventListener('scroll', scrolled, true)
       window.removeEventListener('resize', place)
     }
-  }, [documentRef, anchors, heights, drawnKey, over, units])
+  }, [documentRef, anchors, heights, drawnKey, over, units, follows])
 
   const byId = new Map(notes.map((note) => [note.id, note]))
   const draw = (id: string, size: CardSize) => {
@@ -254,8 +418,8 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
   return (
     <div
       ref={gutter}
-      className="comment-gutter"
-      onWheel={(event) => scrollerOf(documentRef.current)?.scrollBy({ top: event.deltaY })}
+      // a comment open: the other cards fade, so it stands out
+      className={`comment-gutter${over !== null ? ' has-open' : ''}${follows ? '' : ' is-scrolling-with'}`}
     >
       <div ref={inner} className="comment-gutter-inner">
         {drawn.map((unit) => {
@@ -273,8 +437,8 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
                 }
               }}
               className={`comment-gutter-note${pile ? ' is-pile' : ''}${pile && fanned === key ? ' is-fanned' : ''}`}
-              data-note-id={pile || over === key ? undefined : key}
-              data-place-of={over === key ? key : undefined}
+              data-note-id={pile || opened.includes(key) ? undefined : key}
+              data-place-of={!pile && opened.includes(key) ? key : undefined}
               data-pile={pile ? unit.ids.join(' ') : undefined}
               data-size={unit.size}
               data-under={pile ? Math.min(3, unit.ids.length - 1) : undefined}
@@ -303,7 +467,7 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
                     </div>
                   )}
                 </>
-              ) : over === key ? (
+              ) : opened.includes(key) ? (
                 // its place, kept at its size while it's drawn open over the rest
                 <div style={{ height: placeHeight(unit.size, fullHeights.current.get(key) ?? 0) }} />
               ) : (
@@ -327,14 +491,18 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
               onPointerEnter={() => setLit(over)}
               onPointerLeave={() => setLit((was) => (was === over ? null : was))}
             >
-              {draw(over, 'full')}
+              {opened.map((id) => (
+                <div key={id} className="comment-gutter-opened" data-note-id={id}>
+                  {draw(id, 'full')}
+                </div>
+              ))}
             </div>
           </>
         )}
       </div>
       {drawn.length === 0 && empty && <div className="comment-gutter-empty">{empty}</div>}
       {lit !== null && anchors.has(lit) && <style>{litStyle(lit)}</style>}
-      <SectionBox documentRef={documentRef} id={lit ?? active} open={(lit ?? active) === active} />
+      <SectionBox documentRef={documentRef} ids={[lit, active]} open={active} />
     </div>
   )
 }
@@ -342,43 +510,55 @@ export function CommentGutter({ documentRef, notes, active = null, empty }: Comm
 /**
  * A section comment pointed at, or open: a rectangle around its whole section, from its heading to
  * the next heading at its level or above (filled while it's open). What tells a section comment from
- * one on its heading's words. Drawn over the document, following it as it scrolls.
+ * one on its heading's words. Drawn in the document, under its words and its counts.
  */
 function SectionBox({
   documentRef,
-  id,
+  ids,
   open,
 }: {
   documentRef: RefObject<HTMLElement | null>
-  id: string | null
-  open: boolean
+  // the comment pointed at, then the one open: the first of them on a section is boxed
+  ids: Array<string | null>
+  open: string | null
 }) {
-  const [box, setBox] = useState<DOMRect | null>(null)
+  const [boxed, setBoxed] = useState<string | null>(null)
+  const key = ids.join(' ')
+  const [box, setBox] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   useLayoutEffect(() => {
     const root = documentRef.current
-    if (!root || id === null) {
+    const candidates = ids.filter((one): one is string => one !== null)
+    if (!root || candidates.length === 0) {
       setBox(null)
       return
     }
-    const measure = () => setBox(sectionBox(root, id))
-    measure()
-    window.addEventListener('scroll', measure, true)
-    window.addEventListener('resize', measure)
-    return () => {
-      window.removeEventListener('scroll', measure, true)
-      window.removeEventListener('resize', measure)
+    // drawn in the document, under its words and the counts, so it scrolls with it
+    if (getComputedStyle(root).position === 'static') {
+      root.style.position = 'relative'
     }
-  }, [documentRef, id])
-  if (!box) {
+    const measure = () => {
+      const id = candidates.find((one) => sectionBox(root, one) !== null) ?? null
+      const at = id === null ? null : sectionBox(root, id)
+      const origin = root.getBoundingClientRect()
+      setBoxed(id)
+      setBox(at && { top: at.top - origin.top, left: at.left - origin.left, width: at.width, height: at.height })
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(root)
+    return () => observer.disconnect()
+  }, [documentRef, key])
+  const root = documentRef.current
+  if (!box || !root) {
     return null
   }
   return createPortal(
     <div
-      className={`comment-section-box${open ? ' is-open' : ''}`}
+      className={`comment-section-box${boxed !== null && boxed === open ? ' is-open' : ''}`}
       style={{ top: box.top, left: box.left, width: box.width, height: box.height }}
       aria-hidden
     />,
-    document.body,
+    root,
   )
 }
 
@@ -401,8 +581,10 @@ function sectionBox(root: HTMLElement, id: string): DOMRect | null {
   const top = heading.getBoundingClientRect()
   const bottom = last.getBoundingClientRect()
   const column = heading.parentElement.getBoundingClientRect()
-  const pad = remToPx(0.5)
-  return new DOMRect(column.left - pad, top.top - pad, column.width + 2 * pad, bottom.bottom - top.top + 2 * pad)
+  // clear of the blocks' corner marks and counts, which stand out past the column (MarkdownView.css)
+  const side = remToPx(1.75)
+  const end = remToPx(0.75)
+  return new DOMRect(column.left - side, top.top - end, column.width + 2 * side, bottom.bottom - top.top + 2 * end)
 }
 
 /** A note's place while it's drawn open over the rest: as tall as it is at its size. */
@@ -506,6 +688,17 @@ function topOf(element: HTMLElement | null): number {
 }
 
 // the nearest element that scrolls the document
+/** The nearest element round this one that scrolls, or could. */
+function clipperOf(element: HTMLElement | null): HTMLElement | null {
+  for (let at = element; at; at = at.parentElement) {
+    const { overflowY } = getComputedStyle(at)
+    if (overflowY === 'auto' || overflowY === 'scroll') {
+      return at
+    }
+  }
+  return null
+}
+
 function scrollerOf(element: HTMLElement | null): HTMLElement | null {
   for (let at = element; at; at = at.parentElement) {
     const { overflowY } = getComputedStyle(at)
