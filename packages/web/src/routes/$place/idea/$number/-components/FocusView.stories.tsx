@@ -358,3 +358,55 @@ export const ScrollToTheLastSection: Story = {
     await waitFor(() => expect(Math.abs(heading.getBoundingClientRect().top - top)).toBeLessThan(40))
   },
 }
+
+/**
+ * Editing the draft here: Edit opens it, every sheet in the editor (a stand-in for DraftEditor, which
+ * needs the server), the draft's panel and actions in place of the comments.
+ */
+function Editing(props: FocusViewProps & { onClose: () => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <FocusView
+      {...props}
+      editing={{
+        label: 'Edit',
+        onEdit: () => setOpen(true),
+        open: open
+          ? {
+              label: 'Editing the draft, on v1',
+              sheet: (page) => <textarea aria-label={`Editing ${page}`} defaultValue="…" />,
+              panel: <p>No changes yet.</p>,
+              actions: <button type="button">Commit as v2</button>,
+              close: async () => {
+                props.onClose()
+                setOpen(false)
+                return true
+              },
+            }
+          : null,
+      }}
+    />
+  )
+}
+
+// Edit opens the draft: each sheet's file in the editor, the comments' switch and threads gone, the
+// draft beside the sheets; leaving saves and shuts the editor first
+export const EditingTheDraft: Story = {
+  args: { onClose: fn() } as never,
+  render: (args) => <Editing {...(args as unknown as FocusViewProps & { onClose: () => void })} />,
+  play: async ({ args, userEvent }) => {
+    const view = within(region())
+    await show('All', userEvent)
+    await userEvent.click(view.getByRole('button', { name: 'Edit' }))
+    await expect(view.getByText('Editing the draft, on v1')).toBeVisible()
+    await expect(view.getByRole('textbox', { name: 'Editing f1' })).toBeVisible()
+    await expect(view.getByRole('textbox', { name: 'Editing f2' })).toBeVisible()
+    // the panel where the comments were, and no comments
+    await expect(view.getByRole('complementary', { name: 'The draft' })).toHaveTextContent('No changes yet.')
+    await expect(view.queryByRole('radiogroup', { name: 'Comments' })).toBeNull()
+    await expect(region().querySelector('.comment-gutter')).toBeNull()
+    await userEvent.click(view.getByRole('button', { name: /Exit focus view/ }))
+    await waitFor(() => expect(args.onExit).toHaveBeenCalledWith('offline.md'))
+    await expect((args as unknown as { onClose: () => void }).onClose).toHaveBeenCalled()
+  },
+}

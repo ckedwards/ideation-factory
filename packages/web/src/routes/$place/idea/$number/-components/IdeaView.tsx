@@ -207,9 +207,9 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
   })
   const canEdit = idea.you.edit && !older && base === null && !editing
 
-  // the focus view: open while the address says so, and not while editing or comparing. Opening it
-  // here carries the text into it; its address opened directly shows it at once
-  const focusing = view === 'focus' && base === null && !editing
+  // the focus view: open while the address says so, and not while comparing; editing can happen in it.
+  // Opening it here carries the text into it; its address opened directly shows it at once
+  const focusing = view === 'focus' && base === null
   const [focusPhase, setFocusPhase] = useState<FocusPhase | null>(focusing ? 'still' : null)
   // each time it opens is a new one, so leaving and opening again don't share a half-run animation
   const [openings, setOpenings] = useState(0)
@@ -250,7 +250,8 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
     <>
       <IdeaPage
         opened={opened}
-        editing={editor}
+        // while the focus view's open, editing is in it: the page beneath doesn't open the file twice
+        editing={focusPhase ? null : editor}
         files={pulled.files.map((f) => {
           const before = baseFiles.data?.files.find((b) => b.file === f.file)
           return {
@@ -450,10 +451,29 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
             }
           }}
           onFileComment={(page, body, pending) => writes.comment({ kind: 'file', file: page }, body, pending)}
+          // the draft, for those who can edit the latest version: every sheet at once
+          {...(idea.you.edit && !older
+            ? {
+                editing: {
+                  label: draftChanges.length > 0 ? 'Open the draft' : 'Edit',
+                  disabled: !draft.data,
+                  onEdit: () => setEditing(true),
+                  open: editor
+                    ? {
+                        label: editor.label,
+                        sheet: editor.sheet,
+                        panel: editor.panel,
+                        actions: editor.actions,
+                        close: editor.close,
+                      }
+                    : null,
+                },
+              }
+            : {})}
         />
       )}
-      {/* the editor's words and actions, in the idea's bar while it's open */}
-      {editor?.bar}
+      {/* the editor's words and actions, in the idea's bar while it's open (in focus view, its own) */}
+      {!focusPhase && editor?.bar}
       <Toast message={note} onDismiss={() => setNote(null)} />
     </>
   )

@@ -43,6 +43,8 @@ export interface DraftEditorProps {
   view?: EditingView
   /** Over the text: the file's line; its path alone without one. */
   lead?: ReactNode
+  /** Nothing over the text: what it's in names the file (a sheet of the focus view). */
+  bare?: boolean
 }
 
 export function DraftEditor(props: DraftEditorProps) {
@@ -271,7 +273,7 @@ export function DraftEditor(props: DraftEditorProps) {
         comments={comments}
         activeComment={props.view?.active ?? null}
         {...(props.view ? { onComment: props.view.onSelect } : {})}
-        lead={<div className="draft-editor-file">{props.lead ?? file.path}</div>}
+        {...(props.bare ? {} : { lead: <div className="draft-editor-file">{props.lead ?? file.path}</div> })}
         status={statusText}
         onChange={(next) => {
           setText(next)

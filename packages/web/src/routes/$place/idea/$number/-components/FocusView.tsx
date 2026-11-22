@@ -8,6 +8,11 @@
 //
 // It's drawn over the whole window, above the app's bar and the idea's, with
 // the page beneath inert. IdeaView says when it's opening, open, or leaving.
+//
+// Edit (or Open the draft) in its top line opens the idea's draft: every sheet
+// becomes its file in the editor, and the column on the right shows the draft's
+// changes, Commit, Preview and Discard in place of the comments. It saves as you
+// go, so leaving asks nothing: what's typed is saved first, and the editor shut.
 import { type ReactNode, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { markdownTree } from '@ideaf/core'
@@ -33,6 +38,28 @@ export type FocusComments = 'off' | 'selected' | 'all'
 
 /** still: open from the start (its address opened directly), nothing to carry from. */
 export type FocusPhase = 'still' | 'entering' | 'open' | 'leaving'
+
+/** Editing the idea's draft here: the button that opens it, and, open, each sheet's editor and the panel. */
+export interface FocusEditing {
+  /** "Edit", or "Open the draft" when it has changes. */
+  label: string
+  /** The draft not read yet. */
+  disabled?: boolean
+  onEdit: () => void
+  /** The draft, open for editing; null while it isn't. */
+  open: {
+    /** "Editing the draft, on v3". */
+    label: string
+    /** A page's file in the editor (or compared, previewing); null for one the draft hasn't got. */
+    sheet: (page: string) => ReactNode
+    /** The draft's changes and what committing does to the comments. */
+    panel: ReactNode
+    /** Commit, Preview, Discard and Close editor. */
+    actions: ReactNode
+    /** What's typed saved, then the editor closed; false if something couldn't be saved. */
+    close: () => Promise<boolean>
+  } | null
+}
 
 /** One file, one page: its open comments, placed in it. */
 export interface FocusPage {
@@ -63,6 +90,8 @@ export interface FocusViewProps {
   onSuggest?: (page: string, selection: TextSelection, replacement: string, body: string, pending: boolean) => void
   /** A comment on a page's file as a whole, from the button in its header. */
   onFileComment?: (page: string, body: string, pending: boolean) => void
+  /** For those who can edit the latest version: its draft, here. */
+  editing?: FocusEditing
 }
 
 const DURATION = 300
@@ -88,7 +117,9 @@ export function FocusView(props: FocusViewProps) {
   // focus view's own look: open (the ground, the sheets in place) and comments on
   const [open, setOpen] = useState(phase === 'still')
   const [mode, setMode] = useState<FocusComments>('off')
-  const comments = mode !== 'off'
+  // editing, the panel's where the comments were
+  const editing = props.editing?.open ?? null
+  const comments = mode !== 'off' && editing === null
   // no transitions for a change that's measured, not shown (comments off on the way out)
   const [still, setStill] = useState(phase === 'still')
   // the page whose text is carried in: in place from the first frame, not rising with the others
@@ -360,7 +391,14 @@ export function FocusView(props: FocusViewProps) {
 
   const exit = () => {
     const page = latest.current.pages.find((p) => p.id === current.page)
-    props.onExit(page?.path ?? props.file)
+    const leave = () => props.onExit(page?.path ?? props.file)
+    // editing: what's typed saved and the editor shut first; leaving waits for it, and stays if it can't
+    const open = latest.current.editing?.open
+    if (open) {
+      void open.close().then((ok) => ok && leave())
+    } else {
+      leave()
+    }
   }
   const choose = (next: FocusComments) => {
     cancel()
@@ -378,6 +416,7 @@ export function FocusView(props: FocusViewProps) {
     'focus-view',
     open && 'is-open',
     comments && 'has-comments',
+    editing && 'is-editing',
     still && 'is-still',
     pagesOpen && 'has-pages-open',
   ]
@@ -398,21 +437,33 @@ export function FocusView(props: FocusViewProps) {
           <span className="focus-version">{props.version}</span>
         </div>
         <div className="focus-tools">
-          <span className="focus-comments">
-            <span className="focus-comments-label">
-              Comments <span className="focus-count">{count}</span>
+          {editing ? (
+            <span className="focus-editing-label">{editing.label}</span>
+          ) : (
+            props.editing && (
+              <Button disabled={props.editing.disabled} onClick={props.editing.onEdit}>
+                {props.editing.label}
+              </Button>
+            )
+          )}
+          {/* editing, the panel's where the comments were */}
+          {editing === null && (
+            <span className="focus-comments">
+              <span className="focus-comments-label">
+                Comments <span className="focus-count">{count}</span>
+              </span>
+              <SegmentedControl
+                label="Comments"
+                options={[
+                  { value: 'off', label: 'Off' },
+                  { value: 'selected', label: 'Selected' },
+                  { value: 'all', label: 'All' },
+                ]}
+                value={mode}
+                onChange={choose}
+              />
             </span>
-            <SegmentedControl
-              label="Comments"
-              options={[
-                { value: 'off', label: 'Off' },
-                { value: 'selected', label: 'Selected' },
-                { value: 'all', label: 'All' },
-              ]}
-              value={mode}
-              onChange={choose}
-            />
-          </span>
+          )}
           <Button variant="ghost" onClick={exit}>
             Exit focus view <kbd aria-hidden>Esc</kbd>
           </Button>
@@ -449,6 +500,13 @@ export function FocusView(props: FocusViewProps) {
           })}
         </ol>
       </nav>
+      {/* editing: the draft beside the sheets (before them, for a narrow screen, where it heads them) */}
+      {editing && (
+        <aside className="focus-edit" aria-label="The draft">
+          <div className="focus-edit-actions">{editing.actions}</div>
+          {editing.panel}
+        </aside>
+      )}
       <div className="focus-pages">
         {pages.map((page, i) => (
           <Row
@@ -458,8 +516,10 @@ export function FocusView(props: FocusViewProps) {
             page={page}
             tree={trees.get(page.id)!}
             comments={comments}
-            mode={mode}
+            // editing, no comments beside the sheets: the draft's panel is there
+            mode={editing ? 'off' : mode}
             carried={carried === page.id}
+            editor={editing ? editing.sheet(page.id) : null}
             active={active}
             onActive={setActive}
             actions={actions}
@@ -554,6 +614,8 @@ interface RowProps {
   actions: ThreadActions
   rowRef: (element: HTMLElement | null) => void
   sheetRef: (element: HTMLElement | null) => void
+  /** Editing: the page's file in the editor, in place of its text. */
+  editor: ReactNode
   suggestionOf?: (selection: TextSelection) => string | null
   onComment?: (selection: TextSelection, body: string, pending: boolean) => void
   onSuggest?: (selection: TextSelection, replacement: string, body: string, pending: boolean) => void
@@ -580,7 +642,7 @@ function Row(props: RowProps) {
       style={{ ['--row' as string]: index }}
     >
       <article
-        className="focus-sheet"
+        className={`focus-sheet${props.editor ? ' is-editing' : ''}`}
         aria-labelledby={`${prefix}name`}
         ref={(element) => {
           sheet.current = element
@@ -609,48 +671,52 @@ function Row(props: RowProps) {
             />
           </div>
         )}
-        <div ref={text}>
-          {/* where the whole file's comments are, for the comments beside it: the top of the text */}
-          <span className="focus-file-anchors" aria-hidden>
-            {page.comments
-              .filter((c) => c.place.kind === 'file')
-              .map((c) => (
-                <span key={c.info.id} data-comment-id={c.info.id} />
-              ))}
-          </span>
-          <MarkdownView
-            tree={props.tree}
-            idPrefix={prefix}
-            // a link to one of the file's own headings, to its prefixed ID
-            resolveLink={(url) =>
-              url.startsWith('#') ? { href: `#${prefix}${url.slice(1)}`, kind: 'internal' } : defaultResolveLink(url)
-            }
-            marks={inText.flatMap((c) =>
-              c.place.kind === 'text'
-                ? [{ id: c.info.id, start: c.place.start, end: c.place.end, active: c.info.id === active }]
-                : [],
-            )}
-            sectionMarks={inText.flatMap((c) =>
-              c.place.kind === 'section'
-                ? [{ id: c.info.id, heading: c.place.heading, active: c.info.id === active }]
-                : [],
-            )}
-            blockMarks={inText.flatMap((c) =>
-              c.place.kind === 'block' ? [{ id: c.info.id, block: c.place.start, active: c.info.id === active }] : [],
-            )}
-            renderCode={renderMermaid}
-            onMarkClick={(id) => comments && props.onActive(id)}
-          />
-          <SelectionMenu
-            documentRef={text}
-            source={page.source}
-            enabled={comments && props.actions.canComment}
-            addToReview={props.actions.addToReview ?? false}
-            {...(props.onComment ? { onComment: props.onComment } : {})}
-            {...(props.onSuggest ? { onSuggest: props.onSuggest } : {})}
-            {...(props.suggestionOf ? { suggestionOf: props.suggestionOf } : {})}
-          />
-        </div>
+        {props.editor ? (
+          <div className="focus-editor">{props.editor}</div>
+        ) : (
+          <div ref={text}>
+            {/* where the whole file's comments are, for the comments beside it: the top of the text */}
+            <span className="focus-file-anchors" aria-hidden>
+              {page.comments
+                .filter((c) => c.place.kind === 'file')
+                .map((c) => (
+                  <span key={c.info.id} data-comment-id={c.info.id} />
+                ))}
+            </span>
+            <MarkdownView
+              tree={props.tree}
+              idPrefix={prefix}
+              // a link to one of the file's own headings, to its prefixed ID
+              resolveLink={(url) =>
+                url.startsWith('#') ? { href: `#${prefix}${url.slice(1)}`, kind: 'internal' } : defaultResolveLink(url)
+              }
+              marks={inText.flatMap((c) =>
+                c.place.kind === 'text'
+                  ? [{ id: c.info.id, start: c.place.start, end: c.place.end, active: c.info.id === active }]
+                  : [],
+              )}
+              sectionMarks={inText.flatMap((c) =>
+                c.place.kind === 'section'
+                  ? [{ id: c.info.id, heading: c.place.heading, active: c.info.id === active }]
+                  : [],
+              )}
+              blockMarks={inText.flatMap((c) =>
+                c.place.kind === 'block' ? [{ id: c.info.id, block: c.place.start, active: c.info.id === active }] : [],
+              )}
+              renderCode={renderMermaid}
+              onMarkClick={(id) => comments && props.onActive(id)}
+            />
+            <SelectionMenu
+              documentRef={text}
+              source={page.source}
+              enabled={comments && props.actions.canComment}
+              addToReview={props.actions.addToReview ?? false}
+              {...(props.onComment ? { onComment: props.onComment } : {})}
+              {...(props.onSuggest ? { onSuggest: props.onSuggest } : {})}
+              {...(props.suggestionOf ? { suggestionOf: props.suggestionOf } : {})}
+            />
+          </div>
+        )}
       </article>
       <SheetComments
         page={page}
