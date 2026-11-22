@@ -8,7 +8,8 @@
     "./storybook": "./src/storybook/preview.tsx",
     "./fixtures": "./src/stories/fixtures.ts",
     "./testing": "./src/stories/screen.ts",
-    "./editor": "./src/editor/index.ts"
+    "./editor": "./src/editor/index.ts",
+    "./editor/model": "./src/editor/model.ts"
   },
   "scripts": {
     "typecheck": "bun check",

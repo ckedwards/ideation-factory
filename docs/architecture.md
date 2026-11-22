@@ -154,6 +154,7 @@ Each idea has **one draft**, shared by everyone with edit access: changes on the
 - **Always on the latest version:** a version made elsewhere (an agent's batch, an upload) is what the draft is then built on. Changes it overtook are marked outdated, and committing waits until they're undone or redone.
 - **Outdating the draft is confirmed:** a version that would make changes in the draft outdated is refused (`draft_outdated`, naming them) until whoever makes it confirms: `ideaf sync` and `ideaf edit` ask at a terminal and otherwise need `--outdate-draft`. Nothing in the web app makes a version around the draft, so it never asks.
 - **Committing** makes one version, a step for each command, and accepts the suggestions in it. **Discarding** empties it for everyone, and opens its suggestions again.
+- **Kept as documents:** the idea's actor holds the draft as the page editor's own document for each file it changes (ui's `editor/model.ts`, run with no DOM), with the steps that made each one, in its SQLite. The list of changes isn't stored: it's the difference between the documents and the latest version, worked out by block ID as the editor saves (core's `draftChanges`). This is what live editing builds on (`docs/handoff-live-editing.md`).
 
 Agents editing with batches, and uploads, make versions directly. A full editor in the web app, later, writes to the same draft.
 

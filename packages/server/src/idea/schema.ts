@@ -87,8 +87,20 @@ export interface IdeaDB {
    * only: what their bots read isn't what they've seen.
    */
   seen: { user: string; version: number; at: number }
-  /** The idea's draft: changes on the latest version, in the order they were made, until it's committed or discarded. */
-  draft: { key: string; seq: number; change: string; by: string; at: number }
+  /**
+   * The idea's draft, a live document for each file it changes (the page editor's, model.ts): the
+   * file as the draft has it now (its Markdown and its blocks' IDs, `source` and `ids`, and the
+   * editor's document, `doc`), after `steps` steps. A file the draft hasn't changed has no row.
+   */
+  draft_files: { file: string; steps: number; doc: string; source: string; ids: string; at: number }
+  /** Each file's steps, in the order they were taken, with who took them: the recent ones, for catching up. */
+  draft_steps: { file: string; seq: number; step: string; by: string; at: number }
+  /** Suggestions accepted into the draft, resolved when it's committed: each one's change. */
+  draft_suggestions: { comment: string; change: string; by: string; at: number }
+  /** Changes a version made around the draft has outdated: kept, to be undone or redone, until then. */
+  draft_held: { key: string; change: string; by: string; at: number }
+  /** Who made each of the draft's changes (by its key), and when they last did. */
+  draft_authors: { key: string; by: string; at: number }
   writes: { key: string; result: string; at: number }
   /**
    * What a write tells the directory (its inbox events, as a NotifyBatch's),
@@ -133,7 +145,11 @@ export const IDEA_COLUMNS = {
   status_changes: ['seq', 'status', 'by', 'at', 'note'],
   reviews: ['seq', 'reviewer', 'by', 'verdict', 'version', 'body', 'at', 'dismissed'],
   seen: ['user', 'version', 'at'],
-  draft: ['key', 'seq', 'change', 'by', 'at'],
+  draft_files: ['file', 'steps', 'doc', 'source', 'ids', 'at'],
+  draft_steps: ['file', 'seq', 'step', 'by', 'at'],
+  draft_suggestions: ['comment', 'change', 'by', 'at'],
+  draft_held: ['key', 'change', 'by', 'at'],
+  draft_authors: ['key', 'by', 'at'],
   writes: ['key', 'result', 'at'],
   outbox: ['id', 'events', 'at', 'attempts', 'next_at'],
   schema_version: ['version'],
@@ -232,13 +248,25 @@ const MIGRATIONS: Migration[] = [
       version INTEGER NOT NULL REFERENCES versions (number),
       at INTEGER NOT NULL
     )`,
-    `CREATE TABLE draft (
-      key TEXT PRIMARY KEY,
-      seq INTEGER NOT NULL UNIQUE,
-      change TEXT NOT NULL,
-      by TEXT NOT NULL,
+    `CREATE TABLE draft_files (
+      file TEXT PRIMARY KEY,
+      steps INTEGER NOT NULL,
+      doc TEXT NOT NULL,
+      source TEXT NOT NULL,
+      ids TEXT NOT NULL,
       at INTEGER NOT NULL
     )`,
+    `CREATE TABLE draft_steps (
+      file TEXT NOT NULL,
+      seq INTEGER NOT NULL,
+      step TEXT NOT NULL,
+      by TEXT NOT NULL,
+      at INTEGER NOT NULL,
+      PRIMARY KEY (file, seq)
+    )`,
+    `CREATE TABLE draft_suggestions (comment TEXT PRIMARY KEY, change TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL)`,
+    `CREATE TABLE draft_held (key TEXT PRIMARY KEY, change TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL)`,
+    `CREATE TABLE draft_authors (key TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (key, by))`,
     // results of recent writes by idempotency key, so a retried write isn't applied twice
     `CREATE TABLE writes (key TEXT PRIMARY KEY, result TEXT NOT NULL, at INTEGER NOT NULL)`,
     `CREATE INDEX writes_at ON writes (at)`,

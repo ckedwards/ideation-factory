@@ -2,7 +2,6 @@
 // large upload or batch slows only its own idea, not every actor on the node
 // (scale concerns, concern 4). Tests run it in process.
 import {
-  addChange,
   type Anchor,
   type AnchorInput,
   applyBatch,
@@ -11,8 +10,10 @@ import {
   type BatchResult,
   type BuiltDraft,
   buildDraft,
-  type DraftChange,
+  type DraftChanges,
   type DraftEntry,
+  draftChanges,
+  type EditorBlock,
   checkAnchor,
   type Comment,
   createIdea,
@@ -36,15 +37,8 @@ export interface CoreRunner {
   checkAnchor(key: string, idea: Idea, input: AnchorInput): Promise<ReturnType<typeof checkAnchor>>
   suggestionSource(key: string, idea: Idea, anchor: Anchor): Promise<ReturnType<typeof suggestionSource>>
   buildDraft(key: string, idea: Idea, comments: Comment[], entries: DraftEntry[]): Promise<BuiltDraft>
-  addChange(
-    key: string,
-    idea: Idea,
-    comments: Comment[],
-    entries: Array<DraftEntry & { by: string }>,
-    change: DraftChange,
-    by: string,
-    newKey: string,
-  ): Promise<ReturnType<typeof addChange>>
+  /** The changes that make `draft` read as `files` do: the draft's live documents, as changes on the latest version. */
+  draftChanges(key: string, draft: Idea, files: Record<string, EditorBlock[]>): Promise<DraftChanges>
   close(): Promise<void>
 }
 
@@ -66,7 +60,7 @@ export const core = {
   checkAnchor,
   suggestionSource,
   buildDraft,
-  addChange,
+  draftChanges,
 }
 export type CoreMethod = keyof typeof core
 
@@ -79,8 +73,7 @@ export function inProcessCore(): CoreRunner {
     checkAnchor: async (_key, idea, input) => checkAnchor(idea, input),
     suggestionSource: async (_key, idea, anchor) => suggestionSource(idea, anchor),
     buildDraft: async (_key, idea, comments, entries) => buildDraft(idea, comments, entries),
-    addChange: async (_key, idea, comments, entries, change, by, newKey) =>
-      addChange(idea, comments, entries, change, by, newKey),
+    draftChanges: async (_key, draft, files) => draftChanges(draft, files),
     close: async () => {},
   }
 }

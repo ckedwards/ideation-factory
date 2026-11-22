@@ -23,6 +23,7 @@ import {
   type CommentOutcome,
   type Conflict,
   contentHash,
+  type BuiltDraft,
   type DraftEntry,
   DraftChange,
   type Skipped,
@@ -42,6 +43,7 @@ import { prepared } from '../sql/prepared.ts'
 import type { Sql } from '../sql/sql.ts'
 import type { InboxEvent } from '../directory/types.ts'
 import { inboxEvents, publishedInboxEvents } from './notify.ts'
+import { blocksNamed, blocksOf, type DraftText, keyOf, LiveDrafts, type Retargeted } from './draft.ts'
 import { reviewerOf } from './reviewer.ts'
 import { type IdeaDB, type IdeaStatus, VERDICTS, type Verdict } from './schema.ts'
 
@@ -307,6 +309,77 @@ const refuse = (code: WriteErrorCode, message: string, details?: unknown): never
   throw new Refused({ code, message, ...(details === undefined ? {} : { details }) })
 }
 
+/** A file of the draft as stored, its row and its text; the suggestions accepted into it; the changes held. */
+interface DraftState {
+  rows: Map<string, IdeaDB['draft_files']>
+  texts: Map<string, DraftText>
+  suggestions: DraftSuggestion[]
+  held: DraftHeld[]
+  authors: Map<string, { by: Caller; at: number }>
+}
+interface DraftSuggestion {
+  comment: string
+  change: DraftChange
+  by: Caller
+  at: number
+}
+interface DraftHeld {
+  key: string
+  change: DraftChange
+  by: Caller
+  at: number
+}
+/** One of the draft's changes, and where it comes from: held, a suggestion accepted, or the documents. */
+interface DraftItem {
+  key: string
+  change: DraftChange
+  by: Caller
+  at: number
+  kind: 'held' | 'suggestion' | 'derived'
+}
+interface Derived {
+  entries: DraftItem[]
+  built: BuiltDraft
+}
+/** The draft as a write leaves it: worked out, to keep in the write's transaction. */
+interface NextDraft {
+  after: Derived
+  save: (tx: Kysely<IdeaDB>) => Promise<void>
+  done: () => void
+}
+
+const plainEntry = ({ key, change }: { key: string; change: DraftChange }): DraftEntry => ({ key, change })
+
+/** The draft's key for the change a caller sent, as it's now in the draft; null if it left none. */
+function changeKey(change: DraftChange, after: Derived): string | null {
+  const names = blocksNamed(change)
+  const derived = after.entries.filter((e) => e.kind === 'derived')
+  const direct = derived.find((e) => blocksNamed(e.change).some((id) => names.includes(id)))
+  if (direct) {
+    return direct.key
+  }
+  // new text, or a change to it: the change that added it
+  const made = new Map(
+    after.built.files.flatMap((f) =>
+      f.units.flatMap((u) => (u.origin.kind === 'new' ? [[u.id, u.origin.change] as const] : [])),
+    ),
+  )
+  for (const id of names) {
+    if (made.has(id)) {
+      return made.get(id)!
+    }
+  }
+  if (change.kind === 'insert') {
+    const text = change.markdown.trim()
+    const insert = derived.find((e) => e.change.kind === 'insert' && e.change.markdown.includes(text))
+    return insert?.key ?? null
+  }
+  return null
+}
+
+/** How many of a file's steps are kept, for catching up: the rest are in its document. */
+const KEEP_STEPS = 2000
+
 /** How long a write's result is kept for retries. */
 const KEEP_RESULTS_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -319,6 +392,8 @@ export class IdeaService {
   readonly #now: () => number
   /** The latest version, kept in memory: its sources and the open comments' anchors. */
   #latest: Latest | null = null
+  /** The draft's documents, between writes. */
+  readonly #live = new LiveDrafts()
 
   constructor(
     readonly id: string,
@@ -1031,31 +1106,28 @@ export class IdeaService {
     }
     const decision: Decision = { kind: 'rejected', by: request.caller, at: this.#now(), version: null }
     const result: WriteResult = { ok: true, value: { kind: 'rejected', comment: row!.id } }
-    const drafted = (await this.#draftEntries()).filter(
-      (e) => e.change.kind === 'suggestion' && e.change.comment === row!.id,
-    )
+    const { latest, state, derived } = await this.#draftNow(request.caller)
+    const drafted = state.suggestions.some((s) => s.comment === row!.id)
     const events: IdeaEvent[] = [
       { name: 'decided', payload: { comment: row!.id, decision, by: request.caller } },
-      ...(drafted.length > 0 ? [{ name: 'draft' as const, payload: { by: request.caller } }] : []),
+      ...(drafted ? [{ name: 'draft' as const, payload: { by: request.caller } }] : []),
     ]
-    await this.#transaction(async (tx) => {
-      await this.#decide(tx, [row!.id], decision)
-      if (drafted.length > 0) {
-        await tx
-          .deleteFrom('draft')
-          .where(
-            'key',
-            'in',
-            drafted.map((e) => e.key),
-          )
-          .execute()
-      }
-      await this.#remember(tx, request.key, result, events)
-    })
-    return {
-      result,
-      events,
+    if (!drafted) {
+      await this.#transaction(async (tx) => {
+        await this.#decide(tx, [row!.id], decision)
+        await this.#remember(tx, request.key, result, events)
+      })
+      return { result, events }
     }
+    // out of the draft: the draft as it would be without it
+    const rest = derived.entries.filter((e) => !(e.change.kind === 'suggestion' && e.change.comment === row!.id))
+    const built = await this.#core.buildDraft(this.id, latest.idea, latest.comments, rest.map(plainEntry))
+    const next = await this.#nextDraft(request, latest, state, derived, {
+      files: built.files,
+      suggestions: state.suggestions.filter((s) => s.comment !== row!.id),
+      held: state.held,
+    })
+    return this.#keepDraft(request, result, next, (tx) => this.#decide(tx, [row!.id], decision), events)
   }
 
   /** Suggestions by ID, refusing any that isn't one. */
@@ -1091,147 +1163,333 @@ export class IdeaService {
   }
 
   // --- the draft ------------------------------------------------------------------
+  //
+  // Live documents, one for each file the draft has changed (draft.ts). Every write that changes the
+  // draft works out the files it should read as, with core's buildDraft as always, and moves each
+  // document there by steps; the changes are worked out again from the documents.
 
-  /** The draft's changes, in the order they were made. */
-  async #draftEntries(): Promise<Array<DraftEntry & { seq: number; by: Caller; at: number }>> {
-    const rows = await this.#db.selectFrom('draft').selectAll().orderBy('seq').execute()
-    return rows.map((r) => ({
-      key: r.key,
-      seq: r.seq,
-      change: JSON.parse(r.change) as DraftChange,
-      by: JSON.parse(r.by) as Caller,
-      at: r.at,
-    }))
-  }
-
-  async #buildDraft(latest: Latest, entries: DraftEntry[]) {
-    return this.#core.buildDraft(
-      this.id,
-      latest.idea,
-      latest.comments,
-      entries.map(({ key, change }) => ({ key, change })),
-    )
+  /** The draft as stored. */
+  async #draftState(): Promise<DraftState> {
+    const files = await this.#db.selectFrom('draft_files').selectAll().execute()
+    const suggestions = await this.#db
+      .selectFrom('draft_suggestions')
+      .selectAll()
+      .orderBy('at')
+      .orderBy('comment')
+      .execute()
+    const held = await this.#db.selectFrom('draft_held').selectAll().orderBy('at').orderBy('key').execute()
+    const authors = new Map<string, { by: Caller; at: number }>()
+    for (const r of await this.#db.selectFrom('draft_authors').selectAll().orderBy('at').execute()) {
+      authors.set(r.key, { by: JSON.parse(r.by) as Caller, at: r.at })
+    }
+    return {
+      rows: new Map(files.map((r) => [r.file, r])),
+      texts: new Map(files.map((r) => [r.file, { source: r.source, ids: JSON.parse(r.ids) as string[] }])),
+      suggestions: suggestions.map((r) => ({
+        comment: r.comment,
+        change: JSON.parse(r.change) as DraftChange,
+        by: JSON.parse(r.by) as Caller,
+        at: r.at,
+      })),
+      held: held.map((r) => ({
+        key: r.key,
+        change: JSON.parse(r.change) as DraftChange,
+        by: JSON.parse(r.by) as Caller,
+        at: r.at,
+      })),
+      authors,
+    }
   }
 
   /**
-   * Adds changes, in order, if they all apply to the draft as it is now;
-   * otherwise none goes in, refused as outdated. The draft keeps the
-   * difference, not the history (core's addChange): an edit after your own
-   * edit of the same block folds into it, and one back to how the block was
-   * takes it out.
+   * The draft's changes on `idea`: those held, the suggestions accepted, then the difference between
+   * its files and the idea with those suggestions in, by block ID; and the draft built from them.
+   */
+  async #derive(
+    idea: Idea,
+    comments: Comment[],
+    state: Pick<DraftState, 'texts' | 'suggestions' | 'held' | 'authors'>,
+    fallback: Caller,
+  ): Promise<Derived> {
+    const taken = new Set(state.held.map((h) => h.key))
+    const accepted: DraftItem[] = state.suggestions.map((s) => ({
+      key: keyOf(s.change, taken),
+      change: s.change,
+      by: s.by,
+      at: s.at,
+      kind: 'suggestion',
+    }))
+    let base = idea
+    if (accepted.length > 0) {
+      base = (await this.#core.buildDraft(this.id, idea, comments, accepted.map(plainEntry))).idea
+    }
+    const derived: DraftItem[] = []
+    const files = Object.fromEntries(
+      [...state.texts].filter(([file]) => base.files.some((f) => f.id === file)).map(([f, t]) => [f, blocksOf(t)]),
+    )
+    if (Object.keys(files).length > 0) {
+      const made = await this.#core.draftChanges(this.id, base, files)
+      if (!made.ok) {
+        throw new Error(`the draft's documents make no changes: ${made.message}`)
+      }
+      for (const change of made.changes) {
+        const key = keyOf(change, taken)
+        const author = state.authors.get(key)
+        derived.push({ key, change, by: author?.by ?? fallback, at: author?.at ?? 0, kind: 'derived' })
+      }
+    }
+    const entries: DraftItem[] = [...state.held.map((h) => ({ ...h, kind: 'held' as const })), ...accepted, ...derived]
+    const built = await this.#core.buildDraft(this.id, idea, comments, entries.map(plainEntry))
+    return { entries, built }
+  }
+
+  /**
+   * The draft as it's to be: its files as `files` has them, with these suggestions and held changes.
+   * Works out each document's steps and who made each change (whoever's change it is now, if it's
+   * new or different); `save` keeps them, in the write's transaction, and `done` once it's committed.
+   */
+  async #nextDraft(
+    request: WriteRequest,
+    on: { idea: Idea; comments: Comment[] },
+    state: DraftState,
+    before: Derived,
+    next: {
+      files: Array<{ id: string; source: string; unitIds: string[] }>
+      suggestions: DraftSuggestion[]
+      held: DraftHeld[]
+    },
+  ) {
+    const at = this.#now()
+    const version = new Map(on.idea.files.map((f) => [f.id, { source: f.source, ids: f.unitIds }]))
+    const same = (a: DraftText | undefined, b: DraftText) =>
+      a !== undefined && a.source === b.source && JSON.stringify(a.ids) === JSON.stringify(b.ids)
+    // the files the draft has: those it had, and those that differ from the version
+    const texts = new Map<string, DraftText>()
+    for (const f of next.files) {
+      const text = { source: f.source, ids: f.unitIds }
+      if (state.texts.has(f.id) || !same(version.get(f.id), text)) {
+        texts.set(f.id, text)
+      }
+    }
+    const after = await this.#derive(on.idea, on.comments, { texts, ...next, authors: state.authors }, request.caller)
+    // the IDs new text will have once it's committed, as the draft built from its changes gives them
+    const finalTexts = new Map<string, DraftText>()
+    for (const f of after.built.files) {
+      if (texts.has(f.id)) {
+        finalTexts.set(f.id, { source: f.source, ids: f.unitIds })
+      }
+    }
+    const retargeted: Retargeted[] = []
+    for (const [file, text] of finalTexts) {
+      if (same(state.texts.get(file), text)) {
+        continue
+      }
+      const row = state.rows.get(file) ?? null
+      retargeted.push(
+        await this.#live.retarget(file, row, version.get(file) ?? text, text, async () =>
+          (
+            await this.#db
+              .selectFrom('draft_steps')
+              .select('step')
+              .where('file', '=', file)
+              .where('seq', '>', row!.steps)
+              .orderBy('seq')
+              .execute()
+          ).map((r) => JSON.parse(r.step) as unknown),
+        ),
+      )
+    }
+    // who made each change: unchanged ones keep theirs
+    const was = new Map(before.entries.map((e) => [e.key, JSON.stringify(e.change)]))
+    const authored = after.entries.filter((e) => e.kind === 'derived' && was.get(e.key) !== JSON.stringify(e.change))
+    const keys = new Set(after.entries.map((e) => e.key))
+    for (const e of authored) {
+      e.by = request.caller
+      e.at = at
+    }
+    const by = JSON.stringify(request.caller)
+    const save = async (tx: Kysely<IdeaDB>) => {
+      for (const r of retargeted) {
+        const from = state.rows.get(r.file)?.steps ?? 0
+        const text = finalTexts.get(r.file)!
+        for (const [i, step] of r.steps.entries()) {
+          await tx
+            .insertInto('draft_steps')
+            .values({ file: r.file, seq: from + i + 1, step: JSON.stringify(step), by, at })
+            .execute()
+        }
+        // the recent steps are kept, for catching up (step 3); older ones are in the document
+        await tx
+          .deleteFrom('draft_steps')
+          .where('file', '=', r.file)
+          .where('seq', '<=', r.count - KEEP_STEPS)
+          .execute()
+        await tx
+          .insertInto('draft_files')
+          .values({
+            file: r.file,
+            steps: r.count,
+            doc: JSON.stringify(r.doc.toJSON()),
+            source: text.source,
+            ids: JSON.stringify(text.ids),
+            at,
+          })
+          .onConflict((oc) =>
+            oc.column('file').doUpdateSet({
+              steps: r.count,
+              doc: JSON.stringify(r.doc.toJSON()),
+              source: text.source,
+              ids: JSON.stringify(text.ids),
+              at,
+            }),
+          )
+          .execute()
+      }
+      await tx.deleteFrom('draft_suggestions').execute()
+      for (const s of next.suggestions) {
+        await tx
+          .insertInto('draft_suggestions')
+          .values({ comment: s.comment, change: JSON.stringify(s.change), by: JSON.stringify(s.by), at: s.at })
+          .execute()
+      }
+      await tx.deleteFrom('draft_held').execute()
+      for (const h of next.held) {
+        await tx
+          .insertInto('draft_held')
+          .values({ key: h.key, change: JSON.stringify(h.change), by: JSON.stringify(h.by), at: h.at })
+          .execute()
+      }
+      const gone = [...state.authors.keys()].filter((k) => !keys.has(k))
+      if (gone.length > 0) {
+        await tx.deleteFrom('draft_authors').where('key', 'in', gone).execute()
+      }
+      for (const e of authored) {
+        await tx
+          .insertInto('draft_authors')
+          .values({ key: e.key, by, at })
+          .onConflict((oc) => oc.columns(['key', 'by']).doUpdateSet({ at }))
+          .execute()
+      }
+    }
+    return { after, save, done: () => this.#live.commit(retargeted) }
+  }
+
+  /** Writes the draft as it's to be, with the write's result, in one transaction. */
+  async #keepDraft(
+    request: WriteRequest,
+    result: WriteResult,
+    next: NextDraft,
+    also?: (tx: Kysely<IdeaDB>) => Promise<void>,
+    events: IdeaEvent[] = [{ name: 'draft', payload: { by: request.caller } }],
+  ) {
+    try {
+      await this.#transaction(async (tx) => {
+        await next.save(tx)
+        await also?.(tx)
+        await this.#remember(tx, request.key, result, events)
+      })
+    } catch (error) {
+      this.#live.forget()
+      throw error
+    }
+    next.done()
+    return { result, events }
+  }
+
+  /** The draft on the latest version, as stored. */
+  async #draftNow(caller: Caller) {
+    const latest = await this.#loadLatest()
+    const state = await this.#draftState()
+    const derived = await this.#derive(latest.idea, latest.comments, state, caller)
+    return { latest, state, derived }
+  }
+
+  /**
+   * Adds changes, in order, if they all apply to the draft as it is now; otherwise none goes in,
+   * refused as outdated. The draft keeps the difference from the latest version, not the history:
+   * editing a block again is the same change, and editing it back leaves none.
    */
   async #draftAdd(request: WriteRequest, changes: DraftChange[]) {
     if (changes.some((c) => c.kind === 'suggestion')) {
       refuse('invalid', 'suggestions go into the draft by accepting them')
     }
     await this.#requireMeta()
-    const latest = await this.#loadLatest()
-    const stored = await this.#draftEntries()
-    const by = JSON.stringify(request.caller)
-    let entries = stored.map((e) => ({ key: e.key, change: e.change, by: JSON.stringify(e.by) }))
-    const keys: Array<string | null> = []
-    for (const [i, change] of changes.entries()) {
-      const { addition, problem } = await this.#core.addChange(
-        this.id,
-        latest.idea,
-        latest.comments,
-        entries,
-        change,
-        by,
-        crypto.randomUUID().slice(0, 8),
-      )
-      if (problem !== null) {
+    const { latest, state, derived } = await this.#draftNow(request.caller)
+    const incoming = changes.map((change, i) => ({ key: `+${i}`, change }))
+    const built = await this.#core.buildDraft(this.id, latest.idea, latest.comments, [
+      ...derived.entries.map(plainEntry),
+      ...incoming,
+    ])
+    for (const [i] of changes.entries()) {
+      const problem = built.problems[`+${i}`]
+      if (problem !== undefined) {
         const which = changes.length > 1 ? `change ${i + 1} of ${changes.length}: ` : ''
         refuse('conflict', `outdated: ${which}${problem}`, { problem, change: i })
       }
-      if (addition.op === 'add') {
-        entries = [...entries, { ...addition.entry, by }]
-      } else if (addition.op === 'update') {
-        entries = entries.map((e) => (e.key === addition.entry.key ? { ...e, change: addition.entry.change } : e))
-      } else {
-        entries = entries.filter((e) => e.key !== addition.key)
-      }
-      keys.push(addition.op === 'remove' ? null : addition.entry.key)
     }
-    const result: WriteResult = { ok: true, value: { kind: 'draft', keys } }
-    const at = this.#now()
-    // the draft as it now is, written over the one it was built on
-    const before = new Map(stored.map((e) => [e.key, e]))
-    let seq = stored.at(-1)?.seq ?? 0
-    await this.#transaction(async (tx) => {
-      for (const old of stored) {
-        if (!entries.some((e) => e.key === old.key)) {
-          await tx.deleteFrom('draft').where('key', '=', old.key).execute()
-        }
-      }
-      for (const entry of entries) {
-        const was = before.get(entry.key)
-        if (!was) {
-          await tx
-            .insertInto('draft')
-            .values({ key: entry.key, seq: ++seq, change: JSON.stringify(entry.change), by, at })
-            .execute()
-        } else if (JSON.stringify(was.change) !== JSON.stringify(entry.change)) {
-          await tx
-            .updateTable('draft')
-            .set({ change: JSON.stringify(entry.change), at })
-            .where('key', '=', entry.key)
-            .execute()
-        }
-      }
-      await this.#remember(tx, request.key, result)
+    const next = await this.#nextDraft(request, latest, state, derived, {
+      files: built.files,
+      suggestions: state.suggestions,
+      held: state.held,
     })
-    return { result, events: [{ name: 'draft', payload: { by: request.caller } }] satisfies IdeaEvent[] }
+    const keys = changes.map((change) => changeKey(change, next.after))
+    return this.#keepDraft(request, { ok: true, value: { kind: 'draft', keys } }, next)
   }
 
   async #undraft(request: WriteRequest, key: string) {
     await this.#requireMeta()
-    const found = await this.#db.selectFrom('draft').select('key').where('key', '=', key).executeTakeFirst()
-    if (!found) {
+    const { latest, state, derived } = await this.#draftNow(request.caller)
+    const entry = derived.entries.find((e) => e.key === key)
+    if (!entry) {
       refuse('not_found', `no change ${key} in the draft`)
     }
-    const result: WriteResult = { ok: true, value: { kind: 'draft', keys: [] } }
-    await this.#transaction(async (tx) => {
-      await tx.deleteFrom('draft').where('key', '=', key).execute()
-      await this.#remember(tx, request.key, result)
+    const rest = derived.entries.filter((e) => e.key !== key)
+    const built = await this.#core.buildDraft(this.id, latest.idea, latest.comments, rest.map(plainEntry))
+    const next = await this.#nextDraft(request, latest, state, derived, {
+      files: built.files,
+      suggestions: state.suggestions.filter(
+        (s) => !(entry!.change.kind === 'suggestion' && s.comment === entry!.change.comment),
+      ),
+      held: state.held.filter((h) => h.key !== key),
     })
-    return { result, events: [{ name: 'draft', payload: { by: request.caller } }] satisfies IdeaEvent[] }
+    return this.#keepDraft(request, { ok: true, value: { kind: 'draft', keys: [] } }, next)
   }
 
   async #discard(request: WriteRequest) {
     await this.#requireMeta()
-    const result: WriteResult = { ok: true, value: { kind: 'draft', keys: [] } }
-    await this.#transaction(async (tx) => {
-      await tx.deleteFrom('draft').execute()
-      await this.#remember(tx, request.key, result)
+    const { latest, state, derived } = await this.#draftNow(request.caller)
+    const next = await this.#nextDraft(request, latest, state, derived, {
+      files: latest.idea.files,
+      suggestions: [],
+      held: [],
     })
-    return { result, events: [{ name: 'draft', payload: { by: request.caller } }] satisfies IdeaEvent[] }
+    return this.#keepDraft(request, { ok: true, value: { kind: 'draft', keys: [] } }, next)
   }
 
   /** Suggestions into the draft, one by one; one that doesn't apply to the draft as it is stays open, saying why. */
   async #acceptIntoDraft(request: WriteRequest, candidates: Suggestion[], skipped: Skipped[]) {
-    const latest = await this.#loadLatest()
-    const entries = await this.#draftEntries()
-    const inDraft = new Set(entries.flatMap((e) => (e.change.kind === 'suggestion' ? [e.change.comment] : [])))
-    let next: DraftEntry[] = entries
-    const added: Array<DraftEntry & { comment: string }> = []
+    const { latest, state, derived } = await this.#draftNow(request.caller)
+    const inDraft = new Set(state.suggestions.map((s) => s.comment))
+    let entries: DraftEntry[] = derived.entries.map(plainEntry)
+    let files = derived.built.files
+    const added: DraftSuggestion[] = []
+    const at = this.#now()
     for (const s of candidates) {
       if (inDraft.has(s.id)) {
         skipped.push({ id: s.id, message: 'it’s in the draft already' })
         continue
       }
-      const entry: DraftEntry = {
-        key: crypto.randomUUID().slice(0, 8),
-        change: { kind: 'suggestion', comment: s.id, old: s.old, new: s.new },
-      }
-      const built = await this.#buildDraft(latest, [...next, entry])
+      const change: DraftChange = { kind: 'suggestion', comment: s.id, old: s.old, new: s.new }
+      const entry: DraftEntry = { key: `s+${s.id}`, change }
+      const built = await this.#core.buildDraft(this.id, latest.idea, latest.comments, [...entries, entry])
       const problem = built.problems[entry.key]
       if (problem !== undefined) {
         skipped.push({ id: s.id, message: problem })
         continue
       }
-      next = [...next, entry]
-      added.push({ ...entry, comment: s.id })
+      entries = [...entries, entry]
+      files = built.files
+      added.push({ comment: s.id, change, by: request.caller, at })
     }
     if (added.length === 0) {
       refuse(
@@ -1240,30 +1498,26 @@ export class IdeaService {
         { skipped },
       )
     }
-    const result: WriteResult = { ok: true, value: { kind: 'drafted', accepted: added.map((a) => a.comment), skipped } }
-    const at = this.#now()
-    let seq = entries.at(-1)?.seq ?? 0
-    await this.#transaction(async (tx) => {
-      for (const a of added) {
-        await tx
-          .insertInto('draft')
-          .values({ key: a.key, seq: ++seq, change: JSON.stringify(a.change), by: JSON.stringify(request.caller), at })
-          .execute()
-      }
-      await this.#remember(tx, request.key, result)
+    const next = await this.#nextDraft(request, latest, state, derived, {
+      files,
+      suggestions: [...state.suggestions, ...added],
+      held: state.held,
     })
-    return { result, events: [{ name: 'draft', payload: { by: request.caller } }] satisfies IdeaEvent[] }
+    const result: WriteResult = {
+      ok: true,
+      value: { kind: 'drafted', accepted: added.map((a) => a.comment), skipped },
+    }
+    return this.#keepDraft(request, result, next)
   }
 
   /** Commits the draft as one version. Every change must still apply: outdated ones are undone or redone first. */
   async #commit(request: WriteRequest) {
     const meta = await this.#requireMeta()
-    const latest = await this.#loadLatest()
-    const entries = await this.#draftEntries()
-    if (entries.length === 0) {
+    const { latest, derived } = await this.#draftNow(request.caller)
+    if (derived.entries.length === 0) {
       refuse('invalid', 'the draft is empty')
     }
-    const built = await this.#buildDraft(latest, entries)
+    const built = derived.built
     const outdated = Object.entries(built.problems)
     if (outdated.length > 0) {
       const n = outdated.length
@@ -1288,7 +1542,7 @@ export class IdeaService {
       command: command.command,
       addresses: command.addresses ?? [],
     }))
-    const accepted = entries.flatMap((e) => (e.change.kind === 'suggestion' ? [e.change.comment] : []))
+    const accepted = derived.entries.flatMap((e) => (e.change.kind === 'suggestion' ? [e.change.comment] : []))
     const decision: Decision = { kind: 'accepted', by: request.caller, at: this.#now(), version: meta.latest + 1 }
     return this.#newVersion(request, meta, latest, 'commands', built.idea, built.comments, steps, stepResults, {
       decide: { ids: accepted, decision },
@@ -1393,9 +1647,53 @@ export class IdeaService {
   ) {
     const number = meta.latest + 1
     const { gitHint, decide } = more
-    const drafted = more.clearDraft ? [] : await this.#draftEntries()
-    if (drafted.length > 0 && !more.outdateDraft) {
-      await this.#checkDraftKept(latest, idea, outcomes, drafted)
+    const on = {
+      idea,
+      comments: outcomes.flatMap((o) => (o.state !== 'outdated' && o.anchor ? [{ id: o.id, anchor: o.anchor }] : [])),
+    }
+    // the draft, moved onto the new version: committed, it's the version itself; made around it, its
+    // changes that still apply are in it, and those this version outdates are held, saying why
+    const state = await this.#draftState()
+    let draft: NextDraft | null = null
+    if (more.clearDraft) {
+      const before = await this.#derive(latest.idea, latest.comments, state, request.caller)
+      draft = await this.#nextDraft(request, on, state, before, { files: idea.files, suggestions: [], held: [] })
+    } else if (state.texts.size > 0 || state.suggestions.length > 0 || state.held.length > 0) {
+      const before = await this.#derive(latest.idea, latest.comments, state, request.caller)
+      const plain = before.entries.map(plainEntry)
+      const after = await this.#core.buildDraft(this.id, idea, on.comments, plain)
+      const overtaken = before.entries.filter(
+        (e) => after.problems[e.key] !== undefined && before.built.problems[e.key] === undefined,
+      )
+      if (overtaken.length > 0 && !more.outdateDraft) {
+        const n = overtaken.length
+        refuse(
+          'draft_outdated',
+          `this version would make ${n === 1 ? 'a change' : `${n} changes`} in the draft outdated; confirm to make it anyway`,
+          {
+            changes: overtaken.map((e) => ({
+              key: e.key,
+              change: e.change,
+              by: e.by,
+              problem: after.problems[e.key]!,
+            })),
+          },
+        )
+      }
+      const held = [
+        ...state.held,
+        ...overtaken
+          .filter((e) => e.kind === 'derived')
+          .map((e) => ({ key: e.key, change: e.change, by: e.by, at: e.at })),
+      ]
+      const heldKeys = new Set(held.map((h) => h.key))
+      const kept = before.entries.filter((e) => !heldKeys.has(e.key))
+      const rebased = await this.#core.buildDraft(this.id, idea, on.comments, kept.map(plainEntry))
+      draft = await this.#nextDraft(request, on, state, before, {
+        files: rebased.files,
+        suggestions: state.suggestions,
+        held,
+      })
     }
     const result: WriteResult = {
       ok: true,
@@ -1429,11 +1727,13 @@ export class IdeaService {
       if (decide) {
         await this.#decide(tx, decide.ids, decide.decision)
       }
-      if (more.clearDraft) {
-        await tx.deleteFrom('draft').execute()
-      }
+      await draft?.save(tx)
       await this.#remember(tx, request.key, result, events)
+    }).catch((error: unknown) => {
+      this.#live.forget()
+      throw error
     })
+    draft?.done()
     this.#latest = {
       version: number,
       idea,
@@ -1446,37 +1746,6 @@ export class IdeaService {
       result,
       events,
     }
-  }
-
-  /**
-   * Refuses a version that would make changes in the draft outdated (changes
-   * that apply now and wouldn't on it), naming them, unless the caller
-   * confirms with `outdateDraft`.
-   */
-  async #checkDraftKept(
-    latest: Latest,
-    idea: Idea,
-    outcomes: CommentOutcome[],
-    entries: Array<DraftEntry & { by: Caller }>,
-  ): Promise<void> {
-    const plain = entries.map(({ key, change }) => ({ key, change }))
-    const before = await this.#buildDraft(latest, plain)
-    const comments = outcomes.flatMap((o) =>
-      o.state !== 'outdated' && o.anchor ? [{ id: o.id, anchor: o.anchor }] : [],
-    )
-    const after = await this.#core.buildDraft(this.id, idea, comments, plain)
-    const overtaken = entries.filter((e) => after.problems[e.key] !== undefined && before.problems[e.key] === undefined)
-    if (overtaken.length === 0) {
-      return
-    }
-    const n = overtaken.length
-    refuse(
-      'draft_outdated',
-      `this version would make ${n === 1 ? 'a change' : `${n} changes`} in the draft outdated; confirm to make it anyway`,
-      {
-        changes: overtaken.map((e) => ({ key: e.key, change: e.change, by: e.by, problem: after.problems[e.key]! })),
-      },
-    )
   }
 
   // --- reads --------------------------------------------------------------------
@@ -1666,7 +1935,7 @@ export class IdeaService {
       }
     }
     const drafted = new Set(
-      (await this.#draftEntries()).flatMap((e) => (e.change.kind === 'suggestion' ? [e.change.comment] : [])),
+      (await this.#db.selectFrom('draft_suggestions').select('comment').execute()).map((r) => r.comment),
     )
     const replies = new Map<string, typeof rows>()
     for (const r of rows) {
@@ -1707,10 +1976,9 @@ export class IdeaService {
    * comment would be.
    */
   async draft() {
-    await this.#requireMeta()
-    const latest = await this.#loadLatest()
-    const entries = await this.#draftEntries()
-    const built = await this.#buildDraft(latest, entries)
+    const meta = await this.#requireMeta()
+    const { latest, derived } = await this.#draftNow({ user: meta.owner, bot: null, purpose: 'me' })
+    const { entries, built } = derived
     const pending = new Set(
       (await this.#db.selectFrom('comments').select('id').where('pending', 'is not', null).execute()).map((r) => r.id),
     )

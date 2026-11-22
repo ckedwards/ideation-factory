@@ -692,6 +692,78 @@ describe('the draft', () => {
     })
   })
 
+  test('each file it changes is a live document: stored with the steps that made it', async () => {
+    const { sql, service, write } = await created()
+    value(
+      await write({
+        type: 'draft',
+        changes: [{ kind: 'edit', id: 'b3', source: 'The quick red fox.', was: 'The quick brown fox.' }],
+      }),
+    )
+    value(await write({ type: 'draft', changes: [{ kind: 'insert', at: { after: 'b5' }, markdown: 'Bring a coat.' }] }))
+    const [row] = await sql.execute<{ steps: number; doc: string; source: string; ids: string }>(
+      'SELECT steps, doc, source, ids FROM draft_files',
+    )
+    const draft = await service.draft()
+    expect(row!.source).toBe(draft.files[0]!.content)
+    expect(JSON.parse(row!.ids)).toEqual(['s2', 'b3', 's4', 'b5', 'b6'])
+    // the version, opened as the editor opens it, with the stored steps applied, is the stored document
+    const steps = await sql.execute<{ step: string; by: string }>('SELECT step, by FROM draft_steps ORDER BY seq')
+    expect(steps).toHaveLength(row!.steps)
+    expect(JSON.parse(steps[0]!.by)).toEqual(OWNER)
+    const { applySteps, pageDocument } = await import('@ideaf/ui/editor/model')
+    const opened = await pageDocument(PLAN, ['s2', 'b3', 's4', 'b5'])
+    const rebuilt = applySteps(
+      opened.schema,
+      opened.doc,
+      steps.map((s) => JSON.parse(s.step) as unknown),
+    )
+    expect(rebuilt.toJSON()).toEqual(JSON.parse(row!.doc))
+    // each step changed only what changed: the fox's word, then the new paragraph
+    expect(JSON.stringify(steps[0]!.step)).not.toContain('Risks')
+  })
+
+  test('a fresh actor reads the same draft from its documents, and goes on from them', async () => {
+    const { sql, files, write } = await created()
+    value(
+      await write({
+        type: 'draft',
+        changes: [{ kind: 'edit', id: 'b3', source: 'The quick red fox.', was: 'The quick brown fox.' }],
+      }),
+    )
+    // woken again: nothing in memory
+    const again = new IdeaService('idea-1', { sql, files, core: inProcessCore(), limits: DEFAULT_LIMITS })
+    const draft = await again.draft()
+    expect(draft.changes).toMatchObject([{ key: 'e-b3', change: { kind: 'edit', id: 'b3' }, by: OWNER }])
+    const edit = { kind: 'edit', id: 'b5', source: 'It may pour.', was: 'It might rain.' }
+    expect(
+      (await again.write({ key: 'w1', caller: REVIEWER, write: { type: 'draft', changes: [edit] } })).result,
+    ).toEqual({ ok: true, value: { kind: 'draft', keys: ['e-b5'] } })
+    const now = await again.draft()
+    expect(now.changes.map((c) => [c.key, c.by.user])).toEqual([
+      ['e-b3', 'riley'],
+      ['e-b5', 'maya'],
+    ])
+    expect(now.files[0]!.content).toBe('# Plan\n\nThe quick red fox.\n\n## Risks\n\nIt may pour.\n')
+  })
+
+  test('committed, its documents are the new version, and stay', async () => {
+    const { sql, service, write } = await created()
+    value(
+      await write({
+        type: 'draft',
+        changes: [{ kind: 'edit', id: 'b3', source: 'The quick red fox.', was: 'The quick brown fox.' }],
+      }),
+    )
+    const [before] = await sql.execute<{ steps: number }>('SELECT steps FROM draft_files')
+    value(await write({ type: 'commit' }))
+    const [after] = await sql.execute<{ steps: number; source: string }>('SELECT steps, source FROM draft_files')
+    // the same document, now on v2: no steps were needed
+    expect(after).toEqual({ steps: before!.steps, source: (await service.file(2, 'f1'))!.content })
+    expect((await service.draft()).changes).toEqual([])
+    expect(await sql.execute('SELECT * FROM draft_authors')).toEqual([])
+  })
+
   test('a suggestion whose text the draft has changed is left out, saying why', async () => {
     const { write } = await created()
     value(await write({ type: 'suggest', version: 1, anchor: RAIN, new: 'may pour', body: '' }, REVIEWER))

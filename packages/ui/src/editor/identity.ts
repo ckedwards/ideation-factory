@@ -19,15 +19,7 @@
 // - **Never twice:** an identity already on the page (put back by undo, or kept by a block split in
 //   two) stays on the first; the other is new.
 import type { MilkdownPlugin } from '@milkdown/kit/ctx'
-import {
-  blockquoteSchema,
-  codeBlockSchema,
-  headingSchema,
-  hrSchema,
-  paragraphSchema,
-} from '@milkdown/kit/preset/commonmark'
-import { extendListItemSchemaForTask, tableSchema } from '@milkdown/kit/preset/gfm'
-import { Fragment, type Node, type NodeSpec, Slice } from '@milkdown/kit/prose/model'
+import { Fragment, type Node, Slice } from '@milkdown/kit/prose/model'
 import { NodeSelection, Plugin, TextSelection } from '@milkdown/kit/prose/state'
 import type { EditorView } from '@milkdown/kit/prose/view'
 import { $prose } from '@milkdown/kit/utils'
@@ -38,60 +30,6 @@ export interface MovedWords {
   old: string
   to: { in: string; after: string } | { in: string; before: string }
 }
-
-/** The blocks the draft knows, by node type: the ones that carry an identity. */
-export const IDENTIFIED = new Set(['paragraph', 'heading', 'blockquote', 'code_block', 'hr', 'list_item', 'table'])
-
-type DOMSpec = ReturnType<NonNullable<NodeSpec['toDOM']>>
-
-/** A node's DOM with data-block-id on its outer element. */
-function withIdOnDom(spec: DOMSpec, id: string | null): DOMSpec {
-  if (!id || !Array.isArray(spec)) {
-    return spec
-  }
-  const [tag, second, ...rest] = spec as unknown as [string, unknown, ...unknown[]]
-  if (second && typeof second === 'object' && !Array.isArray(second) && !(second instanceof globalThis.Node)) {
-    return [tag, { ...(second as Record<string, unknown>), 'data-block-id': id }, ...rest] as unknown as DOMSpec
-  }
-  return [tag, { 'data-block-id': id }, ...(second === undefined ? [] : [second]), ...rest] as unknown as DOMSpec
-}
-
-/** The same node, with a blockId: drawn, and read back from data-block-id. */
-function identified<T extends { extendSchema: (h: never) => unknown }>(schema: T): T {
-  return (
-    schema.extendSchema as unknown as (handler: (prev: (ctx: unknown) => NodeSpec) => (ctx: unknown) => NodeSpec) => T
-  )((prev) => (ctx) => {
-    const spec = prev(ctx)
-    return {
-      ...spec,
-      attrs: { ...spec.attrs, blockId: { default: null } },
-      parseDOM: (spec.parseDOM ?? []).map((rule) => ({
-        ...rule,
-        getAttrs: (dom: HTMLElement | string) => {
-          const base = rule.getAttrs ? rule.getAttrs(dom as never) : (rule.attrs ?? {})
-          if (base === false || base === null || typeof dom === 'string') {
-            return base
-          }
-          return { ...(base as object), blockId: dom.getAttribute('data-block-id') }
-        },
-      })),
-      toDOM: (node: Node) => withIdOnDom(spec.toDOM!(node), node.attrs['blockId'] as string | null),
-    }
-  })
-}
-
-/** The draft's blocks, able to carry an identity: used after the presets, in their place. */
-export const identifiedSchemas: MilkdownPlugin[] = [
-  paragraphSchema,
-  headingSchema,
-  blockquoteSchema,
-  codeBlockSchema,
-  hrSchema,
-  extendListItemSchemaForTask,
-  tableSchema,
-]
-  .map(identified)
-  .flat() as MilkdownPlugin[]
 
 // ---- reading identities ----
 
