@@ -15,7 +15,7 @@ const repoAs = (name: string, files: Record<string, string> = {}) => repo(files,
 async function inboxOf(name: string, ready: (items: Items) => boolean, filter = {}): Promise<Items> {
   let items: Items = []
   for (let i = 0; i < 60; i++) {
-    items = (await api(h(name)).listNotifications(filter)).items
+    items = (await api(h(name)).listNotifications(filter)).items.flatMap((n) => (n.kind === 'idea' ? [n] : []))
     if (ready(items)) {
       return items
     }
@@ -23,7 +23,9 @@ async function inboxOf(name: string, ready: (items: Items) => boolean, filter = 
   }
   return items
 }
-type Items = Awaited<ReturnType<ReturnType<typeof api>['listNotifications']>>['items']
+type Items = Array<
+  Extract<Awaited<ReturnType<ReturnType<typeof api>['listNotifications']>>['items'][number], { kind: 'idea' }>
+>
 
 describe('the inbox', () => {
   test('one row per idea: asked to review, then what others do, read and done', async () => {
@@ -69,7 +71,7 @@ describe('the inbox', () => {
     expect((await api(h('maya')).unreadNotifications({})).count).toBe(0)
     // done, as one section of her inbox grouped by team: riley's ideas outside any team
     expect((await m.ideaf('inbox', 'done', '--all', '--owner', h('riley'))).exit).toBe(2)
-    expect((await m.ideaf('inbox', 'done', '--owner', h('riley'))).out).toContain('1 idea marked done')
+    expect((await m.ideaf('inbox', 'done', '--owner', h('riley'))).out).toContain('1 notification marked done')
     expect((await api(h('maya')).listNotifications({})).items).toEqual([])
     expect((await m.ideaf('inbox', 'show', '--done')).out).toContain(idea)
     await api(h('riley')).reply({ idea, comment: 'c1', body: 'Or the brown one.' })
@@ -82,6 +84,44 @@ describe('the inbox', () => {
     await api(h('riley')).reply({ idea, comment: 'c1', body: 'Final answer.' })
     await Bun.sleep(400)
     expect((await api(h('maya')).unreadNotifications({})).count).toBe(0)
+  })
+
+  test('a notice when your group joins a team: in the inbox among the ideas, read and done as a row', async () => {
+    await api(h('ines')).me({})
+    const team = h('noticed')
+    const group = h('reviewers')
+    await api(h('riley')).createTeam({ handle: team, name: 'Noticed' })
+    await api(h('ines')).createGroup({ handle: group, name: 'Reviewers' })
+    await api(h('riley')).addTeamGroup({ team, group })
+    const all = async () => (await api(h('ines')).listNotifications({ reason: 'teams' })).items
+    let notices = await all()
+    for (let i = 0; i < 60 && notices.length === 0; i++) {
+      await Bun.sleep(50)
+      notices = await all()
+    }
+    expect(notices).toMatchObject([
+      {
+        kind: 'notice',
+        reason: 'teams',
+        newCount: 1,
+        notice: {
+          kind: 'group-joined',
+          as: 'group-admin',
+          team: { handle: team, name: 'Noticed' },
+          group: { handle: group, name: 'Reviewers' },
+          role: 'member',
+        },
+      },
+    ])
+    expect((await api(h('ines')).countNotifications({})).reasons.teams).toBe(1)
+    expect((await api(h('ines')).unreadNotifications({})).count).toBe(1)
+    const id = notices[0]!.kind === 'notice' ? notices[0]!.id : ''
+    expect((await api(h('ines')).markNotifications({ notices: [id], read: true })).changed).toBe(1)
+    expect((await api(h('ines')).unreadNotifications({})).count).toBe(0)
+    // its group's section can't be marked with ideas by ID too
+    await expect(api(h('ines')).markNotifications({ notices: [id], group, done: true })).rejects.toThrow()
+    expect((await api(h('ines')).markNotifications({ team, done: true })).changed).toBe(1)
+    expect(await all()).toEqual([])
   })
 
   // what a bot acting for you does is covered by the directory's contract tests; here, the setting
@@ -114,7 +154,8 @@ describe('the inbox', () => {
     expect((await kim.ideaf('inbox', 'show', '--reason', 'watching')).out).toContain('(watching a team)')
     expect((await kim.ideaf('inbox', 'show', '--team', team)).out).toContain(idea)
     // the team's section, read as a whole
-    expect((await kim.ideaf('inbox', 'read', '--team', team)).out).toContain('1 idea marked read')
+    // (the idea, and the notice that riley added her to the team)
+    expect((await kim.ideaf('inbox', 'read', '--team', team)).out).toContain('2 notifications marked read')
     expect((await api(h('kim')).unreadNotifications({})).count).toBe(0)
   })
 

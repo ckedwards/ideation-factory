@@ -43,7 +43,8 @@ function Home() {
   const mine = useInfiniteQuery(ideasQuery({ owner: me.id, state: 'open' }))
   const recent = useInfiniteQuery(ideasQuery())
   const unreadCount = useQuery(unreadQuery).data ?? 0
-  const unread = useQuery(unreadIdeasQuery).data?.items ?? []
+  // the ideas with news (the notices about teams and groups are in the inbox)
+  const unread = (useQuery(unreadIdeasQuery).data?.items ?? []).flatMap((n) => (n.kind === 'idea' ? [n] : []))
 
   // asked, and not approved by you yet (an approval of an older version doesn't count, so it's back)
   const waiting = (review.data?.pages.flatMap((p) => p.items) ?? []).filter(

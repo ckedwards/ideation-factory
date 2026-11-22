@@ -1,6 +1,6 @@
 // ideaf inbox …, subscribe and unsubscribe: what's happened to the ideas you
 // hear about, one line per idea however much happened, and clearing them.
-import { ideaPath, type Notification } from '@ideaf/api'
+import { type IdeaNotification, ideaPath } from '@ideaf/api'
 import { CliError, type Context, EXIT } from '../context.ts'
 import { truncate } from './output.ts'
 import { Names } from './subjects.ts'
@@ -37,7 +37,8 @@ export async function show(
     return EXIT.ok
   }
   const names = new Names(ctx)
-  for (const n of page.items) {
+  // the ideas' rows (the notices about teams and groups come next)
+  for (const n of page.items.flatMap((row) => (row.kind === 'idea' ? [row] : []))) {
     const mark = n.newCount > 0 ? `● ${n.newCount} new` : '  read'
     ctx.say(
       `${mark.padEnd(9)} ${n.idea.id}  ${ideaPath(n.idea.place, n.idea.number)}  ${truncate(n.idea.title, 50)}  (${WHY[n.reason]})`,
@@ -51,7 +52,7 @@ export async function show(
 }
 
 /** The latest update, in words. */
-async function latest(n: Notification, names: Names): Promise<string> {
+async function latest(n: IdeaNotification, names: Names): Promise<string> {
   const { kind, actor, detail } = n.latest
   const user = actor.user ? await names.label({ kind: 'user', id: actor.user }) : 'its team’s rules'
   const who =
@@ -106,7 +107,9 @@ export async function mark(
     ...change,
   })
   const what = change.read ? 'read' : change.done ? 'done' : 'back in the inbox'
-  ctx.say(`${changed === 1 ? '1 idea' : `${changed} ideas`} marked ${what}.`)
+  // ideas by their IDs; a whole list or section may hold notices about teams and groups too
+  const noun = ideas.length > 0 ? 'idea' : 'notification'
+  ctx.say(`${changed === 1 ? `1 ${noun}` : `${changed} ${noun}s`} marked ${what}.`)
   ctx.result({ changed })
   return EXIT.ok
 }

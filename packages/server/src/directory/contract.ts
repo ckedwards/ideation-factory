@@ -2,7 +2,7 @@
 // SQLite now, Postgres if it's added. Each implementation's test file calls
 // directoryContract with a way to make an empty directory.
 import { describe, expect, test } from 'bun:test'
-import type { Directory, DueEmail, IdeaRow, InboxEvent, MovePreview } from './types.ts'
+import type { Directory, DueEmail, IdeaRow, InboxEvent, InboxRow, MovePreview, Page } from './types.ts'
 
 /** How a test makes a directory: with email queued, and on a clock of its own. */
 export interface DirectoryOptions {
@@ -37,6 +37,9 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
     updatedAt: clock++,
     ...extra,
   })
+
+  /** A page's rows for ideas (not notices about teams and groups). */
+  const ideaRows = (page: Page<InboxRow>) => page.items.flatMap((r) => (r.kind === 'idea' ? [r] : []))
 
   describe(`${name} (Directory contract)`, () => {
     describe('people', () => {
@@ -620,7 +623,7 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
           reasons: { 'review-requested': 2 },
           teams: [{ id: team, handle: 'core', name: 'Core', count: 1 }],
         })
-        expect((await d.inbox('u-sam', { team })).items.map((r) => r.idea.id)).toEqual(['teams'])
+        expect(ideaRows(await d.inbox('u-sam', { team })).map((r) => r.idea.id)).toEqual(['teams'])
         expect((await d.inbox('u-sam')).items).toHaveLength(2)
       })
 
@@ -1215,7 +1218,7 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         detail,
       })
       const ids = async (d: Directory, user: string, filter = {}) =>
-        (await d.inbox(user, filter)).items.map((r) => [r.idea.id, r.reason, r.newCount])
+        ideaRows(await d.inbox(user, filter)).map((r) => [r.idea.id, r.reason, r.newCount])
 
       test('the owner, people asked to review (every member of a group), and those who take part hear about it', async () => {
         const d = await people()
@@ -1226,6 +1229,8 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
           }
         ).value.id
         await d.addMember('u-devon', 'group', group, 'u-sam')
+        // the notice that devon added him isn't what this is about
+        await d.markInbox('u-sam', null, { done: true })
         // asked by name, and through a group: each hears of the request
         await d.setReviewer('u-riley', 'i1', { kind: 'user', id: 'u-maya' }, true)
         await d.setReviewer('u-riley', 'i1', { kind: 'group', id: group }, true)
@@ -1346,11 +1351,75 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         expect(await ids(d, 'u-riley')).toEqual([['i1', 'author', 4]])
       })
 
+      test('notices about teams and groups: written with the change, to whoever it concerns, read and done as rows', async () => {
+        const d = await people()
+        const team = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
+          .value.id
+        await d.addMember('u-riley', 'team', team, 'u-maya', 'admin')
+        const group = (
+          (await d.createGroup('u-sam', { handle: 'design', name: 'Design' })) as { value: { id: string } }
+        ).value.id
+        const notices = async (user: string, filter = {}) =>
+          (await d.inbox(user, filter)).items.flatMap((r) =>
+            r.kind === 'notice'
+              ? [[r.notice.kind, r.notice.as, r.notice.team?.name ?? null, r.notice.group?.name ?? null]]
+              : [],
+          )
+        // maya was added to the team by riley: she hears; riley, who did it, doesn't
+        expect(await notices('u-maya')).toEqual([['added', 'you', 'Core', null]])
+        expect(await notices('u-riley')).toEqual([])
+
+        // riley adds the design group: its admin hears, and the team's other admin; changing its role is no news
+        await d.addTeamGroup('u-riley', 'core', 'design')
+        await d.addTeamGroup('u-riley', 'core', 'design', 'maintainer')
+        expect(await notices('u-sam')).toEqual([['group-joined', 'group-admin', 'Core', 'Design']])
+        expect((await notices('u-maya'))[0]).toEqual(['group-joined', 'team-admin', 'Core', 'Design'])
+        const [joined] = (await d.inbox('u-sam')).items
+        expect(joined).toMatchObject({
+          kind: 'notice',
+          reason: 'teams',
+          newCount: 1,
+          done: false,
+          notice: { role: 'member', actor: { user: 'u-riley' }, team: { handle: 'core' }, group: { handle: 'design' } },
+        })
+
+        // sam takes the group out: the team's admins hear, not sam
+        await d.removeTeamGroup('u-sam', 'core', 'design')
+        expect((await notices('u-riley'))[0]).toEqual(['group-left', 'team-admin', 'Core', 'Design'])
+        expect((await notices('u-sam')).length).toBe(1)
+
+        // someone else adding you, or taking you out, is news; leaving yourself isn't
+        await d.addMember('u-sam', 'group', group, 'u-devon')
+        await d.removeMember('u-devon', 'group', group, 'u-devon')
+        expect(await notices('u-devon')).toEqual([['added', 'you', null, 'Design']])
+        await d.addMember('u-riley', 'team', team, 'u-sam')
+        await d.removeMember('u-riley', 'team', team, 'u-sam')
+        expect(await notices('u-sam')).toContainEqual(['removed', 'you', 'Core', null])
+
+        // counted, filtered and marked as rows of the inbox
+        expect(await d.inboxCounts('u-sam')).toMatchObject({ all: 3, unread: 3, reasons: { teams: 3 } })
+        expect(await d.unreadCount('u-sam')).toBe(3)
+        expect((await notices('u-sam', { reason: 'author' })).length).toBe(0)
+        expect((await notices('u-sam', { reason: 'teams', team })).length).toBe(3)
+        const ids = (await d.inbox('u-sam')).items.map((r) => (r.kind === 'notice' ? r.id : ''))
+        expect(await d.markInbox('u-sam', null, { read: true }, undefined, [ids[0]!])).toBe(1)
+        expect(await d.unreadCount('u-sam')).toBe(2)
+        // the team's section, done: all three are about the team
+        expect(await d.markInbox('u-sam', null, { done: true }, { team })).toBe(3)
+        expect(await notices('u-sam')).toEqual([])
+        expect((await notices('u-sam', { done: true })).length).toBe(3)
+        // devon's, about the group alone: the group's section
+        expect(await d.markInbox('u-devon', null, { done: true }, { group })).toBe(1)
+        expect(await notices('u-devon')).toEqual([])
+      })
+
       test("one section of the inbox grouped by team: a team's ideas, or a person's own, read or done together", async () => {
         const d = await people()
         const team = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
           .value.id
         await d.addMember('u-riley', 'team', team, 'u-maya')
+        // the notice that riley added her is in the team's section too: not what this is about
+        await d.markInbox('u-maya', null, { read: true, done: true })
         await d.registerIdea(idea('t1', { team }))
         await d.registerIdea(idea('t2', { team }))
         await d.registerIdea(idea('own'))
@@ -1366,7 +1435,8 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         expect(await d.markInbox('u-maya', null, { done: true }, { owner: 'u-riley' })).toBe(1)
         expect(await ids(d, 'u-maya')).toEqual([])
         // and back, one section at a time
-        expect(await d.markInbox('u-maya', null, { done: false }, { team })).toBe(2)
+        // (its two ideas, and the notice about it)
+        expect(await d.markInbox('u-maya', null, { done: false }, { team })).toBe(3)
         expect((await ids(d, 'u-maya')).map((r) => r[0]).toSorted()).toEqual(['t1', 't2'])
         // a person with no ideas outside a team: nothing
         expect(await d.markInbox('u-maya', null, { done: true }, { owner: 'u-maya' })).toBe(0)
@@ -1377,6 +1447,8 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         const team = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
           .value.id
         await d.addMember('u-riley', 'team', team, 'u-maya')
+        // the notice that riley added her isn't what this is about
+        await d.markInbox('u-maya', null, { done: true })
         await d.registerIdea(idea('draft', { team }))
         await d.registerIdea(idea('open', { team, status: 'requesting-review' }))
         await d.registerIdea(idea('done', { team, status: 'closed-accepted' }))
@@ -1399,7 +1471,7 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         expect(await d.subscription('u-maya', 'open')).toEqual({ subscribed: true, reason: 'watching' })
         expect(await d.subscription('u-maya', 'draft')).toEqual({ subscribed: false, reason: null })
         // nothing was written for her: it's worked out when she reads
-        expect((await d.inbox('u-maya')).items.find((r) => r.idea.id === 'done')!.latest.kind).toBe('status')
+        expect(ideaRows(await d.inbox('u-maya')).find((r) => r.idea.id === 'done')!.latest.kind).toBe('status')
 
         // all: drafts too
         await d.setWatch('u-maya', team, 'all')
@@ -1413,10 +1485,10 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         expect((await ids(d, 'u-maya', { done: true })).map((r) => r[0])).toEqual(['draft'])
         await d.notify({ idea: 'draft', events: [event('comment', me('u-riley'))] })
         expect((await ids(d, 'u-maya', { done: true })).map((r) => r[0])).toEqual([])
-        expect((await d.inbox('u-maya')).items.find((r) => r.idea.id === 'draft')!.newCount).toBe(2)
+        expect(ideaRows(await d.inbox('u-maya')).find((r) => r.idea.id === 'draft')!.newCount).toBe(2)
         // her own events don't count
         await d.notify({ idea: 'open', events: [event('comment', me('u-maya'))] })
-        expect((await d.inbox('u-maya')).items.find((r) => r.idea.id === 'open')!.newCount).toBe(0)
+        expect(ideaRows(await d.inbox('u-maya')).find((r) => r.idea.id === 'open')!.newCount).toBe(0)
 
         // involved directly, the idea's own row wins: no double
         await d.setReviewer('u-riley', 'open', { kind: 'user', id: 'u-maya' }, true)

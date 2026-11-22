@@ -140,6 +140,24 @@ export interface DB {
     done: number
     updated_at: number
   }
+  /**
+   * A notice about a team or a group, not an idea, in one person's inbox (a row for each person it's
+   * for): a group joined or left a team, or they were added to or taken out of a team or a group.
+   * `detail` is JSON: why it's theirs (an admin of the team or of the group, or it's about them), the
+   * names as they were, and the role given. Read and done are its own, as an idea's row has them.
+   */
+  notices: {
+    id: string
+    user: string
+    kind: string
+    team: string | null
+    group: string | null
+    actor: string
+    at: number
+    detail: string
+    read: number
+    done: number
+  }
   /** Following an idea: participating (took part), subscribed (chose to), or unsubscribed (chose not to). */
   subscriptions: { user: string; idea: string; state: string; at: number }
   /** How much of a team someone hears about, beyond what they're involved in: active ideas, or all of them. No row: participating. */
@@ -229,6 +247,7 @@ export const COLUMNS = {
   token_grant_targets: ['token_grant', 'kind', 'target'],
   inbox_events: ['id', 'idea', 'kind', 'actor', 'by_user', 'at', 'detail'],
   inbox: ['user', 'idea', 'reason', 'event', 'new_count', 'done', 'updated_at'],
+  notices: ['id', 'user', 'kind', 'team', 'group', 'actor', 'at', 'detail', 'read', 'done'],
   subscriptions: ['user', 'idea', 'state', 'at'],
   watches: ['user', 'team', 'level', 'at'],
   watch_marks: ['user', 'idea', 'read_at', 'done_at'],
@@ -399,6 +418,20 @@ const MIGRATIONS: Migration[] = [
       .addPrimaryKeyConstraint('inbox_pk', ['user', 'idea'])
       .execute()
     await db.schema.createIndex('inbox_user').on('inbox').columns(['user', 'done', 'updated_at', 'idea']).execute()
+    await db.schema
+      .createTable('notices')
+      .addColumn('id', 'text', (c) => c.primaryKey())
+      .addColumn('user', 'text', (c) => c.notNull())
+      .addColumn('kind', 'text', (c) => c.notNull())
+      .addColumn('team', 'text')
+      .addColumn('group', 'text')
+      .addColumn('actor', 'text', (c) => c.notNull())
+      .addColumn('at', 'bigint', (c) => c.notNull())
+      .addColumn('detail', 'text', (c) => c.notNull())
+      .addColumn('read', 'integer', (c) => c.notNull())
+      .addColumn('done', 'integer', (c) => c.notNull())
+      .execute()
+    await db.schema.createIndex('notices_user').on('notices').columns(['user', 'done', 'at', 'id']).execute()
     await db.schema
       .createTable('subscriptions')
       .addColumn('user', 'text', (c) => c.notNull())

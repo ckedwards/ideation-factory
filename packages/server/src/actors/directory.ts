@@ -129,7 +129,8 @@ export const directory = actor({
       ideas: string[] | null,
       change: { read?: boolean; done?: boolean },
       within?: InboxScope,
-    ) => directoryOf(c).markInbox(user, ideas, change, within),
+      notices?: string[],
+    ) => directoryOf(c).markInbox(user, ideas, change, within, notices),
     subscription: (c, user: string, idea: string) => directoryOf(c).subscription(user, idea),
     setSubscription: (c, user: string, idea: string, subscribed: boolean) =>
       directoryOf(c).setSubscription(user, idea, subscribed),

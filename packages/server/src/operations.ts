@@ -740,7 +740,10 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
           },
           token?.id ?? null,
         )
-        return { items: page.items.map((row) => ({ ...row, idea: listed(row.idea) })), next: page.next }
+        return {
+          items: page.items.map((row) => (row.kind === 'idea' ? { ...row, idea: listed(row.idea) } : row)),
+          next: page.next,
+        }
       }),
 
     countNotifications: (_input, { caller, token }) =>
@@ -750,12 +753,13 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
       read(async () => ({ count: await directory().unreadCount(caller.user, token?.id ?? null) })),
 
     markNotifications: async (input, { caller }) => {
-      if ([input.ideas, input.team, input.owner].filter((x) => x !== undefined).length > 1) {
+      const named = input.ideas !== undefined || input.notices !== undefined
+      if ([named || undefined, input.team, input.owner, input.group].filter((x) => x !== undefined).length > 1) {
         return {
           ok: false,
           error: {
             code: 'invalid',
-            message: 'mark ideas by their IDs, one team’s, or one person’s: only one of those',
+            message: 'mark rows by their IDs, or one team’s, one person’s or one group’s: only one of those',
           },
         }
       }
@@ -768,15 +772,20 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         if (input.owner && !owner) {
           return notFound(`no one is called ${input.owner}`)
         }
+        const group = input.group ? await directory().group(input.group) : null
+        if (input.group && !group) {
+          return notFound(`no group ${input.group}`)
+        }
         return {
           changed: await directory().markInbox(
             caller.user,
-            input.ideas ?? null,
+            input.ideas ?? (input.notices ? [] : null),
             {
               ...(input.read ? { read: true } : {}),
               ...(input.done !== undefined ? { done: input.done } : {}),
             },
-            team ? { team: team.id } : owner ? { owner: owner.id } : undefined,
+            team ? { team: team.id } : owner ? { owner: owner.id } : group ? { group: group.id } : undefined,
+            input.notices,
           ),
         }
       })
