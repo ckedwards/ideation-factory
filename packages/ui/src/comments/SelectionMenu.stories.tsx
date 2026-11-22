@@ -11,7 +11,8 @@ const tree = markdownTree(sample)
 function Document(props: Omit<SelectionMenuProps, 'documentRef'>) {
   const document = useRef<HTMLDivElement>(null)
   return (
-    <div ref={document}>
+    // focusable, as the idea page's file is, for the arrow keys
+    <div ref={document} tabIndex={0} role="region" aria-label="File">
       <MarkdownView tree={tree} />
       <SelectionMenu documentRef={document} source={sample} {...props} />
     </div>
@@ -254,5 +255,75 @@ export const BlockButton: Story = {
     await userEvent.click(await page.findByRole('button', { name: 'Comment on this section' }))
     const section = await page.findByRole('dialog', { name: 'Comment on the section' })
     await expect(section).toHaveTextContent('Section · Rollout')
+  },
+}
+
+// With the document focused, the arrow keys move a block at a time, from the block clicked in: a
+// list item is a block, a list isn't. C comments on the block in focus (a heading's section), and
+// focus comes back to the block once the comment is sent, or the form put away
+export const BlockKeys: Story = {
+  args: { onBlockComment: fn(), onSectionComment: fn() },
+  play: async ({ args, canvasElement, userEvent }) => {
+    const page = within(document.body)
+    const paragraph = within(canvasElement)
+      .getByText(/One endpoint takes a batch/)
+      .closest('p')!
+    await userEvent.click(paragraph)
+    await userEvent.keyboard('{ArrowDown}')
+    // the block clicked in first, then the next
+    await waitFor(() => expect(document.activeElement).toBe(paragraph))
+    await userEvent.keyboard('{ArrowDown}')
+    const code = canvasElement.querySelector('pre')!.closest<HTMLElement>('[data-start]')!
+    await waitFor(() => expect(document.activeElement).toBe(code))
+    // its button beside it
+    await expect(await page.findByRole('button', { name: 'Comment on this code' })).toBeVisible()
+    await userEvent.keyboard('{ArrowDown}')
+    const conflicts = canvasElement.querySelector<HTMLElement>('#conflicts')!
+    await waitFor(() => expect(document.activeElement).toBe(conflicts))
+    await userEvent.keyboard('{ArrowUp}')
+    await waitFor(() => expect(document.activeElement).toBe(code))
+
+    // C: the form, on the block in focus
+    await userEvent.keyboard('c')
+    const form = await page.findByRole('dialog', { name: 'Comment on the block' })
+    await expect(form).toHaveTextContent('Code ·')
+    await userEvent.type(await within(form).findByRole('textbox', { name: 'Comment' }), 'Show a response too')
+    await userEvent.click(within(form).getByRole('button', { name: 'Comment' }))
+    await expect(args.onBlockComment).toHaveBeenCalledWith(
+      { start: sample.indexOf('```ts'), end: expect.any(Number), label: 'code' },
+      'Show a response too',
+      false,
+    )
+    await waitFor(() => expect(document.activeElement).toBe(code))
+
+    // on a heading, its section; Escape puts the form away, and focus is back on the heading
+    await userEvent.keyboard('{ArrowDown}c')
+    await expect(await page.findByRole('dialog', { name: 'Comment on the section' })).toHaveTextContent(
+      'Section · Conflicts',
+    )
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(page.queryByRole('dialog')).toBeNull())
+    await waitFor(() => expect(document.activeElement).toBe(conflicts))
+
+    // the list's items, one at a time, not the list
+    const items = [...canvasElement.querySelectorAll<HTMLElement>('ol > li')]
+    await userEvent.click(within(canvasElement).getByText('Rollout'))
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}')
+    await waitFor(() => expect(document.activeElement).toBe(items[0]))
+    await userEvent.keyboard('{ArrowDown}')
+    await waitFor(() => expect(document.activeElement).toBe(items[1]))
+  },
+}
+
+// From the document itself, with nothing clicked, the first block in view
+export const BlockKeysFromTheDocument: Story = {
+  args: { onBlockComment: fn(), onSectionComment: fn() },
+  play: async ({ canvasElement, userEvent }) => {
+    // at the top of the page, whatever a story before scrolled
+    window.scrollTo(0, 0)
+    canvasElement.querySelector<HTMLElement>('[role="region"]')!.focus({ preventScroll: true })
+    await userEvent.keyboard('{ArrowDown}')
+    await waitFor(() => expect(document.activeElement).toBe(canvasElement.querySelector('h1')))
+    await expect(await within(document.body).findByRole('button', { name: 'Comment on this section' })).toBeVisible()
   },
 }

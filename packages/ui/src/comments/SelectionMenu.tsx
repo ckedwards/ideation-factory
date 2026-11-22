@@ -75,6 +75,9 @@ export function SelectionMenu({
   const [replacement, setReplacement] = useState('')
   const box = useRef<HTMLDivElement>(null)
   const fromKeyboard = useRef(false)
+  // the block a form was opened on with the keyboard (C), where its start is: focus goes back to it
+  // once the form is sent or put away with Escape
+  const returnTo = useRef<number | null>(null)
   const selections = useRef(0)
   // what's typed, read by the listeners without re-adding them
   const typed = useRef(false)
@@ -174,11 +177,12 @@ export function SelectionMenu({
         documentRef={documentRef}
         sections={onSectionComment !== undefined}
         blocks={onBlockComment !== undefined}
-        onOpen={(element) => {
+        onOpen={(element, keyboard) => {
           const opened = blockSelection(element)
           if (!opened) {
             return
           }
+          returnTo.current = keyboard ? Number(element.dataset['start']) : null
           const range = document.createRange()
           range.selectNodeContents(element)
           fromKeyboard.current = true
@@ -193,9 +197,21 @@ export function SelectionMenu({
     return blockButton
   }
   const { selection } = pending
-  const close = () => {
+  const close = (restore = false) => {
     setPending(null)
     window.getSelection()?.removeAllRanges()
+    const start = returnTo.current
+    returnTo.current = null
+    const root = documentRef.current
+    if (restore && start !== null && root) {
+      // once the page has drawn the comment (its block may be drawn again, with its mark)
+      requestAnimationFrame(() => {
+        const block = blocksIn(root).find((b) => Number(b.dataset['start']) === start)
+        if (block) {
+          focusBlock(block)
+        }
+      })
+    }
   }
   const replaced = original(selection)
   const pendingBlock = pending.block
@@ -216,7 +232,7 @@ export function SelectionMenu({
     } else if (mode === 'block' && pendingBlock) {
       onBlockComment?.(pendingBlock, body.trim(), pending)
     }
-    close()
+    close(true)
   }
   // the button pressed goes as the form takes the menu's place: focus moves to the popup first, so
   // the popup doesn't take it back from the box once the box has it (the box takes it when it's ready)
@@ -234,7 +250,7 @@ export function SelectionMenu({
         // Esc always closes it; anything else (a click elsewhere, focus
         // moving away) only until something's been typed
         if (!open && (details.reason === 'escape-key' || !typed.current)) {
-          close()
+          close(details.reason === 'escape-key')
         }
       }}
     >
@@ -312,7 +328,7 @@ export function SelectionMenu({
                     value={replacement}
                     onChange={setReplacement}
                     onSubmit={() => submit()}
-                    onCancel={close}
+                    onCancel={() => close(true)}
                     rows={1}
                     autoFocus
                     label="Replace it with"
@@ -322,7 +338,7 @@ export function SelectionMenu({
                   value={body}
                   onChange={setBody}
                   onSubmit={() => submit()}
-                  onCancel={close}
+                  onCancel={() => close(true)}
                   rows={mode === 'suggest' ? 2 : 3}
                   autoFocus={mode !== 'suggest'}
                   // beside the replacement, only the box in use shows its toolbar
@@ -335,7 +351,7 @@ export function SelectionMenu({
                       {mode === 'suggest' && replacement === replaced && (
                         <span className="selection-menu-hint">Change the text to suggest an edit</span>
                       )}
-                      <Button size="sm" variant="ghost" onClick={close}>
+                      <Button size="sm" variant="ghost" onClick={() => close(true)}>
                         Cancel
                       </Button>
                       {addToReview && (
@@ -394,6 +410,30 @@ function blockOf(root: HTMLElement, element: Element | null): HTMLElement | null
   return null
 }
 
+/**
+ * The blocks of the document in order, as the arrow keys move through them: the top-level blocks and
+ * list items, not a list itself (its items are).
+ */
+function blocksIn(root: HTMLElement): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>('[data-start]')].filter(
+    (element) =>
+      blockOf(root, element) === element &&
+      !((element.tagName === 'UL' || element.tagName === 'OL') && element.querySelector('li[data-start]')),
+  )
+}
+
+/**
+ * Focuses a block for the keys: focusable only while it has focus (a code block or a table that
+ * scrolls and stayed focusable only by script would be one the keyboard can't reach).
+ */
+function focusBlock(block: HTMLElement) {
+  if (!block.hasAttribute('tabindex')) {
+    block.tabIndex = -1
+    block.dataset['keyFocus'] = ''
+  }
+  block.focus({ preventScroll: true })
+}
+
 /** What kind of block an element is, as the form names it. */
 function labelOf(element: HTMLElement): string {
   if (element.tagName === 'LI') {
@@ -434,6 +474,9 @@ function blockSelection(element: HTMLElement): Pick<Pending, 'selection' | 'bloc
 /**
  * The button beside the block pointed at, in the margin to its right, level with its first line: a
  * comment on the block, or on a heading's section. It stays while the pointer goes over to it.
+ *
+ * With the document focused, the arrow keys move a block at a time (from the one clicked in, or the
+ * first in view), the button beside the block in focus, and C comments on it.
  */
 function BlockButton({
   documentRef,
@@ -444,7 +487,7 @@ function BlockButton({
   documentRef: RefObject<HTMLElement | null>
   sections: boolean
   blocks: boolean
-  onOpen: (element: HTMLElement) => void
+  onOpen: (element: HTMLElement, keyboard: boolean) => void
 }) {
   const [target, setTarget] = useState<HTMLElement | null>(null)
   const [at, setAt] = useState<{ top: number; left: number } | null>(null)
@@ -471,6 +514,94 @@ function BlockButton({
       window.clearTimeout(hide.current)
       root.removeEventListener('pointermove', move)
       root.removeEventListener('pointerleave', leave)
+    }
+  }, [documentRef, sections, blocks])
+  // the keys, read by the listeners without adding them again
+  const opens = useRef(onOpen)
+  opens.current = onOpen
+  useEffect(() => {
+    const root = documentRef.current
+    if (!root) {
+      return
+    }
+    const usable = (block: HTMLElement) => (/^H[1-6]$/.test(block.tagName) ? sections : blocks)
+    // the block last clicked in: the arrow keys start from it
+    let clicked: HTMLElement | null = null
+    const focusedBlock = () => {
+      const at = document.activeElement
+      return at instanceof HTMLElement && at !== root && blockOf(root, at) === at ? at : null
+    }
+    const pointerDown = (event: PointerEvent) => {
+      clicked = blockOf(root, event.target as Element)
+    }
+    const keyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+        return
+      }
+      const focused = focusedBlock()
+      // the document or a block in it, not a link or a button in a block
+      if (event.target !== root && event.target !== focused) {
+        return
+      }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        const list = blocksIn(root).filter(usable)
+        const down = event.key === 'ArrowDown'
+        const here = focused ?? (clicked?.isConnected ? clicked : null)
+        const i = here ? list.indexOf(here) : -1
+        let next: HTMLElement | undefined
+        if (i >= 0) {
+          // from the block in focus, the next one; from the one clicked in, that one
+          next = here === focused ? list[Math.min(Math.max(i + (down ? 1 : -1), 0), list.length - 1)] : here!
+        } else {
+          // the first block in view, going down; the last, going up
+          const pane = (root.closest('.idea-page-document') as HTMLElement | null)?.getBoundingClientRect()
+          const top = Math.max(pane?.top ?? 0, 0)
+          const bottom = Math.min(pane?.bottom ?? window.innerHeight, window.innerHeight)
+          const inView = list.filter((b) => {
+            const box = b.getBoundingClientRect()
+            return box.bottom > top && box.top < bottom
+          })
+          next = down ? (inView[0] ?? list[0]) : (inView.at(-1) ?? list.at(-1))
+        }
+        if (!next) {
+          return
+        }
+        event.preventDefault()
+        focusBlock(next)
+        const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        next.scrollIntoView({ block: 'nearest', behavior: still ? 'auto' : 'smooth' })
+      } else if (event.key.toLowerCase() === 'c' && focused && usable(focused)) {
+        event.preventDefault()
+        opens.current(focused, true)
+      }
+    }
+    // the button follows the block in focus, and goes once focus leaves the document
+    const focusIn = (event: FocusEvent) => {
+      const block = event.target instanceof HTMLElement && event.target === focusedBlock() ? event.target : null
+      if (block && usable(block)) {
+        window.clearTimeout(hide.current)
+        setTarget(block)
+      }
+    }
+    const focusOut = (event: FocusEvent) => {
+      const left = event.target
+      if (left instanceof HTMLElement && left.dataset['keyFocus'] !== undefined) {
+        left.removeAttribute('tabindex')
+        delete left.dataset['keyFocus']
+      }
+      if (!root.contains(event.relatedTarget as Node | null) && focusedBlock() === null) {
+        hide.current = window.setTimeout(() => setTarget(null), 400)
+      }
+    }
+    root.addEventListener('pointerdown', pointerDown)
+    root.addEventListener('keydown', keyDown)
+    root.addEventListener('focusin', focusIn)
+    root.addEventListener('focusout', focusOut)
+    return () => {
+      root.removeEventListener('pointerdown', pointerDown)
+      root.removeEventListener('keydown', keyDown)
+      root.removeEventListener('focusin', focusIn)
+      root.removeEventListener('focusout', focusOut)
     }
   }, [documentRef, sections, blocks])
   useLayoutEffect(() => {
@@ -506,7 +637,7 @@ function BlockButton({
       onPointerLeave={() => {
         hide.current = window.setTimeout(() => setTarget(null), 400)
       }}
-      onClick={() => onOpen(target)}
+      onClick={() => onOpen(target, false)}
     >
       <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
         <path
