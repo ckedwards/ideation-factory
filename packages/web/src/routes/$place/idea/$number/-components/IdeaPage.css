@@ -188,7 +188,17 @@
   }
 }
 
-/* a heading jumped to (from the contents) stops below the toolbar pinned at the pane's top */
-.idea-page-document .prose :is(h1, h2, h3, h4, h5, h6) {
+/* a heading jumped to (from the contents), or a block moved to with the arrow keys, stops below the
+   toolbar pinned at the pane's top, and clear of the pane's foot */
+.idea-page-document .prose :is(h1, h2, h3, h4, h5, h6),
+.idea-page-document .prose [data-start] {
   scroll-margin-top: 5rem;
+  scroll-margin-bottom: 1.5rem;
+}
+
+/* the file, focused with Tab, for the arrow keys */
+.idea-file-text:focus-visible {
+  outline: calc(var(--hairline) * 2) solid var(--accent);
+  outline-offset: var(--space-2);
+  border-radius: var(--radius-sm);
 }

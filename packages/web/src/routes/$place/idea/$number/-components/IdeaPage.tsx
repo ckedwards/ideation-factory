@@ -466,6 +466,12 @@ export function IdeaPage(props: IdeaPageProps) {
         <>
           <div
             ref={document}
+            // focusable, for the arrow keys to move a block at a time and C to comment on one
+            // (SelectionMenu)
+            {...(canComment && !base && !props.editing && !props.showSource
+              ? { tabIndex: 0, role: 'region', 'aria-label': 'File', 'aria-keyshortcuts': 'ArrowDown ArrowUp C' }
+              : {})}
+            className="idea-file-text"
             // a click off a comment's mark puts its card down
             onClick={(event) => {
               if (!(event.target as Element).closest('[data-comment-id]')) {
