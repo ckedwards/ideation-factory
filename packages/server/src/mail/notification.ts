@@ -1,9 +1,10 @@
 // A notification email from the updates due: one idea's (a thread per idea,
-// like GitHub's), or a daily digest of several. Each says why it was sent,
-// links to the idea, and can be unsubscribed from in one click; headers say
-// what it's about, for mail rules.
-import { ideaPath } from '@ideaf/api'
-import type { DueEmail, InboxEvent, InboxReason } from '../directory/types.ts'
+// like GitHub's), one notice about a team or a group, or a daily digest of
+// several. Each says why it was sent, links to the idea or to the team or
+// group, and can be unsubscribed from in one click; headers say what it's
+// about, for mail rules.
+import { ideaPath, noticeText } from '@ideaf/api'
+import type { DueEmail, InboxEvent, InboxReason, NoticeInboxRow } from '../directory/types.ts'
 import type { Email } from './sender.ts'
 import { unsubscribeURL } from './unsubscribe.ts'
 
@@ -78,15 +79,31 @@ export interface Site {
 export function notificationEmail(due: DueEmail, site: Site): Email {
   const host = new URL(site.baseURL).hostname
   const settings = `${site.baseURL}/settings`
-  if (!due.digest && due.ideas.length === 1) {
+  if (!due.digest && due.ideas.length === 1 && due.notices.length === 0) {
     return ideaEmail(due, due.ideas[0]!, site, host, settings)
   }
+  if (!due.digest && due.ideas.length === 0 && due.notices.length === 1) {
+    return noticeEmail(due, due.notices[0]!, site, host, settings)
+  }
   const off = unsubscribeURL(site.baseURL, site.secret, { user: due.to.id, scope: '*' })
-  const count = due.ideas.length === 1 ? '1 idea' : `${due.ideas.length} ideas`
-  const blocks = due.ideas.map((i) => ideaBlock(i, due.people, site))
+  const count = [
+    ...(due.ideas.length ? [`updates to ${due.ideas.length === 1 ? '1 idea' : `${due.ideas.length} ideas`}`] : []),
+    ...(due.notices.length
+      ? [
+          due.notices.length === 1
+            ? '1 change to your teams and groups'
+            : `${due.notices.length} changes to your teams and groups`,
+        ]
+      : []),
+  ].join(' and ')
+  // the notices first: few, and about you
+  const blocks = [
+    ...due.notices.map((n) => noticeBlock(n, due.people, site)),
+    ...due.ideas.map((i) => ideaBlock(i, due.people, site)),
+  ]
   return {
     to: due.to.email,
-    subject: `Your daily digest: updates to ${count}`,
+    subject: `Your daily digest: ${count}`,
     text: [
       ...blocks.map((b) => b.text),
       `You get one email a day with what’s new. Change that: ${settings}`,
@@ -204,6 +221,95 @@ ${updates
   )
   .join('\n')}
 <p style="margin:14px 0 18px"><a href="${escape(url)}" style="display:inline-block;padding:6px 14px;border-radius:6px;background:#2b6b5a;color:#ffffff;text-decoration:none;font-weight:600">${escape(view)}</a></p>`,
+  }
+}
+
+/** One notice about a team or a group: its own email, threaded by itself. */
+function noticeEmail(due: DueEmail, notice: NoticeInboxRow, site: Site, host: string, settings: string): Email {
+  const { team, group } = notice.notice
+  const off = unsubscribeURL(site.baseURL, site.secret, { user: due.to.id, scope: '*' })
+  const block = noticeBlock(notice, due.people, site)
+  const text = noticeText(notice.notice)
+  const why = `You’re getting this because ${
+    notice.notice.as === 'you'
+      ? 'it’s about you'
+      : `you’re an admin of ${notice.notice.as === 'group-admin' ? (group?.name ?? 'the group') : (team?.name ?? 'the team')}`
+  }.`
+  return {
+    to: due.to.email,
+    subject: `[${text.where}] ${text.title}`,
+    text: [block.text, why, `Email settings: ${settings}`, `Stop email notifications: ${off}`, ''].join('\n'),
+    html: page(
+      block.html,
+      `${escape(why)} <a href="${escape(settings)}">Email settings</a> · <a href="${escape(off)}">Stop email notifications</a>`,
+    ),
+    headers: {
+      'X-Ideaf-Reason': 'teams',
+      ...(team?.handle ? { 'X-Ideaf-Team': team.handle } : {}),
+      ...(group?.handle ? { 'X-Ideaf-Group': group.handle } : {}),
+      ...(team
+        ? { 'List-Id': `${team.name.replace(/[<>"\r\n]/g, '')} <${team.handle ?? team.id}.teams.${host}>` }
+        : {}),
+      'List-Unsubscribe': `<${off}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      'Auto-Submitted': 'auto-generated',
+    },
+    messageId: `<${notice.id}.${due.to.id}@${host}>`,
+  }
+}
+
+/**
+ * A notice, as an email shows it: what happened (a link to where it's seen), its team or group and why
+ * it's yours, who did it, what it means, and a button there.
+ */
+function noticeBlock(row: NoticeInboxRow, people: DueEmail['people'], site: Site) {
+  const notice = row.notice
+  const text = noticeText(notice)
+  const actor = notice.actor.user ? people[notice.actor.user] : undefined
+  const by = actor ? `${actor.name} (@${actor.handle})` : 'Someone'
+  const line = `${by} ${text.update}.`
+  const { team, group } = notice
+  const teamURL = team?.handle ? `${site.baseURL}/${team.handle}` : null
+  const groupURL = group?.handle ? `${site.baseURL}/groups/${group.handle}` : null
+  // a group joining or leaving: its own side; a notice about you: the team or the group
+  const joining = notice.kind === 'group-joined' || notice.kind === 'group-left'
+  const url = joining
+    ? notice.as === 'group-admin'
+      ? groupURL
+      : teamURL && `${teamURL}/settings?tab=groups`
+    : (teamURL ?? groupURL)
+  const view = joining
+    ? notice.as === 'group-admin'
+      ? 'Open the group'
+      : `Open ${team?.name ?? 'the team'}’s groups`
+    : team
+      ? 'Open the team'
+      : 'Open the group'
+  // what it means, and what can be done about it
+  const means =
+    notice.kind === 'group-joined'
+      ? `Its members are ${team?.name ?? 'the team'}’s members too${notice.role ? `, as ${notice.role}s` : ''}, and can see and work on its ideas.${notice.as === 'group-admin' ? ' If it shouldn’t be there, you can take it out from the group’s page.' : ''}`
+      : notice.kind === 'group-left'
+        ? `Its members are no longer ${team?.name ?? 'the team'}’s, unless they’re in it some other way.`
+        : null
+  return {
+    text: [
+      `${text.title} · ${text.where}`,
+      '',
+      line,
+      ...(means ? [means] : []),
+      '',
+      ...(url ? [`${view}: ${url}`, ''] : []),
+    ].join('\n'),
+    html: `<h2 style="font:600 19px/1.3 Georgia,serif;margin:20px 0 2px">${
+      url
+        ? `<a href="${escape(url)}" style="color:#1f1d1a;text-decoration:none">${escape(text.title)}</a>`
+        : escape(text.title)
+    }</h2>
+<p style="color:#6f685e;font-size:13px;margin:0 0 12px">${escape(text.where)} · ${escape(text.as)}</p>
+<p style="margin:10px 0 4px">${escape(line)}</p>
+${means ? `<p style="margin:6px 0;color:#6f685e;font-size:13px">${escape(means)}</p>` : ''}
+${url ? `<p style="margin:14px 0 18px"><a href="${escape(url)}" style="display:inline-block;padding:6px 14px;border-radius:6px;background:#2b6b5a;color:#ffffff;text-decoration:none;font-weight:600">${escape(view)}</a></p>` : ''}`,
   }
 }
 

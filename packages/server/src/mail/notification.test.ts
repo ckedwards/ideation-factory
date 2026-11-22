@@ -2,7 +2,7 @@
 // signed unsubscribe links and their page, sending over SMTP from its own
 // sender, and which sender the environment picks.
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import type { DueEmail, IdeaListing } from '../directory/types.ts'
+import type { DueEmail, IdeaListing, NoticeInboxRow } from '../directory/types.ts'
 import { fakeSmtp } from './fake-smtp.ts'
 import { notificationEmail } from './notification.ts'
 import { settingsFrom } from '../settings/load.ts'
@@ -54,7 +54,8 @@ const due = (extra: Partial<DueEmail> = {}): DueEmail => ({
     },
   ],
   people: { 'u-riley': { handle: 'riley', name: 'Riley' } },
-  sent: { user: 'u-maya', events: [] },
+  notices: [],
+  sent: { user: 'u-maya', events: [], notices: [] },
   ...extra,
 })
 
@@ -140,6 +141,69 @@ describe('a notification email', () => {
       scope: '*',
     })
     expect(email.references).toBeUndefined()
+  })
+
+  const notice = (extra: Partial<NoticeInboxRow['notice']> = {}): NoticeInboxRow => ({
+    kind: 'notice',
+    id: 'ntabc123',
+    notice: {
+      kind: 'group-joined',
+      team: { id: 't1', handle: 'mobile', name: 'Mobile' },
+      group: { id: 'g1', handle: 'design-reviewers', name: 'Design reviewers' },
+      role: 'member',
+      as: 'group-admin',
+      actor: { user: 'u-riley', bot: null, purpose: 'me' },
+      ...extra,
+    },
+    reason: 'teams',
+    newCount: 1,
+    done: false,
+    updatedAt: 20,
+  })
+
+  test('a notice about a team or a group: its own email, in the reader’s words, with what it means and where to see it', () => {
+    const email = notificationEmail(due({ ideas: [], notices: [notice()] }), site)
+    expect(email.subject).toBe('[Mobile] Design reviewers joined Mobile, as members')
+    expect(email.text).toContain('Riley (@riley) added your group to Mobile.')
+    expect(email.text).toContain('If it shouldn’t be there, you can take it out from the group’s page.')
+    expect(email.text).toContain('Open the group: https://ideas.example.test/groups/design-reviewers')
+    expect(email.text).toContain('You’re getting this because you’re an admin of Design reviewers.')
+    expect(email.headers).toMatchObject({
+      'X-Ideaf-Reason': 'teams',
+      'X-Ideaf-Team': 'mobile',
+      'X-Ideaf-Group': 'design-reviewers',
+      'List-Id': 'Mobile <mobile.teams.ideas.example.test>',
+    })
+    expect(email.messageId).toBe('<ntabc123.u-maya@ideas.example.test>')
+    // to a team's admin: the group by its name, and the team's groups
+    const team = notificationEmail(due({ ideas: [], notices: [notice({ as: 'team-admin' })] }), site)
+    expect(team.text).toContain('added Design reviewers to Mobile')
+    expect(team.text).toContain('Open Mobile’s groups: https://ideas.example.test/mobile/settings?tab=groups')
+    // about you, in a team that's gone since: named as it was, nowhere to link
+    const gone = notificationEmail(
+      due({
+        ideas: [],
+        notices: [
+          notice({
+            kind: 'removed',
+            team: { id: 't9', handle: null, name: 'Old team' },
+            group: null,
+            role: null,
+            as: 'you',
+          }),
+        ],
+      }),
+      site,
+    )
+    expect(gone.subject).toBe('[Old team] You’re no longer in Old team')
+    expect(gone.text).toContain('You’re getting this because it’s about you.')
+    expect(gone.html).not.toContain('Open the team')
+  })
+
+  test('a digest puts the notices first, and counts them apart from the ideas', () => {
+    const email = notificationEmail(due({ digest: true, notices: [notice()] }), site)
+    expect(email.subject).toBe('Your daily digest: updates to 1 idea and 1 change to your teams and groups')
+    expect(email.text.indexOf('Design reviewers joined Mobile')).toBeLessThan(email.text.indexOf('Faster sign-in'))
   })
 })
 

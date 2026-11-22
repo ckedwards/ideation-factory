@@ -1390,6 +1390,21 @@ export class SqlDirectory implements Directory {
     to: Map<string, NoticeDetail['as']>,
   ): Promise<void> {
     const at = this.#now()
+    // those who want email of what they're involved in, and can be sent it
+    const wanting = new Set(
+      (
+        await db
+          .selectFrom('users as u')
+          .leftJoin('notification_settings as s', 's.user', 'u.id')
+          .select(['u.id', 's.email'])
+          .where('u.id', 'in', [...to.keys(), ''])
+          .where('u.email', 'is not', null)
+          .where('u.inactive', '=', 0)
+          .execute()
+      )
+        .filter((w) => (w.email ?? DEFAULT_NOTIFICATION_SETTINGS.email) === 'involved')
+        .map((w) => w.id),
+    )
     const rows = [...to].flatMap(([user, as]) =>
       user === actor
         ? []
@@ -1410,6 +1425,7 @@ export class SqlDirectory implements Directory {
               } satisfies NoticeDetail),
               read: 0,
               done: 0,
+              email: this.#email && wanting.has(user) ? 1 : 0,
             },
           ],
     )
@@ -1641,6 +1657,8 @@ export class SqlDirectory implements Directory {
         .set({
           ...(change.read ? { read: 1 } : {}),
           ...(change.done !== undefined ? { done: change.done ? 1 : 0 } : {}),
+          // what's been read or cleared isn't emailed
+          ...(change.read || change.done === true ? { email: 0 } : {}),
         })
         .where('user', '=', user)
         .where('id', 'in', chosen)
@@ -1813,11 +1831,37 @@ export class SqlDirectory implements Directory {
       .where('q.daily', '=', 1)
       .groupBy(['q.user', 's.digest_at'])
       .execute()
-    return rows.map((r) => ({
-      user: r.user,
-      first: Number(r.first),
-      digestAt: r.digest_at === null ? null : Number(r.digest_at),
-    }))
+    // and notices waiting for someone's digest
+    const notices = await this.#db
+      .selectFrom('notices as n')
+      .innerJoin('notification_settings as s', 's.user', 'n.user')
+      .select((eb) => ['n.user', eb.fn.min('n.at').as('first'), 's.digest_at'])
+      .where('n.email', '=', 1)
+      .where('s.cadence', '=', 'daily')
+      .groupBy(['n.user', 's.digest_at'])
+      .execute()
+    const by = new Map<string, { user: string; first: number; digestAt: number | null }>()
+    for (const r of [...rows, ...notices]) {
+      const first = Number(r.first)
+      const was = by.get(r.user)
+      by.set(r.user, {
+        user: r.user,
+        first: was ? Math.min(was.first, first) : first,
+        digestAt: r.digest_at === null ? null : Number(r.digest_at),
+      })
+    }
+    return [...by.values()]
+  }
+
+  /** Notices to email on their own, not in a digest: each once it's been quiet a while, oldest first. */
+  #bundledNotices() {
+    return this.#db
+      .selectFrom('notices as n')
+      .leftJoin('notification_settings as s', 's.user', 'n.user')
+      .select(['n.id', 'n.user', 'n.at'])
+      .where('n.email', '=', 1)
+      .where((eb) => eb.or([eb('s.cadence', 'is', null), eb('s.cadence', '!=', 'daily')]))
+      .orderBy('n.at')
   }
 
   /** When a digest is due: once the first email has been quiet for a while, and a day after the last one. */
@@ -1848,6 +1892,10 @@ export class SqlDirectory implements Directory {
     for (const d of await this.#pendingDigests()) {
       times.push(this.#digestAt(d, timing))
     }
+    const notice = await this.#bundledNotices().limit(1).executeTakeFirst()
+    if (notice) {
+      times.push(Number(notice.at) + timing.quietMs)
+    }
     return times.length === 0 ? null : Math.min(...times)
   }
 
@@ -1860,12 +1908,22 @@ export class SqlDirectory implements Directory {
       .where('daily', '=', 0)
       .where((eb) => eb.or([eb('last', '<=', now - timing.quietMs), eb('first', '<=', now - timing.maxWaitMs)]))
       .execute()
-    const due: Array<{ user: string; ideas: string[]; at: number; digest: boolean }> = bundled.map((q) => ({
-      user: q.user,
-      ideas: [q.idea],
-      at: Math.min(Number(q.last) + timing.quietMs, Number(q.first) + timing.maxWaitMs),
-      digest: false,
-    }))
+    const due: Array<{ user: string; ideas: string[]; notices: string[]; at: number; digest: boolean }> = bundled.map(
+      (q) => ({
+        user: q.user,
+        ideas: [q.idea],
+        notices: [],
+        at: Math.min(Number(q.last) + timing.quietMs, Number(q.first) + timing.maxWaitMs),
+        digest: false,
+      }),
+    )
+    // a notice by itself, once it's been quiet a while (nothing bundles them: they're rare)
+    for (const n of await this.#bundledNotices()
+      .where('n.at', '<=', now - timing.quietMs)
+      .limit(limit)
+      .execute()) {
+      due.push({ user: n.user, ideas: [], notices: [n.id], at: Number(n.at) + timing.quietMs, digest: false })
+    }
     for (const d of await this.#pendingDigests()) {
       const at = this.#digestAt(d, timing)
       if (at <= now) {
@@ -1875,13 +1933,25 @@ export class SqlDirectory implements Directory {
           .where('user', '=', d.user)
           .where('daily', '=', 1)
           .execute()
-        due.push({ user: d.user, ideas: ideas.map((r) => r.idea), at, digest: true })
+        const notices = await this.#db
+          .selectFrom('notices')
+          .select('id')
+          .where('user', '=', d.user)
+          .where('email', '=', 1)
+          .execute()
+        due.push({
+          user: d.user,
+          ideas: ideas.map((r) => r.idea),
+          notices: notices.map((r) => r.id),
+          at,
+          digest: true,
+        })
       }
     }
     due.sort((a, b) => a.at - b.at)
     const emails: DueEmail[] = []
     for (const d of due.slice(0, limit)) {
-      const email = await this.#composeEmail(d.user, d.ideas, d.digest)
+      const email = await this.#composeEmail(d.user, d.ideas, d.digest, d.notices)
       if (email) {
         emails.push(email)
       }
@@ -1895,7 +1965,26 @@ export class SqlDirectory implements Directory {
    * what they can still see, didn't unsubscribe from (review requests
    * aside) and still want. What's dropped is cleared; null when nothing's left.
    */
-  async #composeEmail(user: string, ideaIds: string[], digest: boolean): Promise<DueEmail | null> {
+  async #composeEmail(
+    user: string,
+    ideaIds: string[],
+    digest: boolean,
+    noticeIds: string[] = [],
+  ): Promise<DueEmail | null> {
+    // the notices still to be emailed (read or cleared since, they aren't)
+    const noticeRows = noticeIds.length
+      ? await this.#db
+          .selectFrom('notices')
+          .selectAll()
+          .where('user', '=', user)
+          .where('id', 'in', noticeIds)
+          .where('email', '=', 1)
+          .orderBy('at')
+          .execute()
+      : []
+    if (ideaIds.length === 0) {
+      ideaIds = ['-']
+    }
     const pending = await this.#db
       .selectFrom('email_pending as p')
       .innerJoin('inbox_events as e', 'e.id', 'p.event')
@@ -1919,8 +2008,21 @@ export class SqlDirectory implements Directory {
       .executeTakeFirst()
     const settings = await this.notificationSettings(user)
     const drop = async () => {
-      await this.#db.deleteFrom('email_pending').where('user', '=', user).where('event', 'in', allEvents).execute()
+      if (allEvents.length > 0) {
+        await this.#db.deleteFrom('email_pending').where('user', '=', user).where('event', 'in', allEvents).execute()
+      }
       await this.#syncEmailQueue(this.#db, [user], ideaIds)
+      if (noticeRows.length > 0) {
+        await this.#db
+          .updateTable('notices')
+          .set({ email: 0 })
+          .where(
+            'id',
+            'in',
+            noticeRows.map((n) => n.id),
+          )
+          .execute()
+      }
       return null
     }
     if (!person?.email || person.inactive === 1 || settings.email === 'off') {
@@ -1969,19 +2071,28 @@ export class SqlDirectory implements Directory {
         more: Math.max(0, events.length - EMAIL_EVENTS),
       })
     }
-    if (ideas.length === 0) {
+    // email of what you're involved in only: a choice changed since it was queued drops it
+    const notices = settings.email === 'involved' ? [...(await this.#noticesShown(noticeRows)).values()] : []
+    if (ideas.length === 0 && notices.length === 0) {
       return drop()
     }
     // newest first in a digest
     ideas.sort((a, b) => b.events.at(-1)!.at - a.events.at(-1)!.at)
-    const named = [...new Set(ideas.flatMap((i) => i.events.map((e) => e.actor.user)).filter(Boolean))]
+    const named = [
+      ...new Set(
+        [...ideas.flatMap((i) => i.events.map((e) => e.actor.user)), ...notices.map((n) => n.notice.actor.user)].filter(
+          Boolean,
+        ),
+      ),
+    ]
     const people = Object.fromEntries((await this.users(named)).map((u) => [u.id, { handle: u.handle, name: u.name }]))
     return {
       to: { id: person.id, handle: person.handle, name: person.name, email: person.email },
       digest,
       ideas,
+      notices,
       people,
-      sent: { user, events: allEvents },
+      sent: { user, events: allEvents, notices: noticeRows.map((n) => n.id) },
     }
   }
 
@@ -1991,6 +2102,9 @@ export class SqlDirectory implements Directory {
       if (events.length > 0) {
         await db.deleteFrom('email_pending').where('user', '=', user).where('event', 'in', events).execute()
         await this.#syncEmailQueue(db, [user])
+      }
+      if (email.sent.notices.length > 0) {
+        await db.updateTable('notices').set({ email: 0 }).where('id', 'in', email.sent.notices).execute()
       }
       if (email.digest) {
         await db.updateTable('notification_settings').set({ digest_at: this.#now() }).where('user', '=', user).execute()
