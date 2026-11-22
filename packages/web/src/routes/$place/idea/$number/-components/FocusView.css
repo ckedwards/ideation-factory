@@ -236,7 +236,10 @@ html[data-focus='open'] .idea-page-measure .prose {
 .focus-pages {
   display: grid;
   gap: var(--space-6);
-  padding: var(--space-2) 16.5rem 6rem;
+  /* after the last sheet, room to scroll its last heading to the top, as the page list takes it there
+     (measured, FocusView; this until it is) */
+  --scroll-past: 6rem;
+  padding: var(--space-2) 16.5rem var(--scroll-past);
   transition: padding var(--dc) var(--ease);
 }
 .focus-view.has-comments .focus-pages {
@@ -326,115 +329,43 @@ html[data-focus='open'] .idea-page-measure .prose {
   box-shadow: none;
 }
 
-/* the threads beside a sheet */
+/* the comments beside a sheet: the Files tab's column (CommentGutter), scrolling with the sheet */
 .focus-notes {
   position: relative;
   min-width: 0;
-  min-height: 0;
-  transition: min-height var(--dc) var(--ease);
+  opacity: 0;
+  transition: opacity var(--dc) ease;
 }
 .focus-view.has-comments .focus-notes {
-  /* the next sheet starts below the last thread */
-  min-height: var(--notes-h, 0);
-}
-.focus-note {
-  position: absolute;
-  left: 0;
-  display: grid;
-  gap: var(--space-2);
-  width: var(--note-w);
-  opacity: 0;
-  transform: translateX(1.25rem);
-  pointer-events: none;
-  transition:
-    opacity var(--dc) ease,
-    transform var(--dc) var(--ease),
-    top var(--dc) var(--ease);
-}
-.focus-view.has-comments .focus-note {
   opacity: 1;
-  transform: none;
-  pointer-events: auto;
-  transition-delay: calc(var(--i, 0) * 30ms);
 }
-/* off: they go together, with no stagger */
-.focus-view:not(.has-comments) .focus-note {
-  transition-delay: 0s;
-}
-.focus-view .focus-note.is-going {
-  opacity: 0;
-  transform: translateX(1.25rem);
-  pointer-events: none;
-  transition-delay: 0s;
-}
-.focus-view .focus-note.is-unplaced {
-  visibility: hidden;
-}
-.focus-note-label {
-  margin: 0;
-  color: var(--ink-3);
-  font-size: var(--text-xs);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.focus-note-where {
-  display: none;
-  margin: 0 0 var(--space-1);
-  color: var(--ink-3);
-  font-size: var(--text-xs);
-}
-.focus-note-where:empty {
-  display: none !important;
-}
-
-/* a thread's buttons take no room at rest; they open at its foot when the pointer rests on it, focus is
-   in it, or it's the active one, and the thread grows over what's below */
-.focus-note .comment-actions,
-.focus-note .suggestion-actions {
-  max-height: 0;
-  margin-top: calc(var(--space-2) * -1);
+/* the whole file's comments sit at the top of its text */
+.focus-file-anchors {
+  display: block;
+  height: 0;
   overflow: hidden;
-  opacity: 0;
-  transition:
-    max-height 0.22s var(--ease),
-    margin-top 0.22s var(--ease),
-    opacity 0.22s ease;
 }
-.focus-thread:hover :is(.comment-actions, .suggestion-actions),
-.focus-thread:focus-within :is(.comment-actions, .suggestion-actions),
-.focus-thread .comment-card.is-active :is(.comment-actions, .suggestion-actions) {
-  max-height: 5rem;
-  margin-top: 0;
-  opacity: 1;
+.focus-file-anchors > span {
+  display: block;
+  height: 1px;
 }
-.focus-thread:hover :is(.comment-actions, .suggestion-actions) {
-  transition-delay: 0.12s;
+/* comments off: a block's corner marks and counts, and a section's count, go with the highlights */
+.focus-view:not(.has-comments) .focus-sheet .md-block-mark::before,
+.focus-view:not(.has-comments) .focus-sheet .md-block-mark::after,
+.focus-view:not(.has-comments) .focus-sheet .md-section-mark::after,
+.focus-view:not(.has-comments) .focus-sheet .md-block-count {
+  display: none;
 }
-.focus-note:hover,
-.focus-note:focus-within {
-  z-index: 3;
+/* off, selected or all, beside how many there are */
+.focus-comments {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
 }
-.focus-note .comment-card {
-  transition:
-    box-shadow 0.22s ease,
-    border-color 0.22s ease;
-}
-.focus-note .comment-card.is-active {
-  box-shadow: var(--shadow-sm);
-}
-.focus-thread:hover .comment-card,
-.focus-thread:focus-within .comment-card {
-  box-shadow: var(--shadow);
-}
-@media (hover: none) {
-  .focus-note .comment-actions,
-  .focus-note .suggestion-actions {
-    max-height: none;
-    margin-top: 0;
-    overflow: visible;
-    opacity: 1;
-  }
+.focus-comments-label {
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
 }
 
 /* ---- narrower windows ---- */
@@ -452,7 +383,7 @@ html[data-focus='open'] .idea-page-measure .prose {
   }
   .focus-pages,
   .focus-view.has-comments .focus-pages {
-    padding: var(--space-2) var(--space-5) 6rem;
+    padding: var(--space-2) var(--space-5) var(--scroll-past);
   }
   .focus-nav {
     position: fixed;
@@ -485,7 +416,7 @@ html[data-focus='open'] .idea-page-measure .prose {
 @media (max-width: 62.5rem) {
   .focus-pages,
   .focus-view.has-comments .focus-pages {
-    padding: var(--space-2) var(--space-3) 6rem;
+    padding: var(--space-2) var(--space-3) var(--scroll-past);
   }
   .focus-row,
   .focus-view.has-comments .focus-row {
@@ -496,25 +427,10 @@ html[data-focus='open'] .idea-page-measure .prose {
   .focus-sheet {
     padding: var(--space-5) var(--space-4) var(--space-7);
   }
-  .focus-notes {
-    display: none;
-  }
-  .focus-view.has-comments .focus-notes {
+  /* listed under the sheet, each quoting what it's on */
+  .focus-notes.is-list {
     display: grid;
     gap: var(--space-3);
-    min-height: 0;
-  }
-  .focus-note {
-    position: static;
-    width: auto;
-    transform: none;
-    transition: opacity var(--dc) ease;
-  }
-  .focus-view.has-comments .focus-note {
-    transition-delay: 0s;
-  }
-  .focus-note-where {
-    display: block;
   }
 }
 /* a phone: the top line in two rows, what it is over what to do; no keyboard hint */
