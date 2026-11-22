@@ -1,11 +1,13 @@
 // The sample data scripts/test-ui.sh seed loads: a small organization a few weeks into using
-// Ideation Factory. Thirteen people in three teams and three groups (one of them part of a team),
-// and eighteen ideas at every stage, from private notes to closed, with discussions, suggested
-// edits, reviews and a join request or two: among them one with five versions by two people, and
-// a handbook page with eighteen threads. scripts/test-ui-medium.ts grows it into a medium-sized
+// Ideation Factory. Thirteen people in four teams and three groups (one of them part of a team),
+// and twenty-three ideas at every stage, from private notes to closed, with discussions, suggested
+// edits, reviews and a join request or two: among them one with five versions by two people, a
+// handbook page with eighteen threads, and the Comments team's five, made for trying out comments
+// (scripts/test-ui-comments.ts). scripts/test-ui-medium.ts grows it into a medium-sized
 // company. Everyone's email is @example.com, which Mailpit
 // catches, so anyone can be signed in as.
 import type { Verdict } from '@ideaf/api'
+import { commentIdeas, commentsTeam } from './test-ui-comments.ts'
 
 export interface PersonSeed {
   handle: string
@@ -113,6 +115,7 @@ export const teams: TeamSeed[] = [
     sharedWith: ['leads'],
     requirements: { approvals: 0, resolved: false },
   },
+  commentsTeam,
 ]
 
 /** People asking to join, for their admins to decide. */
@@ -127,8 +130,13 @@ export interface Remark {
 }
 
 export interface Discussion extends Remark {
-  /** The text it's about, in `file` (the idea's first file unless named); the whole file without it. */
+  /**
+   * What it's about, in `file` (the idea's first file unless named): some text (`on`), a section by its
+   * heading's words, or a block by words it has; the whole file without any of them.
+   */
   on?: string
+  section?: string
+  block?: string
   file?: string
   /** A suggested edit: what replaces `on`. */
   suggest?: string
@@ -737,6 +745,7 @@ The team that owns the service reads the review in its next planning meeting.
   },
   // a busy discussion: many threads, replies, resolved and open, a suggestion or two
   busyIdea(),
+  ...commentIdeas(),
 ]
 
 /** The handbook page everyone had an opinion on: eighteen threads across its sections. */

@@ -156,13 +156,34 @@ async function latest(api: ApiClient, idea: string) {
   return { version: pulled.version, files: new Map(pulled.files.map((f) => [f.path, f])) }
 }
 
-/** Where a discussion is: a file, or text in it (its plain text, as the app counts it). */
+/** Where a discussion is: a file, text in it (its plain text, as the app counts it), a section or a block. */
 async function anchorOf(api: ApiClient, idea: string, seed: IdeaSeed, d: Discussion) {
   const now = await latest(api, idea)
   const path = d.file ?? Object.keys(seed.files)[0]!
   const file = now.files.get(path)
   if (!file) {
     throw new Error(`${seed.title}: no file ${path}`)
+  }
+  if (d.section !== undefined || d.block !== undefined) {
+    // by their IDs, as show_blocks gives them: a section by its heading's words, a block by words it has
+    const outline = await api.showBlocks({ idea })
+    const entries = outline.files.find((f) => f.id === file.file)?.entries ?? []
+    const found =
+      d.section !== undefined
+        ? entries.find((e) => e.kind === 'heading' && e.source.replace(/^#+\s*/, '').trim() === d.section)
+        : entries.find((e) => e.kind !== 'heading' && e.source.includes(d.block!))
+    if (!found) {
+      throw new Error(
+        `${seed.title}: no ${d.section !== undefined ? `section "${d.section}"` : `block with "${d.block}"`} in ${path}`,
+      )
+    }
+    return {
+      version: now.version,
+      anchor:
+        d.section !== undefined
+          ? { kind: 'section' as const, section: found.id }
+          : { kind: 'block' as const, block: found.id },
+    }
   }
   if (!d.on) {
     return { version: now.version, anchor: { kind: 'file' as const, file: file.file } }
