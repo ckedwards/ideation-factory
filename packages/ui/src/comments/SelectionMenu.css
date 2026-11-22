@@ -77,3 +77,14 @@
   border-color: var(--mark-line);
   color: var(--ink);
 }
+
+/* a block in focus, moved to with the arrow keys: a rectangle round it, as pointing at a commented
+   block draws (one with a comment has its marks grow into that rectangle instead) */
+.prose [data-start]:focus-visible:not(.md-block-mark) {
+  outline: calc(var(--hairline) * 2) solid var(--mark-line);
+  outline-offset: var(--space-1);
+  border-radius: var(--radius-sm);
+}
+.prose .md-block-mark:focus-visible {
+  outline: none;
+}
