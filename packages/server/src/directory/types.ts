@@ -232,10 +232,12 @@ export interface DueEmail {
     /** Updates left out, beyond those. */
     more: number
   }>
-  /** The people the updates name (who did them), by ID. */
+  /** Notices about teams and groups, oldest first: one alone, or all those pending in a digest. */
+  notices: NoticeInboxRow[]
+  /** The people the updates and notices name (who did them), by ID. */
   people: Record<string, { handle: string; name: string }>
   /** What to clear once it's sent. */
-  sent: { user: string; events: string[] }
+  sent: { user: string; events: string[]; notices: string[] }
 }
 
 /** The most updates one idea shows in an email. */

@@ -1587,6 +1587,46 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         expect(await d.nextEmailAt(timing)).toBeNull()
       })
 
+      test('a notice about a team or a group: its own email once quiet, in the digest for those who chose one, none once read', async () => {
+        const { d, clock } = await mailing()
+        await d.setNotificationSettings('u-sam', { cadence: 'daily' })
+        await d.setNotificationSettings('u-devon', { email: 'review-requests' })
+        const team = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
+          .value.id
+        for (const user of ['u-maya', 'u-sam', 'u-devon']) {
+          await d.addMember('u-riley', 'team', team, user)
+        }
+        // not yet: it isn't quiet; then maya's, alone, and sam's in his digest (his first, so it goes once quiet);
+        // devon only wants review requests
+        expect(await d.dueEmails(timing)).toEqual([])
+        expect(await d.nextEmailAt(timing)).toBe(clock.now + 1_000)
+        clock.now += 1_000
+        const due = await send(d)
+        expect(
+          due.map((e) => [e.to.handle, e.digest, e.ideas.length, e.notices.map((n) => n.notice.kind)]).toSorted(),
+        ).toEqual([
+          ['maya', false, 0, ['added']],
+          ['sam', true, 0, ['added']],
+        ])
+        expect(due[0]!.people['u-riley']).toEqual({ handle: 'riley', name: 'Riley' })
+        expect(await d.dueEmails(timing)).toEqual([])
+        // read before it's due: not emailed
+        await d.addMember(
+          'u-riley',
+          'group',
+          (
+            (await d.createGroup('u-riley', { handle: 'g', name: 'G' })) as {
+              value: { id: string }
+            }
+          ).value.id,
+          'u-maya',
+        )
+        await d.markInbox('u-maya', null, { read: true })
+        clock.now += 1_000
+        expect(await d.dueEmails(timing)).toEqual([])
+        expect(await d.nextEmailAt(timing)).toBeNull()
+      })
+
       test('a busy idea still goes by the longest wait; nobody without an address is emailed', async () => {
         const { d, clock } = await mailing()
         await d.setGrant('u-riley', 'i1', { kind: 'user', id: 'u-outsider' }, { edit: false, share: false })
@@ -1688,6 +1728,10 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         await d.addMember('u-riley', 'team', team, 'u-maya')
         await d.addMember('u-riley', 'team', team, 'u-sam')
         await d.addMember('u-riley', 'team', team, 'u-devon')
+        // being added is news of its own, read here: this is about the team's ideas
+        for (const user of ['u-maya', 'u-sam', 'u-devon']) {
+          await d.markInbox(user, null, { read: true })
+        }
         await d.registerIdea(idea('draft', { team }))
         await d.registerIdea(idea('open', { team, status: 'requesting-review' }))
         await d.setWatch('u-maya', team, 'active')

@@ -116,6 +116,15 @@ describe('the inbox', () => {
     expect((await api(h('ines')).countNotifications({})).reasons.teams).toBe(1)
     expect((await api(h('ines')).unreadNotifications({})).count).toBe(1)
     const id = notices[0]!.kind === 'notice' ? notices[0]!.id : ''
+    // and by email, once it's quiet: its own, in her words
+    let mail = testEmail.to(`${h('ines')}@example.test`)
+    for (let i = 0; i < 300 && mail.length === 0; i++) {
+      await Bun.sleep(50)
+      mail = testEmail.to(`${h('ines')}@example.test`)
+    }
+    expect(mail.map((m) => m.subject)).toEqual(['[Noticed] Reviewers joined Noticed, as members'])
+    expect(mail[0]!.text).toContain(`added your group to Noticed`)
+    expect(mail[0]!.headers).toMatchObject({ 'X-Ideaf-Reason': 'teams', 'X-Ideaf-Team': team, 'X-Ideaf-Group': group })
     // in the cli: the notice's ID (to mark it), its team, what happened, and who did it, in her words
     const ines = await repoAs('ines')
     const shown = (await ines.ideaf('inbox', 'show', '--reason', 'teams')).out

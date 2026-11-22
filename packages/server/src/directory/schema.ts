@@ -144,7 +144,8 @@ export interface DB {
    * A notice about a team or a group, not an idea, in one person's inbox (a row for each person it's
    * for): a group joined or left a team, or they were added to or taken out of a team or a group.
    * `detail` is JSON: why it's theirs (an admin of the team or of the group, or it's about them), the
-   * names as they were, and the role given. Read and done are its own, as an idea's row has them.
+   * names as they were, and the role given. Read and done are its own, as an idea's row has them; `email`
+   * marks one still to be emailed.
    */
   notices: {
     id: string
@@ -157,6 +158,8 @@ export interface DB {
     detail: string
     read: number
     done: number
+    /** 1 while it's still to be emailed (they want email, and haven't read it yet). */
+    email: number
   }
   /** Following an idea: participating (took part), subscribed (chose to), or unsubscribed (chose not to). */
   subscriptions: { user: string; idea: string; state: string; at: number }
@@ -247,7 +250,7 @@ export const COLUMNS = {
   token_grant_targets: ['token_grant', 'kind', 'target'],
   inbox_events: ['id', 'idea', 'kind', 'actor', 'by_user', 'at', 'detail'],
   inbox: ['user', 'idea', 'reason', 'event', 'new_count', 'done', 'updated_at'],
-  notices: ['id', 'user', 'kind', 'team', 'group', 'actor', 'at', 'detail', 'read', 'done'],
+  notices: ['id', 'user', 'kind', 'team', 'group', 'actor', 'at', 'detail', 'read', 'done', 'email'],
   subscriptions: ['user', 'idea', 'state', 'at'],
   watches: ['user', 'team', 'level', 'at'],
   watch_marks: ['user', 'idea', 'read_at', 'done_at'],
@@ -430,8 +433,10 @@ const MIGRATIONS: Migration[] = [
       .addColumn('detail', 'text', (c) => c.notNull())
       .addColumn('read', 'integer', (c) => c.notNull())
       .addColumn('done', 'integer', (c) => c.notNull())
+      .addColumn('email', 'integer', (c) => c.notNull())
       .execute()
     await db.schema.createIndex('notices_user').on('notices').columns(['user', 'done', 'at', 'id']).execute()
+    await db.schema.createIndex('notices_email').on('notices').columns(['email', 'at']).execute()
     await db.schema
       .createTable('subscriptions')
       .addColumn('user', 'text', (c) => c.notNull())

@@ -188,17 +188,19 @@ export const directory = actor({
       directoryOf(c).parkedUntil(kind, handle, requester),
     members: (c, kind: ContainerKind, id: string, options?: MemberListOptions) =>
       directoryOf(c).members(kind, id, options),
+    // these may write notices, which may be emailed: the email alarm is checked after them
     addMember: (c, by: string, kind: ContainerKind, id: string, user: string, role?: Role) =>
-      directoryOf(c).addMember(by, kind, id, user, role),
+      afterNotices(c, directoryOf(c).addMember(by, kind, id, user, role)),
     memberships: (c, user: string) => directoryOf(c).memberships(user),
     removeMember: (c, by: string, kind: ContainerKind, id: string, user: string) =>
-      directoryOf(c).removeMember(by, kind, id, user),
+      afterNotices(c, directoryOf(c).removeMember(by, kind, id, user)),
     teamGroups: (c, team: string) => directoryOf(c).teamGroups(team),
     groupTeams: (c, group: string) => directoryOf(c).groupTeams(group),
     groupRules: (c, group: string) => directoryOf(c).groupRules(group),
     addTeamGroup: (c, by: string, team: string, group: string, role?: 'member' | 'maintainer') =>
-      directoryOf(c).addTeamGroup(by, team, group, role),
-    removeTeamGroup: (c, by: string, team: string, group: string) => directoryOf(c).removeTeamGroup(by, team, group),
+      afterNotices(c, directoryOf(c).addTeamGroup(by, team, group, role)),
+    removeTeamGroup: (c, by: string, team: string, group: string) =>
+      afterNotices(c, directoryOf(c).removeTeamGroup(by, team, group)),
     requestToJoin: (c, by: string, kind: ContainerKind, id: string) => directoryOf(c).requestToJoin(by, kind, id),
     joinRequests: (c, by: string, kind: ContainerKind, id: string) => directoryOf(c).joinRequests(by, kind, id),
     decide: (c, by: string, kind: ContainerKind, id: string, user: string, approve: boolean) =>
@@ -270,6 +272,13 @@ const DIRECTORY_CACHE_MB = 256
 const LOST_ALARM_MS = 2_000
 /** How often the awake directory makes sure an email due has a live alarm (two reads, when one is due). */
 const EMAIL_CHECK_MS = 2_000
+
+/** A change's result, once the email alarm is checked: the notices it wrote may be emailed. */
+async function afterNotices<T>(c: Scheduling, change: Promise<T>): Promise<T> {
+  const result = await change
+  await checkEmails(c)
+  return result
+}
 
 /** That an email due has a live alarm: after notifications (they may have queued one), and every EMAIL_CHECK_MS. */
 async function checkEmails(c: Scheduling): Promise<void> {
