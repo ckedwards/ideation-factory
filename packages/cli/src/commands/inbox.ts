@@ -1,7 +1,7 @@
 // ideaf inbox …, subscribe and unsubscribe: what's happened to the ideas you
 // hear about, one line per idea however much happened, and the notices about
 // your teams and groups among them; and clearing them.
-import { type IdeaNotification, ideaPath, type NoticeNotification } from '@ideaf/api'
+import { type IdeaNotification, ideaPath, noticeText } from '@ideaf/api'
 import { CliError, type Context, EXIT } from '../context.ts'
 import { truncate } from './output.ts'
 import { Names } from './subjects.ts'
@@ -27,12 +27,6 @@ const WHY: Record<Reason, string> = {
   teams: 'teams and groups',
 }
 
-const AS: Record<NoticeNotification['notice']['as'], string> = {
-  'team-admin': 'team admin',
-  'group-admin': 'group admin',
-  you: 'you',
-}
-
 export async function show(
   ctx: Context,
   flags: { done?: boolean; unread?: boolean; reason?: string; team?: string; cursor?: string },
@@ -56,9 +50,10 @@ export async function show(
   for (const n of page.items) {
     if (n.kind === 'notice') {
       // a notice: its ID (to mark it), its team or group, what happened, and who did it
-      const words = noticeWords(n.notice)
+      const words = noticeText(n.notice)
+      const where = n.notice.team?.handle ?? (n.notice.group?.handle ? `group ${n.notice.group.handle}` : words.where)
       ctx.say(
-        `${(n.newCount > 0 ? '● new' : '  read').padEnd(9)} ${n.id}  ${words.where}  ${truncate(words.title, 50)}  (${AS[n.notice.as]})`,
+        `${(n.newCount > 0 ? '● new' : '  read').padEnd(9)} ${n.id}  ${where}  ${truncate(words.title, 50)}  (${words.as.toLowerCase()})`,
       )
       ctx.say(`          ${await who(n.notice.actor, names)} ${words.update}`)
       continue
@@ -73,37 +68,6 @@ export async function show(
     ctx.say(`\nMore: ideaf inbox show --cursor ${page.next}`)
   }
   return EXIT.ok
-}
-
-/**
- * A notice in words: where (its team's handle, or its group's), what happened, and what its actor did, from the
- * reader's side ("your group" to a group's admin). A team or group that's gone is named as it was.
- */
-export function noticeWords(notice: NoticeNotification['notice']): { where: string; title: string; update: string } {
-  const team = notice.team?.name ?? 'a team'
-  const group = notice.group?.name ?? 'a group'
-  const theGroup = notice.as === 'group-admin' ? 'your group' : group
-  const where = notice.team ? (notice.team.handle ?? notice.team.name) : `group ${notice.group?.handle ?? group}`
-  const container = notice.team ? team : group
-  const kind = notice.team ? 'team' : 'group'
-  switch (notice.kind) {
-    case 'group-joined':
-      return {
-        where,
-        title: `${group} joined ${team}${notice.role ? `, as ${notice.role}s` : ''}`,
-        update: `added ${theGroup} to ${team}`,
-      }
-    case 'group-left':
-      return { where, title: `${group} left ${team}`, update: `took ${theGroup} out of ${team}` }
-    case 'added':
-      return {
-        where,
-        title: `You joined ${container}${notice.role ? `, as ${/^[aeiou]/.test(notice.role) ? 'an' : 'a'} ${notice.role}` : ''}`,
-        update: `added you to the ${kind}`,
-      }
-    case 'removed':
-      return { where, title: `You’re no longer in ${container}`, update: `took you out of the ${kind}` }
-  }
 }
 
 /** Who did something, as the inbox names them. */
