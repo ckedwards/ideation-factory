@@ -371,6 +371,16 @@ for (const r of joinRequests) {
   }
 }
 
+// what building the teams and groups told everyone (who added them, which group joined which team) is read,
+// as it would be by now: lastChanges, at the end, leaves riley a few unread
+await each(
+  people,
+  async (p) => {
+    await who(p.handle).api.markNotifications({ read: true })
+  },
+  24,
+)
+
 // made one at a time, in the order they're written, so each has the same number on every seed
 // (mobile/idea/1 is always the same idea); then filled in, a few at a time
 const made = new Map<IdeaSeed, string>()
@@ -393,6 +403,26 @@ const comments = ideas.reduce(
   0,
 )
 console.log(`${ideas.length} ideas, with ${comments} comments and replies`)
+
+for (const change of small.lastChanges) {
+  const api = who(change.by).api
+  if ('groupJoins' in change) {
+    await api.addTeamGroup(change.groupJoins)
+  } else if ('groupLeaves' in change) {
+    await api.removeTeamGroup(change.groupLeaves)
+  } else if ('adds' in change) {
+    const { team, group, person } = change.adds
+    await (team
+      ? api.addTeamMember({ team, user: who(person).id })
+      : api.addGroupMember({ group: group!, user: who(person).id }))
+  } else {
+    const { team, group, person } = change.removes
+    await (team
+      ? api.removeTeamMember({ team, user: who(person).id })
+      : api.removeGroupMember({ group: group!, user: who(person).id }))
+  }
+}
+console.log(`${small.lastChanges.length} changes to teams and groups, for riley's notices`)
 console.log(
   `seeded in ${((Date.now() - started) / 1000).toFixed(0)} s: sign in as ${people[0]!.email} (${people[0]!.name}), or anyone in scripts/test-ui-data.ts`,
 )
