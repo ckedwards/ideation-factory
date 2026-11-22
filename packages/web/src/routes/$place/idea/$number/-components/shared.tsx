@@ -126,6 +126,7 @@ export function commentWrites(
     anchor,
     lastVersion: version,
     lastAnchor: null,
+    lastUnit: null,
     addressedIn: [],
     suggestion,
     replies: [],

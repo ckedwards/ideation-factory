@@ -23,6 +23,7 @@ const thread = (anchor: Thread['anchor'], state: Thread['state'] = 'exact'): Thr
   anchor,
   lastVersion: null,
   lastAnchor: null,
+  lastUnit: null,
   addressedIn: [],
   suggestion: null,
   replies: [],
@@ -84,4 +85,19 @@ test('an outdated comment is tagged with what it was on, not as on the whole fil
   })
   // nowhere known: no tag
   expect(targetOf(was(null), titles)).toEqual({ kind: 'idea' })
+  // a block or a section gone since: named as it was where it was last
+  const gone = (anchor: Thread['lastAnchor'], unit: NonNullable<Thread['lastUnit']>) => ({
+    ...was(anchor),
+    lastUnit: unit,
+  })
+  const item = { id: 'b9', kind: 'list-item' as const, path: ['Steps'], section: 's6', source: '- Cut it.' }
+  expect(targetOf(gone({ kind: 'block', file: 'f1', block: 'b9' }, item), titles)).toEqual({
+    kind: 'block',
+    label: 'List item',
+  })
+  const later = { id: 's8', kind: 'heading' as const, path: ['Later'], section: null, level: 2, source: '## Later' }
+  expect(targetOf(gone({ kind: 'section', file: 'f1', section: 's8' }, later), titles)).toEqual({
+    kind: 'section',
+    title: 'Later',
+  })
 })

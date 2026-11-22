@@ -165,6 +165,18 @@ describe('editing with a batch', () => {
     expect(then).toMatchObject({ state: 'exact', lastAnchor: null })
   })
 
+  test('a comment on a block that goes is outdated, with the block as it was', async () => {
+    const { service, write } = await created()
+    await write({ type: 'comment', version: 1, anchor: { kind: 'block', block: 'b5' }, body: 'Rain?' })
+    await write({ type: 'edit', batch: { base: 1, steps: [{ command: 'delete', target: 'b5' }] } })
+    const [c] = await service.comments(2)
+    expect(c).toMatchObject({
+      state: 'outdated',
+      lastAnchor: { kind: 'block', block: 'b5' },
+      lastUnit: { id: 'b5', kind: 'paragraph', path: ['Plan', 'Risks'], source: 'It might rain.' },
+    })
+  })
+
   test('a stale batch replays onto the latest version, or conflicts', async () => {
     const { write } = await created()
     await write({
