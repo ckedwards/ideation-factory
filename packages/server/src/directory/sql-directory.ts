@@ -29,6 +29,7 @@ import {
   INBOX_REASONS,
   type InboxEvent,
   type InboxFilter,
+  type InboxScope,
   type InboxReason,
   type InboxRow,
   type NotifyBatch,
@@ -1270,6 +1271,20 @@ export class SqlDirectory implements Directory {
     }
   }
 
+  /** The ideas in one section of an inbox grouped by team: a team's, or a person's outside any team. */
+  async #ideasWithin(within: InboxScope): Promise<Set<string>> {
+    if ('team' in within) {
+      return this.#ideasInTeam(within.team)
+    }
+    const rows = await this.#db
+      .selectFrom('ideas')
+      .select('id')
+      .where('team', 'is', null)
+      .where('owner', '=', within.owner)
+      .execute()
+    return new Set(rows.map((r) => r.id))
+  }
+
   /** The ideas in a team, for filtering an inbox by it. */
   async #ideasInTeam(team: string): Promise<Set<string>> {
     const rows = await this.#db.selectFrom('ideas').select('id').where('team', '=', team).execute()
@@ -1317,8 +1332,18 @@ export class SqlDirectory implements Directory {
     return Number(row?.n ?? 0) + watched
   }
 
-  async markInbox(user: string, ideas: string[] | null, change: { read?: boolean; done?: boolean }): Promise<number> {
+  async markInbox(
+    user: string,
+    ideas: string[] | null,
+    change: { read?: boolean; done?: boolean },
+    within?: InboxScope,
+  ): Promise<number> {
     if (ideas?.length === 0 || (!change.read && change.done === undefined)) {
+      return 0
+    }
+    // only one section's: a team's ideas, or a person's outside any team
+    const scope = within ? await this.#ideasWithin(within) : null
+    if (scope?.size === 0) {
       return 0
     }
     // which of your own rows: these ideas, or (for "all") everything in the list they move out of
@@ -1327,6 +1352,9 @@ export class SqlDirectory implements Directory {
       which = which.where('idea', 'in', ideas)
     } else if (change.done !== undefined) {
       which = which.where('done', '=', change.done ? 0 : 1)
+    }
+    if (scope) {
+      which = which.where('idea', 'in', [...scope])
     }
     if (change.read && change.done === undefined) {
       which = which.where('new_count', '>', 0)
@@ -1344,8 +1372,10 @@ export class SqlDirectory implements Directory {
         .execute()
     }
     // and ideas heard of through a watched team: their marks
-    const watched = (await this.#watched(user, null)).filter((r) =>
-      ideas ? ideas.includes(r.idea) : change.done !== undefined ? r.done === !change.done : r.newCount > 0,
+    const watched = (await this.#watched(user, null)).filter(
+      (r) =>
+        (!scope || scope.has(r.idea)) &&
+        (ideas ? ideas.includes(r.idea) : change.done !== undefined ? r.done === !change.done : r.newCount > 0),
     )
     for (const r of watched) {
       // up to the latest event at least: events are timed by the idea's actor, whose clock may run ahead
@@ -1363,12 +1393,13 @@ export class SqlDirectory implements Directory {
     }
     // what's been read or cleared isn't emailed
     if (change.read || change.done === true) {
+      const these = ideas ?? (scope ? [...scope] : null)
       let pending = this.#db.deleteFrom('email_pending').where('user', '=', user)
-      if (ideas) {
-        pending = pending.where('idea', 'in', ideas)
+      if (these) {
+        pending = pending.where('idea', 'in', these)
       }
       await pending.execute()
-      await this.#syncEmailQueue(this.#db, [user], ideas ?? undefined)
+      await this.#syncEmailQueue(this.#db, [user], these ?? undefined)
     }
     return chosen.length + watched.length
   }

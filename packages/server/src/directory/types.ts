@@ -127,6 +127,9 @@ export interface InboxCounts {
   teams: Array<{ id: string; handle: string; name: string; count: number }>
 }
 
+/** One section of an inbox grouped by team: a team's ideas (its ID), or a person's outside any team (their ID). */
+export type InboxScope = { team: string } | { owner: string }
+
 export interface InboxFilter {
   /** The Done list, rather than the inbox. */
   done?: boolean
@@ -586,7 +589,17 @@ export interface Directory {
   /** How many ideas in the inbox have something new. */
   unreadCount(user: string, token?: string | null): Promise<number>
   /** Marks ideas in a person's inbox read, done or back in the inbox; `null` for all of them. Says how many changed. */
-  markInbox(user: string, ideas: string[] | null, change: { read?: boolean; done?: boolean }): Promise<number>
+  /**
+   * Marks your inbox's rows read or done (or back): these ideas, or every one in the list they move out of;
+   * `within` keeps it to one team's ideas, or one person's outside any team (a section of the inbox grouped by
+   * team).
+   */
+  markInbox(
+    user: string,
+    ideas: string[] | null,
+    change: { read?: boolean; done?: boolean },
+    within?: InboxScope,
+  ): Promise<number>
   /** Whether a person hears about an idea, and why (null when they don't). */
   subscription(user: string, idea: string): Promise<{ subscribed: boolean; reason: InboxReason | null }>
   /** Subscribes to an idea, or unsubscribes (which stops everything but review requests). */

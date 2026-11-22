@@ -749,13 +749,38 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
     unreadNotifications: (_input, { caller, token }) =>
       read(async () => ({ count: await directory().unreadCount(caller.user, token?.id ?? null) })),
 
-    markNotifications: async (input, { caller }) =>
-      read(async () => ({
-        changed: await directory().markInbox(caller.user, input.ideas ?? null, {
-          ...(input.read ? { read: true } : {}),
-          ...(input.done !== undefined ? { done: input.done } : {}),
-        }),
-      })),
+    markNotifications: async (input, { caller }) => {
+      if ([input.ideas, input.team, input.owner].filter((x) => x !== undefined).length > 1) {
+        return {
+          ok: false,
+          error: {
+            code: 'invalid',
+            message: 'mark ideas by their IDs, one team’s, or one person’s: only one of those',
+          },
+        }
+      }
+      return read(async () => {
+        const team = input.team ? await directory().team(input.team) : null
+        if (input.team && !team) {
+          return notFound(`no team ${input.team}`)
+        }
+        const owner = input.owner ? await directory().user(input.owner) : null
+        if (input.owner && !owner) {
+          return notFound(`no one is called ${input.owner}`)
+        }
+        return {
+          changed: await directory().markInbox(
+            caller.user,
+            input.ideas ?? null,
+            {
+              ...(input.read ? { read: true } : {}),
+              ...(input.done !== undefined ? { done: input.done } : {}),
+            },
+            team ? { team: team.id } : owner ? { owner: owner.id } : undefined,
+          ),
+        }
+      })
+    },
 
     getSubscription: (input, { caller, token }) =>
       withAccess(input.idea, { caller, token }, 'view', () =>

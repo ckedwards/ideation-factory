@@ -1346,6 +1346,32 @@ export function directoryContract(name: string, make: (options?: DirectoryOption
         expect(await ids(d, 'u-riley')).toEqual([['i1', 'author', 4]])
       })
 
+      test("one section of the inbox grouped by team: a team's ideas, or a person's own, read or done together", async () => {
+        const d = await people()
+        const team = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
+          .value.id
+        await d.addMember('u-riley', 'team', team, 'u-maya')
+        await d.registerIdea(idea('t1', { team }))
+        await d.registerIdea(idea('t2', { team }))
+        await d.registerIdea(idea('own'))
+        for (const id of ['t1', 't2', 'own']) {
+          await d.setReviewer('u-riley', id, { kind: 'user', id: 'u-maya' }, true)
+        }
+        // the team's, all of them, not the rest
+        expect(await d.markInbox('u-maya', null, { read: true }, { team })).toBe(2)
+        expect((await ids(d, 'u-maya', { unread: true })).map((r) => r[0])).toEqual(['own'])
+        expect(await d.markInbox('u-maya', null, { done: true }, { team })).toBe(2)
+        expect((await ids(d, 'u-maya')).map((r) => r[0])).toEqual(['own'])
+        // riley's own ideas, outside any team
+        expect(await d.markInbox('u-maya', null, { done: true }, { owner: 'u-riley' })).toBe(1)
+        expect(await ids(d, 'u-maya')).toEqual([])
+        // and back, one section at a time
+        expect(await d.markInbox('u-maya', null, { done: false }, { team })).toBe(2)
+        expect((await ids(d, 'u-maya')).map((r) => r[0]).toSorted()).toEqual(['t1', 't2'])
+        // a person with no ideas outside a team: nothing
+        expect(await d.markInbox('u-maya', null, { done: true }, { owner: 'u-maya' })).toBe(0)
+      })
+
       test('watching a team brings its ideas into your inbox, at your level, without a row written per event', async () => {
         const d = await people()
         const team = ((await d.createTeam('u-riley', { handle: 'core', name: 'Core' })) as { value: { id: string } })
