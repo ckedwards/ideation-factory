@@ -11,7 +11,11 @@ CREATE TABLE status_changes ( seq INTEGER PRIMARY KEY, status TEXT NOT NULL, by 
 CREATE TABLE reviews ( seq INTEGER PRIMARY KEY, reviewer TEXT NOT NULL, by TEXT NOT NULL, verdict TEXT NOT NULL CHECK (verdict IN ('approve', 'request-changes', 'reject')), version INTEGER NOT NULL REFERENCES versions (number), body TEXT NOT NULL, at INTEGER NOT NULL, dismissed TEXT );
 CREATE INDEX reviews_reviewer ON reviews (reviewer, seq);
 CREATE TABLE seen ( user TEXT PRIMARY KEY, version INTEGER NOT NULL REFERENCES versions (number), at INTEGER NOT NULL );
-CREATE TABLE draft ( key TEXT PRIMARY KEY, seq INTEGER NOT NULL UNIQUE, change TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL );
+CREATE TABLE draft_files ( file TEXT PRIMARY KEY, steps INTEGER NOT NULL, doc TEXT NOT NULL, source TEXT NOT NULL, ids TEXT NOT NULL, at INTEGER NOT NULL );
+CREATE TABLE draft_steps ( file TEXT NOT NULL, seq INTEGER NOT NULL, step TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (file, seq) );
+CREATE TABLE draft_suggestions (comment TEXT PRIMARY KEY, change TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL);
+CREATE TABLE draft_held (key TEXT PRIMARY KEY, change TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL);
+CREATE TABLE draft_authors (key TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (key, by));
 CREATE TABLE writes (key TEXT PRIMARY KEY, result TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE INDEX writes_at ON writes (at);
 CREATE TABLE outbox (id TEXT PRIMARY KEY, events TEXT NOT NULL, at INTEGER NOT NULL, attempts INTEGER NOT NULL, next_at INTEGER NOT NULL);

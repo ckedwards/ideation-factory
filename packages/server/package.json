@@ -20,6 +20,7 @@
     "@better-auth/sso": "1.7.14",
     "@ideaf/api": "workspace:*",
     "@ideaf/core": "workspace:*",
+    "@ideaf/ui": "workspace:*",
     "@modelcontextprotocol/sdk": "1.32.2",
     "better-auth": "1.7.14",
     "jose": "6.2.14",

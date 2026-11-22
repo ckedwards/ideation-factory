@@ -12,7 +12,7 @@
 // opening HTML block and its closing one are drawn as one, with the Markdown between them inside, read
 // only too. Front matter, link definitions, and HTML that makes no sense alone are shown as their
 // source.
-import { markdownTree, parseMarkdown } from '@ideaf/core'
+import { parseMarkdown } from '@ideaf/core'
 import {
   commandsCtx,
   defaultValueCtx,
@@ -31,11 +31,9 @@ import {
   createCodeBlockCommand,
   blockquoteKeymap,
   bulletListKeymap,
-  commonmark,
   insertHardbreakCommand,
   listItemKeymap,
   orderedListKeymap,
-  remarkPreserveEmptyLinePlugin,
   toggleEmphasisCommand,
   toggleInlineCodeCommand,
   toggleStrongCommand,
@@ -49,7 +47,6 @@ import {
   addColBeforeCommand,
   addRowAfterCommand,
   addRowBeforeCommand,
-  gfm,
   insertTableCommand,
   strikethroughKeymap,
   tableKeymap,
@@ -72,18 +69,13 @@ import {
 } from '@milkdown/kit/prose/state'
 import { deleteColumn, deleteRow, deleteTable, goToNextCell, isInTable, selectedRect } from '@milkdown/kit/prose/tables'
 import { Decoration, DecorationSet, type EditorView } from '@milkdown/kit/prose/view'
-import { $nodeSchema, $prose, $view } from '@milkdown/kit/utils'
-import type { Html, Root, RootContent } from 'mdast'
-import { htmlRuns, sanitizeHtml, SLOT } from '../document/html.ts'
-import { clipboardIdentity, identifiedSchemas, type MovedWords } from './identity.ts'
-import { tableHandler, tableStyle } from './tables.ts'
+import { $prose, $view } from '@milkdown/kit/utils'
+import { sanitizeHtml, SLOT } from '../document/html.ts'
+import { drawnHtmlRun, drawnSchemas, htmlMark } from './drawing.ts'
+import { clipboardIdentity, type MovedWords } from './identity.ts'
+import { type Block, type Codec, createCodec, type IdentifiedBlock, type Flavor, writeOptions } from './model.ts'
 
-/** An empty line between a page's blocks, as it's written: Markdown has none of its own. */
-const EMPTY_LINE_SOURCE = '<br />'
-const EMPTY_LINE = /^\s*<br\s*\/?>\s*$/i
-
-/** full: a comment; inline: a suggestion's replacement (marks and links); page: a whole file, in the draft. */
-export type Flavor = 'full' | 'inline' | 'page'
+export type { Flavor } from './model.ts'
 
 /** What the toolbar can do, on either side of the switch. */
 export type Action =
@@ -204,141 +196,6 @@ export interface RichEditor {
   dom: () => HTMLElement
   destroy: () => void
 }
-
-// the kinds core's parser finds that the editor shows as their source
-const RAW = new Set(['yaml', 'definition', 'html'])
-
-/** One top-level block as it was opened: its source, and where it sat in the file. */
-interface Block {
-  /** The first and last of the file's top-level blocks it covers: more than one for a run of HTML. */
-  index: number
-  last: number
-  start: number
-  end: number
-  source: string
-}
-
-// the mark on drawn HTML: what it is, and where it's changed
-const HTML_LABEL = 'HTML blocks are only editable in source view'
-const htmlMark = () => {
-  const mark = document.createElement('span')
-  mark.className = 'md-editor-html-mark'
-  mark.contentEditable = 'false'
-  mark.setAttribute('role', 'img')
-  mark.setAttribute('aria-label', HTML_LABEL)
-  mark.title = HTML_LABEL
-  mark.innerHTML =
-    '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg>'
-  return mark
-}
-
-/** A block that isn't typed in, written back as it is: raw HTML (drawn), or other source (shown as text). */
-const rawSchema = $nodeSchema('ideaf_raw', () => ({
-  group: 'block',
-  atom: true,
-  selectable: true,
-  attrs: {
-    value: { default: '', validate: 'string' },
-    kind: { default: 'source', validate: 'string' },
-    // its draft identity, on a page
-    blockId: { default: null },
-  },
-  toDOM: (node) => {
-    const value = node.attrs['value'] as string
-    const id = node.attrs['blockId'] as string | null
-    if (node.attrs['kind'] !== 'html') {
-      return ['pre', { class: 'md-editor-raw', 'data-raw': 'source', ...(id ? { 'data-block-id': id } : {}) }, value]
-    }
-    const dom = document.createElement('div')
-    if (id) {
-      dom.setAttribute('data-block-id', id)
-    }
-    dom.className = 'md-editor-html'
-    dom.setAttribute('data-raw', 'html')
-    dom.setAttribute('data-value', value)
-    const drawn = document.createElement('div')
-    drawn.className = 'md-html-drawn'
-    drawn.innerHTML = sanitizeHtml(value)
-    dom.append(htmlMark(), drawn)
-    return dom
-  },
-  parseDOM: [
-    {
-      tag: '[data-raw]',
-      getAttrs: (dom) => ({
-        value: (dom as HTMLElement).getAttribute('data-value') ?? (dom as HTMLElement).textContent ?? '',
-        kind: (dom as HTMLElement).getAttribute('data-raw') === 'html' ? 'html' : 'source',
-        blockId: (dom as HTMLElement).getAttribute('data-block-id'),
-      }),
-    },
-  ],
-  parseMarkdown: {
-    match: (node) => node.type === 'ideafRaw',
-    runner: (state, node, type) => {
-      state.addNode(type, { value: node['value'] as string })
-    },
-  },
-  toMarkdown: {
-    match: (node) => node.type.name === 'ideaf_raw',
-    runner: (state, node) => {
-      state.addNode('html', undefined, node.attrs['value'] as string)
-    },
-  },
-}))
-
-/**
- * An HTML block left open and the one that closes it, drawn as one with the blocks between inside. It's
- * read only, whole: one unit, selected and deleted as one, changed on the Markdown side.
- */
-const htmlRunSchema = $nodeSchema('ideaf_html_run', () => ({
-  group: 'block',
-  content: 'block*',
-  atom: true,
-  selectable: true,
-  defining: true,
-  isolating: true,
-  attrs: {
-    open: { default: '', validate: 'string' },
-    close: { default: '', validate: 'string' },
-    // the draft identities of the blocks it covers, on a page, space apart
-    blockIds: { default: '', validate: 'string' },
-  },
-  toDOM: (node) => [
-    'div',
-    {
-      'data-html-open': node.attrs['open'] as string,
-      'data-html-close': node.attrs['close'] as string,
-      ...(node.attrs['blockIds'] ? { 'data-block-ids': node.attrs['blockIds'] as string } : {}),
-    },
-    0,
-  ],
-  parseDOM: [
-    {
-      tag: 'div[data-html-open][data-html-close]',
-      getAttrs: (dom) => ({
-        open: (dom as HTMLElement).getAttribute('data-html-open') ?? '',
-        close: (dom as HTMLElement).getAttribute('data-html-close') ?? '',
-        blockIds: (dom as HTMLElement).getAttribute('data-block-ids') ?? '',
-      }),
-    },
-  ],
-  parseMarkdown: {
-    match: (node) => node.type === 'ideafHtmlRun',
-    runner: (state, node, type) => {
-      state.openNode(type, { open: node['open'] as string, close: node['close'] as string })
-      state.next(node.children ?? [])
-      state.closeNode()
-    },
-  },
-  toMarkdown: {
-    match: (node) => node.type.name === 'ideaf_html_run',
-    runner: (state, node) => {
-      state.addNode('html', undefined, node.attrs['open'] as string)
-      state.next(node.content)
-      state.addNode('html', undefined, node.attrs['close'] as string)
-    },
-  },
-}))
 
 /**
  * A comment shown on a page: on some of a block's text (where, as plain-text offsets in the block,
@@ -541,7 +398,7 @@ function inBlock(block: Node, pos: number, mark: { from: number; to: number; quo
 }
 
 // a run drawn as its HTML with the blocks between where it left off, none of it typed in
-const htmlRunView = $view(htmlRunSchema.node, () => (node) => {
+const htmlRunView = $view(drawnHtmlRun.node, () => (node) => {
   const dom = document.createElement('div')
   dom.className = 'md-editor-html'
   dom.contentEditable = 'false'
@@ -566,65 +423,11 @@ const htmlRunView = $view(htmlRunSchema.node, () => (node) => {
   }
 })
 
-/** How the file writes what remark could write more than one way. */
-function styleOf(source: string, tree: Root) {
-  const at = (node: RootContent | undefined) => (node?.position ? source.charAt(node.position.start.offset ?? 0) : '')
-  const first = <T extends RootContent['type']>(type: T): Extract<RootContent, { type: T }> | undefined => {
-    let found: RootContent | undefined
-    const walk = (nodes: RootContent[]) => {
-      for (const node of nodes) {
-        if (found) {
-          return
-        }
-        if (node.type === type) {
-          found = node
-          return
-        }
-        if ('children' in node) {
-          walk(node.children as RootContent[])
-        }
-      }
-    }
-    walk(tree.children)
-    return found as Extract<RootContent, { type: T }> | undefined
-  }
-  const list = first('list')
-  const bullet = list && !list.ordered ? at(list) : ''
-  const ordered = (() => {
-    if (!list?.ordered || !list.position) {
-      return undefined
-    }
-    const lines = source
-      .slice(list.position.start.offset ?? 0, list.position.end.offset ?? 0)
-      .split('\n')
-      .filter((line) => /^\s*\d+[.)]\s/.test(line))
-    return lines.length > 1 && lines.every((line) => /^\s*1[.)]\s/.test(line)) ? 'same' : 'increment'
-  })()
-  const emphasis = at(first('emphasis'))
-  const strong = at(first('strong'))
-  const rule = at(first('thematicBreak'))
-  return {
-    bullet: (bullet === '*' || bullet === '+' ? bullet : '-') as '-' | '*' | '+',
-    emphasis: (emphasis === '_' ? '_' : '*') as '_' | '*',
-    strong: (strong === '_' ? '_' : '*') as '_' | '*',
-    rule: (rule === '*' || rule === '_' ? rule : '-') as '-' | '*' | '_',
-    incrementListMarker: ordered !== 'same',
-  }
-}
-
-const slice = (source: string, node: RootContent) =>
-  source.slice(node.position!.start.offset!, node.position!.end.offset!)
-
 export async function createRichEditor(options: RichOptions): Promise<RichEditor> {
-  const tree = markdownTree(options.source)
-  const style = styleOf(options.source, tree)
   const latest = { options }
-  let opened: { source: string; blocks: Block[]; origin: WeakMap<Node, Block>; nodes: Node[] } = {
-    source: '',
-    blocks: [],
-    origin: new WeakMap(),
-    nodes: [],
-  }
+  // set once the editor's made: nothing writes before then
+  let codec!: Codec
+  const write = (doc: Node) => codec.write(doc)
   let emitted = ''
   // Values given out that the page hasn't given back yet. Typing quickly runs ahead of the page:
   // it's still rendering an older one ("H" after "Ha" went out), which is the page catching up, not
@@ -1008,11 +811,6 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
       }),
   )
 
-  // Milkdown's empty lines put `<br />` in every empty paragraph, a list item's and a table cell's
-  // too; a page keeps only its own empty lines, between blocks (write and open)
-  const preset = commonmark.filter(
-    (plugin) => plugin !== remarkPreserveEmptyLinePlugin.plugin && plugin !== remarkPreserveEmptyLinePlugin.options,
-  )
   const editor = await Editor.make()
     .config((ctx) => {
       ctx.set(rootCtx, options.root)
@@ -1027,14 +825,7 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
           'aria-label': options.label,
         },
       }))
-      ctx.update(remarkStringifyOptionsCtx, (prev) => ({
-        ...prev,
-        ...style,
-        listItemIndent: 'one' as const,
-        fences: true,
-        // remark-stringify's handler type isn't a dependency here; tableHandler is one
-        handlers: { ...prev.handlers, table: tableHandler(tableStyle(options.source, tree)) as never },
-      }))
+      ctx.update(remarkStringifyOptionsCtx, (prev) => writeOptions(options.source, prev))
       // the design's keys in place of Milkdown's: Tab leaves the editor outside a table
       ctx.update(listItemKeymap.key, (prev) => ({
         ...prev,
@@ -1078,12 +869,7 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
     .use(hold)
     .use(contextMenu)
     .use(commentClicks)
-    .use(preset)
-    .use(gfm)
-    // the draft's blocks can carry their identity (identity.ts)
-    .use(identifiedSchemas)
-    .use(rawSchema)
-    .use(htmlRunSchema)
+    .use(drawnSchemas)
     .use(htmlRunView)
     .use(history)
     // a page keeps its blocks' identities through the clipboard, ahead of Milkdown's paste
@@ -1111,226 +897,13 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
   // words moved between blocks, not yet asked for
   let moved: MovedWords[] = []
 
-  /** The Markdown as blocks on screen, each remembering the source it came from (and, on a page, its draft identity). */
-  function open(source: string, ids?: string[]): Node {
-    // the draft's blocks, as core finds them, with their IDs: for the nodes built from them
-    const units = ids
-      ? parseMarkdown(source).units.map((u, i) => ({ start: u.start, kind: u.kind, id: ids[i] ?? null }))
-      : []
-    const tree = markdownTree(source)
-    const origin = new WeakMap<Node, Block>()
-    const blocks: Block[] = []
-    const nodes: Node[] = []
-    if (options.flavor === 'inline') {
-      // one paragraph, whatever the text starts with: a leading "- " or "# " is text here, not a block
-      const paragraph = parse(`x ${source.replace(/\n+/g, ' ')}`).firstChild
-      const content = paragraph?.type.name === 'paragraph' ? paragraph.content.cut(2) : Fragment.empty
-      const node = schema.nodes['paragraph']!.create(null, content)
-      const block = { index: 0, last: 0, start: 0, end: source.length, source }
-      origin.set(node, block)
-      opened = { source, blocks: [block], origin, nodes: [node] }
-      return schema.topNodeType.create(null, node)
-    }
-    const definitions = tree.children
-      .filter((n) => n.type === 'definition')
-      .map((n) => slice(source, n))
-      .join('\n')
-    tree.children.forEach((child, index) => {
-      blocks.push({
-        index,
-        last: index,
-        start: child.position!.start.offset!,
-        end: child.position!.end.offset!,
-        source: slice(source, child),
-      })
-    })
-    // sibling blocks as nodes, each with the range of them it came from (an HTML run covers several)
-    const build = (children: RootContent[]): Array<{ nodes: Node[]; first: number; last: number }> => {
-      const draws = htmlRuns(children)
-      const out: Array<{ nodes: Node[]; first: number; last: number }> = []
-      for (let i = 0; i < children.length; i++) {
-        const child = children[i]!
-        const draw = draws.get(i)
-        if (draw?.draw === 'run') {
-          const inside = build(children.slice(i + 1, draw.to)).flatMap((b) => b.nodes)
-          const run = schema.nodes['ideaf_html_run']!.create(
-            { open: (child as Html).value, close: (children[draw.to] as Html).value },
-            inside,
-          )
-          out.push({ nodes: [run], first: i, last: draw.to })
-          i = draw.to
-          continue
-        }
-        // an empty line, as a page writes one: drawn as one, to type in
-        if (options.flavor === 'page' && child.type === 'html' && EMPTY_LINE.test(child.value)) {
-          out.push({ nodes: [schema.nodes['paragraph']!.create()], first: i, last: i })
-          continue
-        }
-        if (RAW.has(child.type)) {
-          const kind = draw?.draw === 'alone' ? 'html' : 'source'
-          out.push({
-            nodes: [schema.nodes['ideaf_raw']!.create({ value: slice(source, child), kind })],
-            first: i,
-            last: i,
-          })
-          continue
-        }
-        // a reference link needs the file's definitions to be read as a link
-        const text = slice(source, child)
-        const doc = parse(definitions && text.includes('[') ? `${text}\n\n${definitions}` : text)
-        const parsed: Node[] = []
-        doc.forEach((node) => void parsed.push(node.type.name === 'table' ? asWide(node) : node))
-        out.push({ nodes: parsed, first: i, last: i })
-      }
-      return out
-    }
-    for (const built of build(tree.children)) {
-      if (built.nodes.length === 1) {
-        const first = blocks[built.first]!
-        const last = blocks[built.last]!
-        if (ids) {
-          const within = units.filter((u) => u.start >= first.start && u.start < last.end).map((u) => u.id)
-          built.nodes[0] = identify(built.nodes[0]!, within)
-        }
-        origin.set(built.nodes[0]!, {
-          index: first.index,
-          last: last.index,
-          start: first.start,
-          end: last.end,
-          source: source.slice(first.start, last.end),
-        })
-      }
-      nodes.push(...built.nodes)
-    }
-    opened = { source, blocks, origin, nodes: nodes.filter((n) => origin.has(n)) }
-    return schema.topNodeType.create(null, nodes.length > 0 ? nodes : schema.nodes['paragraph']!.create())
-  }
+  // opening and writing, shared with the idea's actor (model.ts)
+  codec = createCodec({ schema, parse, serialize, flavor: options.flavor })
+  const open = (source: string, ids?: string[]) => codec.open(source, ids)
+  const identities = (): IdentifiedBlock[] => codec.identities(view().state.doc)
 
-  /** The doc as Markdown: unchanged blocks as they were opened, changed ones written in the file's style. */
-  function write(doc: Node, span?: (node: Node, pos: number, start: number, end: number) => void): string {
-    const used = new Set<Block>()
-    const parts: Array<{ text: string; from: Block | null; node: Node; pos: number }> = []
-    doc.forEach((node, pos) => {
-      let from = opened.origin.get(node) ?? null
-      if (!from || used.has(from)) {
-        // changed and changed back: as good as unchanged
-        const same = opened.nodes.find((n) => !used.has(opened.origin.get(n)!) && n.eq(node))
-        from = same ? opened.origin.get(same)! : null
-      }
-      if (from) {
-        used.add(from)
-        parts.push({ text: from.source, from, node, pos })
-        return
-      }
-      // an empty line: Markdown has none, so a page's is written as `<br />`, drawn as one; a
-      // comment's closes up, as it does once it's posted
-      const empty = node.type.name === 'paragraph' && node.content.size === 0
-      const text = empty ? (options.flavor === 'page' ? EMPTY_LINE_SOURCE : '') : serialize(node)
-      if (text) {
-        parts.push({ text, from: null, node, pos })
-      }
-    })
-    if (options.flavor === 'inline') {
-      return parts.map((p) => p.text).join(' ')
-    }
-    const { source, blocks } = opened
-    let out = ''
-    parts.forEach((part, i) => {
-      const before = parts[i - 1]
-      if (i === 0) {
-        out += part.from?.index === 0 ? source.slice(0, part.from.start) : ''
-      } else if (before?.from && part.from && part.from.index === before.from.last + 1) {
-        out += source.slice(before.from.end, part.from.start)
-      } else {
-        out += '\n\n'
-      }
-      span?.(part.node, part.pos, out.length, out.length + part.text.length)
-      out += part.text
-    })
-    const last = parts.at(-1)?.from
-    if (last && last.last === blocks.length - 1) {
-      out += source.slice(last.end)
-    }
-    return out
-  }
-
-  /**
-   * A top-level node with the draft's IDs for the blocks it holds: a list's items each their own, a
-   * run of HTML all of them, anything else the one.
-   */
-  function identify(node: Node, ids: Array<string | null>): Node {
-    const name = node.type.name
-    if (name === 'ideaf_html_run') {
-      return node.type.create({ ...node.attrs, blockIds: ids.filter(Boolean).join(' ') }, node.content, node.marks)
-    }
-    if (name === 'bullet_list' || name === 'ordered_list') {
-      const items: Node[] = []
-      node.descendants((n) => {
-        if (n.type.name === 'list_item') {
-          items.push(n)
-        }
-        return true
-      })
-      if (items.length !== ids.length) {
-        return node
-      }
-      let next = 0
-      const walk = (n: Node): Node => {
-        const content: Node[] = []
-        n.forEach((child) => void content.push(child.isText ? child : walk(child)))
-        const attrs = n.type.name === 'list_item' ? { ...n.attrs, blockId: ids[next++] ?? null } : n.attrs
-        return n.type.create(attrs, Fragment.from(content), n.marks)
-      }
-      return walk(node)
-    }
-    return 'blockId' in node.attrs
-      ? node.type.create({ ...node.attrs, blockId: ids[0] ?? null }, node.content, node.marks)
-      : node
-  }
-
-  /** The doc as Markdown, and where each top-level node's Markdown is in it. */
-  function writeSpans(doc: Node): {
-    text: string
-    spans: Array<{ node: Node; pos: number; start: number; end: number }>
-  } {
-    const spans: Array<{ node: Node; pos: number; start: number; end: number }> = []
-    const text = write(doc, (node, pos, start, end) => void spans.push({ node, pos, start, end }))
-    return { text, spans }
-  }
-
-  /** A page's blocks as the draft knows them, each with where its identity is held (null for none). */
-  function identities(): Array<{ id: string | null; source: string; at: number | null }> {
-    const { text, spans } = writeSpans(view().state.doc)
-    const units = parseMarkdown(text).units
-    const out: Array<{ id: string | null; source: string; at: number | null }> = []
-    for (const span of spans) {
-      const mine = units.filter((u) => u.start >= span.start && u.start < span.end)
-      // who holds each unit's identity in this node: its list items, its run, or itself
-      const holders: Array<{ id: string | null; at: number | null }> = []
-      const name = span.node.type.name
-      if (name === 'bullet_list' || name === 'ordered_list') {
-        span.node.descendants((n, p) => {
-          if (n.type.name === 'list_item') {
-            holders.push({ id: (n.attrs['blockId'] as string | null) ?? null, at: span.pos + 1 + p })
-          }
-          return true
-        })
-      } else if (name === 'ideaf_html_run') {
-        const ids = (span.node.attrs['blockIds'] as string).split(' ').filter(Boolean)
-        ids.forEach((id) => holders.push({ id, at: null }))
-      } else {
-        holders.push({ id: (span.node.attrs['blockId'] as string | null | undefined) ?? null, at: span.pos })
-      }
-      const matched = holders.length === mine.length
-      mine.forEach((u, i) => {
-        const holder = matched ? holders[i]! : i === 0 && holders.length === 1 ? holders[0]! : { id: null, at: null }
-        out.push({ id: holder.id, source: text.slice(u.start, u.end), at: holder.at })
-      })
-    }
-    return out
-  }
-
-  const blocks = () => identities().map(({ id, source }) => ({ id, source }))
+  const blocks = (): Array<{ id: string | null; source: string }> =>
+    identities().map(({ id, source }) => ({ id, source }))
 
   /**
    * Blocks take the identities the draft has for them. Where the draft's blocks are the page's, one
@@ -1410,13 +983,13 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
       const origin = new WeakMap<Node, Block>()
       const nodes: Node[] = []
       settled.forEach((node, _, i) => {
-        const block = opened.origin.get(doc.child(i))
+        const block = codec.opened.origin.get(doc.child(i))
         if (block) {
           origin.set(node, block)
           nodes.push(node)
         }
       })
-      opened = { ...opened, origin, nodes }
+      codec.opened = { ...codec.opened, origin, nodes }
     }
   }
   load(options.source, options.ids)
@@ -1645,7 +1218,7 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
       v.dispatch(v.state.tr.setMeta(holdKey, mark))
     },
     rewritten: () =>
-      opened.nodes.map((node) => ({ source: opened.origin.get(node)!.source, written: serialize(node) })),
+      codec.opened.nodes.map((node) => ({ source: codec.opened.origin.get(node)!.source, written: serialize(node) })),
     dom: () => view().dom,
     destroy: () => void editor.destroy(),
   }
@@ -1671,28 +1244,6 @@ function leaveCode(state: EditorState, dispatch?: (tr: Transaction) => void): bo
     dispatch(tr.scrollIntoView())
   }
   return true
-}
-
-/** A table as GFM reads it: a row's cells past the header's are ignored, so they're dropped. */
-function asWide(table: Node): Node {
-  const width = table.firstChild?.childCount ?? 0
-  let trimmed = false
-  const rows: Node[] = []
-  table.forEach((row) => {
-    if (row.childCount > width) {
-      trimmed = true
-      const cells: Node[] = []
-      row.forEach((cell, _, i) => {
-        if (i < width) {
-          cells.push(cell)
-        }
-      })
-      rows.push(row.copy(Fragment.from(cells)))
-    } else {
-      rows.push(row)
-    }
-  })
-  return trimmed ? table.copy(Fragment.from(rows)) : table
 }
 
 /** The toolbar's state where the caret is. */

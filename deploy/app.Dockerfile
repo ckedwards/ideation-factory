@@ -39,6 +39,8 @@ COPY --from=deps /app /app
 COPY --from=build /app/packages/api packages/api
 COPY --from=build /app/packages/core packages/core
 COPY --from=build /app/packages/server packages/server
+# the page editor's document, which the idea's actor holds the draft in (ui's editor/model.ts)
+COPY --from=build /app/packages/ui/src packages/ui/src
 COPY --from=build /app/packages/web/dist packages/web/dist
 COPY tsconfig*.json ./
 COPY deploy/app-entrypoint.sh /usr/local/bin/app-entrypoint
