@@ -35,7 +35,12 @@ export function noticeWords(notice: Notice): NoticeWords {
     href: joining ? groupLink(notice, groupHref, teamHref) : team ? teamHref : groupHref,
     section: team
       ? { key: `team:${team.id}`, name: text.where, scope: { team: team.handle ?? team.id } }
-      : { key: `group:${group?.id ?? ''}`, name: text.where, scope: { group: group?.handle ?? group?.id ?? '' } },
+      : {
+          key: `group:${group?.id ?? ''}`,
+          name: text.where,
+          scope: { group: group?.handle ?? group?.id ?? '' },
+          group: true,
+        },
   }
 }
 

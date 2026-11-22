@@ -163,7 +163,7 @@ describe('a notification email', () => {
 
   test('a notice about a team or a group: its own email, in the reader’s words, with what it means and where to see it', () => {
     const email = notificationEmail(due({ ideas: [], notices: [notice()] }), site)
-    expect(email.subject).toBe('[Mobile] Design reviewers joined Mobile, as members')
+    expect(email.subject).toBe('[Mobile] The Design reviewers group joined Mobile, as members')
     expect(email.text).toContain('Riley (@riley) added your group to Mobile.')
     expect(email.text).toContain('If it shouldn’t be there, you can take it out from the group’s page.')
     expect(email.text).toContain('Open the group: https://ideas.example.test/groups/design-reviewers')
@@ -177,7 +177,7 @@ describe('a notification email', () => {
     expect(email.messageId).toBe('<ntabc123.u-maya@ideas.example.test>')
     // to a team's admin: the group by its name, and the team's groups
     const team = notificationEmail(due({ ideas: [], notices: [notice({ as: 'team-admin' })] }), site)
-    expect(team.text).toContain('added Design reviewers to Mobile')
+    expect(team.text).toContain('added the Design reviewers group to Mobile')
     expect(team.text).toContain('Open Mobile’s groups: https://ideas.example.test/mobile/settings?tab=groups')
     // about you, in a team that's gone since: named as it was, nowhere to link
     const gone = notificationEmail(
@@ -186,7 +186,7 @@ describe('a notification email', () => {
         notices: [
           notice({
             kind: 'removed',
-            team: { id: 't9', handle: null, name: 'Old team' },
+            team: { id: 't9', handle: null, name: 'Payments' },
             group: null,
             role: null,
             as: 'you',
@@ -195,7 +195,7 @@ describe('a notification email', () => {
       }),
       site,
     )
-    expect(gone.subject).toBe('[Old team] You’re no longer in Old team')
+    expect(gone.subject).toBe('[Payments] You’re no longer in the Payments team')
     expect(gone.text).toContain('You’re getting this because it’s about you.')
     expect(gone.html).not.toContain('Open the team')
   })
@@ -203,7 +203,9 @@ describe('a notification email', () => {
   test('a digest puts the notices first, and counts them apart from the ideas', () => {
     const email = notificationEmail(due({ digest: true, notices: [notice()] }), site)
     expect(email.subject).toBe('Your daily digest: updates to 1 idea and 1 change to your teams and groups')
-    expect(email.text.indexOf('Design reviewers joined Mobile')).toBeLessThan(email.text.indexOf('Faster sign-in'))
+    expect(email.text.indexOf('The Design reviewers group joined Mobile')).toBeLessThan(
+      email.text.indexOf('Faster sign-in'),
+    )
   })
 })
 

@@ -182,7 +182,7 @@ const notices: InboxRowView[] = [
   {
     id: 'nt1',
     section: { key: 'team:mobile', name: 'Mobile', scope: { team: 'mobile' } },
-    title: 'Design reviewers joined Mobile, as members',
+    title: 'The Design reviewers group joined Mobile, as members',
     href: '/groups/design-reviewers',
     where: 'Mobile',
     reason: 'Group admin',
@@ -195,8 +195,8 @@ const notices: InboxRowView[] = [
   rows[0]!,
   {
     id: 'nt2',
-    section: { key: 'group:field-ops', name: 'Field ops', scope: { group: 'field-ops' } },
-    title: 'You’re no longer in Field ops',
+    section: { key: 'group:field-ops', name: 'Field ops', scope: { group: 'field-ops' }, group: true },
+    title: 'You’re no longer in the Field ops group',
     href: null,
     where: 'Field ops',
     reason: 'You',
@@ -213,15 +213,14 @@ export const Notices: Story = {
   play: async ({ args, canvasElement, userEvent }) => {
     const page = within(canvasElement)
     const rowOf = (title: string) => page.getByRole('checkbox', { name: `Select ${title}` }).closest('li')!
-    const added = within(rowOf('Design reviewers joined Mobile, as members'))
-    await expect(added.getByRole('link', { name: 'Design reviewers joined Mobile, as members' })).toHaveAttribute(
-      'href',
-      '/groups/design-reviewers',
-    )
+    const added = within(rowOf('The Design reviewers group joined Mobile, as members'))
+    await expect(
+      added.getByRole('link', { name: 'The Design reviewers group joined Mobile, as members' }),
+    ).toHaveAttribute('href', '/groups/design-reviewers')
     await expect(added.getByText('Group admin')).toBeVisible()
     await expect(added.getByText('Unread:')).toBeInTheDocument()
     // no status, and no link once what it's about is gone
-    const gone = within(rowOf('You’re no longer in Field ops'))
+    const gone = within(rowOf('You’re no longer in the Field ops group'))
     await expect(gone.queryByRole('link')).toBeNull()
     await expect(canvasElement.querySelectorAll('.status-pill')).toHaveLength(1)
     // why it's yours starts its line, where an idea's status would be
@@ -229,7 +228,9 @@ export const Notices: Story = {
     const title = added.getByRole('link').getBoundingClientRect()
     await expect(Math.abs(reason.left - title.left) < 24 || reason.left > title.right).toBe(true)
     // ticked with an idea, they're marked together
-    await userEvent.click(page.getByRole('checkbox', { name: 'Select Design reviewers joined Mobile, as members' }))
+    await userEvent.click(
+      page.getByRole('checkbox', { name: 'Select The Design reviewers group joined Mobile, as members' }),
+    )
     await userEvent.click(page.getByRole('checkbox', { name: 'Select Retry payments that fail on a timeout' }))
     await userEvent.click(page.getByRole('button', { name: 'Mark 2 as done' }))
     await expect(args.onDone).toHaveBeenCalledWith(['nt1', 'i1'])
@@ -246,6 +247,8 @@ export const NoticesByTeam: Story = {
       'Payments',
       'Field ops',
     ])
+    // a group's own section says it's a group, as its name alone doesn't
+    await expect(within(page.getByRole('region', { name: 'Field ops' })).getByText('Group')).toBeVisible()
     await userEvent.click(page.getByRole('button', { name: 'Mark as done in Field ops' }))
     await expect(args.onDone).toHaveBeenCalledWith(null, { group: 'field-ops' })
   },

@@ -122,13 +122,15 @@ describe('the inbox', () => {
       await Bun.sleep(50)
       mail = testEmail.to(`${h('ines')}@example.test`)
     }
-    expect(mail.map((m) => m.subject)).toEqual(['[Noticed] Reviewers joined Noticed, as members'])
+    expect(mail.map((m) => m.subject)).toEqual(['[Noticed] The Reviewers group joined Noticed, as members'])
     expect(mail[0]!.text).toContain(`added your group to Noticed`)
     expect(mail[0]!.headers).toMatchObject({ 'X-Ideaf-Reason': 'teams', 'X-Ideaf-Team': team, 'X-Ideaf-Group': group })
     // in the cli: the notice's ID (to mark it), its team, what happened, and who did it, in her words
     const ines = await repoAs('ines')
     const shown = (await ines.ideaf('inbox', 'show', '--reason', 'teams')).out
-    expect(shown).toMatch(new RegExp(`● new +${id} +${team} +Reviewers joined Noticed, as members +\\(group admin\\)`))
+    expect(shown).toMatch(
+      new RegExp(`● new +${id} +${team} +The Reviewers group joined Noticed, as members +\\(group admin\\)`),
+    )
     expect(shown).toContain(`@${h('riley')} added your group to Noticed`)
     expect((await ines.ideaf('inbox', 'read', id)).out).toContain('1 notification marked read')
     expect((await api(h('ines')).unreadNotifications({})).count).toBe(0)
