@@ -105,6 +105,26 @@ describe('following positions through the diff', () => {
   })
 })
 
+describe('words rewritten', () => {
+  test('a comment on words rewritten whole is outdated, not left on a letter they share', () => {
+    // "three" and "two" share their "t": the diff may keep it, and a comment with only it left
+    // would narrow to it. Rewritten in an upload, as "handbook" to "guide" is, it's outdated
+    const source =
+      '# Plan\n\nThe team writes it in three passes over a month.\n\nEach pass ends with a review.\n\n## Later\n\nNothing here yet.\n'
+    const idea = createIdea([{ path: 'plan.md', source }])
+    const content = source
+      .replace('three passes over a month', 'two weeks')
+      .replace('\n\nEach pass ends with a review.\n', '\n')
+      .replace('Nothing here yet.', 'Nothing here yet.\n\nEach pass ends with a review.')
+    const r = upload(
+      idea,
+      [{ id: 'c1', anchor: textAnchor(idea, 'f1', 'three passes over a month') }],
+      [{ file: 'f1', path: 'plan.md', content }],
+    )
+    expect(outcome(r, 'c1')).toEqual({ state: 'outdated', quote: null, file: null })
+  })
+})
+
 describe('blocks that moved unchanged', () => {
   // A diff keeps the longest text in place, so in these cases the moved block is the short one.
   test('within a file: the block keeps its ID and comments, marked moved', () => {

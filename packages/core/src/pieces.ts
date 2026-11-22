@@ -184,6 +184,84 @@ export function identity(file: string, length: number): Piece[] {
   return length > 0 ? [{ kind: 'copy', file, start: 0, end: length, moved: false }] : []
 }
 
+const WORD_END = /[\p{L}\p{N}]+$/u
+const WORD_START = /^[\p{L}\p{N}]+/u
+const WORDY = /[\p{L}\p{N}]/u
+
+/**
+ * The same diff, with words replaced whole. A diff may keep the letters two words share (the "t" of
+ * "three" and "two") and replace the rest, so a comment on the old words seems to have a
+ * letter of them left, and follows that. Where a replacement starts or ends inside a word, the part
+ * of the word kept goes into the replacement on both sides. Both diffs make the same text.
+ */
+export function wholeWords(diffs: Diff[]): Diff[] {
+  const out: Diff[] = diffs.map(([op, text]) => [op, text])
+  for (let i = 0; i < out.length; i++) {
+    if (out[i]![0] === DIFF_EQUAL) {
+      continue
+    }
+    // a run of edits, from i to j (exclusive): only a replacement, deleting and inserting
+    let j = i
+    while (j < out.length && out[j]![0] !== DIFF_EQUAL) {
+      j++
+    }
+    const deleted = out.slice(i, j).filter(([op]) => op === DIFF_DELETE)
+    const inserted = out.slice(i, j).filter(([op]) => op === DIFF_INSERT)
+    if (deleted.length > 0 && inserted.length > 0) {
+      let del = deleted.map(([, text]) => text).join('')
+      let ins = inserted.map(([, text]) => text).join('')
+      const before = out[i - 1]
+      const after = out[j]
+      const head = before && WORDY.test(del[0]!) && WORDY.test(ins[0]!) ? WORD_END.exec(before[1])?.[0] : undefined
+      if (before && head) {
+        before[1] = before[1].slice(0, -head.length)
+        del = head + del
+        ins = head + ins
+      }
+      const tail =
+        after && WORDY.test(del.at(-1)!) && WORDY.test(ins.at(-1)!) ? WORD_START.exec(after[1])?.[0] : undefined
+      if (after && tail) {
+        after[1] = after[1].slice(tail.length)
+        del += tail
+        ins += tail
+      }
+      out.splice(i, j - i, [DIFF_DELETE, del], [DIFF_INSERT, ins])
+      j = i + 2
+    }
+    i = j - 1
+  }
+  // equalities emptied, and the edits either side of one, run together
+  const merged: Diff[] = []
+  for (const [op, text] of out) {
+    if (text === '') {
+      continue
+    }
+    const last = merged.at(-1)
+    if (op === DIFF_EQUAL && last?.[0] === DIFF_EQUAL) {
+      last[1] += text
+    } else if (op !== DIFF_EQUAL && last && last[0] !== DIFF_EQUAL) {
+      // gather the run's deletions before its insertions
+      let k = merged.length
+      while (k > 0 && merged[k - 1]![0] !== DIFF_EQUAL) {
+        k--
+      }
+      const run = [...merged.splice(k), [op, text] as Diff]
+      const del = run
+        .filter(([o]) => o === DIFF_DELETE)
+        .map(([, t]) => t)
+        .join('')
+      const ins = run
+        .filter(([o]) => o === DIFF_INSERT)
+        .map(([, t]) => t)
+        .join('')
+      merged.push(...(del ? [[DIFF_DELETE, del] as Diff] : []), ...(ins ? [[DIFF_INSERT, ins] as Diff] : []))
+    } else {
+      merged.push([op, text])
+    }
+  }
+  return merged
+}
+
 /**
  * The same diff, with lines deleted or inserted whole where it can be. A diff may keep one of two
  * equal characters ending lines (a full stop, say) where either would do: an edit that ends a line
@@ -246,7 +324,7 @@ export function wholeLines(diffs: Diff[]): Diff[] {
  * rewritten rather than keeping scattered letters.
  */
 export function diffPieces(file: string, before: string, after: string, offset = 0): Piece[] {
-  const diffs = wholeLines(cleanupSemantic(makeDiff(before, after, { timeout: 0, checkLines: true })))
+  const diffs = wholeLines(wholeWords(cleanupSemantic(makeDiff(before, after, { timeout: 0, checkLines: true }))))
   const pieces: Piece[] = []
   let pos = 0
   for (let i = 0; i < diffs.length; i++) {
