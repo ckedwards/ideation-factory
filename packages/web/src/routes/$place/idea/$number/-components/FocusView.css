@@ -401,15 +401,37 @@ html[data-focus='open'] .idea-page-measure .prose {
 .focus-view.is-editing .focus-pages {
   padding-right: calc(var(--note-w) + var(--space-5) * 2);
 }
-/* a sheet in the editor: its toolbar across the sheet, under the top line as it scrolls; the text at
-   the sheet's measure, as it reads */
-.focus-sheet.is-editing .md-editor.is-page .md-editor-bar {
-  top: calc(var(--top) - var(--space-2));
-  /* under the top line: as its sheet scrolls away, the toolbar goes with it, behind the line */
-  z-index: 3;
-  margin: 0 calc((var(--space-7) - var(--hairline)) * -1) var(--space-4);
+/* the sheets' toolbar, pinned under the top line as the Files page's is at the top of its pane, as
+   wide as a sheet (FocusView measures where): the one sheet's being typed in, or else the one being
+   read; the others' wait hidden. The sheets start below it */
+.focus-view.is-editing .focus-sheet .md-editor.is-page .md-editor-bar {
+  position: fixed;
+  top: var(--edit-top, var(--top));
+  left: var(--edit-left, 0);
+  z-index: 4;
+  display: none;
+  width: var(--edit-width, auto);
   padding: 0.375rem calc(var(--space-7) - var(--hairline));
-  border-bottom: var(--hairline) solid var(--rule);
+  border: var(--hairline) solid var(--rule);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.focus-view.is-editing .focus-sheet:focus-within .md-editor.is-page .md-editor-bar,
+.focus-view.is-editing
+  .focus-pages:not(:has(.focus-sheet:focus-within))
+  .focus-row.is-current
+  .md-editor.is-page
+  .md-editor-bar {
+  display: flex;
+}
+.focus-view.is-editing .focus-pages {
+  padding-top: calc(var(--space-2) + var(--edit-bar, 3.5rem));
+}
+.focus-view.is-editing .focus-row {
+  scroll-margin-top: calc(var(--top) + var(--edit-bar, 3.5rem));
+}
+.focus-view.is-editing .focus-sheet .prose :is(h1, h2, h3, h4) {
+  scroll-margin-top: calc(var(--top) + var(--edit-bar, 3.5rem) + var(--space-3));
 }
 .focus-sheet.is-editing .md-editor.is-page .md-editor-surface,
 .focus-sheet.is-editing .md-editor.is-page .md-editor-standin {
