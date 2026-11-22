@@ -45,6 +45,15 @@ const PATHS = {
   ),
   // a dot: anything else
   update: <circle cx="8" cy="8" r="2.5" />,
+  // two people: a team or a group, and what changed in it
+  group: (
+    <>
+      <circle cx="6" cy="5.5" r="2.25" />
+      <path d="M2 13.25c.4-2.3 1.9-3.6 4-3.6s3.6 1.3 4 3.6" />
+      <circle cx="11.5" cy="6.25" r="1.75" />
+      <path d="M11.25 9.75c1.6.15 2.75 1.3 3.1 3.5" />
+    </>
+  ),
   // a chevron down: a menu opens here
   menu: <path d="M4 6.5l4 4 4-4" />,
   // an envelope: your notifications
