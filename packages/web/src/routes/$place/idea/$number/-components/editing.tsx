@@ -1,8 +1,10 @@
-// The idea's draft, on the files page: one per idea, on its latest version,
-// shared by everyone who can edit it, and kept by the server. Each change goes
-// to it as it's made, and is refused as outdated if the block no longer reads
-// as it did; the socket's draft event keeps everyone's copy current.
-// Committing makes one version.
+// The idea's draft, on the files page or in the focus view: one per idea, on
+// its latest version, shared by everyone who can edit it, and kept by the
+// server. Each change goes to it as it's made, and is refused as outdated if
+// the block no longer reads as it did; the socket's draft event keeps
+// everyone's copy current. Committing makes one version. The files page edits
+// the file it shows; the focus view, every file at once, each saved by itself
+// and all of them before Commit, Preview or leaving.
 import { type ReactNode, useRef, useState } from 'react'
 import { ApiError, type Operations, type Output } from '@ideaf/api'
 import { type DraftChange, markdownTree, parseMarkdown, plainLine } from '@ideaf/core'
@@ -50,6 +52,16 @@ export interface EditingView {
 export interface Editing {
   /** The page, marked with the comments the panel shows. */
   document: (view: EditingView) => ReactNode
+  /** Any file of the draft, edited (or, previewing, compared): a sheet of the focus view. */
+  sheet: (file: string) => ReactNode
+  /** The draft's changes and what committing does to the comments, with Undo (EditPanel). */
+  panel: ReactNode
+  /** Commit, Preview, Discard and Close editor (EditActions). */
+  actions: ReactNode
+  /** "Editing the draft, on v3". */
+  label: string
+  /** Everything typed saved, then the editor closed; false if something couldn't be saved (it says why). */
+  close: () => Promise<boolean>
   /** The draft, heading the list of versions: its changes, and comparing it with any version. */
   draft: DraftVersion
   bar: ReactNode
@@ -70,13 +82,36 @@ export function useEditing(args: UseEditingArgs): Editing | null {
     enabled: comparedWith !== null && draft !== undefined && comparedWith !== draft.version,
   })
   const [committing, setCommitting] = useState(false)
-  // typed on the page and not saved yet
-  const [unsaved, setUnsaved] = useState(false)
-  // the page's save of whatever's unsaved: the bar's actions wait for it
-  const flush = useRef<(() => Promise<boolean>) | null>(null)
+  // the files typed in and not saved yet
+  const [unsavedFiles, setUnsavedFiles] = useState<ReadonlySet<string>>(new Set())
+  // each file's save of whatever's unsaved in it: the actions wait for all of them
+  const flushes = useRef(new Map<string, { current: (() => Promise<boolean>) | null }>())
   if (!args.open || !draft) {
     return null
   }
+  const unsaved = unsavedFiles.size > 0
+  /** A file's save, for its editor to set: the same object each time, so the editor keeps it. */
+  const flushFor = (id: string) => {
+    let ref = flushes.current.get(id)
+    if (!ref) {
+      ref = { current: null }
+      flushes.current.set(id, ref)
+    }
+    return ref
+  }
+  const unsavedIn = (id: string) => (now: boolean) =>
+    setUnsavedFiles((was) => {
+      if (was.has(id) === now) {
+        return was
+      }
+      const next = new Set(was)
+      if (now) {
+        next.add(id)
+      } else {
+        next.delete(id)
+      }
+      return next
+    })
 
   const reread = async () => {
     await queryClient.invalidateQueries({ queryKey: draftQuery(idea).queryKey, exact: true })
@@ -92,8 +127,15 @@ export function useEditing(args: UseEditingArgs): Editing | null {
   }
   const file = draft.files.find((f) => f.file === args.file) ?? draft.files[0]
   const placed = file ? placeComments(draft, file, args.shownFile, args.threads) : { places: new Map(), marks: [] }
-  /** What's typed, saved first; false if it couldn't be (the page says why). */
-  const saved = async () => (flush.current ? flush.current() : true)
+  /** What's typed, in every file, saved first; false if something couldn't be (the page says why). */
+  const saved = async () => {
+    for (const ref of flushes.current.values()) {
+      if (ref.current && !(await ref.current())) {
+        return false
+      }
+    }
+    return true
+  }
 
   const commit = async () => {
     setCommitting(true)
@@ -120,13 +162,25 @@ export function useEditing(args: UseEditingArgs): Editing | null {
   }
 
   const compareFiles = comparedWith === draft.version ? args.latestFiles : (earlier.data?.files ?? [])
-  const before = compareFiles.find((f) => f.file === file?.file)?.content ?? ''
-  const after = file?.content ?? ''
+  /** A file of the draft compared with the version chosen. */
+  const compared = (id: string) => {
+    const before = compareFiles.find((f) => f.file === id)?.content ?? ''
+    const after = draft.files.find((f) => f.file === id)?.content ?? ''
+    return (
+      <Redline
+        base={{ source: before, tree: markdownTree(before) }}
+        current={{ source: after, tree: markdownTree(after) }}
+        renderCode={renderMermaid}
+      />
+    )
+  }
   const close = async () => {
-    if (await saved()) {
-      setPreviewing(false)
-      args.setOpen(false)
+    if (!(await saved())) {
+      return false
     }
+    setPreviewing(false)
+    args.setOpen(false)
+    return true
   }
   // the panel's and the bar's: the same draft, and the same ways of acting on it
   const panelProps: EditPanelProps = {
@@ -166,6 +220,7 @@ export function useEditing(args: UseEditingArgs): Editing | null {
         .finally(() => void reread()),
     onClose: () => void close(),
   }
+  const label = `Editing the draft, on v${draft.version}`
   return {
     document: (view) =>
       previewing ? (
@@ -173,11 +228,7 @@ export function useEditing(args: UseEditingArgs): Editing | null {
           <p className="draft-editor-file">
             {file?.path} <span className="draft-editor-compared">· the draft compared with v{comparedWith}</span>
           </p>
-          <Redline
-            base={{ source: before, tree: markdownTree(before) }}
-            current={{ source: after, tree: markdownTree(after) }}
-            renderCode={renderMermaid}
-          />
+          {file && compared(file.file)}
         </>
       ) : (
         file && (
@@ -187,14 +238,35 @@ export function useEditing(args: UseEditingArgs): Editing | null {
             draft={draft}
             file={file.file}
             reread={reread}
-            flush={flush}
-            onUnsaved={setUnsaved}
+            flush={flushFor(file.file)}
+            onUnsaved={unsavedIn(file.file)}
             marks={placed.marks}
             view={view}
             {...(args.lead ? { lead: args.lead } : {})}
           />
         )
       ),
+    // the focus view's: every file, without its comments (the panel's in their place), its sheet's head
+    // naming it
+    sheet: (id) =>
+      previewing ? (
+        compared(id)
+      ) : draft.files.some((f) => f.file === id) ? (
+        <DraftEditor
+          key={id}
+          idea={idea}
+          draft={draft}
+          file={id}
+          reread={reread}
+          flush={flushFor(id)}
+          onUnsaved={unsavedIn(id)}
+          bare
+        />
+      ) : null,
+    panel: <EditPanel {...panelProps} />,
+    actions: <EditActions {...panelProps} />,
+    label,
+    close,
     draft: {
       on: draft.version,
       changes: draft.changes.length,
@@ -206,7 +278,7 @@ export function useEditing(args: UseEditingArgs): Editing | null {
     },
     places: placed.places,
     // the editor's words and actions in the idea's bar, while it's open
-    bar: <IdeaMode label={`Editing the draft, on v${draft.version}`} actions={<EditActions {...panelProps} />} />,
+    bar: <IdeaMode label={label} actions={<EditActions {...panelProps} />} />,
   }
 }
 
