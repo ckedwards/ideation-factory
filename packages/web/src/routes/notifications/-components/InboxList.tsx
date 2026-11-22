@@ -1,17 +1,40 @@
 // The inbox as a list: one row per idea, however much happened, like
-// GitHub's notifications, grouped by day. Each row says what kind of update
+// GitHub's notifications, grouped by day, or by team (a section per team, and
+// per person for ideas outside any team, each read or done as a whole). Each row says what kind of update
 // came last (an icon), what the idea is, the latest update (and how many are
 // new), where the idea stands now, why you hear about it (a review asked of you
 // stands out), and when: in columns when the list has room for the title, and
 // otherwise on one line under it. An unread row has a dot and a bold title.
 // Ticking rows acts on them; with none ticked, the toolbar acts on the whole list.
 import { type ReactNode, useState } from 'react'
-import { type Actor, ActorLabel, Button, Empty, Icon, Link, RelativeTime, StatusPill } from '@ideaf/ui'
+import {
+  type Actor,
+  ActorLabel,
+  Button,
+  Empty,
+  Icon,
+  Link,
+  RelativeTime,
+  SegmentedControl,
+  StatusPill,
+} from '@ideaf/ui'
 import type { ShownStatus } from '../../../ideas.ts'
 import './InboxList.css'
 
+/** A section of the inbox grouped by team: a team's ideas, or a person's outside any team. */
+export type InboxScope = { team: string } | { owner: string }
+
+export interface InboxSection {
+  key: string
+  /** "Mobile", "Your ideas", "Alex Romero’s ideas". */
+  name: string
+  scope: InboxScope
+}
+
 export interface InboxRowView {
   id: string
+  /** The team it's in, or whose idea outside any team it is: its section, grouped by team. */
+  section: InboxSection
   title: string
   href: string
   /** Its team, or whose own idea it is. */
@@ -61,15 +84,28 @@ export interface InboxListProps {
   rows: InboxRowView[]
   /** The inbox, or the ideas marked done. */
   showing: 'inbox' | 'done'
-  /** Each takes the ideas ticked, or null for the whole list. */
-  onRead: (ids: string[] | null) => void
-  onDone: (ids: string[] | null) => void
-  onBack: (ids: string[] | null) => void
+  /** Each takes the ideas ticked, or null for the whole list, or (null and a scope) one section of it. */
+  onRead: (ids: string[] | null, scope?: InboxScope) => void
+  onDone: (ids: string[] | null, scope?: InboxScope) => void
+  onBack: (ids: string[] | null, scope?: InboxScope) => void
+  /** By day (the default), or by team; with `onGroupBy`, a switch to change it. */
+  groupBy?: 'date' | 'team'
+  onGroupBy?: (by: 'date' | 'team') => void
   empty: ReactNode
   more?: { loading: boolean; onMore: () => void } | null
 }
 
-export function InboxList({ rows, showing, onRead, onDone, onBack, empty, more }: InboxListProps) {
+export function InboxList({
+  rows,
+  showing,
+  onRead,
+  onDone,
+  onBack,
+  empty,
+  more,
+  groupBy = 'date',
+  onGroupBy,
+}: InboxListProps) {
   const [ticked, setTicked] = useState<Set<string>>(new Set())
   // only ticked rows still in the list count
   const chosen = rows.filter((r) => ticked.has(r.id)).map((r) => r.id)
@@ -91,20 +127,25 @@ export function InboxList({ rows, showing, onRead, onDone, onBack, empty, more }
   if (rows.length === 0) {
     return <Empty>{empty}</Empty>
   }
-  // newest first already: grouped by day, in order
+  // newest first already: grouped by day, in order; or by team, each section where its newest row is
   const today = new Date().setHours(0, 0, 0, 0)
-  const groups: Array<[string, InboxRowView[]]> = []
+  const groups: Array<{ key: string; name: string; section: InboxSection | null; rows: InboxRowView[] }> = []
   for (const row of rows) {
-    const day = dayOf(row.at, today)
-    const last = groups.at(-1)
-    if (last && last[0] === day) {
-      last[1].push(row)
+    const key = groupBy === 'team' ? row.section.key : dayOf(row.at, today)
+    const group = groupBy === 'team' ? groups.find((g) => g.key === key) : groups.at(-1)
+    if (group && group.key === key) {
+      group.rows.push(row)
     } else {
-      groups.push([day, [row]])
+      groups.push({
+        key,
+        name: groupBy === 'team' ? row.section.name : key,
+        section: groupBy === 'team' ? row.section : null,
+        rows: [row],
+      })
     }
   }
   return (
-    <div className="inbox">
+    <div className={groupBy === 'team' ? 'inbox is-by-team' : 'inbox'}>
       <div className="inbox-toolbar" role="toolbar" aria-label="Notifications">
         <input
           type="checkbox"
@@ -132,12 +173,37 @@ export function InboxList({ rows, showing, onRead, onDone, onBack, empty, more }
             Clear selection
           </Button>
         )}
+        {onGroupBy && (
+          <span className="inbox-group-by">
+            <span aria-hidden>Group by</span>
+            <SegmentedControl
+              label="Group by"
+              options={[
+                { value: 'date', label: 'Date' },
+                { value: 'team', label: 'Team' },
+              ]}
+              value={groupBy}
+              onChange={onGroupBy}
+            />
+          </span>
+        )}
       </div>
-      {groups.map(([day, inDay]) => (
-        <section key={day} className="inbox-day" aria-label={day}>
-          <h3 className="inbox-day-title">{day}</h3>
+      {groups.map((group) => (
+        <section key={group.key} className="inbox-day" aria-label={group.name}>
+          {group.section ? (
+            <SectionHead
+              section={group.section}
+              unread={group.rows.filter((r) => r.newCount > 0).length}
+              showing={showing}
+              onRead={onRead}
+              onDone={onDone}
+              onBack={onBack}
+            />
+          ) : (
+            <h3 className="inbox-day-title">{group.name}</h3>
+          )}
           <ul className="inbox-rows">
-            {inDay.map((row) => (
+            {group.rows.map((row) => (
               <li key={row.id} className={row.newCount > 0 ? 'inbox-row is-unread' : 'inbox-row'}>
                 <input
                   type="checkbox"
@@ -150,7 +216,8 @@ export function InboxList({ rows, showing, onRead, onDone, onBack, empty, more }
                 </span>
                 <div className="inbox-main">
                   <div className="inbox-title">
-                    <span className="inbox-where">{row.where}</span>
+                    {/* grouped by team, its section's heading names it */}
+                    {groupBy !== 'team' && <span className="inbox-where">{row.where}</span>}
                     <span className="inbox-name">
                       {row.newCount > 0 && (
                         <span className="inbox-dot">
@@ -188,6 +255,51 @@ export function InboxList({ rows, showing, onRead, onDone, onBack, empty, more }
           {more.loading ? 'Loading…' : 'Show more'}
         </Button>
       )}
+    </div>
+  )
+}
+
+/**
+ * A section's heading, grouped by team: its name, how many of its ideas have news, and marking all of it
+ * (its rows not loaded yet too) read or done, or, in the Done list, back.
+ */
+function SectionHead({
+  section,
+  unread,
+  showing,
+  onRead,
+  onDone,
+  onBack,
+}: {
+  section: InboxSection
+  unread: number
+  showing: 'inbox' | 'done'
+  onRead: InboxListProps['onRead']
+  onDone: InboxListProps['onDone']
+  onBack: InboxListProps['onBack']
+}) {
+  return (
+    <div className="inbox-section-head">
+      <h3 className="inbox-section-title">{section.name}</h3>
+      {unread > 0 && <span className="inbox-section-unread">{unread} unread</span>}
+      <span className="inbox-section-actions">
+        {showing === 'inbox' ? (
+          <>
+            {unread > 0 && (
+              <Button size="sm" variant="ghost" onClick={() => onRead(null, section.scope)}>
+                Mark as read<span className="visually-hidden"> in {section.name}</span>
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" onClick={() => onDone(null, section.scope)}>
+              Mark as done<span className="visually-hidden"> in {section.name}</span>
+            </Button>
+          </>
+        ) : (
+          <Button size="sm" variant="ghost" onClick={() => onBack(null, section.scope)}>
+            Move back to the inbox<span className="visually-hidden"> from {section.name}</span>
+          </Button>
+        )}
+      </span>
     </div>
   )
 }

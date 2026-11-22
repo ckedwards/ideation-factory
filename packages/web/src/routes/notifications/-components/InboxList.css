@@ -137,6 +137,38 @@
   display: grid;
   gap: var(--space-2);
 }
+/* the switch between grouping by day and by team, at the toolbar's end */
+.inbox-group-by {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+  color: var(--ink-3);
+}
+/* grouped by team: each section's heading, with its own buttons */
+.inbox-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  margin-top: var(--space-2);
+  padding: 0 var(--space-3);
+}
+.inbox-section-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.inbox-section-unread {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
+.inbox-section-actions {
+  display: inline-flex;
+  gap: var(--space-1);
+  margin-left: auto;
+}
 .inbox-day-title {
   margin: 0;
   color: var(--ink-3);

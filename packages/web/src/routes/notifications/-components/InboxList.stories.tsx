@@ -7,6 +7,7 @@ const NOW = Date.now()
 const rows: InboxRowView[] = [
   {
     id: 'i1',
+    section: { key: 'team:payments', name: 'Payments', scope: { team: 'payments' } },
     title: 'Retry payments that fail on a timeout',
     href: '/payments/idea/12',
     where: 'Payments',
@@ -21,6 +22,7 @@ const rows: InboxRowView[] = [
   },
   {
     id: 'i2',
+    section: { key: 'team:mobile', name: 'Mobile', scope: { team: 'mobile' } },
     title: 'Offline sync for field technicians',
     href: '/mobile/idea/9',
     where: 'Mobile',
@@ -118,5 +120,58 @@ export const Narrow: Story = {
     await expect(title.width).toBeGreaterThan(150)
     await expect(time.top).toBeLessThan(meta.top)
     await expect(meta.top).toBeGreaterThan(title.bottom)
+  },
+}
+
+// More rows, across two teams and someone's own ideas, for grouping by team
+const more: InboxRowView[] = [
+  rows[0]!,
+  {
+    ...rows[1]!,
+    id: 'i3',
+    title: 'Notes on the 2027 roadmap',
+    href: '/@alex/idea/3',
+    where: 'Alex Romero’s ideas',
+    section: { key: 'owner:u-alex', name: 'Alex Romero’s ideas', scope: { owner: 'u-alex' } },
+    newCount: 1,
+    at: NOW - 2 * 3600_000,
+  },
+  { ...rows[0]!, id: 'i4', title: 'Card payments in three steps', newCount: 0, at: NOW - 3 * 3600_000 },
+  rows[1]!,
+]
+
+// Grouped by team: a section for each, in the order of its newest row, its name once in its heading, and its
+// buttons marking all of it (rows not loaded too: the scope, not the IDs)
+export const ByTeam: Story = {
+  args: { rows: more, groupBy: 'team', onGroupBy: fn() },
+  play: async ({ args, canvasElement, userEvent }) => {
+    const page = within(canvasElement)
+    const sections = page.getAllByRole('region').map((s) => s.getAttribute('aria-label'))
+    await expect(sections).toEqual(['Payments', 'Alex Romero’s ideas', 'Mobile'])
+    const payments = within(page.getByRole('region', { name: 'Payments' }))
+    await expect(payments.getAllByRole('listitem')).toHaveLength(2)
+    await expect(payments.getByText('1 unread')).toBeVisible()
+    // the section's name isn't repeated on its rows
+    await expect(payments.getAllByText('Payments')).toHaveLength(1)
+    await userEvent.click(page.getByRole('button', { name: 'Mark as done in Payments' }))
+    await expect(args.onDone).toHaveBeenCalledWith(null, { team: 'payments' })
+    await userEvent.click(page.getByRole('button', { name: 'Mark as read in Alex Romero’s ideas' }))
+    await expect(args.onRead).toHaveBeenCalledWith(null, { owner: 'u-alex' })
+    // nothing new in Mobile: nothing to read, still something to clear
+    await expect(page.queryByRole('button', { name: 'Mark as read in Mobile' })).toBeNull()
+    await expect(page.getByRole('button', { name: 'Mark as done in Mobile' })).toBeVisible()
+    // the switch
+    await userEvent.click(page.getByRole('radio', { name: 'Date' }))
+    await expect(args.onGroupBy).toHaveBeenCalledWith('date')
+  },
+}
+
+// The Done list grouped by team: each section goes back to the inbox as a whole
+export const ByTeamDone: Story = {
+  args: { rows: more, groupBy: 'team', showing: 'done', onGroupBy: fn() },
+  play: async ({ args, canvasElement, userEvent }) => {
+    const page = within(canvasElement)
+    await userEvent.click(page.getByRole('button', { name: 'Move back to the inbox from Mobile' }))
+    await expect(args.onBack).toHaveBeenCalledWith(null, { team: 'mobile' })
   },
 }
