@@ -7,7 +7,7 @@ import { type CommentInfo, MarkdownView, type Person, type TeamRef } from '@idea
 import { useQueries } from '@tanstack/react-query'
 import { personQuery } from '../../../../../api.ts'
 import { type CommentsCollection, pendingId } from './comments.ts'
-import { actorOf, type Thread } from './view.ts'
+import { actorOf, targetOf, type Thread } from './view.ts'
 
 /** The people named on a page, loaded once each and kept; someone still loading shows by ID. */
 export function usePeople(ids: string[]): Map<string, Person> {
@@ -52,22 +52,14 @@ export function commentInfo(
   titles: Map<string, string>,
   drafted?: Set<string>,
 ): CommentInfo {
-  const anchor = thread.anchor
+  // one that's outdated is shown with what it was on, where it was last
+  const anchor = thread.anchor ?? thread.lastAnchor
   return {
     id: thread.id,
     author: actorOf(thread.author, people),
     at: thread.createdAt,
     body: <MarkdownView tree={markdownTree(thread.body)} variant="compact" />,
-    target:
-      anchor?.kind === 'text'
-        ? { kind: 'text', quote: anchor.quote }
-        : anchor?.kind === 'section'
-          ? { kind: 'section', title: titles.get(anchor.section) ?? 'A section' }
-          : anchor?.kind === 'block'
-            ? { kind: 'block', label: titles.get(anchor.block) ?? 'Block' }
-            : anchor?.kind === 'idea'
-              ? { kind: 'idea' }
-              : { kind: 'file' },
+    target: targetOf(thread, titles),
     resolved: thread.resolved,
     ...(thread.pending ? { pending: true } : {}),
     outdated: thread.state === 'outdated',
@@ -133,6 +125,7 @@ export function commentWrites(
     state: 'exact',
     anchor,
     lastVersion: version,
+    lastAnchor: null,
     addressedIn: [],
     suggestion,
     replies: [],

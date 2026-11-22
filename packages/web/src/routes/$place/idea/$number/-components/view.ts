@@ -2,7 +2,7 @@
 // agent labeled as one), the idea's status as ui's components know it, and
 // where each comment sits in the file shown.
 import type { Caller, Operations, Output } from '@ideaf/api'
-import type { Actor, Person } from '@ideaf/ui'
+import type { Actor, CommentTarget, Person } from '@ideaf/ui'
 export { statusOf } from '../../../../../ideas.ts'
 import { blockRange, headingOffset, toSource } from './anchors.ts'
 
@@ -24,6 +24,27 @@ export type Placement =
   | { kind: 'block'; start: number; end: number }
   | { kind: 'file' }
   | { kind: 'outdated' }
+
+/**
+ * What a comment is on, as its card tags it; `titles` names sections and blocks by ID. One that's
+ * outdated is tagged with what it was on where it was last, not as on the whole file.
+ */
+export function targetOf(thread: Thread, titles: Map<string, string>): CommentTarget {
+  const anchor = thread.anchor ?? thread.lastAnchor
+  switch (anchor?.kind) {
+    case 'text':
+      return { kind: 'text', quote: anchor.quote }
+    case 'section':
+      return { kind: 'section', title: titles.get(anchor.section) ?? 'A section' }
+    case 'block':
+      return { kind: 'block', label: titles.get(anchor.block) ?? 'Block' }
+    case 'file':
+      return { kind: 'file' }
+    default:
+      // on the idea, or (outdated, nowhere known) on nothing: no tag
+      return { kind: 'idea' }
+  }
+}
 
 /** Where a comment goes in this file, or null if it's on another one. */
 export function place(thread: Thread, file: FileView): Placement | null {

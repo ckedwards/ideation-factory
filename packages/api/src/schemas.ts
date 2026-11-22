@@ -222,6 +222,8 @@ export const CommentThread = CommentBase.extend({
   anchor: Anchor.nullable(),
   /** The last version where the comment was still attached, for "View in v3". */
   lastVersion: z.number().int().nullable(),
+  /** Where it was in that version, for one that's outdated (its anchor is null): what it was on. */
+  lastAnchor: Anchor.nullable(),
   /** Versions whose steps said they address this comment. */
   addressedIn: z.array(z.number().int()),
   /** A suggested edit's change; null for a plain comment. */

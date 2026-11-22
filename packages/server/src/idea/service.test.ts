@@ -138,7 +138,7 @@ describe('editing with a batch', () => {
     ])
   })
 
-  test('a comment that becomes outdated links to the last version where it applied', async () => {
+  test('a comment that becomes outdated links to the last version where it applied, and what it was on there', async () => {
     const { service, write } = await created()
     // plain text: "Plan\nThe quick brown fox.\nRisks\nIt might rain."; "rain" is 41–45
     await write({
@@ -153,7 +153,16 @@ describe('editing with a batch', () => {
       batch: { base: 2, steps: [{ command: 'insert', at: { end: 'f1' }, markdown: 'More.' }] },
     })
     const [c] = await service.comments(3)
-    expect(c).toMatchObject({ id: 'c1', state: 'outdated', anchor: null, lastVersion: 1 })
+    expect(c).toMatchObject({
+      id: 'c1',
+      state: 'outdated',
+      anchor: null,
+      lastVersion: 1,
+      lastAnchor: { kind: 'text', file: 'f1', quote: 'rain' },
+    })
+    // as of version 1, it's attached, and has no last anchor of its own
+    const [then] = await service.comments(1)
+    expect(then).toMatchObject({ state: 'exact', lastAnchor: null })
   })
 
   test('a stale batch replays onto the latest version, or conflicts', async () => {

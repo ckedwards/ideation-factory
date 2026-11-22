@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { expect, test } from 'bun:test'
 import { parseMarkdown } from '@ideaf/core'
-import { actorOf, type FileView, place, statusOf, type Thread } from './view.ts'
+import { actorOf, type FileView, place, statusOf, targetOf, type Thread } from './view.ts'
 
 const source = '# Plan\n\nShip it **soon**.\n\n## Risks\n\nRain.\n'
 const file: FileView = {
@@ -22,6 +22,7 @@ const thread = (anchor: Thread['anchor'], state: Thread['state'] = 'exact'): Thr
   state,
   anchor,
   lastVersion: null,
+  lastAnchor: null,
   addressedIn: [],
   suggestion: null,
   replies: [],
@@ -67,4 +68,20 @@ test("each status as ui shows it, and one it doesn't know reads as a draft", () 
   expect(statusOf('changes-in-progress')).toEqual({ status: 'changes in progress' })
   expect(statusOf('closed-accepted')).toEqual({ status: 'closed', reason: 'accepted' })
   expect(statusOf('something new')).toEqual({ status: 'draft' })
+})
+
+test('an outdated comment is tagged with what it was on, not as on the whole file', () => {
+  const titles = new Map([['s2', 'Rollout']])
+  expect(targetOf(thread({ kind: 'file', file: 'f1' }), titles)).toEqual({ kind: 'file' })
+  const was = (lastAnchor: Thread['lastAnchor']) => ({ ...thread(null, 'outdated'), lastVersion: 1, lastAnchor })
+  expect(targetOf(was({ kind: 'text', file: 'f1', start: 0, end: 4, quote: 'Ship' }), titles)).toEqual({
+    kind: 'text',
+    quote: 'Ship',
+  })
+  expect(targetOf(was({ kind: 'section', file: 'f1', section: 's2' }), titles)).toEqual({
+    kind: 'section',
+    title: 'Rollout',
+  })
+  // nowhere known: no tag
+  expect(targetOf(was(null), titles)).toEqual({ kind: 'idea' })
 })
