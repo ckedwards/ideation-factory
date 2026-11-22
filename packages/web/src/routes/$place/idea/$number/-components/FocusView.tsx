@@ -389,6 +389,50 @@ export function FocusView(props: FocusViewProps) {
     }
   }, [open, mode])
 
+  // editing: the sheets' toolbar pinned under the top line, as the Files page's is at the top of its
+  // pane, as wide as a sheet: where both are, measured (FocusView.css)
+  useLayoutEffect(() => {
+    const view = root.current
+    if (!view || editing === null) {
+      return
+    }
+    const place = () => {
+      const top = view.querySelector<HTMLElement>('.focus-top')
+      const sheet = view.querySelector<HTMLElement>('.focus-sheet')
+      if (!top || !sheet) {
+        return
+      }
+      const line = top.getBoundingClientRect()
+      const column = sheet.getBoundingClientRect()
+      view.style.setProperty('--edit-top', `${line.bottom}px`)
+      view.style.setProperty('--edit-left', `${column.left}px`)
+      view.style.setProperty('--edit-width', `${column.width}px`)
+      // the bar shown, as tall as it is (its status may wrap to a line of its own): the room the sheets
+      // leave above them
+      const bar = [...view.querySelectorAll<HTMLElement>('.focus-sheet .md-editor-bar')].find(
+        (b) => b.getBoundingClientRect().height > 0,
+      )
+      if (bar) {
+        view.style.setProperty('--edit-bar', `${bar.getBoundingClientRect().height}px`)
+      }
+    }
+    place()
+    const observer = new ResizeObserver(place)
+    observer.observe(view)
+    // the sheets, which grow once their editors are in
+    for (const sheet of view.querySelectorAll('.focus-sheet')) {
+      observer.observe(sheet)
+    }
+    window.addEventListener('resize', place)
+    // and once the sheets are still: they move as the comments go
+    const settled = window.setTimeout(place, DURATION + 50)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', place)
+      window.clearTimeout(settled)
+    }
+  }, [editing === null])
+
   const exit = () => {
     const page = latest.current.pages.find((p) => p.id === current.page)
     const leave = () => props.onExit(page?.path ?? props.file)
@@ -519,6 +563,7 @@ export function FocusView(props: FocusViewProps) {
             // editing, no comments beside the sheets: the draft's panel is there
             mode={editing ? 'off' : mode}
             carried={carried === page.id}
+            current={page.id === current.page}
             editor={editing ? editing.sheet(page.id) : null}
             active={active}
             onActive={setActive}
@@ -609,6 +654,8 @@ interface RowProps {
   comments: boolean
   mode: FocusComments
   carried: boolean
+  /** The page being read: editing, its toolbar's the one pinned, unless another's typed in. */
+  current: boolean
   active: string | null
   onActive: (id: string) => void
   actions: ThreadActions
@@ -636,7 +683,7 @@ function Row(props: RowProps) {
   const commentable = comments && props.actions.canComment && props.onFileComment
   return (
     <div
-      className={`focus-row${props.carried ? ' is-carried' : ''}`}
+      className={`focus-row${props.carried ? ' is-carried' : ''}${props.current ? ' is-current' : ''}`}
       id={rowId(index)}
       ref={props.rowRef}
       style={{ ['--row' as string]: index }}
