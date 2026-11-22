@@ -67,7 +67,9 @@ describe('the inbox', () => {
     const m = await repoAs('maya')
     expect((await m.ideaf('inbox', 'read', idea)).out).toContain('1 idea marked read')
     expect((await api(h('maya')).unreadNotifications({})).count).toBe(0)
-    await m.ideaf('inbox', 'done', '--all')
+    // done, as one section of her inbox grouped by team: riley's ideas outside any team
+    expect((await m.ideaf('inbox', 'done', '--all', '--owner', h('riley'))).exit).toBe(2)
+    expect((await m.ideaf('inbox', 'done', '--owner', h('riley'))).out).toContain('1 idea marked done')
     expect((await api(h('maya')).listNotifications({})).items).toEqual([])
     expect((await m.ideaf('inbox', 'show', '--done')).out).toContain(idea)
     await api(h('riley')).reply({ idea, comment: 'c1', body: 'Or the brown one.' })
@@ -110,7 +112,9 @@ describe('the inbox', () => {
     const items = await inboxOf('kim', (i) => i.some((n) => n.idea.id === idea))
     expect(items.find((n) => n.idea.id === idea)).toMatchObject({ reason: 'watching', latest: { kind: 'comment' } })
     expect((await kim.ideaf('inbox', 'show', '--reason', 'watching')).out).toContain('(watching a team)')
-    expect((await kim.ideaf('inbox', 'read', idea)).out).toContain('1 idea marked read')
+    expect((await kim.ideaf('inbox', 'show', '--team', team)).out).toContain(idea)
+    // the team's section, read as a whole
+    expect((await kim.ideaf('inbox', 'read', '--team', team)).out).toContain('1 idea marked read')
     expect((await api(h('kim')).unreadNotifications({})).count).toBe(0)
   })
 

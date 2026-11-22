@@ -19,7 +19,7 @@ const WHY: Record<Reason, string> = {
 
 export async function show(
   ctx: Context,
-  flags: { done?: boolean; unread?: boolean; reason?: string; cursor?: string },
+  flags: { done?: boolean; unread?: boolean; reason?: string; team?: string; cursor?: string },
 ): Promise<number> {
   if (flags.reason !== undefined && !REASONS.includes(flags.reason as Reason)) {
     throw new CliError(`--reason takes ${REASONS.join(', ')}`, EXIT.usage, 'invalid')
@@ -28,6 +28,7 @@ export async function show(
     ...(flags.done ? { done: true } : {}),
     ...(flags.unread ? { unread: true } : {}),
     ...(flags.reason ? { reason: flags.reason as Reason } : {}),
+    ...(flags.team ? { team: flags.team } : {}),
     ...(flags.cursor ? { cursor: flags.cursor } : {}),
   })
   ctx.result(page)
@@ -87,13 +88,23 @@ async function latest(n: Notification, names: Names): Promise<string> {
 export async function mark(
   ctx: Context,
   ideas: string[],
-  flags: { all?: boolean },
+  flags: { all?: boolean; team?: string; owner?: string },
   change: { read?: true; done?: boolean },
 ): Promise<number> {
-  if (ideas.length === 0 && !flags.all) {
-    throw new CliError('name the ideas (their IDs, from `ideaf inbox show`), or pass --all', EXIT.usage, 'usage')
+  const chosen = [ideas.length > 0, flags.all === true, flags.team !== undefined, flags.owner !== undefined]
+  if (chosen.filter(Boolean).length !== 1) {
+    throw new CliError(
+      'name the ideas (their IDs, from `ideaf inbox show`), or pass one of --all, --team or --owner',
+      EXIT.usage,
+      'usage',
+    )
   }
-  const { changed } = await ctx.api.markNotifications({ ...(flags.all ? {} : { ideas }), ...change })
+  const { changed } = await ctx.api.markNotifications({
+    ...(ideas.length > 0 ? { ideas } : {}),
+    ...(flags.team ? { team: flags.team } : {}),
+    ...(flags.owner ? { owner: flags.owner } : {}),
+    ...change,
+  })
   const what = change.read ? 'read' : change.done ? 'done' : 'back in the inbox'
   ctx.say(`${changed === 1 ? '1 idea' : `${changed} ideas`} marked ${what}.`)
   ctx.result({ changed })
