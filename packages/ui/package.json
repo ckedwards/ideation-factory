@@ -9,7 +9,8 @@
     "./fixtures": "./src/stories/fixtures.ts",
     "./testing": "./src/stories/screen.ts",
     "./editor": "./src/editor/index.ts",
-    "./editor/model": "./src/editor/model.ts"
+    "./editor/model": "./src/editor/model.ts",
+    "./editor/live": "./src/editor/live.ts"
   },
   "scripts": {
     "typecheck": "bun check",

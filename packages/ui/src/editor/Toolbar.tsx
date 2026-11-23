@@ -312,7 +312,7 @@ export interface ToolbarProps {
   }
   /** A popup closed with nothing chosen: focus back to the text, unless it went somewhere of its own. */
   onRefocus: (away: boolean) => void
-  /** At the right, before the switch: how saving is going ("Saved to the draft"), on a page. */
+  /** At the right, before the switch: how saving is going ("Saved"), on a page. */
   status?: ReactNode
 }
 

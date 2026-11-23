@@ -17,7 +17,8 @@
 // - **Whole blocks are pasted here,** ahead of Milkdown's paste, which makes a lone paragraph of
 //   plain text into bare text joining the block at the caret; at a block's start, above it.
 // - **Never twice:** an identity already on the page (put back by undo, or kept by a block split in
-//   two) stays on the first; the other is new.
+//   two) stays on the first; the other is new. In a live draft the idea's actor does this, and hands
+//   out new blocks' identities, for everyone at once.
 import type { MilkdownPlugin } from '@milkdown/kit/ctx'
 import { Fragment, type Node, Slice } from '@milkdown/kit/prose/model'
 import { NodeSelection, Plugin, TextSelection } from '@milkdown/kit/prose/state'
@@ -169,6 +170,8 @@ export interface IdentityHooks {
   sourceOf: (id: string) => string | null
   /** Words were cut from one block and pasted into another. */
   onWords: (words: MovedWords) => void
+  /** A live draft's page: the idea's actor clears an identity on two blocks, for everyone, so this doesn't. */
+  live?: boolean
 }
 
 /** The page's handling of the clipboard; used ahead of Milkdown's clipboard plugin. */
@@ -310,7 +313,7 @@ export function clipboardIdentity(hooks: IdentityHooks): MilkdownPlugin {
       }),
       // never one identity on two blocks: the first keeps it
       appendTransaction: (transactions, _, state) => {
-        if (!transactions.some((t) => t.docChanged)) {
+        if (hooks.live || !transactions.some((t) => t.docChanged)) {
           return null
         }
         const seen = new Set<string>()

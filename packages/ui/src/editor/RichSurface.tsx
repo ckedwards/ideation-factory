@@ -25,6 +25,8 @@ export interface RichSurfaceProps {
   onSelection: (state: Selection) => void
   /** The editor once it's made, and null once it's gone. */
   onReady: (editor: RichEditor | null) => void
+  /** A page's, in a live draft: the file as the idea's actor has it. */
+  live?: RichOptions['live']
 }
 
 export default function RichSurface(props: RichSurfaceProps) {
@@ -42,6 +44,7 @@ export default function RichSurface(props: RichSurfaceProps) {
       ids: latest.current.ids,
       flavor: latest.current.flavor,
       label: latest.current.label,
+      live: latest.current.live,
       onChange: (markdown: string) => latest.current.onChange(markdown),
       onSelection: (state: Selection) => latest.current.onSelection(state),
       onLink: () => latest.current.onLink(),

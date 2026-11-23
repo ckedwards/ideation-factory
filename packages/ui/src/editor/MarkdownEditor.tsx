@@ -26,6 +26,8 @@ import {
 } from 'react'
 import { TextArea } from '../controls/TextArea.tsx'
 import { MarkdownView } from '../document/MarkdownView.tsx'
+import type { Node } from '@milkdown/kit/prose/model'
+import type { LiveDoc } from './live.ts'
 import type { Action, Flavor, PageMark, RichEditor, Selection, TableOp } from './milkdown.ts'
 import { type PlainEdit, plainEdit, plainHeading, plainLink, plainShortcut, plainTable } from './plain.ts'
 import { ContextMenu, type ContextMenuAt } from './ContextMenu.tsx'
@@ -85,8 +87,19 @@ export interface MarkdownEditorProps {
   onComment?: (id: string) => void
   /** A page's: under its toolbar, before the text (the file's name). */
   lead?: ReactNode
-  /** A page's, at the right of its toolbar: how saving is going ("Saved to the draft"). */
+  /** A page's, at the right of its toolbar: how saving is going ("Saved"). */
   status?: ReactNode
+  /**
+   * A page's, in a live draft: the file as the idea's actor has it (live.ts). The rich side shows it and
+   * sends what's typed as it's typed; the Markdown side is the page's to save, block by block.
+   */
+  live?: LiveDoc
+  /** Nothing can be typed (edit access gone): the text stays, to read and copy. */
+  readOnly?: boolean
+  /** Before switching to the Markdown side (true) or back: false keeps it where it is. */
+  onSwitch?: (markdown: boolean) => boolean | Promise<boolean>
+  /** Which side is showing, each time it changes (and once, at first). */
+  onSide?: (markdown: boolean) => void
   /** A page's: its blocks and the words moved between them, read when it's saved. */
   ref?: Ref<MarkdownEditorHandle>
   className?: string
@@ -98,6 +111,8 @@ export interface MarkdownEditorHandle {
   blocks: () => EditorBlock[]
   /** Words moved from one block into another since this was last asked. */
   movedWords: () => MovedWords[]
+  /** Another document of this page as the file it writes, with its blocks' IDs (a live draft's, as last confirmed); null on the Markdown side. */
+  fileOf: (doc: Node) => { source: string; ids: Array<string | null> } | null
 }
 
 const STORED = 'ideaf:editor:markdown'
@@ -207,7 +222,7 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
   // saved again while typing went on: new blocks take their IDs from it, matched by their text (with
   // the same text, the editor's own load does it)
   useEffect(() => {
-    if (rich && props.saved && props.saved.source !== props.value) {
+    if (rich && !props.live && props.saved && props.saved.source !== props.value) {
       rich.adopt(savedBlocks())
     }
     // only when it's saved, not as the text changes
@@ -224,6 +239,7 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
       // the Markdown side has no identities: its blocks are matched to the draft's by their text
       blocks: () => (plain ? blocksOfSource(savedBlocks(), props.value) : (rich?.blocks() ?? savedBlocks())),
       movedWords: () => (plain ? [] : (rich?.movedWords() ?? [])),
+      fileOf: (doc) => (plain || !rich ? null : rich.fileOf(doc)),
     }),
     [plain, rich, props.value],
   )
@@ -292,10 +308,28 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
   }
 
   const switchTo = (on: boolean) => {
-    moved.current = true
-    setMarkdown(on)
-    setSelection(NOWHERE)
+    const go = () => {
+      moved.current = true
+      setMarkdown(on)
+      setSelection(NOWHERE)
+    }
+    if (!props.onSwitch) {
+      go()
+      return
+    }
+    void Promise.resolve(props.onSwitch(on)).then((ok) => {
+      if (ok) {
+        go()
+      }
+    })
   }
+  const onSide = props.onSide
+  useEffect(() => {
+    onSide?.(markdown)
+  }, [markdown, onSide])
+  useEffect(() => {
+    rich?.setEditable(!props.readOnly)
+  }, [rich, props.readOnly])
   useEffect(() => {
     if (moved.current && markdown) {
       moved.current = false
@@ -341,6 +375,7 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
       className="md-editor-source"
       value={props.value}
       onChange={props.onChange}
+      readOnly={props.readOnly}
       rows={props.rows ?? 3}
       aria-label={props.label}
       {...(props.placeholder ? { placeholder: props.placeholder } : {})}
@@ -455,6 +490,7 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
               onComment={props.onComment}
               onSelection={setSelection}
               onReady={setRich}
+              live={props.live}
             />
           </Suspense>
         )}

@@ -21,6 +21,7 @@ const FIRST_TOKEN_MS = 10_000
 const TOKEN_MS = 15 * 60_000
 
 export interface LiveData {
+  kind: 'idea'
   idea: string
   user: string | null
   timer: ReturnType<typeof setTimeout> | null
@@ -122,7 +123,7 @@ export function createLive({ actors, gateway }: { actors: Client<Registry>; gate
         return null
       }
       const idea = decodeURIComponent(match[1]!)
-      if (server.upgrade(request, { data: { idea, user: null, timer: null, conn: null } })) {
+      if (server.upgrade(request, { data: { kind: 'idea' as const, idea, user: null, timer: null, conn: null } })) {
         return undefined
       }
       return new Response('This is a WebSocket: connect with one.', { status: 426, headers: { upgrade: 'websocket' } })
@@ -131,7 +132,7 @@ export function createLive({ actors, gateway }: { actors: Client<Registry>; gate
 }
 
 /** A JWT's expiry, already verified; a personal token has none (it's checked again each time it's sent). */
-function expiryOf(token: string): number {
+export function expiryOf(token: string): number {
   try {
     const payload = JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString()) as { exp?: number }
     return typeof payload.exp === 'number' ? payload.exp * 1000 : Infinity

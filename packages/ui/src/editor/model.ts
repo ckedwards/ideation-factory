@@ -31,6 +31,7 @@ import {
   hrSchema,
   paragraphSchema,
   remarkPreserveEmptyLinePlugin,
+  syncHeadingIdPlugin,
 } from '@milkdown/kit/preset/commonmark'
 import { extendListItemSchemaForTask, gfm, tableSchema } from '@milkdown/kit/preset/gfm'
 import { Fragment, type Node, type NodeSpec, type Schema } from '@milkdown/kit/prose/model'
@@ -217,9 +218,14 @@ export function asWide(table: Node): Node {
 }
 
 // Milkdown's empty lines put `<br />` in every empty paragraph, a list item's and a table cell's
-// too; a page keeps only its own empty lines, between blocks (write and open)
+// too; a page keeps only its own empty lines, between blocks (write and open). Nor Milkdown's heading
+// IDs: each browser works them out for itself and writes them into the document as steps of its own,
+// which a live draft would send to everyone (nothing reads them)
 export const preset = commonmark.filter(
-  (plugin) => plugin !== remarkPreserveEmptyLinePlugin.plugin && plugin !== remarkPreserveEmptyLinePlugin.options,
+  (plugin) =>
+    plugin !== remarkPreserveEmptyLinePlugin.plugin &&
+    plugin !== remarkPreserveEmptyLinePlugin.options &&
+    plugin !== syncHeadingIdPlugin,
 )
 
 /** The plugins that make the editor's schema: the editor uses them, and the rest of its plugins. */
@@ -556,32 +562,108 @@ export async function pageDocument(
 }
 
 export type { Node, Schema } from '@milkdown/kit/prose/model'
+export { Fragment } from '@milkdown/kit/prose/model'
+export { Step, Transform } from '@milkdown/kit/prose/transform'
+
+/** A node that holds a block's identity, and where: what the draft knows the file's blocks by. */
+export interface Holder {
+  pos: number
+  id: string | null
+  node: Node
+}
 
 /**
- * The steps that make `doc` read as `target` does: one replace of the range where they differ (the
- * smallest change: what's the same at either end stays), or none when they're the same.
+ * The nodes that hold the draft's identities, in order, as `identities` reads them: each top-level
+ * block, or a list's items (nested ones too). A run of HTML holds several at once, in `blockIds`, and
+ * isn't one of these.
+ */
+export function holders(doc: Node): Holder[] {
+  const out: Holder[] = []
+  doc.forEach((node, offset) => {
+    const name = node.type.name
+    if (name === 'bullet_list' || name === 'ordered_list') {
+      node.descendants((n, p) => {
+        if (n.type.name === 'list_item') {
+          out.push({ pos: offset + 1 + p, id: (n.attrs['blockId'] as string | null) ?? null, node: n })
+        }
+        return true
+      })
+      return
+    }
+    if ('blockId' in node.attrs) {
+      out.push({ pos: offset, id: (node.attrs['blockId'] as string | null) ?? null, node })
+    }
+  })
+  return out
+}
+
+/** Whether two nodes read the same, whatever their identities. */
+export function sameText(a: Node, b: Node): boolean {
+  return bare(a).eq(bare(b))
+}
+
+/** The same document without identities: what's compared when only the text counts. */
+function bare(node: Node): Node {
+  if (node.isText) {
+    return node
+  }
+  const content: Node[] = []
+  node.forEach((child) => void content.push(bare(child)))
+  const attrs =
+    'blockId' in node.attrs
+      ? { ...node.attrs, blockId: null }
+      : 'blockIds' in node.attrs
+        ? { ...node.attrs, blockIds: '' }
+        : node.attrs
+  return node.type.create(attrs, Fragment.from(content), node.marks)
+}
+
+/**
+ * The steps that make `doc` read as `target` does, and carry its identities: one replace of the range
+ * where their text differs (the smallest change: what's the same at either end stays), then each
+ * identity set where it differs. A block that only takes another ID is never replaced, so typing in
+ * it carries on. None when they're the same.
  */
 export function stepsTo(doc: Node, target: Node): Step[] {
-  const start = doc.content.findDiffStart(target.content)
-  if (start === null) {
-    return []
-  }
-  let { a: endA, b: endB } = doc.content.findDiffEnd(target.content)!
-  // what's the same at both ends can overlap where the difference is a repeat (an "a" typed after "a")
-  const overlap = start - Math.min(endA, endB)
-  if (overlap > 0) {
-    endA += overlap
-    endB += overlap
-  }
   const tr = new Transform(doc)
-  tr.replace(start, endA, target.slice(start, endB))
-  if (tr.doc.eq(target)) {
-    return tr.steps
+  const a = bare(doc)
+  const b = bare(target)
+  const start = a.content.findDiffStart(b.content)
+  if (start !== null) {
+    let { a: endA, b: endB } = a.content.findDiffEnd(b.content)!
+    // what's the same at both ends can overlap where the difference is a repeat (an "a" typed after "a")
+    const overlap = start - Math.min(endA, endB)
+    if (overlap > 0) {
+      endA += overlap
+      endB += overlap
+    }
+    tr.replace(start, endA, target.slice(start, endB))
+    if (!bare(tr.doc).eq(b)) {
+      return whole(doc, target)
+    }
   }
-  // a range ProseMirror fitted differently: the whole content, which always lands
-  const whole = new Transform(doc)
-  whole.replaceWith(0, doc.content.size, target.content)
-  return whole.steps
+  // the same text: identities where they differ (an attribute changes no position)
+  const now = tr.doc
+  now.descendants((node, pos) => {
+    const other = target.nodeAt(pos)
+    if (!other || other.type !== node.type) {
+      return true
+    }
+    for (const attr of ['blockId', 'blockIds']) {
+      if (attr in node.attrs && node.attrs[attr] !== other.attrs[attr]) {
+        tr.setNodeAttribute(pos, attr, other.attrs[attr])
+      }
+    }
+    return true
+  })
+  return tr.doc.eq(target) ? tr.steps : whole(doc, target)
+}
+
+/** A range ProseMirror fitted differently: the whole content, which always lands. */
+function whole(doc: Node, target: Node): Step[] {
+  const tr = new Transform(doc)
+  tr.replaceWith(0, doc.content.size, target.content)
+  return tr.steps
 }
 
 /** Steps, as stored (JSON), applied in order. */

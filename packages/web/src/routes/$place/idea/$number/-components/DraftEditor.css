@@ -41,3 +41,10 @@
 .draft-editor .md-editor.is-page .md-editor-standin {
   padding-inline: 0;
 }
+/* the file's document on its way from the server */
+.draft-editor-opening {
+  margin: var(--space-5) 0;
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+}
