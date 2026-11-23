@@ -148,13 +148,16 @@ Comments can have replies associated with them to start conversations.
 
 ## Drafts
 
-Each idea has **one draft**, shared by everyone with edit access: changes on the latest version, collected until someone commits them as one new version. Editing in the web app adds to it (a block's new source, new text, a deletion), and so does accepting a suggestion, which is the only way to accept one. Everyone editing sees the same draft, live, with who made each change.
+Each idea has **one draft**, shared by everyone with edit access: changes on the latest version, collected until someone commits them as one new version. People type in it in the web app, together, as in Google Docs; agents and the cli add changes to it (a block's new source, new text, a deletion); and accepting a suggestion adds it, which is the only way to accept one. Everyone editing sees the same draft, as it's typed, with who made each change.
 
-- **Checked as it's added:** an edit or deletion carries the block as it read when the change was made. If it reads differently now (someone else changed it, in the draft or in a newer version), the change is refused as outdated. Nothing is merged by guessing.
+- **Typed live:** what's typed goes to the idea's actor as the page editor's own steps (ProseMirror's collab module), over the draft's socket (`/api/ideas/{idea}/draft/live`, for people with edit access only). The actor takes steps made on the latest count of the file's steps, stores them, then sends them to everyone editing the file: "Saved" means stored. An editor that's behind takes what it missed and replays its own on top, so typing merges letter by letter; two people at the very same spot keep their words whole. The actor keeps the last 2,000 steps or 10 minutes of each file, whichever is more, for an editor coming back to catch up; one away longer saves its page block by block, as below, and opens the file again.
+- **Changes are checked as they're added:** an agent's or the cli's edit or deletion, and the editor's Markdown side, carry the block as it read when the change was made. If it reads differently now (someone else changed it, in the draft or in a newer version), the change is refused as outdated. Nothing is merged by guessing. A change that lands moves the documents by steps that leave every other block as it is, so someone typing elsewhere carries on.
+- **IDs come from the actor:** a new block (or the second half of one split in two) takes the ID committing would give it, from the actor, as an attribute nobody's typing touches; the browser never makes one.
+- **Words moved stay moved:** the editor notes words it sees cut from one paragraph and pasted into another, and sends the note with its typing; while the documents still read that way, the draft counts them as a move, so the comments on them go with them.
 - **Always on the latest version:** a version made elsewhere (an agent's batch, an upload) is what the draft is then built on. Changes it overtook are marked outdated, and committing waits until they're undone or redone.
 - **Outdating the draft is confirmed:** a version that would make changes in the draft outdated is refused (`draft_outdated`, naming them) until whoever makes it confirms: `ideaf sync` and `ideaf edit` ask at a terminal and otherwise need `--outdate-draft`. Nothing in the web app makes a version around the draft, so it never asks.
-- **Committing** makes one version, a step for each command, and accepts the suggestions in it. **Discarding** empties it for everyone, and opens its suggestions again.
-- **Kept as documents:** the idea's actor holds the draft as the page editor's own document for each file it changes (ui's `editor/model.ts`, run with no DOM), with the steps that made each one, in its SQLite. The list of changes isn't stored: it's the difference between the documents and the latest version, worked out by block ID as the editor saves (core's `draftChanges`). This is what live editing builds on (`docs/handoff-live-editing.md`).
+- **Committing** makes one version, a step for each command, and accepts the suggestions in it; the editor stays open, and what's typed after it is the next version's. **Discarding** empties it for everyone, and opens its suggestions again.
+- **Kept as documents:** the idea's actor holds the draft as the page editor's own document for each file it changes or someone has open (ui's `editor/model.ts`, run with no DOM), in its SQLite as a snapshot every 200 steps and the steps after it. The list of changes isn't stored: it's the difference between the documents and the latest version, worked out by block ID as the editor saves (core's `draftChanges`). Live editing is built in steps (`docs/handoff-live-editing.md`): typing first, then cursors and who's in the draft.
 
 Agents editing with batches, and uploads, make versions directly. A full editor in the web app, later, writes to the same draft.
 
@@ -204,7 +207,7 @@ Every site admin action (permanently deleting a team, marking people inactive, c
 
 ### File editing
 
-Editing in Ideation Factory is done with commands (see Editing with commands). The web UI offers the same operations agents use (replace text, move a section, rename a heading, and so on), as one framework. What stays out of scope is free-form, live, multi-person editing (Google Docs style): only people with edit access (and their bots) edit, a batch at a time, and concurrent batches merge like pull requests or conflict.
+Agents and the cli edit with commands (see Editing with commands), a batch at a time, and concurrent batches merge like pull requests or conflict. People edit the draft in the web app live, together (see Drafts): only people with edit access, typing merged as it's typed, and committed as one version made of the same commands.
 ## Accounts and sign-in
 
 An account has three parts:

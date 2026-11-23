@@ -4,6 +4,7 @@
 // script sets both to .data/ at the repo root). A deployment runs the engine on its own and names
 // it in engine.endpoint and engine.token, with files in a bucket (files/settings.ts).
 import { join } from 'node:path'
+import type { Server, ServerWebSocket } from 'bun'
 import { createClient } from 'rivetkit/client'
 import { limitDirectoryCalls } from './actors/limit.ts'
 import { ensurePools } from './actors/engine-pools.ts'
@@ -17,6 +18,7 @@ import { fileStoreFrom } from './files/settings.ts'
 import { timedFileStore } from './files/timed.ts'
 import { limitsFrom, MAX_MESSAGE_BYTES } from './limits.ts'
 import { notificationEmailFrom } from './mail/sender.ts'
+import { createDraftLive, type DraftLiveData } from './draft-live.ts'
 import { createLive, type LiveData } from './live.ts'
 import { registry, type Registry } from './registry.ts'
 import type { Settings } from './settings/schema.ts'
@@ -62,20 +64,35 @@ export async function startNode(settings: Settings): Promise<void> {
     ? devWebApp(settings.web.dev_url)
     : staticWebApp(settings.web.dir ?? join(import.meta.dir, '../../web/dist'))
   const app = createApp({ actors, auth, web, health: () => registry.routes.health() })
-  // each idea's live updates, over a WebSocket beside the API
-  const live = createLive({
-    actors,
-    gateway: authGateway(directoryOf(actors), auth.baseURL, auth.trustedProxies),
-  })
-  const server = Bun.serve<LiveData>({
+  // each idea's live updates, over a WebSocket beside the API; and typing in its draft, over another
+  const gateway = authGateway(directoryOf(actors), auth.baseURL, auth.trustedProxies)
+  const live = createLive({ actors, gateway })
+  const draftLive = createDraftLive({ actors, gateway })
+  const server = Bun.serve<LiveData | DraftLiveData>({
     port: settings.port,
     // the largest upload a site may allow, with room for its encoding (limits.ts); Bun answers 413 past it
     maxRequestBodySize: MAX_MESSAGE_BYTES,
     fetch: (request, server) => {
-      const upgraded = live.upgrade(request, server)
+      const upgraded =
+        live.upgrade(request, server as Server<LiveData>) ?? draftLive.upgrade(request, server as Server<DraftLiveData>)
       return upgraded === null ? app(request, server.requestIP(request)?.address) : upgraded
     },
-    websocket: live.websocket,
+    websocket: {
+      // a paste can be a large step: as large as an upload may be
+      maxPayloadLength: MAX_MESSAGE_BYTES,
+      open: (ws) =>
+        ws.data.kind === 'draft'
+          ? draftLive.websocket.open?.(ws as ServerWebSocket<DraftLiveData>)
+          : live.websocket.open?.(ws as ServerWebSocket<LiveData>),
+      message: (ws, raw) =>
+        ws.data.kind === 'draft'
+          ? draftLive.websocket.message!(ws as ServerWebSocket<DraftLiveData>, raw)
+          : live.websocket.message!(ws as ServerWebSocket<LiveData>, raw),
+      close: (ws, code, reason) =>
+        ws.data.kind === 'draft'
+          ? draftLive.websocket.close?.(ws as ServerWebSocket<DraftLiveData>, code, reason)
+          : live.websocket.close?.(ws as ServerWebSocket<LiveData>, code, reason),
+    },
   })
   console.log(`ideaf server on http://localhost:${server.port} (${core.size} core workers)`)
 }

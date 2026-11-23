@@ -266,6 +266,74 @@ export type LiveEvent = z.infer<typeof LiveEvent>
 /** A live socket's close codes: 1013 is WebSocket's own "try again later". */
 export const LIVE_CLOSE = { unauthorized: 4401, notFound: 4404, unavailable: 1013 } as const
 
+/**
+ * The draft's live socket, at /api/ideas/{idea}/draft/live: typing in the idea's draft as it's typed,
+ * for people who can edit it (docs/handoff-live-editing.md). The first message is a token, as on the
+ * idea's live socket; send a fresh one before it expires. Once the server says `ready`, open each
+ * file to edit: its document is the page editor's (ui's editor/model.ts), with the count of steps
+ * it's at. Send steps typed on the count you have; the server sends every file's steps you have open
+ * to everyone editing it, yours with your `client`, once they're stored. Behind, take what you
+ * missed and send yours again on top. `version` says a version was made, after the steps that moved
+ * the documents onto it.
+ */
+const DraftFileId = z.string().min(1).max(64)
+const StepCount = z.number().int().min(0)
+export const DraftLiveClientMessage = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('token'), token: z.string().min(1) }),
+  z.object({ type: z.literal('open'), file: DraftFileId }),
+  z.object({
+    type: z.literal('steps'),
+    file: DraftFileId,
+    version: StepCount,
+    steps: z.array(z.unknown()).min(1).max(10_000),
+    client: z.string().min(1).max(64),
+  }),
+  z.object({ type: z.literal('since'), file: DraftFileId, version: StepCount }),
+  /**
+   * Words seen cut from one block and pasted into another (`old`, their Markdown in `from`), so the
+   * draft counts them as moved and their comments go with them.
+   */
+  z.object({
+    type: z.literal('moved'),
+    file: DraftFileId,
+    words: z.object({
+      from: z.string().min(1).max(64),
+      old: z.string().min(1).max(100_000),
+      to: z.union([
+        z.object({ in: z.string().min(1).max(64), after: z.string().max(1_000_000) }),
+        z.object({ in: z.string().min(1).max(64), before: z.string().max(1_000_000) }),
+      ]),
+    }),
+  }),
+])
+export type DraftLiveClientMessage = z.infer<typeof DraftLiveClientMessage>
+
+export const DraftLiveEvent = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('ready') }),
+  /** A file opened: its document, at its count of steps. */
+  z.object({ type: z.literal('opened'), file: DraftFileId, version: StepCount, doc: z.unknown() }),
+  /** Steps stored, from count `from`, each with the client that sent it (`server` for the server's own). */
+  z.object({
+    type: z.literal('steps'),
+    file: DraftFileId,
+    from: StepCount,
+    steps: z.array(z.unknown()),
+    clients: z.array(z.string()),
+  }),
+  /** Your steps were sent on an older count than `version`: take what you missed, and send them again. */
+  z.object({ type: z.literal('behind'), file: DraftFileId, version: StepCount }),
+  /** What you missed is too long ago to have been kept: open the file again. */
+  z.object({ type: z.literal('gone'), file: DraftFileId }),
+  /** Your steps weren't taken, and why; they aren't to be sent again as they are. */
+  z.object({ type: z.literal('refused'), file: DraftFileId, message: z.string() }),
+  /** A version was made: committed, or around the draft. */
+  z.object({ type: z.literal('version'), version: z.number().int(), by: Caller }),
+])
+export type DraftLiveEvent = z.infer<typeof DraftLiveEvent>
+
+/** The draft's live socket's close codes: the idea's, and no edit access (or it's gone). */
+export const DRAFT_LIVE_CLOSE = { ...LIVE_CLOSE, forbidden: 4403 } as const
+
 /** A unit of the draft: a block that was in the latest version (changed in the draft or not), or new text and the change that added it. */
 export const DraftUnit = z.object({
   id: z.string(),

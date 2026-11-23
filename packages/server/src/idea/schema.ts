@@ -88,19 +88,30 @@ export interface IdeaDB {
    */
   seen: { user: string; version: number; at: number }
   /**
-   * The idea's draft, a live document for each file it changes (the page editor's, model.ts): the
-   * file as the draft has it now (its Markdown and its blocks' IDs, `source` and `ids`, and the
-   * editor's document, `doc`), after `steps` steps. A file the draft hasn't changed has no row.
+   * The idea's draft, a live document for each file it has changed or someone has opened (the page
+   * editor's, model.ts): a snapshot of it after `steps` steps, as its Markdown and its blocks' IDs
+   * (`source`, `ids`) and the editor's document (`doc`). The steps after it are in draft_steps. A file
+   * nobody has opened or changed has no row: it's the latest version's.
    */
   draft_files: { file: string; steps: number; doc: string; source: string; ids: string; at: number }
-  /** Each file's steps, in the order they were taken, with who took them: the recent ones, for catching up. */
-  draft_steps: { file: string; seq: number; step: string; by: string; at: number }
+  /**
+   * Each file's steps, in the order they were taken: who took them, and the editor that sent them
+   * (`client`, so it knows its own when it catches up; `server` for the server's own). The snapshot's
+   * and the recent ones are kept, for catching up.
+   */
+  draft_steps: { file: string; seq: number; step: string; by: string; client: string; at: number }
   /** Suggestions accepted into the draft, resolved when it's committed: each one's change. */
   draft_suggestions: { comment: string; change: string; by: string; at: number }
   /** Changes a version made around the draft has outdated: kept, to be undone or redone, until then. */
   draft_held: { key: string; change: string; by: string; at: number }
-  /** Who made each of the draft's changes (by its key), and when they last did. */
-  draft_authors: { key: string; by: string; at: number }
+  /** Who changed each of the draft's blocks (by its ID), and when they last did. */
+  draft_authors: { block: string; by: string; at: number }
+  /**
+   * Words an editor saw cut from one block and pasted into another (core's MovedWords), in the order
+   * they were: the draft's changes count them as moves while the documents still read that way, so
+   * their comments go with them. Emptied when the draft is committed or discarded.
+   */
+  draft_moved: { seq: Generated<number>; words: string; by: string; at: number }
   writes: { key: string; result: string; at: number }
   /**
    * What a write tells the directory (its inbox events, as a NotifyBatch's),
@@ -146,10 +157,11 @@ export const IDEA_COLUMNS = {
   reviews: ['seq', 'reviewer', 'by', 'verdict', 'version', 'body', 'at', 'dismissed'],
   seen: ['user', 'version', 'at'],
   draft_files: ['file', 'steps', 'doc', 'source', 'ids', 'at'],
-  draft_steps: ['file', 'seq', 'step', 'by', 'at'],
+  draft_steps: ['file', 'seq', 'step', 'by', 'client', 'at'],
   draft_suggestions: ['comment', 'change', 'by', 'at'],
   draft_held: ['key', 'change', 'by', 'at'],
-  draft_authors: ['key', 'by', 'at'],
+  draft_authors: ['block', 'by', 'at'],
+  draft_moved: ['seq', 'words', 'by', 'at'],
   writes: ['key', 'result', 'at'],
   outbox: ['id', 'events', 'at', 'attempts', 'next_at'],
   schema_version: ['version'],
@@ -261,12 +273,14 @@ const MIGRATIONS: Migration[] = [
       seq INTEGER NOT NULL,
       step TEXT NOT NULL,
       by TEXT NOT NULL,
+      client TEXT NOT NULL,
       at INTEGER NOT NULL,
       PRIMARY KEY (file, seq)
     )`,
     `CREATE TABLE draft_suggestions (comment TEXT PRIMARY KEY, change TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL)`,
     `CREATE TABLE draft_held (key TEXT PRIMARY KEY, change TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL)`,
-    `CREATE TABLE draft_authors (key TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (key, by))`,
+    `CREATE TABLE draft_authors (block TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (block, by))`,
+    `CREATE TABLE draft_moved (seq INTEGER PRIMARY KEY, words TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL)`,
     // results of recent writes by idempotency key, so a retried write isn't applied twice
     `CREATE TABLE writes (key TEXT PRIMARY KEY, result TEXT NOT NULL, at INTEGER NOT NULL)`,
     `CREATE INDEX writes_at ON writes (at)`,

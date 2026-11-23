@@ -1,22 +1,25 @@
 // The idea's draft, on the files page or in the focus view: one per idea, on
 // its latest version, shared by everyone who can edit it, and kept by the
-// server. Each change goes to it as it's made, and is refused as outdated if
-// the block no longer reads as it did; the socket's draft event keeps
-// everyone's copy current. Committing makes one version. The files page edits
-// the file it shows; the focus view, every file at once, each saved by itself
-// and all of them before Commit, Preview or leaving.
-import { type ReactNode, useRef, useState } from 'react'
+// server. While it's open, its files are live documents on the draft's socket
+// (draft-live.ts): what's typed goes to everyone editing as it's typed, merged
+// with theirs; the idea's socket's draft event keeps the list of changes
+// current. Committing makes one version, and the editor stays open on it. The
+// files page edits the file it shows; the focus view, every file at once, all
+// of them stored before Commit, Preview or leaving.
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { ApiError, type Operations, type Output } from '@ideaf/api'
 import { type DraftChange, markdownTree, parseMarkdown, plainLine } from '@ideaf/core'
 import { type Person, Redline, renderMermaid } from '@ideaf/ui'
 import type { PageMark } from '@ideaf/ui/editor'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../../../api.ts'
+import { accessToken } from '../../../../../session.ts'
+import { DraftLive } from './draft-live.ts'
 import { type CommentOutcomeRow, EditActions, EditPanel, type EditPanelProps } from './EditPanel.tsx'
 import { IdeaMode } from './IdeaFrame.tsx'
 import { DraftEditor } from './DraftEditor.tsx'
 import { blockRange, headingOffset, toSource } from './anchors.ts'
-import { draftQuery, filesQuery } from './queries.ts'
+import { draftQuery, filesQuery, ideaQuery } from './queries.ts'
 import type { DraftVersion } from './VersionList.tsx'
 import type { FileView, Placement, Thread } from './view.ts'
 
@@ -86,6 +89,36 @@ export function useEditing(args: UseEditingArgs): Editing | null {
   const [unsavedFiles, setUnsavedFiles] = useState<ReadonlySet<string>>(new Set())
   // each file's save of whatever's unsaved in it: the actions wait for all of them
   const flushes = useRef(new Map<string, { current: (() => Promise<boolean>) | null }>())
+  // the draft's live socket, while the editor's open
+  const [live, setLive] = useState<DraftLive | null>(null)
+  const notes = useRef(args.onNote)
+  notes.current = args.onNote
+  useEffect(() => {
+    if (!args.open) {
+      return
+    }
+    const connection = new DraftLive(idea, {
+      open: (path) => new WebSocket(`${location.origin.replace(/^http/, 'ws')}${path}`),
+      token: accessToken,
+      // a version made: the bar moves on to it, and the list of changes is read again
+      onVersion: () => {
+        void queryClient.invalidateQueries({ queryKey: ideaQuery(idea).queryKey, exact: true })
+        void queryClient.invalidateQueries({ queryKey: draftQuery(idea).queryKey, exact: true })
+      },
+      onClosed: (why) =>
+        notes.current(
+          why === 'forbidden'
+            ? 'You can no longer edit this idea. What you typed is still on the page, to copy.'
+            : 'This idea is gone, or you can no longer see it.',
+        ),
+      onRefused: (_file, message) => notes.current(`That didn’t save: ${message}`),
+    })
+    setLive(connection)
+    return () => {
+      connection.stop()
+      setLive(null)
+    }
+  }, [idea, args.open, queryClient])
   if (!args.open || !draft) {
     return null
   }
@@ -151,8 +184,8 @@ export function useEditing(args: UseEditingArgs): Editing | null {
       }
       const done = await api.commitDraft({ idea })
       args.onCommitted(done.version)
+      // the editor stays open: what's typed from now on is the next version's
       setPreviewing(false)
-      args.setOpen(false)
     } catch (error) {
       failed(error)
     } finally {
@@ -231,12 +264,14 @@ export function useEditing(args: UseEditingArgs): Editing | null {
           {file && compared(file.file)}
         </>
       ) : (
-        file && (
+        file &&
+        (live ? (
           <DraftEditor
             key={file.file}
             idea={idea}
             draft={draft}
             file={file.file}
+            live={live}
             reread={reread}
             flush={flushFor(file.file)}
             onUnsaved={unsavedIn(file.file)}
@@ -244,19 +279,22 @@ export function useEditing(args: UseEditingArgs): Editing | null {
             view={view}
             {...(args.lead ? { lead: args.lead } : {})}
           />
-        )
+        ) : (
+          <p className="draft-editor-opening">Opening…</p>
+        ))
       ),
     // the focus view's: every file, without its comments (the panel's in their place), its sheet's head
     // naming it
     sheet: (id) =>
       previewing ? (
         compared(id)
-      ) : draft.files.some((f) => f.file === id) ? (
+      ) : draft.files.some((f) => f.file === id) && live ? (
         <DraftEditor
           key={id}
           idea={idea}
           draft={draft}
           file={id}
+          live={live}
           reread={reread}
           flush={flushFor(id)}
           onUnsaved={unsavedIn(id)}

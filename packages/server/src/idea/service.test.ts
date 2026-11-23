@@ -775,6 +775,220 @@ describe('the draft', () => {
   })
 })
 
+describe('typing in the draft', () => {
+  // f1: s2 "Plan" at 0, b3 "The quick brown fox." at 6 (its text from 7), s4, b5
+
+  type Typed = import('@ideaf/ui/editor/model').Transform & {
+    insertText: (text: string, from: number, to?: number) => unknown
+  }
+
+  /** An editor of f1, as the page editor is: the document the server sent, and steps typed on it. */
+  async function editor(service: IdeaService, client = 'c1', caller: Caller = OWNER) {
+    const { pageDocument, Transform } = await import('@ideaf/ui/editor/model')
+    const { schema } = await pageDocument(PLAN, [])
+    const opened = (await service.openDraftFile('f1'))!
+    let doc = schema.nodeFromJSON(opened.doc)
+    let version = opened.version
+    return {
+      get doc() {
+        return doc
+      },
+      get version() {
+        return version
+      },
+      /** Typed and sent, on the count this editor has (or `on`); taken, it has what the server sent back. */
+      async type(edit: (tr: Typed) => void, on = version) {
+        const tr = new Transform(doc)
+        const typed = Object.assign(tr, {
+          insertText: (text: string, from: number, to = from) => tr.replaceWith(from, to, schema.text(text)),
+        })
+        edit(typed)
+        const sent = await service.typing({
+          file: 'f1',
+          version: on,
+          steps: tr.steps.map((s) => s.toJSON()),
+          client,
+          caller,
+        })
+        if (sent.result.kind === 'taken') {
+          const event = sent.events.find((e) => e.name === 'draftSteps' && e.payload.file === 'f1')!
+          const { Step } = await import('@ideaf/ui/editor/model')
+          for (const json of (event.payload as { steps: unknown[] }).steps) {
+            doc = Step.fromJSON(schema, json).apply(doc).doc!
+          }
+          version = sent.result.version
+        }
+        return sent
+      },
+      /** Takes in steps the server sent: from its count. */
+      async take(payload: { from: number; steps: unknown[] }) {
+        const { Step } = await import('@ideaf/ui/editor/model')
+        for (const json of payload.steps.slice(version - payload.from)) {
+          doc = Step.fromJSON(schema, json).apply(doc).doc!
+        }
+        version = Math.max(version, payload.from + payload.steps.length)
+      },
+    }
+  }
+
+  test('is stored as it comes, and is a change of the draft by whoever typed it', async () => {
+    const { sql, service } = await created()
+    const ana = await editor(service)
+    expect(ana.version).toBe(0)
+    const sent = await ana.type((tr) => tr.insertText('red', 17, 22))
+    expect(sent.result).toEqual({ kind: 'taken', version: 1 })
+    expect(sent.events).toMatchObject([{ name: 'draftSteps', payload: { file: 'f1', from: 0, clients: ['c1'] } }])
+    const draft = await service.draft()
+    expect(draft.changes).toMatchObject([{ key: 'e-b3', by: OWNER, change: { source: 'The quick red fox.' } }])
+    expect(await sql.execute('SELECT seq, client FROM draft_steps')).toEqual([{ seq: 1, client: 'c1' }])
+  })
+
+  test('steps on an older count are behind: the editor takes what it missed, and sends again', async () => {
+    const { service } = await created()
+    const ana = await editor(service, 'ana')
+    const raj = await editor(service, 'raj', REVIEWER)
+    const first = await ana.type((tr) => tr.insertText('red', 17, 22))
+    // after the rain (b5's text is 36 to 50)
+    expect((await raj.type((tr) => tr.insertText(' Soon.', 50))).result).toEqual({ kind: 'behind', version: 1 })
+    await raj.take(first.events[0]!.payload as { from: number; steps: unknown[] })
+    // replayed on what it missed: the same place, past Ana's shorter word
+    expect((await raj.type((tr) => tr.insertText(' Soon.', 48))).result).toEqual({ kind: 'taken', version: 2 })
+    const draft = await service.draft()
+    expect(draft.files[0]!.content).toBe('# Plan\n\nThe quick red fox.\n\n## Risks\n\nIt might rain. Soon.\n')
+    expect(draft.changes.map((c) => [c.key, c.by.user])).toEqual([
+      ['e-b3', 'riley'],
+      ['e-b5', 'maya'],
+    ])
+  })
+
+  test('a paragraph split in two: the new one takes the ID committing gives it, from the server', async () => {
+    const { service } = await created()
+    const ana = await editor(service)
+    // Enter after "quick ": both halves have b3, as ProseMirror splits them
+    const sent = await ana.type((tr) => tr.split(17))
+    expect(sent.result).toEqual({ kind: 'taken', version: 2 })
+    expect(sent.events[0]!.payload).toMatchObject({ clients: ['c1', 'server'] })
+    const { holders } = await import('@ideaf/ui/editor/model')
+    const draft = await service.draft()
+    // the editor's IDs are the draft's, each once, the new one as committing would number it
+    const ids = draft.files[0]!.units.map((u) => u.id)
+    expect(holders(ana.doc).map((h) => h.id)).toEqual(ids)
+    expect([...ids].sort()).toEqual(['b3', 'b5', 'b6', 's2', 's4'])
+    expect(draft.files[0]!.units.map((u) => u.source.trim())).toEqual([
+      '# Plan',
+      'The quick',
+      'brown fox.',
+      '## Risks',
+      'It might rain.',
+    ])
+  })
+
+  test('what an editor missed comes from its count; from too long ago, it’s gone', async () => {
+    const { sql, service } = await created()
+    const ana = await editor(service)
+    await ana.type((tr) => tr.insertText('red', 17, 22))
+    await ana.type((tr) => tr.insertText('!', 22))
+    expect(await service.draftSince('f1', 1)).toMatchObject({ kind: 'steps', from: 1, clients: ['c1'] })
+    expect(await service.draftSince('f1', 2)).toEqual({ kind: 'steps', from: 2, steps: [], clients: [] })
+    await sql.execute('DELETE FROM draft_steps WHERE seq = 1')
+    expect(await service.draftSince('f1', 0)).toEqual({ kind: 'gone' })
+  })
+
+  test('another write changes only the blocks it changes: typing elsewhere stays as it is', async () => {
+    const { service, write } = await created()
+    const ana = await editor(service)
+    // a space typed at the end of the fox (its text is 7 to 27): Markdown has no way to keep it, the
+    // document does
+    await ana.type((tr) => tr.insertText(' ', 27))
+    const before = ana.version
+    const changed = await service.write({
+      key: 'agent',
+      caller: REVIEWER,
+      write: { type: 'draft', changes: [{ kind: 'edit', id: 'b5', source: 'It may pour.', was: 'It might rain.' }] },
+    })
+    value(changed.result)
+    const steps = changed.events.find((e) => e.name === 'draftSteps')!
+    await ana.take(steps.payload as { from: number; steps: unknown[] })
+    expect(ana.version).toBeGreaterThan(before)
+    expect(ana.doc.child(1).textContent).toBe('The quick brown fox. ')
+    expect(ana.doc.child(3).textContent).toBe('It may pour.')
+    void write
+  })
+
+  test('committed while someone types: the documents carry on, on the new version', async () => {
+    const { service, write } = await created()
+    const ana = await editor(service)
+    await ana.type((tr) => tr.insertText('red', 17, 22))
+    value(await write({ type: 'commit' }))
+    expect((await service.file(2, 'f1'))!.content).toContain('quick red fox')
+    expect((await service.draft()).changes).toEqual([])
+    // typing goes on from where it was: it's the next version's
+    expect((await ana.type((tr) => tr.insertText('!', 20))).result.kind).toBe('taken')
+    expect((await service.draft()).changes).toMatchObject([{ key: 'e-b3', change: { source: 'The quick red! fox.' } }])
+  })
+
+  test('words seen moved to another paragraph are a move: their comment goes with them', async () => {
+    const { service, write } = await created()
+    // "brown" is at 15 to 20 in the plain text
+    value(
+      await write(
+        { type: 'comment', version: 1, anchor: { kind: 'text', file: 'f1', start: 15, end: 20 }, body: 'Which brown?' },
+        REVIEWER,
+      ),
+    )
+    const ana = await editor(service)
+    // " brown" cut from the fox (16 to 22), and pasted after the rain (b5's text ends at 50, 44 once cut)
+    await ana.type((tr) => tr.delete(16, 22))
+    await ana.type((tr) => tr.insertText(' brown', 44))
+    const moved = { from: 'b3', old: ' brown', to: { in: 'b5', after: 'It might rain.' } }
+    // without the note, it's two edits, and the comment's words are gone
+    expect((await service.draft()).comments).toMatchObject([{ state: 'outdated' }])
+    await service.movedWords(moved, OWNER)
+    const draft = await service.draft()
+    expect(draft.files[0]!.content).toBe('# Plan\n\nThe quick fox.\n\n## Risks\n\nIt might rain. brown\n')
+    expect(draft.changes).toMatchObject([{ key: 't-b3-b5', change: { kind: 'move-text', old: ' brown' } }])
+    expect(draft.comments[0]!.state).not.toBe('outdated')
+    // committed, the comment is on its words in the new version
+    value(await write({ type: 'commit' }))
+    const [thread] = await service.comments(2)
+    expect(thread).toMatchObject({ state: expect.not.stringMatching('outdated'), anchor: { quote: 'brown' } })
+    // and the note's gone with the draft
+    expect((await service.draft()).changes).toEqual([])
+  })
+
+  test('words moved next to text the draft has changed still move: placed by what the version has', async () => {
+    const { service, write } = await created()
+    value(
+      await write(
+        { type: 'comment', version: 1, anchor: { kind: 'text', file: 'f1', start: 15, end: 20 }, body: 'Which brown?' },
+        REVIEWER,
+      ),
+    )
+    const ana = await editor(service)
+    // a space typed at the end of the rain first (its text ends at 50), then " brown" cut and pasted after it
+    await ana.type((tr) => tr.insertText(' Soon', 50))
+    await ana.type((tr) => tr.delete(16, 22))
+    await ana.type((tr) => tr.insertText(' brown', 49))
+    // as the editor saw it land: after the rain as the draft had it then
+    await service.movedWords({ from: 'b3', old: ' brown', to: { in: 'b5', after: 'It might rain. Soon' } }, OWNER)
+    const draft = await service.draft()
+    expect(draft.files[0]!.content).toBe('# Plan\n\nThe quick fox.\n\n## Risks\n\nIt might rain. Soon brown\n')
+    expect(draft.changes.map((c) => c.change.kind).sort()).toEqual(['edit', 'move-text'])
+    expect(draft.comments[0]!.state).not.toBe('outdated')
+  })
+
+  test('a fresh actor has the same document: its snapshot and the steps after it', async () => {
+    const { sql, files, service } = await created()
+    const ana = await editor(service)
+    await ana.type((tr) => tr.insertText('red', 17, 22))
+    await ana.type((tr) => tr.insertText('!', 20))
+    const again = new IdeaService('idea-1', { sql, files, core: inProcessCore(), limits: DEFAULT_LIMITS })
+    const opened = (await again.openDraftFile('f1'))!
+    expect(opened.version).toBe(ana.version)
+    expect(opened.doc).toEqual(ana.doc.toJSON())
+  })
+})
+
 describe('status and reviews', () => {
   const BOT: Caller = { user: 'maya', bot: 'checkbot', purpose: 'bot-for-me' }
   const OTHER: Caller = { user: 'sam', bot: null, purpose: 'me' }

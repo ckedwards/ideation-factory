@@ -155,13 +155,13 @@ It's the comment box's toolbar with history, the style menu and code block added
 
 ### How it reaches the draft
 
-The draft doesn't change shape: it stays a list of changes to blocks, each checked against the text it was made on.
+The draft is live (`docs/handoff-live-editing.md`): each file is the page editor's own document, held by the idea's actor, and what's typed goes to it as it's typed.
 
-- **Each block on screen remembers which draft blocks it came from.** A list is one block on screen and one draft block for each item.
-- **After a pause in typing (about a second), when focus leaves, and before Commit, Preview or Close editor,** every block whose content changed is written back as Markdown and sent as draft changes: an edit, an insertion or a deletion.
-- **A block that didn't change sends nothing,** so its source is untouched (rule 3).
-- **Other people's changes** arrive as they do now. A block you aren't typing in is replaced with theirs. A block you are typing in is refused as outdated when it's saved: the bar says so, your text stays on screen, and you choose theirs or yours.
-- **Not live co-editing:** no shared cursors, and no merging of two people's typing in one block. The draft's rule stays: nothing is merged by guessing.
+- **Each block on screen remembers which draft block it is.** A list is one block on screen and one draft block for each item. A new block takes its ID from the actor, never from the browser.
+- **Typing is sent as it's typed,** as the editor's steps, and merged with everyone else's, who see it as it comes. The bar says Saved once the actor has stored it, Saving… while some is on its way (after half a second), and Offline while the connection's dropped: typing is kept, and sent once it's back.
+- **A block that didn't change is never written,** so its source is untouched (rule 3): the draft's changes are worked out from the documents by block, and only a changed block is written back as Markdown.
+- **The Markdown side isn't live.** What's typed there is saved as the draft always was, after a pause in typing and before Commit, Preview or Close editor, block by block, each checked against what it read when typing started: one someone changed meanwhile is refused as outdated, and you choose theirs or yours. Switching to it waits for what's typed to be stored; switching back saves it, and the rich side is live again.
+- **Cursors and who's in the draft** come next (live editing's step 4).
 
 ### Moving text
 
@@ -412,5 +412,5 @@ Steps 1 and 2 are the smallest useful piece. Steps 4 and 5 can start alongside t
 - @mentions, and notifying the people mentioned.
 - Merged cells, and lists or paragraphs inside a cell (Markdown tables can't hold them).
 - Quote reply.
-- Live co-editing with shared cursors.
+- Shared cursors, for now: live editing's step 4.
 - Rendering Markdown in email's HTML part.

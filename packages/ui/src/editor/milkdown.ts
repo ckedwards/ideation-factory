@@ -73,6 +73,7 @@ import { $prose, $view } from '@milkdown/kit/utils'
 import { sanitizeHtml, SLOT } from '../document/html.ts'
 import { drawnHtmlRun, drawnSchemas, htmlMark } from './drawing.ts'
 import { clipboardIdentity, type MovedWords } from './identity.ts'
+import type { LiveDoc } from './live.ts'
 import { type Block, type Codec, createCodec, type IdentifiedBlock, type Flavor, writeOptions } from './model.ts'
 
 export type { Flavor } from './model.ts'
@@ -133,6 +134,11 @@ export interface RichOptions {
   onContextMenu: (at: { x: number; y: number }, here: { table: boolean; link: string | null; html: boolean }) => void
   /** A page's: a comment's mark clicked, by its ID. */
   onComment?: ((id: string) => void) | undefined
+  /**
+   * A page's, in a live draft: the file as the idea's actor has it. The editor shows its document and
+   * sends what's typed to it; IDs for new blocks come from the actor, never from here.
+   */
+  live?: LiveDoc | undefined
 }
 
 export interface Selection {
@@ -162,6 +168,10 @@ export interface RichEditor {
   load: (source: string, ids?: string[]) => void
   /** A page's blocks, as the draft knows them: each with its identity (null for new text) and its Markdown now. */
   blocks: () => Array<{ id: string | null; source: string }>
+  /** Another document of this page as the file it writes, with its blocks' IDs (a live draft's, as the actor last confirmed it). */
+  fileOf: (doc: Node) => { source: string; ids: Array<string | null> }
+  /** Whether it can be typed in. */
+  setEditable: (editable: boolean) => void
   /** New blocks take the identities the draft gave them (once saved): the draft's blocks, matched by their text. */
   adopt: (units: Array<{ id: string; source: string }>) => void
   /** Words moved between blocks since this was last asked, to go to the draft as moves. */
@@ -799,6 +809,9 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
               unheard.add(emitted)
               latest.options.onChange(emitted)
             }
+            if (view.state.doc !== before.doc) {
+              options.live?.changed()
+            }
             if (
               !view.state.selection.eq(before.selection) ||
               !view.state.doc.eq(before.doc) ||
@@ -877,7 +890,12 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
       options.flavor === 'page'
         ? clipboardIdentity({
             sourceOf: (id) => blocks().find((b) => b.id === id)?.source ?? null,
-            onWords: (w) => void moved.push(w),
+            onWords: (w) => {
+              moved.push(w)
+              options.live?.moved(w)
+            },
+            // in a live draft the actor hands out and clears IDs, for everyone at once
+            live: Boolean(options.live),
           })
         : [],
     )
@@ -993,6 +1011,32 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
     }
   }
   load(options.source, options.ids)
+  // a live draft's file: the actor's document, from here on in step with it
+  options.live?.attach(view(), {
+    replace: (doc) => {
+      const v = view()
+      const opened = codec.opened
+      v.dispatch(
+        v.state.tr
+          .replaceWith(0, v.state.doc.content.size, doc.content)
+          .setMeta('addToHistory', false)
+          .setMeta(RELOADED, true),
+      )
+      // its blocks that read as the ones opened are written back as they were opened
+      const origin = new WeakMap<Node, Block>()
+      const nodes: Node[] = []
+      const free = [...opened.nodes]
+      view().state.doc.forEach((node, _, i) => {
+        const same = opened.nodes[i]?.eq(node) ? opened.nodes[i]! : free.find((n) => n.eq(node))
+        if (same && free.includes(same)) {
+          free.splice(free.indexOf(same), 1)
+          origin.set(node, opened.origin.get(same)!)
+          nodes.push(node)
+        }
+      })
+      codec.opened = { ...opened, origin, nodes }
+    },
+  })
   options.onSelection(selectionOf(view().state))
 
   const commands = () => action((ctx) => ctx.get(commandsCtx))
@@ -1005,7 +1049,13 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
   return {
     markdown: () => write(view().state.doc),
     blocks,
-    adopt: (units) => adopt(units),
+    // a live page's IDs come from the idea's actor, and its text from the live document: anything
+    // opened or adopted here would be sent to everyone as typing
+    adopt: (units) => {
+      if (!options.live) {
+        adopt(units)
+      }
+    },
     markComments: (marks) => {
       const v = view()
       v.dispatch(v.state.tr.setMeta(marksKey, { marks }))
@@ -1022,6 +1072,9 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
       return out
     },
     load: (source, ids) => {
+      if (options.live) {
+        return
+      }
       if (source === emitted || unheard.has(source)) {
         if (source === emitted) {
           // the page has caught up
@@ -1220,7 +1273,12 @@ export async function createRichEditor(options: RichOptions): Promise<RichEditor
     rewritten: () =>
       codec.opened.nodes.map((node) => ({ source: codec.opened.origin.get(node)!.source, written: serialize(node) })),
     dom: () => view().dom,
-    destroy: () => void editor.destroy(),
+    fileOf: (doc) => ({ source: codec.write(doc), ids: codec.identities(doc).map((b) => b.id) }),
+    setEditable: (editable) => view().setProps({ editable: () => editable }),
+    destroy: () => {
+      options.live?.detach(view())
+      void editor.destroy()
+    },
   }
 }
 

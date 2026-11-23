@@ -26,8 +26,11 @@ import {
   type BuiltDraft,
   type DraftEntry,
   DraftChange,
+  type EditorBlock,
+  type MovedWords,
   type Skipped,
   type Suggestion,
+  unitSource,
   type FileOutline,
   type OutlineEntry,
   type Idea,
@@ -43,7 +46,18 @@ import { prepared } from '../sql/prepared.ts'
 import type { Sql } from '../sql/sql.ts'
 import type { InboxEvent } from '../directory/types.ts'
 import { inboxEvents, publishedInboxEvents } from './notify.ts'
-import { blocksNamed, blocksOf, type DraftText, keyOf, LiveDrafts, type Retargeted } from './draft.ts'
+import { holders, type Node, type Step, Transform } from '@ideaf/ui/editor/model'
+import {
+  applyEach,
+  blocksNamed,
+  blocksOf,
+  type DraftText,
+  keyOf,
+  type Live,
+  LiveDrafts,
+  type Retargeted,
+  touched,
+} from './draft.ts'
 import { reviewerOf } from './reviewer.ts'
 import { type IdeaDB, type IdeaStatus, VERDICTS, type Verdict } from './schema.ts'
 
@@ -276,6 +290,11 @@ export type IdeaEvent =
   | { name: 'status'; payload: { status: IdeaStatus; change: StatusChange; by: Caller } }
   /** A verdict given, or dismissed: the reviewer's verdict as it stands now. */
   | { name: 'review'; payload: { review: ReviewShape; by: Caller } }
+  /**
+   * Steps taken in a file of the draft, from its count `from`, each with the editor that sent it
+   * (`server` for the server's own): stored, for every editor of the file to take in, in order.
+   */
+  | { name: 'draftSteps'; payload: { file: string; from: number; steps: unknown[]; clients: string[] } }
 
 export type VersionHow = 'created' | 'commands' | 'upload'
 
@@ -309,13 +328,21 @@ const refuse = (code: WriteErrorCode, message: string, details?: unknown): never
   throw new Refused({ code, message, ...(details === undefined ? {} : { details }) })
 }
 
-/** A file of the draft as stored, its row and its text; the suggestions accepted into it; the changes held. */
+/**
+ * The draft as stored: each file's row and its document now, with its blocks; the suggestions
+ * accepted into it; the changes held; who changed each block (the latest first); and the idea it was
+ * read against.
+ */
 interface DraftState {
   rows: Map<string, IdeaDB['draft_files']>
-  texts: Map<string, DraftText>
+  lives: Map<string, Live>
+  blocks: Map<string, EditorBlock[]>
   suggestions: DraftSuggestion[]
   held: DraftHeld[]
-  authors: Map<string, { by: Caller; at: number }>
+  authors: Map<string, Array<{ by: Caller; at: number }>>
+  /** Words editors saw moved between blocks, in order. */
+  moved: MovedWords[]
+  base: Idea
 }
 interface DraftSuggestion {
   comment: string
@@ -341,11 +368,100 @@ interface Derived {
   entries: DraftItem[]
   built: BuiltDraft
 }
-/** The draft as a write leaves it: worked out, to keep in the write's transaction. */
+/** The draft as a write leaves it: worked out, to keep in the write's transaction, and the steps to send. */
 interface NextDraft {
   after: Derived
   save: (tx: Kysely<IdeaDB>) => Promise<void>
   done: () => void
+  events: IdeaEvent[]
+}
+
+/** Typing in a file of the draft: steps from an editor, on the count of steps it had. */
+export interface Typing {
+  file: string
+  version: number
+  steps: unknown[]
+  client: string
+  caller: Caller
+}
+
+/** What became of typing: stored (the file's count now), behind the file's count, or refused. */
+export type TypingResult =
+  | { kind: 'taken'; version: number }
+  | { kind: 'behind'; version: number }
+  | { kind: 'refused'; message: string }
+
+/** What an editor missed: the steps after its count, with whose each is; or too long ago to have kept. */
+export type Missed = { kind: 'steps'; from: number; steps: unknown[]; clients: string[] } | { kind: 'gone' }
+
+/** A file's blocks given the IDs they should have: its document after, the steps (attributes only), the IDs renamed. */
+interface Renamed {
+  live: Live
+  doc: Node
+  steps: Step[]
+  renames: Map<string, string>
+}
+
+/**
+ * The words seen moved that the documents still show moved (gone from the block they left, and in the
+ * one they went to), each placed where `base` (the latest version) can find it: core moves the words
+ * next to text the block has there once, and the block's edit does the rest. The editor saw them land
+ * next to the block's text as the draft had it, which the version may not (a space typed before the
+ * paste, say), so they go after the nearest text before them the version has once, or else before the
+ * nearest after them. Words moved back, or typed over since, are edits like any other.
+ */
+function stillMoved(moved: MovedWords[], blocks: Map<string, EditorBlock[]>, base: Idea): MovedWords[] {
+  const sources = new Map([...blocks.values()].flat().flatMap((b) => (b.id ? [[b.id, b.source] as const] : [])))
+  const seen = new Set<string>()
+  const out: MovedWords[] = []
+  for (const w of moved) {
+    const from = sources.get(w.from)
+    const to = sources.get(w.to.in)
+    const was = unitSource(base, w.to.in)
+    const old = w.old.trim()
+    const key = JSON.stringify(w)
+    if (seen.has(key) || !old || from === undefined || to === undefined || was === null) {
+      continue
+    }
+    seen.add(key)
+    if (from.includes(old) || !to.includes(old)) {
+      continue
+    }
+    const once = (text: string) => text.length > 0 && was.split(text).length === 2
+    const near = 'before' in w.to ? w.to.before : w.to.after
+    if (once(near)) {
+      out.push(w)
+      continue
+    }
+    const at = to.indexOf(old)
+    const before = to.slice(0, at)
+    const after = to.slice(at + old.length)
+    let place: MovedWords['to'] | null = null
+    for (let n = before.length; n > 0 && !place; n--) {
+      const text = before.slice(before.length - n).trimEnd()
+      if (once(text)) {
+        place = { in: w.to.in, after: text }
+      }
+    }
+    for (let n = after.length; n > 0 && !place; n--) {
+      const text = after.slice(0, n).trimStart()
+      if (once(text)) {
+        place = { in: w.to.in, before: text }
+      }
+    }
+    if (place) {
+      out.push({ ...w, to: place })
+    }
+  }
+  return out
+}
+
+/** The blocks a change is to: those it names, and the new text it adds. */
+function blocksOfChange(key: string, change: DraftChange, built: BuiltDraft): string[] {
+  const made = built.files.flatMap((f) =>
+    f.units.flatMap((u) => (u.origin.kind === 'new' && u.origin.change === key ? [u.id] : [])),
+  )
+  return [...blocksNamed(change), ...made]
 }
 
 const plainEntry = ({ key, change }: { key: string; change: DraftChange }): DraftEntry => ({ key, change })
@@ -377,8 +493,11 @@ function changeKey(change: DraftChange, after: Derived): string | null {
   return null
 }
 
-/** How many of a file's steps are kept, for catching up: the rest are in its document. */
+/** How many of a file's steps are kept for catching up, at least, and for how long: whichever keeps more. */
 const KEEP_STEPS = 2000
+const KEEP_STEPS_MS = 10 * 60_000
+/** How often a file's document is stored whole, in steps: waking up replays at most this many. */
+const SNAPSHOT_EVERY = 200
 
 /** How long a write's result is kept for retries. */
 const KEEP_RESULTS_MS = 7 * 24 * 60 * 60 * 1000
@@ -1168,9 +1287,42 @@ export class IdeaService {
   // draft works out the files it should read as, with core's buildDraft as always, and moves each
   // document there by steps; the changes are worked out again from the documents.
 
-  /** The draft as stored. */
-  async #draftState(): Promise<DraftState> {
+  /** The latest version's file, as a live document is written against it; null if it has none. */
+  #baseOf(idea: Idea, file: string): { source: string; ids: string[] } | null {
+    const found = idea.files.find((f) => f.id === file)
+    return found ? { source: found.source, ids: found.unitIds } : null
+  }
+
+  /** A file's steps after `seq`, as stored. */
+  async #stepsAfter(file: string, seq: number): Promise<unknown[]> {
+    const rows = await this.#db
+      .selectFrom('draft_steps')
+      .select('step')
+      .where('file', '=', file)
+      .where('seq', '>', seq)
+      .orderBy('seq')
+      .execute()
+    return rows.map((r) => JSON.parse(r.step) as unknown)
+  }
+
+  /**
+   * The draft as stored, read against `base` (the latest version): each file's document as it now
+   * is. `keep`: a write's, which holds the documents from here on; a read's doesn't.
+   */
+  async #draftState(base: Idea, keep: boolean): Promise<DraftState> {
     const files = await this.#db.selectFrom('draft_files').selectAll().execute()
+    const lives = new Map<string, Live>()
+    const blocks = new Map<string, EditorBlock[]>()
+    for (const row of files) {
+      const version = this.#baseOf(base, row.file)
+      if (!version) {
+        // a file the latest version no longer has
+        continue
+      }
+      const live = await this.#live.load(row.file, row, version, () => this.#stepsAfter(row.file, row.steps), keep)
+      lives.set(row.file, live)
+      blocks.set(row.file, this.#live.blocks(live))
+    }
     const suggestions = await this.#db
       .selectFrom('draft_suggestions')
       .selectAll()
@@ -1178,13 +1330,17 @@ export class IdeaService {
       .orderBy('comment')
       .execute()
     const held = await this.#db.selectFrom('draft_held').selectAll().orderBy('at').orderBy('key').execute()
-    const authors = new Map<string, { by: Caller; at: number }>()
-    for (const r of await this.#db.selectFrom('draft_authors').selectAll().orderBy('at').execute()) {
-      authors.set(r.key, { by: JSON.parse(r.by) as Caller, at: r.at })
+    const moved = (await this.#db.selectFrom('draft_moved').select('words').orderBy('seq').execute()).map(
+      (r) => JSON.parse(r.words) as MovedWords,
+    )
+    const authors = new Map<string, Array<{ by: Caller; at: number }>>()
+    for (const r of await this.#db.selectFrom('draft_authors').selectAll().orderBy('at', 'desc').execute()) {
+      authors.set(r.block, [...(authors.get(r.block) ?? []), { by: JSON.parse(r.by) as Caller, at: r.at }])
     }
     return {
       rows: new Map(files.map((r) => [r.file, r])),
-      texts: new Map(files.map((r) => [r.file, { source: r.source, ids: JSON.parse(r.ids) as string[] }])),
+      lives,
+      blocks,
       suggestions: suggestions.map((r) => ({
         comment: r.comment,
         change: JSON.parse(r.change) as DraftChange,
@@ -1198,17 +1354,20 @@ export class IdeaService {
         at: r.at,
       })),
       authors,
+      moved,
+      base,
     }
   }
 
   /**
    * The draft's changes on `idea`: those held, the suggestions accepted, then the difference between
    * its files and the idea with those suggestions in, by block ID; and the draft built from them.
+   * Each change from the documents is whoever last changed one of its blocks.
    */
   async #derive(
     idea: Idea,
     comments: Comment[],
-    state: Pick<DraftState, 'texts' | 'suggestions' | 'held' | 'authors'>,
+    state: Pick<DraftState, 'blocks' | 'suggestions' | 'held' | 'authors' | 'moved'>,
     fallback: Caller,
   ): Promise<Derived> {
     const taken = new Set(state.held.map((h) => h.key))
@@ -1224,29 +1383,35 @@ export class IdeaService {
       base = (await this.#core.buildDraft(this.id, idea, comments, accepted.map(plainEntry))).idea
     }
     const derived: DraftItem[] = []
-    const files = Object.fromEntries(
-      [...state.texts].filter(([file]) => base.files.some((f) => f.id === file)).map(([f, t]) => [f, blocksOf(t)]),
-    )
+    const files = Object.fromEntries([...state.blocks].filter(([file]) => base.files.some((f) => f.id === file)))
     if (Object.keys(files).length > 0) {
-      const made = await this.#core.draftChanges(this.id, base, files)
+      const made = await this.#core.draftChanges(this.id, base, files, stillMoved(state.moved, state.blocks, base))
       if (!made.ok) {
         throw new Error(`the draft's documents make no changes: ${made.message}`)
       }
       for (const change of made.changes) {
-        const key = keyOf(change, taken)
-        const author = state.authors.get(key)
-        derived.push({ key, change, by: author?.by ?? fallback, at: author?.at ?? 0, kind: 'derived' })
+        derived.push({ key: keyOf(change, taken), change, by: fallback, at: 0, kind: 'derived' })
       }
     }
     const entries: DraftItem[] = [...state.held.map((h) => ({ ...h, kind: 'held' as const })), ...accepted, ...derived]
     const built = await this.#core.buildDraft(this.id, idea, comments, entries.map(plainEntry))
+    for (const e of derived) {
+      const latest = blocksOfChange(e.key, e.change, built)
+        .flatMap((block) => state.authors.get(block)?.slice(0, 1) ?? [])
+        .sort((a, b) => b.at - a.at)[0]
+      if (latest) {
+        e.by = latest.by
+        e.at = latest.at
+      }
+    }
     return { entries, built }
   }
 
   /**
    * The draft as it's to be: its files as `files` has them, with these suggestions and held changes.
-   * Works out each document's steps and who made each change (whoever's change it is now, if it's
-   * new or different); `save` keeps them, in the write's transaction, and `done` once it's committed.
+   * Works out each document's steps and who changed what (whoever's change it is now, if it's new or
+   * different); `save` keeps them, in the write's transaction, `done` once it's committed, and
+   * `events` sends the steps to everyone editing.
    */
   async #nextDraft(
     request: WriteRequest,
@@ -1257,93 +1422,86 @@ export class IdeaService {
       files: Array<{ id: string; source: string; unitIds: string[] }>
       suggestions: DraftSuggestion[]
       held: DraftHeld[]
+      /** Committed or discarded: the words seen moved are forgotten. */
+      clearMoved?: boolean
     },
-  ) {
+  ): Promise<NextDraft> {
     const at = this.#now()
     const version = new Map(on.idea.files.map((f) => [f.id, { source: f.source, ids: f.unitIds }]))
     const same = (a: DraftText | undefined, b: DraftText) =>
       a !== undefined && a.source === b.source && JSON.stringify(a.ids) === JSON.stringify(b.ids)
-    // the files the draft has: those it had, and those that differ from the version
-    const texts = new Map<string, DraftText>()
+    // the files the draft has: its documents, and those that differ from the version
+    const targets = new Map<string, DraftText>()
     for (const f of next.files) {
       const text = { source: f.source, ids: f.unitIds }
-      if (state.texts.has(f.id) || !same(version.get(f.id), text)) {
-        texts.set(f.id, text)
+      if (state.blocks.has(f.id) || !same(version.get(f.id), text)) {
+        targets.set(f.id, text)
       }
     }
-    const after = await this.#derive(on.idea, on.comments, { texts, ...next, authors: state.authors }, request.caller)
+    const after = await this.#derive(
+      on.idea,
+      on.comments,
+      {
+        blocks: new Map([...targets].map(([file, text]) => [file, blocksOf(text)])),
+        suggestions: next.suggestions,
+        held: next.held,
+        authors: state.authors,
+        moved: next.clearMoved ? [] : state.moved,
+      },
+      request.caller,
+    )
     // the IDs new text will have once it's committed, as the draft built from its changes gives them
     const finalTexts = new Map<string, DraftText>()
     for (const f of after.built.files) {
-      if (texts.has(f.id)) {
+      if (targets.has(f.id)) {
         finalTexts.set(f.id, { source: f.source, ids: f.unitIds })
       }
     }
-    const retargeted: Retargeted[] = []
+    const retargeted: Array<{ live: Live; r: Retargeted; text: DraftText; row: boolean }> = []
     for (const [file, text] of finalTexts) {
-      if (same(state.texts.get(file), text)) {
-        continue
+      // a document's starting point: its own, or the file as the draft was read against
+      const start = this.#baseOf(state.base, file) ?? { source: text.source, ids: text.ids as string[] }
+      const live = state.lives.get(file) ?? (await this.#live.load(file, null, start, async () => [], true))
+      const r = this.#live.retarget(file, live, text)
+      if (r.steps.length > 0 || !state.rows.has(file)) {
+        retargeted.push({ live, r, text, row: state.rows.has(file) })
       }
-      const row = state.rows.get(file) ?? null
-      retargeted.push(
-        await this.#live.retarget(file, row, version.get(file) ?? text, text, async () =>
-          (
-            await this.#db
-              .selectFrom('draft_steps')
-              .select('step')
-              .where('file', '=', file)
-              .where('seq', '>', row!.steps)
-              .orderBy('seq')
-              .execute()
-          ).map((r) => JSON.parse(r.step) as unknown),
-        ),
-      )
     }
-    // who made each change: unchanged ones keep theirs
+    // who changed what: unchanged changes keep theirs
     const was = new Map(before.entries.map((e) => [e.key, JSON.stringify(e.change)]))
     const authored = after.entries.filter((e) => e.kind === 'derived' && was.get(e.key) !== JSON.stringify(e.change))
-    const keys = new Set(after.entries.map((e) => e.key))
     for (const e of authored) {
       e.by = request.caller
       e.at = at
     }
+    const authoredBlocks = new Set(authored.flatMap((e) => blocksOfChange(e.key, e.change, after.built)))
+    const kept = new Set(after.entries.flatMap((e) => blocksOfChange(e.key, e.change, after.built)))
     const by = JSON.stringify(request.caller)
     const save = async (tx: Kysely<IdeaDB>) => {
-      for (const r of retargeted) {
-        const from = state.rows.get(r.file)?.steps ?? 0
-        const text = finalTexts.get(r.file)!
+      for (const { r, text, row } of retargeted) {
+        const from = r.count - r.steps.length
         for (const [i, step] of r.steps.entries()) {
           await tx
             .insertInto('draft_steps')
-            .values({ file: r.file, seq: from + i + 1, step: JSON.stringify(step), by, at })
+            .values({ file: r.file, seq: from + i + 1, step: JSON.stringify(step), by, client: 'server', at })
             .execute()
         }
-        // the recent steps are kept, for catching up (step 3); older ones are in the document
-        await tx
-          .deleteFrom('draft_steps')
-          .where('file', '=', r.file)
-          .where('seq', '<=', r.count - KEEP_STEPS)
-          .execute()
-        await tx
-          .insertInto('draft_files')
-          .values({
-            file: r.file,
-            steps: r.count,
-            doc: JSON.stringify(r.doc.toJSON()),
-            source: text.source,
-            ids: JSON.stringify(text.ids),
-            at,
-          })
-          .onConflict((oc) =>
-            oc.column('file').doUpdateSet({
-              steps: r.count,
-              doc: JSON.stringify(r.doc.toJSON()),
-              source: text.source,
-              ids: JSON.stringify(text.ids),
-              at,
-            }),
-          )
-          .execute()
+        const snapshot = {
+          steps: r.count,
+          doc: JSON.stringify(r.doc.toJSON()),
+          source: text.source,
+          ids: JSON.stringify(text.ids),
+          at,
+        }
+        if (row) {
+          await tx.updateTable('draft_files').set(snapshot).where('file', '=', r.file).execute()
+        } else {
+          await tx
+            .insertInto('draft_files')
+            .values({ file: r.file, ...snapshot })
+            .execute()
+        }
+        await this.#prune(tx, r.file, r.count, r.count)
       }
       await tx.deleteFrom('draft_suggestions').execute()
       for (const s of next.suggestions) {
@@ -1359,19 +1517,61 @@ export class IdeaService {
           .values({ key: h.key, change: JSON.stringify(h.change), by: JSON.stringify(h.by), at: h.at })
           .execute()
       }
-      const gone = [...state.authors.keys()].filter((k) => !keys.has(k))
+      // who changed blocks no change is to any more is forgotten
+      const gone = [...state.authors.keys()].filter((block) => !kept.has(block))
       if (gone.length > 0) {
-        await tx.deleteFrom('draft_authors').where('key', 'in', gone).execute()
+        await tx.deleteFrom('draft_authors').where('block', 'in', gone).execute()
       }
-      for (const e of authored) {
-        await tx
-          .insertInto('draft_authors')
-          .values({ key: e.key, by, at })
-          .onConflict((oc) => oc.columns(['key', 'by']).doUpdateSet({ at }))
-          .execute()
+      await this.#authored(tx, authoredBlocks, by, at)
+      if (next.clearMoved) {
+        await tx.deleteFrom('draft_moved').execute()
       }
     }
-    return { after, save, done: () => this.#live.commit(retargeted) }
+    const events: IdeaEvent[] = retargeted
+      .filter(({ r }) => r.steps.length > 0)
+      .map(({ r }) => ({
+        name: 'draftSteps',
+        payload: {
+          file: r.file,
+          from: r.count - r.steps.length,
+          steps: r.steps,
+          clients: r.steps.map(() => 'server'),
+        },
+      }))
+    return {
+      after,
+      save,
+      done: () => {
+        for (const { live, r } of retargeted) {
+          this.#live.commit(r.file, live, r.doc, r.count, r.count)
+        }
+      },
+      events,
+    }
+  }
+
+  /** Who changed these blocks: the caller, now. */
+  async #authored(tx: Kysely<IdeaDB>, blocks: Iterable<string>, by: string, at: number): Promise<void> {
+    for (const block of blocks) {
+      await tx
+        .insertInto('draft_authors')
+        .values({ block, by, at })
+        .onConflict((oc) => oc.columns(['block', 'by']).doUpdateSet({ at }))
+        .execute()
+    }
+  }
+
+  /**
+   * A file's steps that aren't needed any more: in its snapshot (at `snapshot`), and older than both
+   * the last KEEP_STEPS and KEEP_STEPS_MS, which editors catching up may still ask for.
+   */
+  async #prune(tx: Kysely<IdeaDB>, file: string, count: number, snapshot: number): Promise<void> {
+    await tx
+      .deleteFrom('draft_steps')
+      .where('file', '=', file)
+      .where('seq', '<=', Math.min(snapshot, count - KEEP_STEPS))
+      .where('at', '<', this.#now() - KEEP_STEPS_MS)
+      .execute()
   }
 
   /** Writes the draft as it's to be, with the write's result, in one transaction. */
@@ -1382,26 +1582,289 @@ export class IdeaService {
     also?: (tx: Kysely<IdeaDB>) => Promise<void>,
     events: IdeaEvent[] = [{ name: 'draft', payload: { by: request.caller } }],
   ) {
+    // the steps first, so editors have the documents as they are when they read the draft again
+    const all = [...next.events, ...events]
     try {
       await this.#transaction(async (tx) => {
         await next.save(tx)
         await also?.(tx)
-        await this.#remember(tx, request.key, result, events)
+        await this.#remember(tx, request.key, result, all)
       })
     } catch (error) {
       this.#live.forget()
       throw error
     }
     next.done()
-    return { result, events }
+    return { result, events: all }
   }
 
-  /** The draft on the latest version, as stored. */
-  async #draftNow(caller: Caller) {
+  /** The draft on the latest version, as stored: a write's (`keep`), or a read's. */
+  async #draftNow(caller: Caller, keep = true) {
     const latest = await this.#loadLatest()
-    const state = await this.#draftState()
+    const state = await this.#draftState(latest.idea, keep)
     const derived = await this.#derive(latest.idea, latest.comments, state, caller)
     return { latest, state, derived }
+  }
+
+  // --- typing -----------------------------------------------------------------------
+  //
+  // An editor's steps, on the count of the file's steps it had: taken only on the latest count, and
+  // stored before they're sent back, to everyone, as saved. A behind editor takes what it missed
+  // and replays its own on top (ui's collab.ts). New blocks take their IDs here.
+
+  /** A file of the draft opened to edit: its document and count. It's a draft file from here on. */
+  async openDraftFile(file: string): Promise<{ version: number; doc: unknown } | null> {
+    await this.#requireMeta()
+    const latest = await this.#loadLatest()
+    const base = this.#baseOf(latest.idea, file)
+    if (!base) {
+      return null
+    }
+    const row = await this.#db.selectFrom('draft_files').selectAll().where('file', '=', file).executeTakeFirst()
+    const live = await this.#live.load(file, row ?? null, base, () => this.#stepsAfter(file, row!.steps), true)
+    if (!row) {
+      const at = this.#now()
+      await this.#db
+        .insertInto('draft_files')
+        .values({
+          file,
+          steps: 0,
+          doc: JSON.stringify(live.doc.toJSON()),
+          source: base.source,
+          ids: JSON.stringify(base.ids),
+          at,
+        })
+        .execute()
+      this.#live.commit(file, live, live.doc, 0, 0)
+    }
+    return { version: live.steps, doc: live.doc.toJSON() }
+  }
+
+  /** Words an editor saw cut from one block and pasted into another: kept, so the draft counts them as moved. */
+  async movedWords(words: MovedWords, caller: Caller): Promise<void> {
+    await this.#requireMeta()
+    await this.#db
+      .insertInto('draft_moved')
+      .values({ words: JSON.stringify(words), by: JSON.stringify(caller), at: this.#now() })
+      .execute()
+  }
+
+  /** What an editor missed in a file since its count `version`: the steps after it, if they're still kept. */
+  async draftSince(file: string, version: number): Promise<Missed> {
+    const row = await this.#db.selectFrom('draft_files').select('steps').where('file', '=', file).executeTakeFirst()
+    const rows = await this.#db
+      .selectFrom('draft_steps')
+      .select(['seq', 'step', 'client'])
+      .where('file', '=', file)
+      .where('seq', '>', version)
+      .orderBy('seq')
+      .execute()
+    const last = await this.#db
+      .selectFrom('draft_steps')
+      .select((eb) => eb.fn.max('seq').as('seq'))
+      .where('file', '=', file)
+      .executeTakeFirst()
+    const count = Math.max(row?.steps ?? 0, Number(last?.seq ?? 0))
+    if (version > count || (version < count && rows[0]?.seq !== version + 1)) {
+      return { kind: 'gone' }
+    }
+    return {
+      kind: 'steps',
+      from: version,
+      steps: rows.map((r) => JSON.parse(r.step) as unknown),
+      clients: rows.map((r) => r.client),
+    }
+  }
+
+  /** Typing: stored, with the IDs new blocks take, and sent to everyone editing the file. */
+  async typing(t: Typing): Promise<{ result: TypingResult; events: IdeaEvent[] }> {
+    const refused = (message: string) => ({ result: { kind: 'refused' as const, message }, events: [] })
+    await this.#requireMeta()
+    const latest = await this.#loadLatest()
+    const base = this.#baseOf(latest.idea, t.file)
+    const row = await this.#db.selectFrom('draft_files').selectAll().where('file', '=', t.file).executeTakeFirst()
+    if (!base || !row) {
+      return refused(base ? 'the file isn’t open in the draft' : 'the latest version has no such file')
+    }
+    const live = await this.#live.load(t.file, row, base, () => this.#stepsAfter(t.file, row.steps), true)
+    if (t.version !== live.steps) {
+      return { result: { kind: 'behind', version: live.steps }, events: [] }
+    }
+    let applied: ReturnType<typeof applyEach>
+    try {
+      applied = applyEach(live.env.schema, live.doc, t.steps)
+    } catch (error) {
+      return refused(error instanceof Error ? error.message : String(error))
+    }
+    const typed = applied.docs.at(-1)!
+    // new blocks, and the second of two with one ID: the IDs committing would give them, in every file
+    const before = holders(live.doc).map((h) => h.id)
+    const now = holders(typed).map((h) => h.id)
+    const unsettled =
+      now.some((id, i) => id === null || now.indexOf(id) !== i) || JSON.stringify(before) !== JSON.stringify(now)
+    const named: Map<string, Renamed> = unsettled
+      ? await this.#normalize(latest, t.file, live, typed, t.caller)
+      : new Map()
+    const mine = named.get(t.file)
+    const final = mine?.doc ?? typed
+    const renames = new Map([...named.values()].flatMap((n) => [...n.renames]))
+    const blocks = [...touched(applied.docs, applied.steps, final, mine?.steps ?? [])].map(
+      (id) => renames.get(id) ?? id,
+    )
+
+    const at = this.#now()
+    const by = JSON.stringify(t.caller)
+    // each file's steps as stored and sent: the editor's, then the server's
+    const files = new Map<string, { live: Live; doc: Node; steps: unknown[]; clients: string[] }>()
+    files.set(t.file, {
+      live,
+      doc: final,
+      steps: [...t.steps, ...(mine?.steps ?? []).map((s) => s.toJSON())],
+      clients: [...t.steps.map(() => t.client), ...(mine?.steps ?? []).map(() => 'server')],
+    })
+    for (const [file, n] of named) {
+      if (file !== t.file) {
+        files.set(file, {
+          live: n.live,
+          doc: n.doc,
+          steps: n.steps.map((s) => s.toJSON()),
+          clients: n.steps.map(() => 'server'),
+        })
+      }
+    }
+    const snapshots = new Map<string, number>()
+    try {
+      await this.#transaction(async (tx) => {
+        for (const [file, f] of files) {
+          for (const [i, step] of f.steps.entries()) {
+            await tx
+              .insertInto('draft_steps')
+              .values({ file, seq: f.live.steps + i + 1, step: JSON.stringify(step), by, client: f.clients[i]!, at })
+              .execute()
+          }
+          const count = f.live.steps + f.steps.length
+          let snapshot = f.live.snapshot
+          if (count - snapshot >= SNAPSHOT_EVERY) {
+            const text = this.#live.text(f.live, f.doc)
+            await tx
+              .updateTable('draft_files')
+              .set({
+                steps: count,
+                doc: JSON.stringify(f.doc.toJSON()),
+                source: text.source,
+                ids: JSON.stringify(text.ids),
+                at,
+              })
+              .where('file', '=', file)
+              .execute()
+            snapshot = count
+          }
+          snapshots.set(file, snapshot)
+          await this.#prune(tx, file, count, snapshot)
+        }
+        // who changed blocks that took new IDs is kept under them
+        if (renames.size > 0) {
+          const moved = await tx
+            .selectFrom('draft_authors')
+            .selectAll()
+            .where('block', 'in', [...renames.keys()])
+            .execute()
+          await tx
+            .deleteFrom('draft_authors')
+            .where('block', 'in', [...renames.keys()])
+            .execute()
+          for (const r of moved) {
+            await tx
+              .insertInto('draft_authors')
+              .values({ ...r, block: renames.get(r.block)! })
+              .onConflict((oc) => oc.columns(['block', 'by']).doNothing())
+              .execute()
+          }
+        }
+        await this.#authored(tx, blocks, by, at)
+      })
+    } catch (error) {
+      this.#live.forget()
+      throw error
+    }
+    const events: IdeaEvent[] = []
+    for (const [file, f] of files) {
+      const count = f.live.steps + f.steps.length
+      this.#live.commit(file, f.live, f.doc, count, snapshots.get(file))
+      events.push({
+        name: 'draftSteps',
+        payload: { file, from: f.live.steps, steps: f.steps, clients: f.clients },
+      })
+    }
+    return { result: { kind: 'taken', version: live.steps + files.get(t.file)!.steps.length }, events }
+  }
+
+  /**
+   * The IDs blocks should have, in every file, with `file` as typed (`typed`): new blocks (and the
+   * second of two with one ID) take the IDs committing would give them, and others' new blocks may be
+   * renumbered with them. Each file's steps to them (only attributes change), and the IDs renamed.
+   * Where the draft can't be worked out, a new block takes an ID of its own.
+   */
+  async #normalize(
+    latest: Latest,
+    file: string,
+    live: Live,
+    typed: Node,
+    caller: Caller,
+  ): Promise<Map<string, Renamed>> {
+    const state = await this.#draftState(latest.idea, true)
+    const own = this.#live.blocks(live, typed)
+    const seen = new Set<string>()
+    state.blocks.set(
+      file,
+      own.map((b) => {
+        if (b.id && !seen.has(b.id)) {
+          seen.add(b.id)
+          return b
+        }
+        return { ...b, id: null }
+      }),
+    )
+    state.lives.set(file, live)
+    let built: BuiltDraft | null = null
+    try {
+      built = (await this.#derive(latest.idea, latest.comments, state, caller)).built
+    } catch {
+      built = null
+    }
+    const out = new Map<string, Renamed>()
+    for (const [f, l] of state.lives) {
+      const doc = f === file ? typed : l.doc
+      const units = l.base.codec.identities(doc)
+      const final = built?.files.find((x) => x.id === f)?.unitIds
+      const tr = new Transform(doc)
+      const renames = new Map<string, string>()
+      const counts = new Map<string, number>()
+      units.forEach((u) => u.id && counts.set(u.id, (counts.get(u.id) ?? 0) + 1))
+      if (final && final.length === units.length) {
+        units.forEach((u, i) => {
+          if (u.at !== null && u.id !== final[i]) {
+            tr.setNodeAttribute(u.at, 'blockId', final[i]!)
+            if (u.id && counts.get(u.id) === 1) {
+              renames.set(u.id, final[i]!)
+            }
+          }
+        })
+      } else if (f === file) {
+        const taken = new Set<string>()
+        for (const h of holders(doc)) {
+          if (!h.id || taken.has(h.id)) {
+            tr.setNodeAttribute(h.pos, 'blockId', `n${(this.#now() + Math.random()).toString(36).replace('.', '')}`)
+          } else {
+            taken.add(h.id)
+          }
+        }
+      }
+      if (tr.steps.length > 0) {
+        out.set(f, { live: l, doc: tr.doc, steps: tr.steps, renames })
+      }
+    }
+    return out
   }
 
   /**
@@ -1462,6 +1925,7 @@ export class IdeaService {
       files: latest.idea.files,
       suggestions: [],
       held: [],
+      clearMoved: true,
     })
     return this.#keepDraft(request, { ok: true, value: { kind: 'draft', keys: [] } }, next)
   }
@@ -1653,12 +2117,17 @@ export class IdeaService {
     }
     // the draft, moved onto the new version: committed, it's the version itself; made around it, its
     // changes that still apply are in it, and those this version outdates are held, saying why
-    const state = await this.#draftState()
+    const state = await this.#draftState(latest.idea, true)
     let draft: NextDraft | null = null
     if (more.clearDraft) {
       const before = await this.#derive(latest.idea, latest.comments, state, request.caller)
-      draft = await this.#nextDraft(request, on, state, before, { files: idea.files, suggestions: [], held: [] })
-    } else if (state.texts.size > 0 || state.suggestions.length > 0 || state.held.length > 0) {
+      draft = await this.#nextDraft(request, on, state, before, {
+        files: idea.files,
+        suggestions: [],
+        held: [],
+        clearMoved: true,
+      })
+    } else if (state.blocks.size > 0 || state.suggestions.length > 0 || state.held.length > 0) {
       const before = await this.#derive(latest.idea, latest.comments, state, request.caller)
       const plain = before.entries.map(plainEntry)
       const after = await this.#core.buildDraft(this.id, idea, on.comments, plain)
@@ -1701,6 +2170,8 @@ export class IdeaService {
     }
     const stored = await this.#storeContents(idea)
     const events: IdeaEvent[] = [
+      // the documents' steps onto the new version first, so editors have them when it's announced
+      ...(draft?.events ?? []),
       { name: 'version', payload: { version: number, how, by: request.caller } },
       ...(decide?.ids ?? []).map((comment): IdeaEvent => ({
         name: 'decided',
@@ -1977,7 +2448,7 @@ export class IdeaService {
    */
   async draft() {
     const meta = await this.#requireMeta()
-    const { latest, derived } = await this.#draftNow({ user: meta.owner, bot: null, purpose: 'me' })
+    const { latest, derived } = await this.#draftNow({ user: meta.owner, bot: null, purpose: 'me' }, false)
     const { entries, built } = derived
     const pending = new Set(
       (await this.#db.selectFrom('comments').select('id').where('pending', 'is not', null).execute()).map((r) => r.id),

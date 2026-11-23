@@ -4,12 +4,21 @@
 // to everyone connected (live updates), and what it tells inboxes, kept in the
 // outbox by the write's own transaction, goes to the directory until it says
 // it has applied it: a committed write's notifications are never lost.
+import type { MovedWords } from '@ideaf/core'
 import { actor, event, UserError } from 'rivetkit'
 import { db } from 'rivetkit/db'
 import { nodeDeps } from '../deps.ts'
 import { sendOutbox } from '../idea/outbox.ts'
 import { migrate } from '../idea/schema.ts'
-import { type IdeaEvent, IdeaService, Refused, type WriteRequest, type WriteResult } from '../idea/service.ts'
+import {
+  type IdeaEvent,
+  IdeaService,
+  Refused,
+  type Typing,
+  type TypingResult,
+  type WriteRequest,
+  type WriteResult,
+} from '../idea/service.ts'
 import type { Client } from 'rivetkit/client'
 import type { Registry } from '../registry.ts'
 import { callRetrying, retryOverloaded } from '../sql/retry.ts'
@@ -22,6 +31,12 @@ import { directoryOf } from './pools.ts'
  * (scale concern 1).
  */
 const indexDelayMs = () => Number(process.env.IDEAF_INDEX_DELAY_MS ?? 2000)
+
+/**
+ * How often, at most, typing tells the idea's pages that the draft changed (its `draft` event): they
+ * read the draft again for its list of changes. Editors have the steps themselves (`draftSteps`).
+ */
+const TYPING_DRAFT_EVENT_MS = 1000
 
 type Payload<N extends IdeaEvent['name']> = Extract<IdeaEvent, { name: N }>['payload']
 
@@ -36,6 +51,7 @@ export const idea = actor({
     draft: event<Payload<'draft'>>(),
     status: event<Payload<'status'>>(),
     review: event<Payload<'review'>>(),
+    draftSteps: event<Payload<'draftSteps'>>(),
   },
   state: { indexDue: false, lastActivity: 0 },
   createVars: () => ({
@@ -43,7 +59,10 @@ export const idea = actor({
     flushing: null as Promise<void> | null,
     again: false,
     alarmAt: 0,
-    writes: null as ((request: WriteRequest) => Promise<WriteResult>) | null,
+    writes: null as ((task: Task) => Promise<WriteResult | TypingResult | Opened>) | null,
+    // typing's draft event: when it last went, and the one waiting to go
+    draftEventAt: 0,
+    draftEventTimer: null as ReturnType<typeof setTimeout> | null,
   }),
   onWake: (c) => {
     // one write at a time, in the order they came (actors/batch.ts), with this wake-up's context
@@ -56,7 +75,22 @@ export const idea = actor({
      * A write (idea/service.ts), answered once it stands; one at a time, as each builds on the version before.
      * Its key makes a retry return the same answer.
      */
-    write: (c, request: WriteRequest) => (c.vars.writes ??= writerOf(c))(request),
+    write: (c, request: WriteRequest) =>
+      (c.vars.writes ??= writerOf(c))({ kind: 'write', request }) as Promise<WriteResult>,
+    /**
+     * A file of the draft opened to edit (the draft's live socket, draft-live.ts): its document and the
+     * count of its steps; null if the latest version has no such file. In the write queue, as it may
+     * make the file a draft file.
+     */
+    draftOpen: (c, file: string) => (c.vars.writes ??= writerOf(c))({ kind: 'open', file }) as Promise<Opened>,
+    /** Typing: an editor's steps on the count it had, taken in the write queue's turn. */
+    draftTyping: (c, typing: Typing) =>
+      (c.vars.writes ??= writerOf(c))({ kind: 'typing', typing }) as Promise<TypingResult>,
+    /** Words an editor saw moved between blocks, in the write queue's turn: the draft counts them as moved. */
+    draftMoved: (c, words: MovedWords, caller: Typing['caller']) =>
+      (c.vars.writes ??= writerOf(c))({ kind: 'moved', words, caller }) as Promise<null>,
+    /** What an editor missed in a file since its count, if it's still kept. */
+    draftSince: (c, file: string, version: number) => read(() => serviceOf(c).draftSince(file, version)),
     summary: (c) => read(() => serviceOf(c).summary()),
     files: (c, version?: number) => read(() => serviceOf(c).files(version)),
     pull: (c, version?: number) => read(() => serviceOf(c).pull(version)),
@@ -133,17 +167,76 @@ const WAITING_WRITES = 1_000
 
 type WriteContext = OutboxContext & {
   state: { indexDue: boolean; lastActivity: number }
+  vars: OutboxContext['vars'] & {
+    draftEventAt: number
+    draftEventTimer: ReturnType<typeof setTimeout> | null
+  }
   broadcast(name: string, payload: unknown): void
   keepAwake<T>(promise: Promise<T>): Promise<T>
   schedule: OutboxContext['schedule'] & { after(duration: number, action: string, ...args: unknown[]): Promise<string> }
 }
 
-/** Writes applied one at a time: each is checked against the version before it, so none may run beside another. */
-function writerOf(c: WriteContext): (request: WriteRequest) => Promise<WriteResult> {
-  return batcher(async ([request]: WriteRequest[]) => [await applyWrite(c, request!)], {
-    max: 1,
-    waiting: WAITING_WRITES,
-  })
+/** What the write queue takes: a write, a file of the draft opened to edit, or typing in one. */
+type Task =
+  | { kind: 'write'; request: WriteRequest }
+  | { kind: 'open'; file: string }
+  | { kind: 'typing'; typing: Typing }
+  | { kind: 'moved'; words: MovedWords; caller: Typing['caller'] }
+
+type Opened = { version: number; doc: unknown } | null
+
+/**
+ * Writes applied one at a time: each is checked against the version before it, so none may run
+ * beside another. The draft's typing takes its turn with them.
+ */
+function writerOf(c: WriteContext): (task: Task) => Promise<WriteResult | TypingResult | Opened> {
+  return batcher<Task, WriteResult | TypingResult | Opened>(
+    async ([task]: Task[]) => {
+      switch (task!.kind) {
+        case 'write':
+          return [await applyWrite(c, task!.request)]
+        case 'open':
+          return [await read(() => serviceOf(c).openDraftFile(task!.file))]
+        case 'typing':
+          return [await applyTyping(c, task!.typing)]
+        case 'moved':
+          await serviceOf(c).movedWords(task!.words, task!.caller)
+          draftEventSoon(c, task!.caller)
+          return [null]
+      }
+    },
+    { max: 1, waiting: WAITING_WRITES },
+  )
+}
+
+/** Typing stored, its steps sent to every editor, and the draft event to its pages, at most once a second. */
+async function applyTyping(c: WriteContext, typing: Typing): Promise<TypingResult> {
+  const { result, events } = await serviceOf(c).typing(typing)
+  for (const e of events) {
+    c.broadcast(e.name, e.payload)
+  }
+  if (result.kind === 'taken') {
+    c.state.lastActivity = Date.now()
+    draftEventSoon(c, typing.caller)
+  }
+  return result
+}
+
+function draftEventSoon(c: WriteContext, by: Typing['caller']): void {
+  if (c.vars.draftEventTimer) {
+    return
+  }
+  const send = () => {
+    c.vars.draftEventTimer = null
+    c.vars.draftEventAt = Date.now()
+    c.broadcast('draft', { by })
+  }
+  const wait = c.vars.draftEventAt + TYPING_DRAFT_EVENT_MS - Date.now()
+  if (wait <= 0) {
+    send()
+  } else {
+    c.vars.draftEventTimer = setTimeout(send, wait)
+  }
 }
 
 async function applyWrite(c: WriteContext, request: WriteRequest): Promise<WriteResult> {

@@ -14,6 +14,7 @@ import {
   type DraftEntry,
   draftChanges,
   type EditorBlock,
+  type MovedWords,
   checkAnchor,
   type Comment,
   createIdea,
@@ -37,8 +38,16 @@ export interface CoreRunner {
   checkAnchor(key: string, idea: Idea, input: AnchorInput): Promise<ReturnType<typeof checkAnchor>>
   suggestionSource(key: string, idea: Idea, anchor: Anchor): Promise<ReturnType<typeof suggestionSource>>
   buildDraft(key: string, idea: Idea, comments: Comment[], entries: DraftEntry[]): Promise<BuiltDraft>
-  /** The changes that make `draft` read as `files` do: the draft's live documents, as changes on the latest version. */
-  draftChanges(key: string, draft: Idea, files: Record<string, EditorBlock[]>): Promise<DraftChanges>
+  /**
+   * The changes that make `draft` read as `files` do: the draft's live documents, as changes on the
+   * latest version, with words seen moved between blocks as moves (so their comments go with them).
+   */
+  draftChanges(
+    key: string,
+    draft: Idea,
+    files: Record<string, EditorBlock[]>,
+    words?: MovedWords[],
+  ): Promise<DraftChanges>
   close(): Promise<void>
 }
 
@@ -73,7 +82,7 @@ export function inProcessCore(): CoreRunner {
     checkAnchor: async (_key, idea, input) => checkAnchor(idea, input),
     suggestionSource: async (_key, idea, anchor) => suggestionSource(idea, anchor),
     buildDraft: async (_key, idea, comments, entries) => buildDraft(idea, comments, entries),
-    draftChanges: async (_key, draft, files) => draftChanges(draft, files),
+    draftChanges: async (_key, draft, files, words) => draftChanges(draft, files, words),
     close: async () => {},
   }
 }
