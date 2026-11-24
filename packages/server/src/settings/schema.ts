@@ -6,7 +6,7 @@
 // From the environment every value is a string, so lists also take "a,b,c", numbers "42", and
 // on/off switches "on" or "off".
 import { z } from 'zod'
-import { DEFAULT_LIMITS, LIMIT_RANGES } from '../limits.ts'
+import { DEFAULT_DRAFT_LIMITS, DEFAULT_LIMITS, LIMIT_RANGES } from '../limits.ts'
 
 const PERSONAL_TOKEN_POLICIES = ['on', 'admins', 'off'] as const
 
@@ -186,7 +186,7 @@ export const settingsSchema = z.strictObject({
     })
     .default({}),
 
-  /** The Markdown size limits, in bytes (limits.ts). */
+  /** The Markdown size limits, in bytes, and what a live draft takes on (limits.ts). */
   limits: z
     .strictObject({
       max_file_bytes: whole(LIMIT_RANGES.maxFileBytes.min, LIMIT_RANGES.maxFileBytes.max)
@@ -195,8 +195,52 @@ export const settingsSchema = z.strictObject({
       max_idea_bytes: whole(LIMIT_RANGES.maxIdeaBytes.min, LIMIT_RANGES.maxIdeaBytes.max)
         .default(DEFAULT_LIMITS.maxIdeaBytes)
         .describe('The largest idea, all its files together, in bytes'),
+      draft: z
+        .strictObject({
+          editors: whole(LIMIT_RANGES.draft.editors.min, LIMIT_RANGES.draft.editors.max)
+            .default(DEFAULT_DRAFT_LIMITS.editors)
+            .describe(
+              'The most windows editing one draft at once; past it, a window opens the draft read-only, still live. ' +
+                'Every keystroke and caret move goes to everyone in the draft, so the work grows with the square of this: ' +
+                'measure it on your hardware with the draft crowd load test (packages/load).',
+            ),
+          caret_ms: whole(LIMIT_RANGES.draft.caretMs.min, LIMIT_RANGES.draft.caretMs.max)
+            .default(DEFAULT_DRAFT_LIMITS.caretMs)
+            .describe('How often, at most, a window sends where its caret is, in milliseconds'),
+          keep_steps: whole(LIMIT_RANGES.draft.keepSteps.min, LIMIT_RANGES.draft.keepSteps.max)
+            .default(DEFAULT_DRAFT_LIMITS.keepSteps)
+            .describe(
+              'How many of a file’s typing steps are kept for a window catching up after a dropped connection, at least ' +
+                '(this many, or keep_minutes, whichever keeps more). Further behind, the window saves its page block by block.',
+            ),
+          keep_minutes: whole(LIMIT_RANGES.draft.keepMinutes.min, LIMIT_RANGES.draft.keepMinutes.max)
+            .default(DEFAULT_DRAFT_LIMITS.keepMinutes)
+            .describe('How long a file’s typing steps are kept for catching up, in minutes'),
+          snapshot_every: whole(LIMIT_RANGES.draft.snapshotEvery.min, LIMIT_RANGES.draft.snapshotEvery.max)
+            .default(DEFAULT_DRAFT_LIMITS.snapshotEvery)
+            .describe(
+              'How often a file’s document is stored whole, in steps: an idea waking up replays at most this many',
+            ),
+        })
+        .default({
+          editors: DEFAULT_DRAFT_LIMITS.editors,
+          caret_ms: DEFAULT_DRAFT_LIMITS.caretMs,
+          keep_steps: DEFAULT_DRAFT_LIMITS.keepSteps,
+          keep_minutes: DEFAULT_DRAFT_LIMITS.keepMinutes,
+          snapshot_every: DEFAULT_DRAFT_LIMITS.snapshotEvery,
+        }),
     })
-    .default({ max_file_bytes: DEFAULT_LIMITS.maxFileBytes, max_idea_bytes: DEFAULT_LIMITS.maxIdeaBytes }),
+    .default({
+      max_file_bytes: DEFAULT_LIMITS.maxFileBytes,
+      max_idea_bytes: DEFAULT_LIMITS.maxIdeaBytes,
+      draft: {
+        editors: DEFAULT_DRAFT_LIMITS.editors,
+        caret_ms: DEFAULT_DRAFT_LIMITS.caretMs,
+        keep_steps: DEFAULT_DRAFT_LIMITS.keepSteps,
+        keep_minutes: DEFAULT_DRAFT_LIMITS.keepMinutes,
+        snapshot_every: DEFAULT_DRAFT_LIMITS.snapshotEvery,
+      },
+    }),
 
   web: z
     .strictObject({

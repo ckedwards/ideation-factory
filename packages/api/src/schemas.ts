@@ -171,6 +171,8 @@ export const IdeaSummary = z.object({
   status: IdeaStatus,
   createdAt: z.number(),
   latest: z.number().int(),
+  /** Whether its draft has changes nobody's committed yet (shown to everyone who can see the idea). */
+  uncommitted: z.boolean(),
   /** Where it was last synced from, if from a git branch: how another machine finds it. */
   gitHint: GitHint.nullable(),
   versions: z.array(
@@ -252,7 +254,7 @@ export const LiveEvent = z.discriminatedUnion('type', [
   /** A suggestion accepted or rejected; its thread is resolved with it. */
   z.object({ type: z.literal('decided'), comment: z.string(), decision: Decision, by: Caller }),
   /** The idea's draft changed, was committed or was discarded: read it again (people with edit access). */
-  z.object({ type: z.literal('draft'), by: Caller }),
+  z.object({ type: z.literal('draft'), by: Caller, uncommitted: z.boolean() }),
   /** The idea's status changed. */
   z.object({ type: z.literal('status'), status: IdeaStatus, change: StatusChange, by: Caller }),
   /** A verdict given or dismissed: the reviewer's verdict as it stands. */
@@ -275,11 +277,36 @@ export const LIVE_CLOSE = { unauthorized: 4401, notFound: 4404, unavailable: 101
  * to everyone editing it, yours with your `client`, once they're stored. Behind, take what you
  * missed and send yours again on top. `version` says a version was made, after the steps that moved
  * the documents onto it.
+ *
+ * Each browser window is one entity in the draft (step 4): the token message names it (`window`, the
+ * same after a reconnect), and `ready` says whether it's in. Past the draft's limit of windows it
+ * isn't: it can open files and take everyone's steps, read-only, until `joined`. A window that's in
+ * sends `here` with its caret, at most every `caretMs` and at least every few seconds while it's
+ * open, and is told where everyone else's is (`presence`) and who's gone (`left`).
  */
 const DraftFileId = z.string().min(1).max(64)
 const StepCount = z.number().int().min(0)
+const DraftWindowId = z.string().min(8).max(64)
+/** Where a window's caret is: its selection in a file, at the file's count of steps (a collapsed one when anchor is head). */
+export const DraftCaret = z.object({
+  file: DraftFileId,
+  anchor: z.number().int().min(0),
+  head: z.number().int().min(0),
+  version: StepCount,
+})
+export type DraftCaret = z.infer<typeof DraftCaret>
+/** A window in the draft: whose it is, its color for the draft (1 to 8, given out as windows arrive), and its caret, if it's in a file. */
+export const DraftPresence = z.object({
+  window: DraftWindowId,
+  user: z.string(),
+  color: z.number().int().min(1).max(8),
+  at: DraftCaret.nullable(),
+})
+export type DraftPresence = z.infer<typeof DraftPresence>
 export const DraftLiveClientMessage = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('token'), token: z.string().min(1) }),
+  z.object({ type: z.literal('token'), token: z.string().min(1), window: DraftWindowId }),
+  /** Where this window's caret is now; null when it's in no file. */
+  z.object({ type: z.literal('here'), at: DraftCaret.nullable() }),
   z.object({ type: z.literal('open'), file: DraftFileId }),
   z.object({
     type: z.literal('steps'),
@@ -309,7 +336,23 @@ export const DraftLiveClientMessage = z.discriminatedUnion('type', [
 export type DraftLiveClientMessage = z.infer<typeof DraftLiveClientMessage>
 
 export const DraftLiveEvent = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('ready') }),
+  /**
+   * The socket's open: whether this window is in the draft (`joined`; read-only otherwise, as the draft
+   * has `limit` windows already), everyone in it, and how often to send the caret at most.
+   */
+  z.object({
+    type: z.literal('ready'),
+    joined: z.boolean(),
+    limit: z.number().int(),
+    caretMs: z.number().int(),
+    people: z.array(DraftPresence),
+  }),
+  /** This window's in the draft now (someone left), and can type. */
+  z.object({ type: z.literal('joined'), people: z.array(DraftPresence) }),
+  /** A window arrived, or its caret moved. */
+  z.object({ type: z.literal('presence'), person: DraftPresence }),
+  /** A window left the draft. */
+  z.object({ type: z.literal('left'), window: DraftWindowId }),
   /** A file opened: its document, at its count of steps. */
   z.object({ type: z.literal('opened'), file: DraftFileId, version: StepCount, doc: z.unknown() }),
   /** Steps stored, from count `from`, each with the client that sent it (`server` for the server's own). */

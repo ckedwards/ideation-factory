@@ -381,12 +381,67 @@
           "minimum": 262144,
           "maximum": 4194304,
           "default": 2097152
+        },
+        "draft": {
+          "type": "object",
+          "properties": {
+            "editors": {
+              "description": "The most windows editing one draft at once; past it, a window opens the draft read-only, still live. Every keystroke and caret move goes to everyone in the draft, so the work grows with the square of this: measure it on your hardware with the draft crowd load test (packages/load).",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 20
+            },
+            "caret_ms": {
+              "description": "How often, at most, a window sends where its caret is, in milliseconds",
+              "type": "integer",
+              "minimum": 16,
+              "maximum": 2000,
+              "default": 80
+            },
+            "keep_steps": {
+              "description": "How many of a file’s typing steps are kept for a window catching up after a dropped connection, at least (this many, or keep_minutes, whichever keeps more). Further behind, the window saves its page block by block.",
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 1000000,
+              "default": 2000
+            },
+            "keep_minutes": {
+              "description": "How long a file’s typing steps are kept for catching up, in minutes",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10080,
+              "default": 10
+            },
+            "snapshot_every": {
+              "description": "How often a file’s document is stored whole, in steps: an idea waking up replays at most this many",
+              "type": "integer",
+              "minimum": 10,
+              "maximum": 100000,
+              "default": 200
+            }
+          },
+          "additionalProperties": false,
+          "default": {
+            "editors": 20,
+            "caret_ms": 80,
+            "keep_steps": 2000,
+            "keep_minutes": 10,
+            "snapshot_every": 200
+          }
         }
       },
       "additionalProperties": false,
       "default": {
         "max_file_bytes": 262144,
-        "max_idea_bytes": 2097152
+        "max_idea_bytes": 2097152,
+        "draft": {
+          "editors": 20,
+          "caret_ms": 80,
+          "keep_steps": 2000,
+          "keep_minutes": 10,
+          "snapshot_every": 200
+        }
       }
     },
     "web": {

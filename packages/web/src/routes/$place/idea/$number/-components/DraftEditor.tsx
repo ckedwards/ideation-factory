@@ -13,8 +13,10 @@
 //
 // Away too long for the server to have kept what was missed, the page is compared with the draft and
 // saved the same way, block by block, then opened again from the server (until step 8 has its own).
-// Edit access gone, the page turns read-only, with what was typed still there to copy.
-import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react'
+// Edit access gone, the page turns read-only, with what was typed still there to copy. While the draft
+// is full (its limit of windows, the server's limits.draft.editors), it's read-only and still live,
+// until someone leaves.
+import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { ApiError } from '@ideaf/api'
 import { draftChanges, type Idea } from '@ideaf/core'
 import { Button } from '@ideaf/ui'
@@ -72,6 +74,10 @@ export function DraftEditor(props: DraftEditorProps) {
     }
   }, [props.live, file.file])
   const [liveStatus, setLiveStatus] = useState<LiveStatus>('saved')
+  const joined = useSyncExternalStore(
+    (changed) => props.live.subscribe(changed),
+    () => props.live.joined(),
+  )
   useEffect(() => {
     if (!doc) {
       return
@@ -337,21 +343,25 @@ export function DraftEditor(props: DraftEditorProps) {
   )
 
   const closed = liveStatus === 'closed' || openProblem !== null
+  // this window isn't in the draft: it's full
+  const full = !closed && !joined
   const statusText = closed
     ? 'You can no longer edit this idea'
-    : typeof status === 'object'
-      ? 'outdated' in status
-        ? outdatedChoice(status.outdated)
-        : `Not saved: ${status.problem}`
-      : markdownSide
-        ? status === 'saving'
-          ? 'Saving…'
-          : 'Saved'
-        : liveStatus === 'offline'
-          ? 'Offline. Your typing is kept here and will be sent when you are back.'
-          : liveStatus === 'gone' || status === 'saving' || (liveStatus === 'saving' && slow)
+    : full
+      ? `The draft is full: ${props.live.limit()} people are editing it. You can read along, and type once someone leaves.`
+      : typeof status === 'object'
+        ? 'outdated' in status
+          ? outdatedChoice(status.outdated)
+          : `Not saved: ${status.problem}`
+        : markdownSide
+          ? status === 'saving'
             ? 'Saving…'
             : 'Saved'
+          : liveStatus === 'offline'
+            ? 'Offline. Your typing is kept here and will be sent when you are back.'
+            : liveStatus === 'gone' || status === 'saving' || (liveStatus === 'saving' && slow)
+              ? 'Saving…'
+              : 'Saved'
 
   if (!doc) {
     return (
@@ -383,7 +393,7 @@ export function DraftEditor(props: DraftEditorProps) {
         value={text}
         saved={saved}
         live={doc}
-        readOnly={closed}
+        readOnly={closed || full}
         comments={comments}
         activeComment={props.view?.active ?? null}
         {...(props.view ? { onComment: props.view.onSelect } : {})}

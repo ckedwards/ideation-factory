@@ -18,8 +18,12 @@ export function commentsOf(idea: string, queryClient: QueryClient): CommentsColl
       token: accessToken,
       // a new version: read the idea again, and a page following the latest moves on to it
       onVersion: () => void queryClient.invalidateQueries({ queryKey: ideaQuery(idea).queryKey, exact: true }),
-      // the draft is someone's to read only if they can edit; a query nobody holds isn't fetched
-      onDraft: () => void queryClient.invalidateQueries({ queryKey: draftQuery(idea).queryKey, exact: true }),
+      // the draft is someone's to read only if they can edit; a query nobody holds isn't fetched. Whether
+      // it has uncommitted changes is everyone's, and comes with the event
+      onDraft: (uncommitted) => {
+        queryClient.setQueryData(ideaQuery(idea).queryKey, (was) => (was ? { ...was, uncommitted } : was))
+        void queryClient.invalidateQueries({ queryKey: draftQuery(idea).queryKey, exact: true })
+      },
       // the status shows on every page of the idea, and its reviews on the overview
       onReviews: () => {
         void queryClient.invalidateQueries({ queryKey: ideaQuery(idea).queryKey, exact: true })

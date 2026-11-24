@@ -60,12 +60,14 @@ describe('the sources, each over the one before', () => {
       {
         IDEAF__AUTH__SSO__AUTO_CREATE: 'off',
         IDEAF__LIMITS__MAX_FILE_BYTES: '65536',
+        IDEAF__LIMITS__DRAFT__EDITORS: '50',
         IDEAF__ENGINE__NODE_VERSION: '7',
       },
       none,
     )
     expect(settings.auth.sso.auto_create).toBe('off')
     expect(settings.limits.max_file_bytes).toBe(65536)
+    expect(settings.limits.draft).toMatchObject({ editors: 50, caret_ms: 80, keep_steps: 2000 })
     expect(settings.engine.node_version).toBe(7)
   })
 

@@ -45,7 +45,7 @@ const ModeContext = createContext<{ slot: HTMLElement | null; setActive: (active
  * The idea in a mode, while this is shown: its words (what's going on) and its
  * actions (how to finish it) in the idea's bar, in place of the bar's own.
  */
-export function IdeaMode({ label, actions }: { label: ReactNode; actions: ReactNode }) {
+export function IdeaMode({ label, actions, people }: { label: ReactNode; actions: ReactNode; people?: ReactNode }) {
   const mode = useContext(ModeContext)
   const setActive = mode?.setActive
   useEffect(() => {
@@ -57,6 +57,7 @@ export function IdeaMode({ label, actions }: { label: ReactNode; actions: ReactN
   }
   return createPortal(
     <>
+      {people}
       <span className="idea-bar-mode-label">{label}</span>
       {actions}
     </>,

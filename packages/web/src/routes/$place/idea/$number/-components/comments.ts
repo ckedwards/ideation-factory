@@ -38,8 +38,8 @@ export interface CommentsDeps {
   token: () => Promise<string>
   /** The idea has a new version: the page reads the idea again. */
   onVersion?: (version: number) => void
-  /** The idea's draft changed: the page reads it again. */
-  onDraft?: () => void
+  /** The idea's draft changed, and whether it has uncommitted changes now: the page reads it again. */
+  onDraft?: (uncommitted: boolean) => void
   /** Its status changed, or a verdict was given or dismissed: the page reads its reviews again. */
   onReviews?: () => void
   /** How long a write waits for the socket to echo it before reading the threads again instead. */
@@ -187,7 +187,7 @@ export function commentsCollection(idea: string, deps: CommentsDeps) {
               deps.onVersion?.(event.version)
               await read()
             } else if (event.type === 'draft') {
-              deps.onDraft?.()
+              deps.onDraft?.(event.uncommitted)
             } else if (event.type === 'status' || event.type === 'review') {
               deps.onReviews?.()
             } else if (reading) {

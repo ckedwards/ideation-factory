@@ -9,10 +9,14 @@
 // - **Saved means stored:** the actor sends steps back only once they're in its SQLite.
 // - **A gap** (steps from further on than this has): it asks for what it missed.
 // - **Offline,** typing carries on here; back online, it catches up and sends what's left.
+// - **Carets** (step 4): other windows' are drawn where they said they were, on the count they had,
+//   mapped through the steps since and what's typed here (carets.ts). This window's own is sent on
+//   the actor's count, without what's typed here and not confirmed, so everyone can map it the same.
 import { Node } from '@milkdown/kit/prose/model'
 import { EditorState, type Transaction } from '@milkdown/kit/prose/state'
-import { Step } from '@milkdown/kit/prose/transform'
+import { Step, type StepMap } from '@milkdown/kit/prose/transform'
 import type { EditorView } from '@milkdown/kit/prose/view'
+import { carets, caretsKey, removeCaret, setCaret } from './carets.ts'
 import type { MovedWords } from './identity.ts'
 import {
   collab,
@@ -33,7 +37,28 @@ export interface LiveTransport {
   since: (version: number) => void
   /** Words seen cut from one block and pasted into another, so the draft counts them as moved. */
   moved?: (words: MovedWords) => void
+  /** This window's caret moved: its selection on the actor's count `version`. */
+  here?: (caret: LiveCaret) => void
 }
+
+/** A selection on a count of the actor's steps: anchor and head, in the document at that count. */
+export interface LiveCaret {
+  anchor: number
+  head: number
+  version: number
+}
+
+/** Another window's caret: whose (a name, and a color 1 to 8), and where, on the count it had. */
+export interface LivePresence extends LiveCaret {
+  name: string
+  color: number
+}
+
+/** How many of the actor's steps' maps are kept, to bring a caret sent on an older count up to now. */
+const KEEP_MAPS = 2000
+
+/** The plugins that belong to a live document, taken out of an editor's state when another takes their place. */
+const isLivePlugin = (key: string) => key.startsWith('collab$') || key.startsWith('liveCarets$')
 
 /**
  * Where a live document is:
@@ -77,6 +102,12 @@ export class LiveDoc {
   #settling: Array<(ok: boolean) => void> = []
   // words seen moved, waiting to go: sent once online, after what's typed
   #notes: MovedWords[] = []
+  // the maps of the actor's steps from count #mapsFrom: carets sent on an older count come through them
+  #maps: StepMap[] = []
+  #mapsFrom = 0
+  // other windows' carets as they sent them, and which of them are drawn
+  #remote = new Map<string, LivePresence>()
+  #placed = new Set<string>()
 
   constructor(opened: LiveOpened, transport: LiveTransport, clientID?: string) {
     this.clientID = clientID ?? `c${Math.random().toString(36).slice(2, 10)}`
@@ -213,14 +244,27 @@ export class LiveDoc {
         this.#attaching = false
       }
     }
-    const plugins = view.state.plugins.filter((p) => !(p as unknown as { key: string }).key.startsWith('collab$'))
+    const plugins = view.state.plugins.filter((p) => !isLivePlugin((p as unknown as { key: string }).key))
     view.updateState(
-      view.state.reconfigure({ plugins: [...plugins, collab({ version, clientID: this.clientID, unconfirmed })] }),
+      view.state.reconfigure({
+        plugins: [
+          ...plugins,
+          collab({ version, clientID: this.clientID, unconfirmed }),
+          carets(() => this.#caretMoved()),
+        ],
+      }),
     )
+    // carried on from a detached state, the maps since are still good; opened afresh, they start here
+    if (this.#maps.length !== version - this.#mapsFrom) {
+      this.#maps = []
+      this.#mapsFrom = version
+    }
     this.#view = view
     this.#host = host
     this.#bare = null
     this.#inFlight = false
+    this.#placed.clear()
+    this.#placeWaiting()
     this.#update()
     this.#send()
   }
@@ -239,6 +283,7 @@ export class LiveDoc {
     }
     this.#view = null
     this.#host = null
+    this.#placed.clear()
   }
 
   /** Something was typed in the editor: send it, if nothing's on its way. */
@@ -305,22 +350,104 @@ export class LiveDoc {
       } else {
         const schema = state.schema
         const before = unconfirmedOf(state).length
-        this.#dispatch(
-          receiveTransaction(
-            state,
-            fresh.map((s) => Step.fromJSON(schema, s)),
-            ids,
-            { mapSelectionBackward: true },
-          ),
-        )
+        const parsed = fresh.map((s) => Step.fromJSON(schema, s))
+        this.#dispatch(receiveTransaction(state, parsed, ids, { mapSelectionBackward: true }))
+        this.#keepMaps(parsed)
         // ours were among them: the send is answered
         if (ids.includes(this.clientID) || unconfirmedOf(this.#state()!).length < before) {
           this.#inFlight = false
         }
+        // carets sent on the count reached now can be drawn
+        this.#placeWaiting()
       }
     }
     this.#update()
     this.#send()
+  }
+
+  #keepMaps(steps: Step[]) {
+    this.#maps.push(...steps.map((s) => s.getMap()))
+    if (this.#maps.length > KEEP_MAPS * 1.5) {
+      const drop = this.#maps.length - KEEP_MAPS
+      this.#maps.splice(0, drop)
+      this.#mapsFrom += drop
+    }
+  }
+
+  // ---- carets ----
+
+  /** This window's selection on the actor's count: what's typed here and not confirmed, taken back out. */
+  caret(): LiveCaret | null {
+    const state = this.#view ? this.#state() : null
+    if (!state) {
+      return null
+    }
+    let { anchor, head } = state.selection
+    for (const r of [...unconfirmedOf(state)].reverse()) {
+      const map = r.inverted.getMap()
+      anchor = map.map(anchor, -1)
+      head = map.map(head, -1)
+    }
+    return { anchor, head, version: getVersion(state) }
+  }
+
+  #caretMoved() {
+    const caret = this.caret()
+    if (caret) {
+      this.#transport.here?.(caret)
+    }
+  }
+
+  /** Another window's caret, where it said it was (null: it's gone from this file). */
+  presence(id: string, at: LivePresence | null): void {
+    this.#placed.delete(id)
+    if (!at) {
+      this.#remote.delete(id)
+      if (this.#view && caretsKey.getState(this.#view.state)?.carets.has(id)) {
+        this.#view.dispatch(removeCaret(this.#view.state.tr, id))
+      }
+      return
+    }
+    this.#remote.set(id, at)
+    this.#place(id)
+  }
+
+  /** The other windows whose carets are known here. */
+  present(): string[] {
+    return [...this.#remote.keys()]
+  }
+
+  #placeWaiting() {
+    for (const id of this.#remote.keys()) {
+      if (!this.#placed.has(id)) {
+        this.#place(id)
+      }
+    }
+  }
+
+  /** A caret drawn: brought from its count to now through the actor's steps, then through what's typed here. */
+  #place(id: string) {
+    const view = this.#view
+    const at = this.#remote.get(id)
+    const state = view ? this.#state() : null
+    if (!view || !at || !state) {
+      return
+    }
+    const version = getVersion(state)
+    // further on than this (it waits for the steps), or too far back to bring up to now (it waits to move)
+    if (at.version > version || at.version < this.#mapsFrom) {
+      return
+    }
+    const collapsed = at.anchor === at.head
+    let anchor = at.anchor
+    let head = at.head
+    const maps = [...this.#maps.slice(at.version - this.#mapsFrom), ...unconfirmedOf(state).map((r) => r.step.getMap())]
+    for (const map of maps) {
+      anchor = map.map(anchor, collapsed ? 1 : -1)
+      head = map.map(head, 1)
+    }
+    this.#placed.add(id)
+    view.dispatch(setCaret(view.state.tr, { id, name: at.name, color: at.color, anchor, head }))
   }
 
   /** Our send was behind the actor's count: what we missed arrives (or is asked for), then it goes again. */
@@ -370,13 +497,15 @@ export class LiveDoc {
     this.#bare = null
     this.#json = opened.doc
     this.#jsonVersion = opened.version
+    this.#maps = []
+    this.#mapsFrom = opened.version
     // told, so a page showing the gap shows it's over
     this.#setStatus('saved')
     const view = this.#view
     const host = this.#host
     if (view && host) {
       // a fresh start: the old collab state goes with the old document
-      const plugins = view.state.plugins.filter((p) => !(p as unknown as { key: string }).key.startsWith('collab$'))
+      const plugins = view.state.plugins.filter((p) => !isLivePlugin((p as unknown as { key: string }).key))
       view.updateState(view.state.reconfigure({ plugins }))
       this.#view = null
       this.attach(view, host)

@@ -114,7 +114,7 @@ ideaf sync                                # your local edits back up, with their
 
 The API is under `/api`, and every route is described at `/api/openapi.json`. From code, use the typed client: `createApiClient({ baseUrl, token })` from `@ideaf/api`.
 
-The Markdown size limits default to 256 KB per file and 2 MB per idea; `limits.max_file_bytes` and `limits.max_idea_bytes` change them (until the site admin page exists).
+The Markdown size limits default to 256 KB per file and 2 MB per idea; `limits.max_file_bytes` and `limits.max_idea_bytes` change them (until the site admin page exists). `limits.draft` sets what a live draft takes on: how many windows can edit one at once (`editors`, 20), and how much typing is kept for catching up. How many your hardware takes is measured with the draft crowd load test (`packages/load`).
 
 **Several worktrees at once** (for example one per agent): each worktree gets its own data folder, Rivet Engine port and dev server port, so they never share an engine or each other's actors. The main worktree uses the defaults (engine 6420, server 8080); a linked worktree gets fixed ports derived from its path. `bun run worktree` shows them, and `eval "$(bun scripts/worktree.ts env)"` sets `url` and the rest in a shell. `bun run dev`, `bun run test` and `bun run engine:stop` use them automatically, and `engine:stop` only stops this worktree's engines. Tests get an engine of their own, with fresh data in `.data/test` for every run, stopped when they finish.
 

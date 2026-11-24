@@ -564,6 +564,7 @@ export async function pageDocument(
 export type { Node, Schema } from '@milkdown/kit/prose/model'
 export { Fragment } from '@milkdown/kit/prose/model'
 export { Step, Transform } from '@milkdown/kit/prose/transform'
+export { EditorState } from '@milkdown/kit/prose/state'
 
 /** A node that holds a block's identity, and where: what the draft knows the file's blocks by. */
 export interface Holder {
