@@ -365,12 +365,15 @@ export const MarkGoes: Story = {
     const gone = crowded[1]!.id
     await userEvent.click(within(canvasElement).getByRole('button', { name: 'Take some words out' }))
     await waitFor(() => expect(canvasElement.querySelector(`[data-comment-id="${gone}"]`)).toBeNull())
+    // the gutter sees the mark go a frame later, so its note is waited for rather than checked at once
+    await waitFor(() =>
+      expect(
+        [...canvasElement.querySelectorAll<HTMLElement>('.comment-gutter-note')].some(
+          (note) => note.dataset['noteId'] === gone || note.dataset['pile']?.split(' ').includes(gone),
+        ),
+      ).toBe(false),
+    )
     await settled(canvasElement)
-    await expect(
-      [...canvasElement.querySelectorAll<HTMLElement>('.comment-gutter-note')].some(
-        (note) => note.dataset['noteId'] === gone || note.dataset['pile']?.split(' ').includes(gone),
-      ),
-    ).toBe(false)
   },
 }
 
