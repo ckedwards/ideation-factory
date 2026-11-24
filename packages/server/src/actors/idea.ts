@@ -4,6 +4,7 @@
 // to everyone connected (live updates), and what it tells inboxes, kept in the
 // outbox by the write's own transaction, goes to the directory until it says
 // it has applied it: a committed write's notifications are never lost.
+import type { DraftCaret, DraftPresence } from '@ideaf/api'
 import type { MovedWords } from '@ideaf/core'
 import { actor, event, UserError } from 'rivetkit'
 import { db } from 'rivetkit/db'
@@ -24,6 +25,7 @@ import type { Registry } from '../registry.ts'
 import { callRetrying, retryOverloaded } from '../sql/retry.ts'
 import { batcher } from './batch.ts'
 import { directoryOf } from './pools.ts'
+import { DraftPresences, type Joined, PRESENCE_TTL_MS } from './presence.ts'
 
 /**
  * How long an idea waits before updating its row in the directory's index, so a
@@ -48,10 +50,15 @@ export const idea = actor({
     reply: event<Payload<'reply'>>(),
     resolved: event<Payload<'resolved'>>(),
     decided: event<Payload<'decided'>>(),
-    draft: event<Payload<'draft'>>(),
+    /** The draft changed, and whether it has uncommitted changes now (for pages of people who can't open it). */
+    draft: event<Payload<'draft'> & { uncommitted: boolean }>(),
     status: event<Payload<'status'>>(),
     review: event<Payload<'review'>>(),
     draftSteps: event<Payload<'draftSteps'>>(),
+    /** A window arrived in the draft, or its caret moved (presence.ts): to the draft's sockets only. */
+    presence: event<DraftPresence>(),
+    /** A window left the draft. */
+    presenceLeft: event<{ window: string }>(),
   },
   state: { indexDue: false, lastActivity: 0 },
   createVars: () => ({
@@ -63,6 +70,9 @@ export const idea = actor({
     // typing's draft event: when it last went, and the one waiting to go
     draftEventAt: 0,
     draftEventTimer: null as ReturnType<typeof setTimeout> | null,
+    // who's in the draft and where (presence.ts): memory only, and the sweep for windows gone quiet
+    presence: new DraftPresences(),
+    presenceSweep: null as ReturnType<typeof setTimeout> | null,
   }),
   onWake: (c) => {
     // one write at a time, in the order they came (actors/batch.ts), with this wake-up's context
@@ -89,6 +99,33 @@ export const idea = actor({
     /** Words an editor saw moved between blocks, in the write queue's turn: the draft counts them as moved. */
     draftMoved: (c, words: MovedWords, caller: Typing['caller']) =>
       (c.vars.writes ??= writerOf(c))({ kind: 'moved', words, caller }) as Promise<null>,
+    /**
+     * A window coming into the draft (a draft socket, on its token): let in unless `limit` windows are
+     * in, and everyone in it. Memory only, so outside the write queue.
+     */
+    presenceJoin: (c, window: string, user: string, session: string, limit: number): Joined => {
+      sweepPresence(c)
+      const joined = c.vars.presence.join(window, user, session, limit, Date.now())
+      if (joined.joined) {
+        c.broadcast('presence', joined.person)
+      }
+      armPresenceSweep(c)
+      return joined
+    },
+    /** A window's caret, or that it's still there: false if it isn't in (the actor started again, say). */
+    presenceMove: (c, window: string, session: string, at: DraftCaret | null): boolean => {
+      const moved = c.vars.presence.move(window, session, at, Date.now())
+      if (moved?.moved) {
+        c.broadcast('presence', moved.person)
+      }
+      return moved !== null
+    },
+    /** A window's socket closed. */
+    presenceLeave: (c, window: string, session: string): void => {
+      if (c.vars.presence.leave(window, session)) {
+        c.broadcast('presenceLeft', { window })
+      }
+    },
     /** What an editor missed in a file since its count, if it's still kept. */
     draftSince: (c, file: string, version: number) => read(() => serviceOf(c).draftSince(file, version)),
     summary: (c) => read(() => serviceOf(c).summary()),
@@ -162,6 +199,39 @@ async function read<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+type PresenceContext = {
+  vars: { presence: DraftPresences; presenceSweep: ReturnType<typeof setTimeout> | null }
+  broadcast(name: string, payload: unknown): void
+}
+
+/** Windows not heard from in a while taken out of the draft, and everyone told. */
+function sweepPresence(c: PresenceContext): void {
+  for (const window of c.vars.presence.sweep(Date.now())) {
+    c.broadcast('presenceLeft', { window })
+  }
+}
+
+/** The sweep, every third of the expiry while anyone's in the draft. */
+function armPresenceSweep(c: PresenceContext): void {
+  if (c.vars.presenceSweep || c.vars.presence.size === 0) {
+    return
+  }
+  c.vars.presenceSweep = setTimeout(() => {
+    c.vars.presenceSweep = null
+    sweepPresence(c)
+    armPresenceSweep(c)
+  }, PRESENCE_TTL_MS / 3)
+}
+
+/** An event to everyone connected: the draft's with whether it has uncommitted changes now. */
+async function broadcastEvent(c: WriteContext, e: IdeaEvent): Promise<void> {
+  if (e.name === 'draft') {
+    c.broadcast('draft', { ...e.payload, uncommitted: await serviceOf(c).uncommitted() })
+    return
+  }
+  c.broadcast(e.name, e.payload)
+}
+
 /** The most writes that may wait for the one before them (what the write queue allowed). */
 const WAITING_WRITES = 1_000
 
@@ -229,7 +299,9 @@ function draftEventSoon(c: WriteContext, by: Typing['caller']): void {
   const send = () => {
     c.vars.draftEventTimer = null
     c.vars.draftEventAt = Date.now()
-    c.broadcast('draft', { by })
+    void broadcastEvent(c, { name: 'draft', payload: { by } }).catch((error: unknown) =>
+      c.log.error({ msg: 'the draft event failed', error: String(error) }),
+    )
   }
   const wait = c.vars.draftEventAt + TYPING_DRAFT_EVENT_MS - Date.now()
   if (wait <= 0) {
@@ -252,7 +324,7 @@ async function applyWrite(c: WriteContext, request: WriteRequest): Promise<Write
   }
   const { result, events } = written
   for (const e of events) {
-    c.broadcast(e.name, e.payload)
+    await broadcastEvent(c, e)
   }
   // the write stands from here: what follows can't undo it, so its failures are logged, not returned.
   // Its notifications are in the outbox already; send them now, with an alarm in case this stops first.

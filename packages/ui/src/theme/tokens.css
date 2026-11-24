@@ -64,6 +64,8 @@
   --avatar-6: light-dark(#7a3e8e, #d29be6);
   --avatar-7: light-dark(#5c6b1f, #b9c96a);
   --avatar-8: light-dark(#a13d55, #f09ab0);
+  /* text on one of them: a name on a caret's flag */
+  --avatar-on: light-dark(#ffffff, #14110d);
 
   --shadow-color: light-dark(rgb(40 30 15 / 0.1), rgb(0 0 0 / 0.45));
   --shadow: 0 0.5rem 1.75rem var(--shadow-color);
@@ -145,6 +147,7 @@
   --avatar-6: #f0b8ff;
   --avatar-7: #d8f07a;
   --avatar-8: #ffadc4;
+  --avatar-on: #000000;
   --shadow: none;
   --shadow-sm: none;
 }

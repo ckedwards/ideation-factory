@@ -10,7 +10,8 @@
     "./testing": "./src/stories/screen.ts",
     "./editor": "./src/editor/index.ts",
     "./editor/model": "./src/editor/model.ts",
-    "./editor/live": "./src/editor/live.ts"
+    "./editor/live": "./src/editor/live.ts",
+    "./editor/collab": "./src/editor/collab.ts"
   },
   "scripts": {
     "typecheck": "bun check",

@@ -7,6 +7,7 @@ export { Link, LinkProvider, type LinkProps } from './link/Link.tsx'
 export { avatarColor, initials, type Person } from './people/person.ts'
 export { Avatar, type AvatarProps, type AvatarSize } from './people/Avatar.tsx'
 export { AvatarStack, type AvatarStackProps } from './people/AvatarStack.tsx'
+export { type Present, PresenceStack, type PresenceStackProps } from './people/PresenceStack.tsx'
 export { UserName, type UserNameProps } from './people/UserName.tsx'
 export { ActorLabel, type Actor, type ActorLabelProps } from './people/ActorLabel.tsx'
 

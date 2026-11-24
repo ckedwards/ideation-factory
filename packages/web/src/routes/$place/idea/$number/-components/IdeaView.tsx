@@ -199,6 +199,13 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
     latestFiles: pulled.files,
     threads,
     people,
+    me: me.id,
+    onShowFile: (shown) => {
+      const path = draft.data?.files.find((f) => f.file === shown)?.path
+      if (path) {
+        void navigate({ href: links.files({ file: path }) })
+      }
+    },
     onNote: setNote,
     onCommitted: (committed) => {
       ours.current.add(committed)
@@ -245,6 +252,8 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
   }
   const draftChanges = draft.data?.changes ?? []
   const drafters = [...new Set(draftChanges.map((c) => people.get(c.by.user)?.name ?? 'someone'))]
+  // editors have the draft itself; everyone else, the idea's word for it
+  const uncommitted = canEdit && draft.data ? draftChanges.length > 0 : idea.uncommitted
 
   return (
     <>
@@ -308,11 +317,8 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
                   : undefined
               }
             />
-            {canEdit && draftChanges.length > 0 ? (
-              <p className="idea-edit-start">
-                The draft has {draftChanges.length === 1 ? '1 change' : `${draftChanges.length} changes`}, by{' '}
-                {drafters.join(', ')}.
-              </p>
+            {base === null && !older && !editing && uncommitted ? (
+              <p className="idea-edit-start">This idea has uncommitted changes.</p>
             ) : base === null && older ? (
               <VersionBanner
                 kind="older"
@@ -461,6 +467,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
                   open: editor
                     ? {
                         label: editor.label,
+                        people: editor.people,
                         sheet: editor.sheet,
                         panel: editor.panel,
                         actions: editor.actions,

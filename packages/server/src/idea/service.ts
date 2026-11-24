@@ -493,12 +493,6 @@ function changeKey(change: DraftChange, after: Derived): string | null {
   return null
 }
 
-/** How many of a file's steps are kept for catching up, at least, and for how long: whichever keeps more. */
-const KEEP_STEPS = 2000
-const KEEP_STEPS_MS = 10 * 60_000
-/** How often a file's document is stored whole, in steps: waking up replays at most this many. */
-const SNAPSHOT_EVERY = 200
-
 /** How long a write's result is kept for retries. */
 const KEEP_RESULTS_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -1563,14 +1557,14 @@ export class IdeaService {
 
   /**
    * A file's steps that aren't needed any more: in its snapshot (at `snapshot`), and older than both
-   * the last KEEP_STEPS and KEEP_STEPS_MS, which editors catching up may still ask for.
+   * the last limits.draft.keepSteps and keepMinutes, which editors catching up may still ask for.
    */
   async #prune(tx: Kysely<IdeaDB>, file: string, count: number, snapshot: number): Promise<void> {
     await tx
       .deleteFrom('draft_steps')
       .where('file', '=', file)
-      .where('seq', '<=', Math.min(snapshot, count - KEEP_STEPS))
-      .where('at', '<', this.#now() - KEEP_STEPS_MS)
+      .where('seq', '<=', Math.min(snapshot, count - this.#limits.draft.keepSteps))
+      .where('at', '<', this.#now() - this.#limits.draft.keepMinutes * 60_000)
       .execute()
   }
 
@@ -1744,7 +1738,7 @@ export class IdeaService {
           }
           const count = f.live.steps + f.steps.length
           let snapshot = f.live.snapshot
-          if (count - snapshot >= SNAPSHOT_EVERY) {
+          if (count - snapshot >= this.#limits.draft.snapshotEvery) {
             const text = this.#live.text(f.live, f.doc)
             await tx
               .updateTable('draft_files')
@@ -2247,6 +2241,7 @@ export class IdeaService {
       status: meta.status,
       createdAt: meta.created_at,
       latest: meta.latest,
+      uncommitted: await this.uncommitted(),
       gitHint: meta.git_branch ? { uri: meta.git_uri, branch: meta.git_branch } : null,
       versions: versions.map((v) => ({
         number: v.number,
@@ -2257,6 +2252,20 @@ export class IdeaService {
         steps: Number(v.steps ?? 0),
       })),
     }
+  }
+
+  /**
+   * Whether the draft has changes nobody's committed: a block someone changed, a held change or an
+   * accepted suggestion. Cheap, for every page: typing a word and deleting it again leaves its block
+   * counted until the next write to the draft works the changes out again.
+   */
+  async uncommitted(): Promise<boolean> {
+    const [authored, held, suggested] = await Promise.all([
+      this.#db.selectFrom('draft_authors').select('block').limit(1).executeTakeFirst(),
+      this.#db.selectFrom('draft_held').select('key').limit(1).executeTakeFirst(),
+      this.#db.selectFrom('draft_suggestions').select('comment').limit(1).executeTakeFirst(),
+    ])
+    return Boolean(authored || held || suggested)
   }
 
   /** The idea's status and its history, each reviewer's latest verdict, and how many comments `viewer` has pending. */

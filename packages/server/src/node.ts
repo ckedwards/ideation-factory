@@ -67,7 +67,7 @@ export async function startNode(settings: Settings): Promise<void> {
   // each idea's live updates, over a WebSocket beside the API; and typing in its draft, over another
   const gateway = authGateway(directoryOf(actors), auth.baseURL, auth.trustedProxies)
   const live = createLive({ actors, gateway })
-  const draftLive = createDraftLive({ actors, gateway })
+  const draftLive = createDraftLive({ actors, gateway, limits: limitsFrom(settings.limits).draft })
   const server = Bun.serve<LiveData | DraftLiveData>({
     port: settings.port,
     // the largest upload a site may allow, with room for its encoding (limits.ts); Bun answers 413 past it

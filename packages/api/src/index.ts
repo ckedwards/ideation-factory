@@ -40,6 +40,8 @@ export {
   type Notification,
   type NotificationSettings,
   DRAFT_LIVE_CLOSE,
+  DraftCaret,
+  DraftPresence,
   DraftLiveClientMessage,
   DraftLiveEvent,
   LIVE_CLOSE,

@@ -9,9 +9,14 @@
 // the next. This app node connects to the idea's actor and, for each file the browser has open,
 // passes on the steps the actor stores, and every version made; the browser's messages are taken
 // in the order they came.
+//
+// Each socket is a browser window, and joins the draft as one (the actor's presence.ts): it's told
+// where everyone else's caret is, and theirs goes to everyone. Past the limit of windows
+// (limits.draft.editors) it reads along without typing, and joins once someone leaves.
 import {
   type Caller,
   DRAFT_LIVE_CLOSE,
+  type DraftCaret,
   DraftLiveClientMessage,
   type DraftLiveEvent,
   operations,
@@ -21,6 +26,7 @@ import type { Server, ServerWebSocket, WebSocketHandler } from 'bun'
 import type { Client } from 'rivetkit/client'
 import { directoryOf, ideaOf } from './actors/pools.ts'
 import type { authGateway } from './auth/gateway.ts'
+import { DEFAULT_DRAFT_LIMITS, type DraftLimits } from './limits.ts'
 import { expiryOf } from './live.ts'
 import type { Registry } from './registry.ts'
 
@@ -40,6 +46,12 @@ export interface DraftLiveData {
   caller: Caller | null
   timer: ReturnType<typeof setTimeout> | null
   conn: Conn | null
+  /** The browser window, as the draft knows it (from the first token message). */
+  window: string | null
+  /** This socket of the window: a reconnect's takes the window over. */
+  session: string
+  /** Whether the window's in the draft; outside it (the draft's full) it reads along without typing. */
+  joined: boolean
   /** The files this browser has open: their steps are passed on. */
   files: Set<string>
   /** Messages are taken one after another, in the order they came. */
@@ -49,7 +61,15 @@ export interface DraftLiveData {
 type Socket = ServerWebSocket<DraftLiveData>
 type Gateway = Pick<ReturnType<typeof authGateway>, 'authenticate'>
 
-export function createDraftLive({ actors, gateway }: { actors: Client<Registry>; gateway: Gateway }) {
+export function createDraftLive({
+  actors,
+  gateway,
+  limits = DEFAULT_DRAFT_LIMITS,
+}: {
+  actors: Client<Registry>
+  gateway: Gateway
+  limits?: Pick<DraftLimits, 'editors' | 'caretMs'>
+}) {
   const directory = () => directoryOf(actors)
   const send = (ws: Socket, event: DraftLiveEvent) => ws.send(JSON.stringify(event))
   const close = (ws: Socket, code: number, reason: string) => ws.close(code, reason)
@@ -78,8 +98,26 @@ export function createDraftLive({ actors, gateway }: { actors: Client<Registry>;
     )
   }
 
+  /** The window into the draft, if there's room: whether it's in, and everyone who is. */
+  const join = async (ws: Socket) => {
+    const joined = await ws.data.conn!.presenceJoin(ws.data.window!, ws.data.user!, ws.data.session, limits.editors)
+    ws.data.joined = joined.joined
+    return joined
+  }
+  /** Messages taken one after another, in the order they came; the actor failing closes the socket. */
+  const enqueue = (ws: Socket, work: () => Promise<unknown>) => {
+    ws.data.queue = ws.data.queue
+      .then(async () => {
+        await work()
+      })
+      .catch(() => {
+        // the actor couldn't be reached, or failed: the browser comes back and catches up
+        close(ws, DRAFT_LIVE_CLOSE.unavailable, 'the draft is unavailable for a moment; reconnect')
+      })
+  }
+
   /** A token, first or fresh: whether its person may still edit the idea. */
-  const token = async (ws: Socket, value: string) => {
+  const token = async (ws: Socket, value: string, window: string) => {
     const who = await check(value)
     if (who === 'unavailable') {
       return close(ws, DRAFT_LIVE_CLOSE.unavailable, "tokens can't be checked right now; try again shortly")
@@ -101,6 +139,7 @@ export function createDraftLive({ actors, gateway }: { actors: Client<Registry>;
     }
     ws.data.user = who.caller.user
     ws.data.caller = who.caller
+    ws.data.window = window
     const conn = ideaOf<IdeaHandle>(actors, ws.data.idea).connect()
     ws.data.conn = conn
     conn.on('draftSteps', (e) => {
@@ -109,7 +148,30 @@ export function createDraftLive({ actors, gateway }: { actors: Client<Registry>;
       }
     })
     conn.on('version', (e) => send(ws, { type: 'version', version: e.version, by: e.by }))
-    const ready = () => send(ws, { type: 'ready' })
+    conn.on('presence', (person) => send(ws, { type: 'presence', person }))
+    conn.on('presenceLeft', ({ window: gone }) => {
+      send(ws, { type: 'left', window: gone })
+      // room, maybe, for this window
+      if (!ws.data.joined) {
+        enqueue(ws, async () => {
+          const joined = await join(ws)
+          if (joined.joined) {
+            send(ws, { type: 'joined', people: joined.people })
+          }
+        })
+      }
+    })
+    const ready = () =>
+      enqueue(ws, async () => {
+        const joined = await join(ws)
+        send(ws, {
+          type: 'ready',
+          joined: joined.joined,
+          limit: limits.editors,
+          caretMs: limits.caretMs,
+          people: joined.people,
+        })
+      })
     if (conn.connStatus === 'connected') {
       ready()
     } else {
@@ -120,13 +182,41 @@ export function createDraftLive({ actors, gateway }: { actors: Client<Registry>;
     }
   }
 
-  const handle = async (ws: Socket, message: DraftLiveClientMessage) => {
+  /** Where this window's caret is: to everyone in the draft. Not in turn with the rest, so typing doesn't wait on it. */
+  const here = (ws: Socket, at: DraftCaret | null) => {
+    const conn = ws.data.conn
+    if (!conn || !ws.data.joined) {
+      return
+    }
+    conn.presenceMove(ws.data.window!, ws.data.session, at).then(
+      (known) => {
+        // the actor started again (or forgot a quiet window): in again, or out to come back
+        if (!known) {
+          enqueue(ws, async () => {
+            if (!(await join(ws)).joined) {
+              close(ws, DRAFT_LIVE_CLOSE.unavailable, 'the draft is unavailable for a moment; reconnect')
+            }
+          })
+        }
+      },
+      () => close(ws, DRAFT_LIVE_CLOSE.unavailable, 'the draft is unavailable for a moment; reconnect'),
+    )
+  }
+
+  const handle = async (ws: Socket, message: Exclude<DraftLiveClientMessage, { type: 'here' }>) => {
     if (message.type === 'token') {
-      return token(ws, message.token)
+      return token(ws, message.token, message.window)
     }
     const conn = ws.data.conn
     if (!conn || !ws.data.caller) {
       return close(ws, DRAFT_LIVE_CLOSE.unauthorized, 'send a token first')
+    }
+    if ((message.type === 'steps' || message.type === 'moved') && !ws.data.joined) {
+      return send(ws, {
+        type: 'refused',
+        file: message.file,
+        message: 'the draft is full: you can type once someone leaves',
+      })
     }
     switch (message.type) {
       case 'open': {
@@ -184,20 +274,22 @@ export function createDraftLive({ actors, gateway }: { actors: Client<Registry>;
       try {
         message = DraftLiveClientMessage.parse(JSON.parse(String(raw)))
       } catch {
-        return close(ws, DRAFT_LIVE_CLOSE.unauthorized, 'expected a token, open, steps, since or moved message')
+        return close(ws, DRAFT_LIVE_CLOSE.unauthorized, 'expected a token, here, open, steps, since or moved message')
       }
-      ws.data.queue = ws.data.queue
-        .then(async () => {
-          await handle(ws, message)
-        })
-        .catch(() => {
-          // the actor couldn't be reached, or failed: the browser comes back and catches up
-          close(ws, DRAFT_LIVE_CLOSE.unavailable, 'the draft is unavailable for a moment; reconnect')
-        })
+      if (message.type === 'here') {
+        return here(ws, message.at)
+      }
+      enqueue(ws, () => handle(ws, message))
     },
     close(ws) {
       clearTimeout(ws.data.timer ?? undefined)
-      void ws.data.conn?.dispose()
+      const conn = ws.data.conn
+      if (!conn) {
+        return
+      }
+      // out of the draft first (unless a reconnect has the window now), then the connection
+      const leaving = ws.data.window ? conn.presenceLeave(ws.data.window, ws.data.session) : Promise.resolve()
+      void leaving.catch(() => {}).finally(() => void conn.dispose())
     },
   }
 
@@ -217,6 +309,9 @@ export function createDraftLive({ actors, gateway }: { actors: Client<Registry>;
         caller: null,
         timer: null,
         conn: null,
+        window: null,
+        session: crypto.randomUUID(),
+        joined: false,
         files: new Set(),
         queue: Promise.resolve(),
       }

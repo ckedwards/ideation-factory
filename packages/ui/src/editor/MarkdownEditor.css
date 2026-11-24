@@ -516,3 +516,32 @@
 .md-editor.is-page .md-editor-status {
   margin-left: auto;
 }
+
+/* ---- other people in a live draft (carets.ts): a caret in each one's color, their selection tinted ---- */
+.live-caret {
+  position: relative;
+  margin-inline: -1px;
+  border-inline-start: 2px solid var(--live-c);
+  pointer-events: none;
+  word-break: normal;
+}
+/* their name, always shown, in the space between the lines (carets.ts moves flags that would overlap) */
+.live-flag {
+  position: absolute;
+  bottom: 100%;
+  left: -2px;
+  padding: 0 0.35em;
+  border-radius: 3px 3px 3px 0;
+  background: var(--live-c);
+  color: var(--avatar-on);
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+  user-select: none;
+}
+.live-selection {
+  background: color-mix(in srgb, var(--live-c) 24%, transparent);
+}

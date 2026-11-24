@@ -50,6 +50,8 @@ export interface FocusEditing {
   open: {
     /** "Editing the draft, on v3". */
     label: string
+    /** The faces of who else is in the draft. */
+    people?: ReactNode
     /** A page's file in the editor (or compared, previewing); null for one the draft hasn't got. */
     sheet: (page: string) => ReactNode
     /** The draft's changes and what committing does to the comments. */
@@ -482,7 +484,10 @@ export function FocusView(props: FocusViewProps) {
         </div>
         <div className="focus-tools">
           {editing ? (
-            <span className="focus-editing-label">{editing.label}</span>
+            <>
+              {editing.people}
+              <span className="focus-editing-label">{editing.label}</span>
+            </>
           ) : (
             props.editing && (
               <Button disabled={props.editing.disabled} onClick={props.editing.onEdit}>

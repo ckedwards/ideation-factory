@@ -6,10 +6,10 @@
 // current. Committing makes one version, and the editor stays open on it. The
 // files page edits the file it shows; the focus view, every file at once, all
 // of them stored before Commit, Preview or leaving.
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { ApiError, type Operations, type Output } from '@ideaf/api'
 import { type DraftChange, markdownTree, parseMarkdown, plainLine } from '@ideaf/core'
-import { type Person, Redline, renderMermaid } from '@ideaf/ui'
+import { type Person, PresenceStack, Redline, renderMermaid } from '@ideaf/ui'
 import type { PageMark } from '@ideaf/ui/editor'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../../../api.ts'
@@ -19,6 +19,7 @@ import { type CommentOutcomeRow, EditActions, EditPanel, type EditPanelProps } f
 import { IdeaMode } from './IdeaFrame.tsx'
 import { DraftEditor } from './DraftEditor.tsx'
 import { blockRange, headingOffset, toSource } from './anchors.ts'
+import { usePeople } from './shared.tsx'
 import { draftQuery, filesQuery, ideaQuery } from './queries.ts'
 import type { DraftVersion } from './VersionList.tsx'
 import type { FileView, Placement, Thread } from './view.ts'
@@ -40,6 +41,10 @@ export interface UseEditingArgs {
   latestFiles: Array<{ file: string; content: string }>
   threads: Thread[]
   people: Map<string, Person>
+  /** Who's signed in: their other windows in the draft say so. */
+  me: string
+  /** Show a file of the draft that isn't shown (going to someone in it). */
+  onShowFile?: (file: string) => void
   onNote: (message: string) => void
   /** Committed as this version. */
   onCommitted: (version: number) => void
@@ -63,6 +68,8 @@ export interface Editing {
   actions: ReactNode
   /** "Editing the draft, on v3". */
   label: string
+  /** The faces of who else is in the draft, to go to each (PresenceStack); null when nobody is. */
+  people: ReactNode
   /** Everything typed saved, then the editor closed; false if something couldn't be saved (it says why). */
   close: () => Promise<boolean>
   /** The draft, heading the list of versions: its changes, and comparing it with any version. */
@@ -119,9 +126,64 @@ export function useEditing(args: UseEditingArgs): Editing | null {
       setLive(null)
     }
   }, [idea, args.open, queryClient])
+  // who else is in the draft, named, and their carets named the same
+  useSyncExternalStore(
+    (changed) => live?.subscribe(changed) ?? (() => {}),
+    () => live?.revision() ?? 0,
+  )
+  const present = live?.people() ?? []
+  const names = usePeople(present.map((p) => p.user))
+  const namesKey = present.map((p) => `${p.user}=${names.get(p.user)?.name ?? ''}`).join('\n')
+  useEffect(() => {
+    live?.setNames((user) => (user === args.me ? 'You (other window)' : (names.get(user)?.name ?? 'Someone')))
+    // by the names, not the map they came in
+  }, [live, namesKey, args.me])
+  const goingTo = useRef(0)
   if (!args.open || !draft) {
     return null
   }
+  /** Scrolls to where a window's caret is: in a file shown, or once the file it's in is. */
+  const goTo = (window: string) => {
+    const person = live?.people().find((p) => p.window === window)
+    const at = person?.at
+    if (!at) {
+      args.onNote(`${names.get(person?.user ?? '')?.name ?? 'They'} isn’t in a file right now.`)
+      return
+    }
+    const find = () => document.querySelector(`.live-caret[data-presence="${CSS.escape(window)}"]`)
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+    const show = (caret: Element) => caret.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' })
+    const now = find()
+    if (now) {
+      show(now)
+      return
+    }
+    args.onShowFile?.(at.file)
+    // the file's editor opens, and draws the caret: a moment
+    const going = ++goingTo.current
+    const until = Date.now() + 3000
+    const look = () => {
+      const caret = find()
+      if (caret) {
+        show(caret)
+      } else if (going === goingTo.current && Date.now() < until) {
+        requestAnimationFrame(look)
+      }
+    }
+    requestAnimationFrame(look)
+  }
+  const people =
+    present.length > 0 ? (
+      <PresenceStack
+        present={present.map((p) => ({
+          key: p.window,
+          person: names.get(p.user) ?? { id: p.user, name: 'Someone' },
+          color: p.color,
+          ...(p.user === args.me ? { note: 'other window' } : {}),
+        }))}
+        onGo={goTo}
+      />
+    ) : null
   const unsaved = unsavedFiles.size > 0
   /** A file's save, for its editor to set: the same object each time, so the editor keeps it. */
   const flushFor = (id: string) => {
@@ -304,6 +366,7 @@ export function useEditing(args: UseEditingArgs): Editing | null {
     panel: <EditPanel {...panelProps} />,
     actions: <EditActions {...panelProps} />,
     label,
+    people,
     close,
     draft: {
       on: draft.version,
@@ -316,7 +379,7 @@ export function useEditing(args: UseEditingArgs): Editing | null {
     },
     places: placed.places,
     // the editor's words and actions in the idea's bar, while it's open
-    bar: <IdeaMode label={label} actions={<EditActions {...panelProps} />} />,
+    bar: <IdeaMode people={people} label={label} actions={<EditActions {...panelProps} />} />,
   }
 }
 

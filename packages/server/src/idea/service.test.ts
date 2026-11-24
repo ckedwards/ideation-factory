@@ -311,7 +311,7 @@ describe('where an idea is in git', () => {
 })
 
 describe('size limits', () => {
-  const small: Limits = { maxFileBytes: 100, maxIdeaBytes: 150 }
+  const small: Limits = { ...DEFAULT_LIMITS, maxFileBytes: 100, maxIdeaBytes: 150 }
 
   test('refuse a file or an idea over the limit, before parsing', async () => {
     const s = await setup(small)
