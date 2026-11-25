@@ -260,6 +260,11 @@ export class LiveDrafts {
     return this.#files.has(file)
   }
 
+  /** The count of a held file's steps, as stored; null if it isn't held. */
+  count(file: string): number | null {
+    return this.#files.get(file)?.steps ?? null
+  }
+
   /**
    * The file's document: as held, or as stored (`row`, and the steps after it), or as the latest
    * version has it (`base`, without a row). Written against `base` either way. `keep`: a write's,
@@ -340,5 +345,15 @@ export class LiveDrafts {
   /** Forgets every document (a write failed after working them out). */
   forget(): void {
     this.#files.clear()
+  }
+
+  /** Forgets the documents of files not in `files` (a new version without them). */
+  keepOnly(files: Iterable<string>): void {
+    const kept = new Set(files)
+    for (const file of this.#files.keys()) {
+      if (!kept.has(file)) {
+        this.#files.delete(file)
+      }
+    }
   }
 }

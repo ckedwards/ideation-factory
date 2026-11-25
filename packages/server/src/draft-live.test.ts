@@ -47,21 +47,27 @@ function connect(idea: string, token: string, window = `window-${crypto.randomUU
   }
   const closed = new Promise<number>((resolve) => (ws.onclose = (event) => resolve(event.code)))
   ws.onopen = () => ws.send(JSON.stringify({ type: 'token', token, window }))
-  const next = async <T extends DraftLiveEvent['type']>(
-    type: T,
-    where: (event: Extract<DraftLiveEvent, { type: T }>) => boolean = () => true,
-  ): Promise<Extract<DraftLiveEvent, { type: T }>> => {
+  /** The first message `where` takes, taken from those to come. */
+  const first = async (where: (event: DraftLiveEvent) => boolean): Promise<DraftLiveEvent> => {
     for (;;) {
-      const found = messages.find((m) => m.type === type && where(m as Extract<DraftLiveEvent, { type: T }>))
+      const found = messages.find(where)
       if (found) {
         messages.splice(messages.indexOf(found), 1)
-        return found as Extract<DraftLiveEvent, { type: T }>
+        return found
       }
       await new Promise<void>((wake) => waiting.push(wake))
     }
   }
+  const next = async <T extends DraftLiveEvent['type']>(
+    type: T,
+    where: (event: Extract<DraftLiveEvent, { type: T }>) => boolean = () => true,
+  ): Promise<Extract<DraftLiveEvent, { type: T }>> =>
+    (await first((m) => m.type === type && where(m as Extract<DraftLiveEvent, { type: T }>))) as Extract<
+      DraftLiveEvent,
+      { type: T }
+    >
   const send = (message: unknown) => ws.send(JSON.stringify(message))
-  return { ws, next, send, closed, window, messages }
+  return { ws, next, first, send, closed, window, messages }
 }
 
 /** Steps that type `text` at `at` in `doc`, as JSON. */
@@ -103,6 +109,56 @@ test('typing reaches everyone editing the file, stored, each step with whose it 
   expect(draft.changes).toMatchObject([{ key: 'e-b3', by: { user: riley.id } }])
   ana.ws.close()
   raj.ws.close()
+}, 30_000)
+
+test('two sends on one count at once: one is stored, the other is behind, and goes in once it has caught up', async () => {
+  const riley = await signIn(app, name('riley'))
+  const { idea } = await client(riley.jwt).createIdea({ title: 'Race', files: [{ path: 'plan.md', content: PLAN }] })
+  const windows = [
+    { who: 'ana', letter: 'a', socket: connect(idea, riley.jwt) },
+    { who: 'raj', letter: 'r', socket: connect(idea, riley.jwt) },
+  ]
+  for (const { socket } of windows) {
+    await socket.next('ready')
+    socket.send({ type: 'open', file: 'f1' })
+  }
+  const doc = schema.nodeFromJSON((await windows[0]!.socket.next('opened')).doc)
+  await windows[1]!.socket.next('opened')
+  // each letter typed at the start of "Ship it." (7), which is where it starts on every count
+  const send = (w: (typeof windows)[number], version: number, client: string) =>
+    w.socket.send({ type: 'steps', file: 'f1', version, steps: typing(doc, 7, w.letter), client })
+  for (let round = 0; round < 5; round++) {
+    const on = round * 2
+    // both on the same count, sent together: whichever comes first is stored, the other is behind
+    for (const w of windows) {
+      send(w, on, `${w.who}${round}`)
+    }
+    // each window's answer: behind, or its own steps back (one wait, so none is left to take a later answer)
+    const answers = await Promise.all(
+      windows.map(async ({ who, socket }) => {
+        const m = await socket.first(
+          (m) => m.type === 'behind' || (m.type === 'steps' && m.clients.includes(`${who}${round}`)),
+        )
+        return m.type === 'behind' ? { behind: m.version } : { stored: (m as { from: number }).from }
+      }),
+    )
+    expect(answers.filter((a) => 'stored' in a)).toEqual([{ stored: on }])
+    expect(answers.filter((a) => 'behind' in a)).toEqual([{ behind: on + 1 }])
+    // the one behind has caught up and sends again, on the new count
+    const late = windows[answers.findIndex((a) => 'behind' in a)]!
+    send(late, on + 1, `${late.who}${round}-again`)
+    for (const { socket } of windows) {
+      await socket.next('steps', (s) => s.clients.includes(`${late.who}${round}-again`) && s.from === on + 1)
+      socket.messages.splice(0)
+    }
+  }
+  // every keystroke stored once: five of each letter, nothing lost or doubled
+  const draft = await client(riley.jwt).getDraft({ idea })
+  const typed = /^# Plan\n\n([ar]*)Ship it\.\n$/.exec(draft.files[0]!.content)?.[1]
+  expect([...(typed ?? '')].sort().join('')).toBe('aaaaarrrrr')
+  for (const { socket } of windows) {
+    socket.ws.close()
+  }
 }, 30_000)
 
 test('a commit is announced after the steps that move the documents onto it', async () => {

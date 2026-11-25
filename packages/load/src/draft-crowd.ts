@@ -8,7 +8,8 @@
 // a paragraph of its own, and its caret after each, sent at most every caretMs as the page does. For
 // each crowd size it reports how long a keystroke takes to be stored and come back (what turns the
 // saving line back to Saved, and about when everyone else sees it), how often a send was behind and
-// had to go again, and how long a caret takes to reach everyone.
+// had to go again, and how long a caret takes to reach everyone. Then it checks the draft has every
+// keystroke typed, each once, in the paragraph it was typed in: faster mustn't mean typing lost.
 //
 // Against any running app, with Mailpit for signing in (the load stack's, or scripts/test-ui.sh's).
 // The app's limit has to be above the largest crowd, or windows past it only read along:
@@ -97,6 +98,8 @@ interface Measured {
   stored: number[]
   /** Each caret sent, to its echo from the actor, in ms. */
   carets: number[]
+  /** Keystrokes typed. */
+  typed: number
   sends: number
   behind: number
   closed: number[]
@@ -108,7 +111,7 @@ const schemaPromise = pageDocument('', []).then((d) => d.schema)
 class Window {
   readonly window = `w-${crypto.randomUUID()}`
   readonly client = `c${Math.random().toString(36).slice(2, 10)}`
-  measured: Measured = { stored: [], carets: [], sends: 0, behind: 0, closed: [], joined: false }
+  measured: Measured = { stored: [], carets: [], typed: 0, sends: 0, behind: 0, closed: [], joined: false }
   #ws!: WebSocket
   #state: EditorState | null = null
   #inFlight = false
@@ -223,6 +226,7 @@ class Window {
     const end = endOf(this.#state.doc, this.paragraph)
     this.#state = this.#state.apply(this.#state.tr.insertText('x', end))
     this.#typedAt.push(performance.now())
+    this.measured.typed++
     this.#send()
     const now = performance.now()
     if (now - this.#caretAt >= this.#caretMs) {
@@ -238,6 +242,11 @@ class Window {
   /** Whether everything typed here is stored. */
   settled(): boolean {
     return this.#typedAt.length === 0
+  }
+
+  /** Keystrokes typed here and not yet confirmed stored. */
+  unsent(): number {
+    return this.#typedAt.length
   }
 
   close(): void {
@@ -301,6 +310,29 @@ async function crowd(size: number, session: Awaited<ReturnType<typeof signIn>>) 
   }
   const unsettled = windows.filter((w) => !w.settled()).length
   windows.forEach((w) => w.close())
+  // the draft as stored, against the keystrokes typed in each paragraph: all of those confirmed
+  // stored, and none typed more than once; one still on its way when the windows closed may be in or not
+  await Bun.sleep(1000)
+  const content = (await api.getDraft({ idea })).files[0]!.content
+  const found = new Map<number, number>()
+  for (const m of content.matchAll(/^Paragraph (\d+)\.(x*)$/gm)) {
+    found.set(Number(m[1]) - 1, m[2]!.length)
+  }
+  const typed = new Map<number, { all: number; confirmed: number }>()
+  for (const w of windows) {
+    const t = typed.get(w.paragraph) ?? { all: 0, confirmed: 0 }
+    t.all += w.measured.typed
+    t.confirmed += w.measured.typed - w.unsent()
+    typed.set(w.paragraph, t)
+  }
+  let missing = 0
+  let extra = 0
+  for (let i = 0; i < paragraphs; i++) {
+    const has = found.get(i) ?? 0
+    const t = typed.get(i) ?? { all: 0, confirmed: 0 }
+    missing += Math.max(0, t.confirmed - has)
+    extra += Math.max(0, has - t.all)
+  }
   const all = (key: 'stored' | 'carets') => windows.flatMap((w) => w.measured[key])
   const stored = all('stored')
   const carets = all('carets')
@@ -321,13 +353,15 @@ async function crowd(size: number, session: Awaited<ReturnType<typeof signIn>>) 
     caretP95: quantile(carets, 0.95),
     unsettled,
     closed: closed.length,
+    missing,
+    extra,
   }
 }
 
 const session = await signIn()
 console.log(`draft crowd: ${APP}, ${seconds} s each, ${cps} keystrokes a second a window`)
 console.log(
-  'windows  in  keys/s  stored p50  p95       p99       max       behind  caret p50  p95       unsent  dropped',
+  'windows  in  keys/s  stored p50  p95       p99       max       behind  caret p50  p95       unsent  dropped  draft',
 )
 for (const size of crowds) {
   const r = await crowd(size, session)
@@ -344,7 +378,8 @@ for (const size of crowds) {
       ms(r.caretP50).padEnd(10),
       ms(r.caretP95).padEnd(9),
       String(r.unsettled).padEnd(7),
-      String(r.closed),
+      String(r.closed).padEnd(8),
+      r.missing === 0 && r.extra === 0 ? 'all there' : `${r.missing} lost, ${r.extra} doubled`,
     ].join(' '),
   )
 }

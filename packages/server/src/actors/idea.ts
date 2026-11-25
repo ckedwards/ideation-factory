@@ -93,9 +93,17 @@ export const idea = actor({
      * make the file a draft file.
      */
     draftOpen: (c, file: string) => (c.vars.writes ??= writerOf(c))({ kind: 'open', file }) as Promise<Opened>,
-    /** Typing: an editor's steps on the count it had, taken in the write queue's turn. */
-    draftTyping: (c, typing: Typing) =>
-      (c.vars.writes ??= writerOf(c))({ kind: 'typing', typing }) as Promise<TypingResult>,
+    /**
+     * Typing: an editor's steps on the count it had, taken in the write queue's turn. A send behind the
+     * count already is answered at once, without waiting for a turn: it would be refused in it.
+     */
+    draftTyping: (c, typing: Typing): Promise<TypingResult> => {
+      const count = serviceOf(c).behind(typing.file, typing.version)
+      if (count !== null) {
+        return Promise.resolve({ kind: 'behind', version: count })
+      }
+      return (c.vars.writes ??= writerOf(c))({ kind: 'typing', typing }) as Promise<TypingResult>
+    },
     /** Words an editor saw moved between blocks, in the write queue's turn: the draft counts them as moved. */
     draftMoved: (c, words: MovedWords, caller: Typing['caller']) =>
       (c.vars.writes ??= writerOf(c))({ kind: 'moved', words, caller }) as Promise<null>,

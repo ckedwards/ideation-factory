@@ -147,18 +147,18 @@ LOAD_APP_URL=http://localhost:18080 LOAD_MAIL_URL=http://localhost:18025 \
   bun packages/load/src/draft-crowd.ts --windows 5,10,20,40,80 --seconds 30 --cps 3
 ```
 
-For each crowd it reports how long a keystroke takes to be stored and come back (what turns the saving line back to Saved, and about when the others see it), how many sends were behind and went again, and how long a caret takes to come back from the actor.
+For each crowd it reports how long a keystroke takes to be stored and come back (what turns the saving line back to Saved, and about when the others see it), how many sends were behind and went again, and how long a caret takes to come back from the actor. Afterwards it reads the draft back: "all there" when every keystroke confirmed is in it once, in its own paragraph.
 
-On a laptop (Intel Core Ultra 9 185H, on mains power; the app in Docker, one node), every window typing at 3 keystrokes a second, three runs each on fresh data, 2026-11-24. Each cell is the range over the three runs:
+On a laptop (Intel Core Ultra 9 185H, on mains power; the app in Docker, one node), every window typing at 3 keystrokes a second, two runs each on fresh data, 2026-11-24. Each cell is the range over the two runs, and both were all there:
 
-| Windows | Keystrokes a second | Stored, p50  | p95          | p99            | Behind | Caret, p95 |
-| ------- | ------------------- | ------------ | ------------ | -------------- | ------ | ---------- |
-| 20      | 60                  | 5–6 ms       | 11–26 ms     | 16–964 ms      | 26–36% | 2 ms       |
-| 40      | 120                 | 7–286 ms     | 377–1,462 ms | 1,232–1,901 ms | 71–94% | 2–4 ms     |
-| 50      | 150                 | 612–1,028 ms | 2.0–3.2 s    | 2.4–4.1 s      | 97–98% | 4–6 ms     |
-| 80      | 240                 | 4.7–7.3 s    | 16–24 s      | 23–30 s        | 99%    | 11–16 ms   |
+| Windows | Keystrokes a second | Stored, p50 | p95          | p99       | Behind | Caret, p95 |
+| ------- | ------------------- | ----------- | ------------ | --------- | ------ | ---------- |
+| 20      | 60                  | 5 ms        | 10–14 ms     | 16–820 ms | 26–32% | 2 ms       |
+| 40      | 120                 | 6–22 ms     | 30 ms–2.3 s  | 0.9–4.7 s | 54–90% | 2–3 ms     |
+| 50      | 150                 | 10–17 ms    | 120 ms–4.4 s | 1.1–7.7 s | 73–89% | 3–4 ms     |
+| 80      | 240                 | 2.0–2.3 s   | 15–16 s      | 26–27 s   | 99%    | 20–27 ms   |
 
-Twenty windows hold. Forty is where typing starts to fail: past a second at p95 in two runs of three, and borderline in the third. Past that, the actor's turns go to sends that arrive behind (each window sends one batch at a time, on the count it has), and typing falls apart rather than slowing: the limit is there to stay below that. In two runs of three, 20 windows also had one stall of about a second (the p99), not yet explained. Carets never come close. The app used about one and a half cores throughout. On battery the laptop throttles and typing falls apart at 20 windows, so measure on mains power. A cloud vCPU is slower per core than this laptop, so 20, the default, may be near the edge there: run this on the deployment to check.
+Twenty windows hold. Forty and fifty are where typing starts to fail: most keystrokes are still stored at once, but in each run one of the two had a p95 past two seconds. A send that's behind is answered at once, without waiting its turn, so the actor's turns go to storing keystrokes; but it stores one window's at a time, and each takes about one write to SQLite, about 3 ms. In one run of two, 20 windows also had one stall of about a second (the p99), not yet explained. Carets never come close. The app used about one and a half cores throughout. On battery the laptop throttles and typing falls apart at 20 windows, so measure on mains power. A cloud vCPU is slower per core than this laptop, so 20, the default, may be near the edge there: run this on the deployment to check.
 
 ## Settings
 
