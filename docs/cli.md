@@ -12,14 +12,14 @@ Desired commands:
 idea filter/sort =  "user" "userbot" "mybot" "allbots" "allusers" "alluserbots" "all"
 
 ```text
-ideaf sync - syncs changes to Idea factory a POST action only works if idea in progress. Refuses with "pull first" if Ideation Factory has a newer version of a file than the one you edited from; `--force` uploads anyway, replacing it (see Base versions in `architecture.md`).
+ideaf sync - syncs changes to Idea factory a POST action only works if idea in progress. Refuses with "pull first" if Ideation Factory has a newer version of a file than the one you edited from; `--force` uploads anyway, replacing it (see Base versions in `architecture.md`). While the idea's draft has changes (people editing it), your changes go into the draft instead, on top of theirs, block by block, each saying how it read when you pulled; no version is made. If someone changed the same text since you pulled, it's refused: `ideaf pull` merges the draft into your files (conflicts marked), and you sync again. `--overwrite-draft` makes a version over the draft instead, a force push: its changes in those blocks are overwritten for everyone in it, and they're told. A draft can't add, remove or rename files yet.
 ideaf sync <file|dir> - by default sync looks from the git root dir (if it exits), this allows users to scope an upload to a specific directory
 
 ideaf show --blocks - the structured view of the idea: each file's sections and blocks with their ids and text, and the open comments and what they're on. What a skill reads before building a batch of edit commands. `--json` for agents.
 
 ideaf edit <batch.json> [-m message] [--dry-run] - edit the idea in Ideation Factory with commands (replace, insert, delete, move, rename-heading, set-section, rename/create/delete file; see Editing with commands in `architecture.md`). A batch makes one new version. `--dry-run` shows the diff and what happens to each comment. If the idea moved on since the batch was built, it's replayed onto the latest version, and refused with the conflicting commands listed if any no longer apply. Refuses if you have local edits that aren't synced, so they aren't stranded. Afterwards, `ideaf pull` brings the result into your files.
 
-ideaf pull - bring the idea's latest version into your files: accepted suggestions and anything synced from another machine. Merges with your local edits (3-way, using each file's base); conflicts are left for you to resolve, like git.
+ideaf pull - bring the idea's latest version into your files: accepted suggestions and anything synced from another machine. While the idea's draft has changes, it brings the draft instead, so what you edit and sync next goes on top of everyone's. Merges with your local edits (3-way, using each file's base: what you last pulled or synced); conflicts are left for you to resolve, like git.
 
 ideaf list - list ideas for this repo (filter by your ideas by defaut) display active one first with an indication that it is the active one
 
