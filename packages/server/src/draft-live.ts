@@ -147,7 +147,12 @@ export function createDraftLive({
         send(ws, { type: 'steps', file: e.file, from: e.from, steps: e.steps, clients: e.clients })
       }
     })
-    conn.on('version', (e) => send(ws, { type: 'version', version: e.version, by: e.by }))
+    conn.on('version', (e) => send(ws, { type: 'version', version: e.version, by: e.by, committed: e.committed }))
+    conn.on('draft', (e) => {
+      if (e.discarded) {
+        send(ws, { type: 'discarded', by: e.by })
+      }
+    })
     conn.on('presence', (person) => send(ws, { type: 'presence', person }))
     conn.on('presenceLeft', ({ window: gone }) => {
       send(ws, { type: 'left', window: gone })
@@ -236,6 +241,7 @@ export function createDraftLive({
           steps: message.steps,
           client: message.client,
           caller: ws.data.caller,
+          ...(ws.data.window ? { window: ws.data.window } : {}),
         })
         if (result.kind === 'behind') {
           return send(ws, { type: 'behind', file: message.file, version: result.version })

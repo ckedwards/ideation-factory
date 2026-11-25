@@ -14,7 +14,7 @@
 // gives, and every few seconds while it stays put, so the server knows it's still here. Offline,
 // everyone else is gone from the page until it's back. Past the draft's limit of windows it isn't
 // in: the page shows the draft read-only, still live, until the server lets it in.
-import { type DraftCaret, DRAFT_LIVE_CLOSE, DraftLiveEvent, type DraftPresence } from '@ideaf/api'
+import { type Caller, type DraftCaret, DRAFT_LIVE_CLOSE, DraftLiveEvent, type DraftPresence } from '@ideaf/api'
 import { LiveDoc } from '@ideaf/ui/editor/live'
 
 /** How often a window that stays put says it's still here (the server forgets one after 30 seconds). */
@@ -25,8 +25,10 @@ export interface DraftLiveDeps {
   open: (path: string) => WebSocket
   /** The session's token, fresh. */
   token: () => Promise<string>
-  /** A version was made: committed, or around the draft. */
-  onVersion?: (version: number) => void
+  /** A version was made, by whom: the draft committed (`committed`), or one made around it. */
+  onVersion?: (version: number, by: Caller, committed: boolean) => void
+  /** Someone discarded the draft. */
+  onDiscarded?: (by: Caller) => void
   /** Edit access is gone, or the idea. */
   onClosed?: (why: 'forbidden' | 'gone') => void
   /** Typing in a file was refused, and why. */
@@ -361,7 +363,10 @@ export class DraftLive {
         return
       }
       case 'version':
-        this.#deps.onVersion?.(event.version)
+        this.#deps.onVersion?.(event.version, event.by, event.committed)
+        return
+      case 'discarded':
+        this.#deps.onDiscarded?.(event.by)
         return
       case 'joined':
         this.#joined = true

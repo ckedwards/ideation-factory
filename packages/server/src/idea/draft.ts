@@ -260,6 +260,24 @@ export class LiveDrafts {
     return this.#files.has(file)
   }
 
+  /**
+   * The heading of the section a place in a held file's document is in: the last heading at or above
+   * its block. Null if the file isn't held, or the place is above every heading.
+   */
+  heading(file: string, pos: number): string | null {
+    const doc = this.#files.get(file)?.doc
+    if (!doc) {
+      return null
+    }
+    let heading: string | null = null
+    doc.forEach((node, offset) => {
+      if (offset <= pos && node.type.name === 'heading') {
+        heading = node.textContent
+      }
+    })
+    return heading
+  }
+
   /** The count of a held file's steps, as stored; null if it isn't held. */
   count(file: string): number | null {
     return this.#files.get(file)?.steps ?? null

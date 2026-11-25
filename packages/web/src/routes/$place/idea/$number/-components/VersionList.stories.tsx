@@ -4,6 +4,9 @@ import { expect, fn, within } from 'storybook/test'
 import { VersionList } from './VersionList.tsx'
 
 const hours = (n: number) => NOW - n * 3_600_000
+const maya = { id: 'u-maya', name: 'Maya Chen' }
+const priya = { id: 'u-priya', name: 'Priya Natarajan' }
+const riley = actors.person.kind === 'person' ? actors.person.person : { id: 'u-riley', name: 'Riley' }
 
 const meta = {
   title: 'Ideas/VersionList',
@@ -25,6 +28,25 @@ const meta = {
 
 export default meta
 type Story = StoryObj<typeof meta>
+
+// A draft committed together: the faces of who typed in it, beside who committed it
+export const TypedTogether: Story = {
+  args: {
+    versions: [
+      { number: 2, by: actors.person, at: hours(0.5), how: 'commands', steps: 4, authors: [maya, priya, riley] },
+      { number: 1, by: actors.person, at: hours(72), how: 'created', steps: 0, authors: [riley] },
+    ],
+    viewing: 2,
+    latest: 2,
+  },
+  play: async ({ canvasElement }) => {
+    const list = within(canvasElement)
+    await expect(list.getByRole('img', { name: 'Maya Chen' })).toBeVisible()
+    await expect(list.getByRole('img', { name: 'Priya Natarajan' })).toBeVisible()
+    // only who created it: no faces beside them
+    await expect(list.getAllByText('Typed by')).toHaveLength(1)
+  },
+}
 
 // Reading the latest: each earlier version can be compared with it
 export const Latest: Story = {

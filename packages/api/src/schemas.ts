@@ -63,7 +63,13 @@ const CommandName = z.enum([
   'delete-file',
 ])
 
-export const StepResult = z.object({ step: z.number().int(), command: CommandName, addresses: z.array(z.string()) })
+export const StepResult = z.object({
+  step: z.number().int(),
+  command: CommandName,
+  addresses: z.array(z.string()),
+  /** Who made it: for a committed draft, everyone who typed in its blocks; otherwise whoever made the version. */
+  authors: z.array(Caller),
+})
 
 export const Conflict = z.object({
   step: z.number().int(),
@@ -183,6 +189,8 @@ export const IdeaSummary = z.object({
       by: Caller,
       how: VersionHow,
       steps: z.number().int(),
+      /** Who made what's in it: for a committed draft, everyone who typed in it; otherwise `by`. */
+      authors: z.array(Caller),
     }),
   ),
 })
@@ -253,14 +261,20 @@ export const LiveEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('resolved'), comment: z.string(), resolved: z.boolean(), by: Caller }),
   /** A suggestion accepted or rejected; its thread is resolved with it. */
   z.object({ type: z.literal('decided'), comment: z.string(), decision: Decision, by: Caller }),
-  /** The idea's draft changed, was committed or was discarded: read it again (people with edit access). */
-  z.object({ type: z.literal('draft'), by: Caller, uncommitted: z.boolean() }),
+  /** The idea's draft changed, was committed or was discarded (`discarded`): read it again (people with edit access). */
+  z.object({ type: z.literal('draft'), by: Caller, uncommitted: z.boolean(), discarded: z.boolean().optional() }),
   /** The idea's status changed. */
   z.object({ type: z.literal('status'), status: IdeaStatus, change: StatusChange, by: Caller }),
   /** A verdict given or dismissed: the reviewer's verdict as it stands. */
   z.object({ type: z.literal('review'), review: Review, by: Caller }),
-  /** A new version: its files and where each comment is have changed. */
-  z.object({ type: z.literal('version'), version: z.number().int(), how: VersionHow, by: Caller }),
+  /** A new version: its files and where each comment is have changed. `committed` when it's the draft, committed. */
+  z.object({
+    type: z.literal('version'),
+    version: z.number().int(),
+    how: VersionHow,
+    by: Caller,
+    committed: z.boolean(),
+  }),
 ])
 export type LiveEvent = z.infer<typeof LiveEvent>
 
@@ -369,8 +383,10 @@ export const DraftLiveEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('gone'), file: DraftFileId }),
   /** Your steps weren't taken, and why; they aren't to be sent again as they are. */
   z.object({ type: z.literal('refused'), file: DraftFileId, message: z.string() }),
-  /** A version was made: committed, or around the draft. */
-  z.object({ type: z.literal('version'), version: z.number().int(), by: Caller }),
+  /** A version was made: the draft committed (`committed`), or one made around it. */
+  z.object({ type: z.literal('version'), version: z.number().int(), by: Caller, committed: z.boolean() }),
+  /** Someone discarded the draft: every file is back to the latest version. */
+  z.object({ type: z.literal('discarded'), by: Caller }),
 ])
 export type DraftLiveEvent = z.infer<typeof DraftLiveEvent>
 
@@ -401,8 +417,11 @@ export const Draft = z.object({
     z.object({
       key: z.string(),
       change: DraftChange,
+      /** Whoever changed it last, and when */
       by: Caller,
       at: z.number(),
+      /** Everyone who changed it, the last first: for typing, everyone who typed in its blocks */
+      authors: z.array(Caller),
       /** Why it doesn't apply to the draft as it is (outdated); null if it does. */
       problem: z.string().nullable(),
     }),
@@ -411,6 +430,8 @@ export const Draft = z.object({
   comments: z.array(CommentOutcome),
   /** How many commands committing makes. */
   steps: z.number().int(),
+  /** Who is typing in it now (in the last few seconds), and where: the heading of the section, if any. */
+  typing: z.array(z.object({ user: z.string(), file: z.string(), heading: z.string().nullable() })),
 })
 
 /** A suggestion left out of an accept, and why. */

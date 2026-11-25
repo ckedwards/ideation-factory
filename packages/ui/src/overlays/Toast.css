@@ -15,6 +15,17 @@
   font-size: var(--text-sm);
   text-align: center;
 }
+.toast-action {
+  margin-left: var(--space-3);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
 :root[data-theme='contrast'] .toast {
   border: var(--hairline) solid var(--ink);
   background: var(--surface);

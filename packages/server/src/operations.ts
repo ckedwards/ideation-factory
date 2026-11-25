@@ -511,7 +511,12 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         if (!result.ok) {
           return result
         }
-        return result.value.ok ? { ok: true, value: result.value } : { ok: false, error: result.value.error }
+        if (!result.value.ok) {
+          return { ok: false, error: result.value.error }
+        }
+        // each step would be the caller's, as the version would credit them
+        const steps = result.value.steps.map((s) => ({ ...s, authors: [caller] }))
+        return { ok: true, value: { ...result.value, steps } }
       }),
 
     edit: (input, context) =>

@@ -1,14 +1,20 @@
 import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { Toast } from './Toast.tsx'
+import { expect, within } from 'storybook/test'
 import { Button } from '../controls/Button.tsx'
 
-function Stateful({ message }: { message: string }) {
+function Stateful({ message, action }: { message: string; action?: string }) {
   const [shown, setShown] = useState<string | null>(message)
   return (
     <>
       <Button onClick={() => setShown(message)}>Show again</Button>
-      <Toast message={shown} onDismiss={() => setShown(null)} duration={60_000} />
+      <Toast
+        message={shown}
+        onDismiss={() => setShown(null)}
+        duration={60_000}
+        action={action ? { label: action, onAction: () => {} } : undefined}
+      />
     </>
   )
 }
@@ -31,6 +37,16 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Message: Story = {}
+
+// Something to do about it: taking it dismisses the note
+export const WithAction: Story = {
+  args: { message: 'Priya committed version 7. What you type now goes into the next one.', action: 'See it' },
+  play: async ({ canvasElement, userEvent }) => {
+    const page = within(canvasElement)
+    await userEvent.click(page.getByRole('button', { name: 'See it' }))
+    await expect(page.queryByText(/Priya committed version 7/)).toBeNull()
+  },
+}
 
 export const LongMessage: Story = {
   args: {

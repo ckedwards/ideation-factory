@@ -23,6 +23,8 @@ interface Present {
   color: number
   at: DraftCaret | null
   seen: number
+  /** When it last sent typing; 0 if it hasn't */
+  typed: number
 }
 
 export type Joined =
@@ -58,7 +60,7 @@ export class DraftPresences {
     const free = Array.from({ length: COLORS }, (_, i) => i + 1).find((c) => !taken.has(c))
     const color = free ?? (this.#arrivals % COLORS) + 1
     this.#arrivals++
-    const present: Present = { user, session, color, at: null, seen: now }
+    const present: Present = { user, session, color, at: null, seen: now, typed: 0 }
     this.#windows.set(window, present)
     return { joined: true, person: this.#person(window, present), people: this.people() }
   }
@@ -85,6 +87,22 @@ export class DraftPresences {
     present.at = at
     present.seen = now
     return { person: this.#person(window, present), moved }
+  }
+
+  /** A window sent typing. */
+  typed(window: string, now: number): void {
+    const present = this.#windows.get(window)
+    if (present) {
+      present.typed = now
+      present.seen = now
+    }
+  }
+
+  /** The windows that sent typing in the last `within` ms, and where their carets are. */
+  typing(now: number, within: number): Array<{ window: string; user: string; at: DraftCaret }> {
+    return [...this.#windows].flatMap(([window, p]) =>
+      p.at && p.typed > 0 && now - p.typed <= within ? [{ window, user: p.user, at: p.at }] : [],
+    )
   }
 
   /** A window's socket closed: whether it was the window's own (a reconnect's newer one keeps it). */

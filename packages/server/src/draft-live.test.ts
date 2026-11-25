@@ -172,10 +172,32 @@ test('a commit is announced after the steps that move the documents onto it', as
   ana.send({ type: 'steps', file: 'f1', version: 0, steps: typing(doc, 15, ' Soon.'), client: 'ana' })
   await ana.next('steps')
   await api.commitDraft({ idea })
-  expect(await ana.next('version')).toMatchObject({ version: 2, by: { user: riley.id } })
+  expect(await ana.next('version')).toMatchObject({ version: 2, by: { user: riley.id }, committed: true })
   // typing goes on, on the same count: the documents are the new version's
   ana.send({ type: 'steps', file: 'f1', version: 1, steps: typing(apply(doc, []), 7, 'Now: '), client: 'ana' })
   expect(await ana.next('steps')).toMatchObject({ from: 1, clients: ['ana'] })
+  ana.ws.close()
+}, 30_000)
+
+test('a version made around the draft isn’t a commit, and a discard is announced, after its steps', async () => {
+  const riley = await signIn(app, name('riley'))
+  const api = client(riley.jwt)
+  const { idea } = await api.createIdea({ title: 'Discard', files: [{ path: 'plan.md', content: PLAN }] })
+  const ana = connect(idea, riley.jwt)
+  await ana.next('ready')
+  ana.send({ type: 'open', file: 'f1' })
+  const doc = schema.nodeFromJSON((await ana.next('opened')).doc)
+  await api.edit({
+    idea,
+    batch: { base: 1, steps: [{ command: 'create-file', path: 'notes.md', markdown: '# Notes\n' }] },
+  })
+  expect(await ana.next('version')).toMatchObject({ version: 2, committed: false })
+  ana.send({ type: 'steps', file: 'f1', version: 0, steps: typing(doc, 15, ' Soon.'), client: 'ana' })
+  await ana.next('steps')
+  await api.discardDraft({ idea })
+  // the steps back to the version first, then who discarded it
+  expect(await ana.next('steps')).toMatchObject({ from: 1, clients: ['server'] })
+  expect(await ana.next('discarded')).toMatchObject({ by: { user: riley.id } })
   ana.ws.close()
 }, 30_000)
 
@@ -270,6 +292,28 @@ test('each window sees where the others are, and when they leave', async () => {
   second.ws.close()
   expect(await first.next('left')).toEqual({ type: 'left', window: second.window })
   first.ws.close()
+}, 30_000)
+
+test('the draft says who is typing now, and under which heading; a window only there isn’t', async () => {
+  const riley = await signIn(app, name('riley'))
+  const api = client(riley.jwt)
+  const content = '# Plan\n\nShip it.\n\n## Risks\n\nRain.\n'
+  const { idea } = await api.createIdea({ title: 'Typing', files: [{ path: 'plan.md', content }] })
+  const typist = connect(idea, riley.jwt)
+  await typist.next('ready')
+  const watcher = connect(idea, riley.jwt)
+  await watcher.next('ready')
+  watcher.send({ type: 'here', at: { file: 'f1', anchor: 8, head: 8, version: 0 } })
+  typist.send({ type: 'open', file: 'f1' })
+  const doc = schema.nodeFromJSON((await typist.next('opened')).doc)
+  // at the end of "Rain.", under Risks
+  typist.send({ type: 'steps', file: 'f1', version: 0, steps: typing(doc, 29, ' Soon.'), client: 'typist' })
+  await typist.next('steps')
+  typist.send({ type: 'here', at: { file: 'f1', anchor: 35, head: 35, version: 1 } })
+  await watcher.next('presence', (e) => e.person.window === typist.window && e.person.at !== null)
+  expect((await api.getDraft({ idea })).typing).toEqual([{ user: riley.id, file: 'f1', heading: 'Risks' }])
+  typist.ws.close()
+  watcher.ws.close()
 }, 30_000)
 
 test('past the limit a window reads along, and joins when someone leaves', async () => {

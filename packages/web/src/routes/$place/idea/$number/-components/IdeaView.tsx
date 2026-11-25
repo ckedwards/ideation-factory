@@ -5,7 +5,7 @@
 // open the idea's draft on the latest version here and change it (editing.tsx),
 // and accept suggestions into it.
 // The routes say which version, which file and what to compare against.
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { type Anchor, parseMarkdown, suggestionSource } from '@ideaf/core'
 import { RelativeTime, Toast } from '@ideaf/ui'
 import { useLiveSuspenseQuery } from '@tanstack/react-db'
@@ -24,7 +24,7 @@ import { DocToolbar } from './DocToolbar.tsx'
 import { CommentBox } from './CommentBox.tsx'
 import { FileLine } from './FileLine.tsx'
 import { type FocusPhase, FocusView } from './FocusView.tsx'
-import { actorOf, type FileView, place, type Thread } from './view.ts'
+import { actorOf, type FileView, personOf, place, type Thread } from './view.ts'
 
 export interface IdeaViewProps {
   id: string
@@ -70,7 +70,9 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
   const asOf = useQuery({ ...commentsQuery(id, version), enabled: older })
   const threads: Thread[] = older ? (asOf.data ?? []) : live
   const { data: me } = useSuspenseQuery(meQuery)
-  const [note, setNote] = useState<string | null>(null)
+  // a note at the bottom of the page, and something to do about it ("See it")
+  const [toast, setToast] = useState<{ message: string; action?: { label: string; onAction: () => void } } | null>(null)
+  const setNote = useCallback((message: string | null) => setToast(message === null ? null : { message }), [])
 
   // a new version arriving while the latest is shown: the page moves on to it, and says so,
   // unless it's one this page made (committing the draft), which says so itself
@@ -106,8 +108,8 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
   const people = usePeople([
     idea.owner,
     ...threads.flatMap((t) => [t, ...t.replies]).map((c) => c.author.user),
-    ...idea.versions.map((n) => n.by.user),
-    ...(draft.data?.changes.map((c) => c.by.user) ?? []),
+    ...idea.versions.flatMap((n) => [n.by, ...n.authors].map((c) => c.user)),
+    ...(draft.data?.changes.flatMap((c) => c.authors.map((a) => a.user)) ?? []),
   ])
   const writes = commentWrites(comments, me.id, version, setNote)
   const by = made ? actorOf(made.by, people) : actorOf({ user: idea.owner, bot: null, purpose: 'me' }, people)
@@ -210,6 +212,14 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
     onCommitted: (committed) => {
       ours.current.add(committed)
       setNote(`Committed as v${committed}.`)
+    },
+    // someone else committed while you were in the draft: said here, not as "just came in"
+    onTheirCommit: (committed, name) => {
+      ours.current.add(committed)
+      setToast({
+        message: `${name} committed version ${committed}. What you type now goes into the next one.`,
+        action: { label: 'See it', onAction: () => void navigate({ href: links.files({ v: committed, file: path }) }) },
+      })
     },
   })
   const canEdit = idea.you.edit && !older && base === null && !editing
@@ -336,6 +346,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
           versions: [...idea.versions].reverse().map((n) => ({
             number: n.number,
             by: actorOf(n.by, people),
+            authors: n.authors.map((a) => personOf(a, people)),
             at: n.createdAt,
             how: n.how,
             steps: n.steps,
@@ -481,7 +492,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
       )}
       {/* the editor's words and actions, in the idea's bar while it's open (in focus view, its own) */}
       {!focusPhase && editor?.bar}
-      <Toast message={note} onDismiss={() => setNote(null)} />
+      <Toast message={toast?.message ?? null} action={toast?.action} onDismiss={() => setNote(null)} />
     </>
   )
 }

@@ -61,7 +61,7 @@ import {
 import { reviewerOf } from './reviewer.ts'
 import { type IdeaDB, type IdeaStatus, VERDICTS, type Verdict } from './schema.ts'
 
-import { type Caller, schemas } from '@ideaf/api'
+import { type Caller, type DraftCaret, schemas } from '@ideaf/api'
 
 export type { Caller }
 
@@ -220,7 +220,8 @@ export type WriteValue =
       kind: 'version'
       version: number
       comments: CommentOutcome[]
-      steps: StepResult[]
+      /** Each step with who made it: who typed in its blocks, for a committed draft */
+      steps: Array<StepResult & { authors: Caller[] }>
     }
 
 export type WriteResult = { ok: true; value: WriteValue } | { ok: false; error: WriteError }
@@ -278,14 +279,16 @@ export type ThreadShape = CommentShape & {
  * reading the comments again.
  */
 export type IdeaEvent =
-  | { name: 'version'; payload: { version: number; how: VersionHow; by: Caller } }
+  /** A new version; `committed` when it's the draft committed, not one made around it */
+  | { name: 'version'; payload: { version: number; how: VersionHow; by: Caller; committed: boolean } }
   | { name: 'comment'; payload: { thread: ThreadShape; by: Caller } }
   | { name: 'reply'; payload: { parent: string; reply: CommentShape; by: Caller } }
   | { name: 'resolved'; payload: { comment: string; resolved: boolean; by: Caller } }
   /** A suggestion accepted or rejected: its thread is resolved too. */
   | { name: 'decided'; payload: { comment: string; decision: Decision; by: Caller } }
   /** The draft changed (or was committed or discarded): editors read it again. */
-  | { name: 'draft'; payload: { by: Caller } }
+  /** The draft changed; `discarded` when someone discarded it */
+  | { name: 'draft'; payload: { by: Caller; discarded?: boolean } }
   /** The idea's status changed: opened, moved, closed or reopened. */
   | { name: 'status'; payload: { status: IdeaStatus; change: StatusChange; by: Caller } }
   /** A verdict given, or dismissed: the reviewer's verdict as it stands now. */
@@ -360,8 +363,11 @@ interface DraftHeld {
 interface DraftItem {
   key: string
   change: DraftChange
+  /** Whoever changed it last, and when */
   by: Caller
   at: number
+  /** Everyone who changed it, the last first: for a change from the documents, whoever typed in its blocks */
+  authors: Caller[]
   kind: 'held' | 'suggestion' | 'derived'
 }
 interface Derived {
@@ -383,6 +389,8 @@ export interface Typing {
   steps: unknown[]
   client: string
   caller: Caller
+  /** The draft window it's from, if it came over a draft socket: so it shows as typing */
+  window?: string
 }
 
 /** What became of typing: stored (the file's count now), behind the file's count, or refused. */
@@ -465,6 +473,20 @@ function blocksOfChange(key: string, change: DraftChange, built: BuiltDraft): st
 }
 
 const plainEntry = ({ key, change }: { key: string; change: DraftChange }): DraftEntry => ({ key, change })
+
+/** Each caller once, in the order given: a person and each of their bots are separate. */
+function distinctCallers(callers: Iterable<Caller>): Caller[] {
+  const seen = new Set<string>()
+  const out: Caller[] = []
+  for (const c of callers) {
+    const key = `${c.user}/${c.bot ?? ''}`
+    if (!seen.has(key)) {
+      seen.add(key)
+      out.push(c)
+    }
+  }
+  return out
+}
 
 /** The draft's key for the change a caller sent, as it's now in the draft; null if it left none. */
 function changeKey(change: DraftChange, after: Derived): string | null {
@@ -620,7 +642,9 @@ export class IdeaService {
     const now = this.#now()
     const result: WriteResult = { ok: true, value: { kind: 'created', version: 1 } }
     const stored = await this.#storeContents(idea)
-    const events: IdeaEvent[] = [{ name: 'version', payload: { version: 1, how: 'created', by: request.caller } }]
+    const events: IdeaEvent[] = [
+      { name: 'version', payload: { version: 1, how: 'created', by: request.caller, committed: false } },
+    ]
     await this.#transaction(async (tx) => {
       await tx
         .insertInto('idea')
@@ -1370,6 +1394,7 @@ export class IdeaService {
       change: s.change,
       by: s.by,
       at: s.at,
+      authors: [s.by],
       kind: 'suggestion',
     }))
     let base = idea
@@ -1384,18 +1409,23 @@ export class IdeaService {
         throw new Error(`the draft's documents make no changes: ${made.message}`)
       }
       for (const change of made.changes) {
-        derived.push({ key: keyOf(change, taken), change, by: fallback, at: 0, kind: 'derived' })
+        derived.push({ key: keyOf(change, taken), change, by: fallback, at: 0, authors: [fallback], kind: 'derived' })
       }
     }
-    const entries: DraftItem[] = [...state.held.map((h) => ({ ...h, kind: 'held' as const })), ...accepted, ...derived]
+    const entries: DraftItem[] = [
+      ...state.held.map((h) => ({ ...h, authors: [h.by], kind: 'held' as const })),
+      ...accepted,
+      ...derived,
+    ]
     const built = await this.#core.buildDraft(this.id, idea, comments, entries.map(plainEntry))
     for (const e of derived) {
-      const latest = blocksOfChange(e.key, e.change, built)
-        .flatMap((block) => state.authors.get(block)?.slice(0, 1) ?? [])
-        .sort((a, b) => b.at - a.at)[0]
-      if (latest) {
-        e.by = latest.by
-        e.at = latest.at
+      const typed = blocksOfChange(e.key, e.change, built)
+        .flatMap((block) => state.authors.get(block) ?? [])
+        .sort((a, b) => b.at - a.at)
+      if (typed.length > 0) {
+        e.by = typed[0]!.by
+        e.at = typed[0]!.at
+        e.authors = distinctCallers(typed.map((t) => t.by))
       }
     }
     return { entries, built }
@@ -1939,7 +1969,9 @@ export class IdeaService {
       held: [],
       clearMoved: true,
     })
-    return this.#keepDraft(request, { ok: true, value: { kind: 'draft', keys: [] } }, next)
+    return this.#keepDraft(request, { ok: true, value: { kind: 'draft', keys: [] } }, next, undefined, [
+      { name: 'draft', payload: { by: request.caller, discarded: true } },
+    ])
   }
 
   /** Suggestions into the draft, one by one; one that doesn't apply to the draft as it is stays open, saying why. */
@@ -2012,7 +2044,14 @@ export class IdeaService {
       latest.bytes,
       built.idea.files.map((f) => ({ file: f.id, path: f.path, bytes: byteLength(f.source) })),
     )
-    const steps = built.commands.map((command, step) => ({ step, command, addresses: command.addresses ?? [] }))
+    // each step is credited to everyone who made the change it comes from
+    const authorsOf = new Map(derived.entries.map((e) => [e.key, e.authors]))
+    const steps = built.commands.map((command, step) => ({
+      step,
+      command,
+      addresses: command.addresses ?? [],
+      authors: authorsOf.get(built.owners[step]!) ?? [request.caller],
+    }))
     const stepResults = built.commands.map((command, step) => ({
       step,
       command: command.command,
@@ -2109,7 +2148,8 @@ export class IdeaService {
     how: VersionHow,
     idea: Idea,
     outcomes: CommentOutcome[],
-    steps: Array<{ step: number; command: unknown; addresses: string[] }>,
+    /** Each with who made it; without, whoever makes the version */
+    steps: Array<{ step: number; command: unknown; addresses: string[]; authors?: Caller[] }>,
     stepResults: StepResult[],
     more: {
       gitHint?: { uri: string | null; branch: string }
@@ -2176,15 +2216,21 @@ export class IdeaService {
         held,
       })
     }
+    const authorsOf = new Map(steps.map((s) => [s.step, s.authors ?? [request.caller]]))
     const result: WriteResult = {
       ok: true,
-      value: { kind: 'version', version: number, comments: outcomes, steps: stepResults },
+      value: {
+        kind: 'version',
+        version: number,
+        comments: outcomes,
+        steps: stepResults.map((r) => ({ ...r, authors: authorsOf.get(r.step) ?? [request.caller] })),
+      },
     }
     const stored = await this.#storeContents(idea)
     const events: IdeaEvent[] = [
       // the documents' steps onto the new version first, so editors have them when it's announced
       ...(draft?.events ?? []),
-      { name: 'version', payload: { version: number, how, by: request.caller } },
+      { name: 'version', payload: { version: number, how, by: request.caller, committed: more.clearDraft === true } },
       ...(decide?.ids ?? []).map((comment): IdeaEvent => ({
         name: 'decided',
         payload: { comment, decision: decide!.decision, by: request.caller },
@@ -2270,6 +2316,7 @@ export class IdeaService {
         by: JSON.parse(v.created_by) as Caller,
         how: v.how,
         steps: Number(v.steps ?? 0),
+        authors: JSON.parse(v.authors) as Caller[],
       })),
     }
   }
@@ -2357,7 +2404,7 @@ export class IdeaService {
   async steps(version: number) {
     const rows = await this.#db
       .selectFrom('steps')
-      .select(['step', 'command', 'addresses'])
+      .select(['step', 'command', 'addresses', 'authors'])
       .where('version', '=', version)
       .orderBy('step')
       .execute()
@@ -2365,6 +2412,7 @@ export class IdeaService {
       step: r.step,
       command: JSON.parse(r.command) as unknown,
       addresses: JSON.parse(r.addresses) as string[],
+      authors: JSON.parse(r.authors) as Caller[],
     }))
   }
 
@@ -2489,6 +2537,7 @@ export class IdeaService {
         change: e.change,
         by: e.by,
         at: e.at,
+        authors: e.authors,
         problem: built.problems[e.key] ?? null,
       })),
       files: built.files.map((f) => ({ file: f.id, path: f.path, content: f.source, units: f.units })),
@@ -2496,6 +2545,15 @@ export class IdeaService {
       comments: built.comments.filter((c) => !pending.has(c.id)),
       steps: built.commands.length,
     }
+  }
+
+  /** Where people are typing: for each caret, its file and the heading of the section it's in. */
+  typingIn(carets: Array<{ user: string; at: DraftCaret }>) {
+    return carets.map(({ user, at }) => ({
+      user,
+      file: at.file,
+      heading: this.#live.heading(at.file, Math.min(at.anchor, at.head)),
+    }))
   }
 
   /** What a suggestion on this range of the latest version's plain text would replace. */
@@ -2687,10 +2745,12 @@ export class IdeaService {
       caller: Caller
       idea: Idea
       stored: { hashes: Map<string, string>; bytes: Map<string, number> }
-      steps: Array<{ step: number; command: unknown; addresses: string[] }>
+      steps: Array<{ step: number; command: unknown; addresses: string[]; authors?: Caller[] }>
       outcomes: CommentOutcome[]
     },
   ): Promise<void> {
+    const authorsOf = (step: { authors?: Caller[] }) => step.authors ?? [v.caller]
+    const authors = v.steps.length > 0 ? distinctCallers(v.steps.flatMap(authorsOf)) : [v.caller]
     await tx
       .insertInto('versions')
       .values({
@@ -2700,6 +2760,7 @@ export class IdeaService {
         created_by: JSON.stringify(v.caller),
         how: v.how,
         next_id: v.idea.nextId,
+        authors: JSON.stringify(authors),
       })
       .execute()
     for (const file of v.idea.files) {
@@ -2723,6 +2784,7 @@ export class IdeaService {
           step: step.step,
           command: JSON.stringify(step.command),
           addresses: JSON.stringify(step.addresses),
+          authors: JSON.stringify(authorsOf(step)),
         })
         .execute()
     }
@@ -2845,7 +2907,7 @@ const Q = {
   versions: prepared<Record<string, never>>()((db: Kysely<IdeaDB>) =>
     db
       .selectFrom('versions as v')
-      .select(['v.number', 'v.parent', 'v.created_at', 'v.created_by', 'v.how'])
+      .select(['v.number', 'v.parent', 'v.created_at', 'v.created_by', 'v.how', 'v.authors'])
       .select((eb) =>
         eb
           .selectFrom('steps as s')
