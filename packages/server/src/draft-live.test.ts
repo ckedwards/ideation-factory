@@ -201,6 +201,28 @@ test('a version made around the draft isn’t a commit, and a discard is announc
   ana.ws.close()
 }, 30_000)
 
+test('a version forced over the draft overwrites its words there, and says how many changes it overwrote', async () => {
+  const riley = await signIn(app, name('riley'))
+  const api = client(riley.jwt)
+  const { idea } = await api.createIdea({ title: 'Forced', files: [{ path: 'plan.md', content: PLAN }] })
+  const ana = connect(idea, riley.jwt)
+  await ana.next('ready')
+  ana.send({ type: 'open', file: 'f1' })
+  const doc = schema.nodeFromJSON((await ana.next('opened')).doc)
+  ana.send({ type: 'steps', file: 'f1', version: 0, steps: typing(doc, 15, ' Soon.'), client: 'ana' })
+  await ana.next('steps')
+  const { files } = await api.getDraft({ idea })
+  const block = files[0]!.units.find((u) => u.source.startsWith('Ship it'))!
+  const batch = { base: 1, steps: [{ command: 'replace' as const, in: block.id, old: 'Ship it.', new: 'Hold it.' }] }
+  await expect(api.edit({ idea, batch })).rejects.toMatchObject({ code: 'draft_outdated' })
+  await api.edit({ idea, batch, overwriteDraft: true })
+  // the paragraph back to the version's words, by the server's steps, then who did it and how much went
+  expect(await ana.next('steps')).toMatchObject({ clients: ['server'] })
+  expect(await ana.next('version')).toMatchObject({ version: 2, committed: false, overwrote: 1 })
+  expect((await api.getDraft({ idea })).files[0]!.content).toBe('# Plan\n\nHold it.\n')
+  ana.ws.close()
+}, 30_000)
+
 test('someone who can only view the idea, or nobody, is closed out', async () => {
   const riley = await signIn(app, name('riley'))
   const sam = await signIn(app, name('sam'))

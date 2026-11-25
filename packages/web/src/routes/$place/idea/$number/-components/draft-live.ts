@@ -25,8 +25,11 @@ export interface DraftLiveDeps {
   open: (path: string) => WebSocket
   /** The session's token, fresh. */
   token: () => Promise<string>
-  /** A version was made, by whom: the draft committed (`committed`), or one made around it. */
-  onVersion?: (version: number, by: Caller, committed: boolean) => void
+  /**
+   * A version was made, by whom: the draft committed (`committed`), or one made around it, which
+   * overwrote `overwrote` of the draft's changes.
+   */
+  onVersion?: (version: number, by: Caller, committed: boolean, overwrote: number) => void
   /** Someone discarded the draft. */
   onDiscarded?: (by: Caller) => void
   /** Edit access is gone, or the idea. */
@@ -363,7 +366,7 @@ export class DraftLive {
         return
       }
       case 'version':
-        this.#deps.onVersion?.(event.version, event.by, event.committed)
+        this.#deps.onVersion?.(event.version, event.by, event.committed, event.overwrote)
         return
       case 'discarded':
         this.#deps.onDiscarded?.(event.by)

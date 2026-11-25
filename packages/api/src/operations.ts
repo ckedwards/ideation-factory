@@ -174,7 +174,7 @@ export const operations = {
     name: 'sync',
     summary: 'Upload edited files',
     description:
-      "Uploads edited copies of files as a new version, re-anchoring comments through the diff. If it would make changes in the idea's draft outdated, it's refused with draft_outdated, naming them: send it again with `outdateDraft` to confirm. Each existing file must give the hash it was edited from (its base); if that isn't the latest, the upload is refused with pull_first. New files have no `file` or `base`. `force` uploads anyway, so newer changes show as undone. Editing with commands keeps comments more exactly than an upload.",
+      "Uploads edited copies of files as a new version, re-anchoring comments through the diff. If it changes blocks the idea's draft has also changed, it's refused with draft_outdated, naming those changes: read the draft (get_draft) and send your changes into it with change_draft instead, so they land on top of everyone's; or, only to throw the draft's away, send it again with `overwriteDraft`, which overwrites them for everyone in the draft (and tells them). Each existing file must give the hash it was edited from (its base); if that isn't the latest, the upload is refused with pull_first. New files have no `file` or `base`. `force` uploads anyway, so newer changes show as undone. Editing with commands keeps comments more exactly than an upload.",
     method: 'POST',
     path: '/ideas/{idea}/sync',
     kind: 'write',
@@ -194,8 +194,8 @@ export const operations = {
       force: z.boolean().optional(),
       /** The git branch (and repository) synced from: the idea's git hint becomes this. */
       gitHint: GitHint.optional(),
-      /** Upload even though it makes changes in the idea's draft outdated (draft_outdated said which). */
-      outdateDraft: z.boolean().optional(),
+      /** Upload even though it overwrites changes in the idea's draft (draft_outdated said which): a force push. */
+      overwriteDraft: z.boolean().optional(),
     }),
     output: VersionResult,
   }),
@@ -226,15 +226,15 @@ export const operations = {
     mcp: true,
     summary: 'Apply an edit batch',
     description:
-      "If it would make changes in the idea's draft outdated, it's refused with draft_outdated, naming them: send it again with `outdateDraft` to confirm. Applies a batch of edit commands (replace, insert, delete, move, rename-heading, set-section, and file commands) as one new version. All or nothing. If the idea moved on since the batch's base, it's replayed onto the latest version; any step that no longer applies makes it a conflict, with nothing changed. Steps can name the comments they address.",
+      "If it changes blocks the idea's draft has also changed, it's refused with draft_outdated, naming those changes: read the draft (get_draft) and send your changes into it with change_draft instead, so they land on top of everyone's; or, only to throw the draft's away, send it again with `overwriteDraft`, which overwrites them for everyone in the draft (and tells them). Applies a batch of edit commands (replace, insert, delete, move, rename-heading, set-section, and file commands) as one new version. All or nothing. If the idea moved on since the batch's base, it's replayed onto the latest version; any step that no longer applies makes it a conflict, with nothing changed. Steps can name the comments they address.",
     method: 'POST',
     path: '/ideas/{idea}/edits',
     kind: 'write',
     input: z.strictObject({
       idea: IdeaId,
       batch: Batch,
-      /** Apply it even though it makes changes in the idea's draft outdated (draft_outdated said which). */
-      outdateDraft: z.boolean().optional(),
+      /** Apply it even though it overwrites changes in the idea's draft (draft_outdated said which): a force push. */
+      overwriteDraft: z.boolean().optional(),
     }),
     output: VersionResult,
   }),

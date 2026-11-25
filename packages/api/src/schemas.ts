@@ -267,13 +267,17 @@ export const LiveEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('status'), status: IdeaStatus, change: StatusChange, by: Caller }),
   /** A verdict given or dismissed: the reviewer's verdict as it stands. */
   z.object({ type: z.literal('review'), review: Review, by: Caller }),
-  /** A new version: its files and where each comment is have changed. `committed` when it's the draft, committed. */
+  /**
+   * A new version: its files and where each comment is have changed. `committed` when it's the draft,
+   * committed; `overwrote`, how many of the draft's changes one made around it overwrote.
+   */
   z.object({
     type: z.literal('version'),
     version: z.number().int(),
     how: VersionHow,
     by: Caller,
     committed: z.boolean(),
+    overwrote: z.number().int(),
   }),
 ])
 export type LiveEvent = z.infer<typeof LiveEvent>
@@ -383,8 +387,17 @@ export const DraftLiveEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('gone'), file: DraftFileId }),
   /** Your steps weren't taken, and why; they aren't to be sent again as they are. */
   z.object({ type: z.literal('refused'), file: DraftFileId, message: z.string() }),
-  /** A version was made: the draft committed (`committed`), or one made around it. */
-  z.object({ type: z.literal('version'), version: z.number().int(), by: Caller, committed: z.boolean() }),
+  /**
+   * A version was made: the draft committed (`committed`), or one made around it, which overwrote
+   * `overwrote` of the draft's changes (their blocks now have its words).
+   */
+  z.object({
+    type: z.literal('version'),
+    version: z.number().int(),
+    by: Caller,
+    committed: z.boolean(),
+    overwrote: z.number().int(),
+  }),
   /** Someone discarded the draft: every file is back to the latest version. */
   z.object({ type: z.literal('discarded'), by: Caller }),
 ])

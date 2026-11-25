@@ -213,6 +213,14 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
       ours.current.add(committed)
       setNote(`Committed as v${committed}.`)
     },
+    // a version made around the draft overwrote some of it: said here, not as "just came in"
+    onOverwritten: (made, name, changes) => {
+      ours.current.add(made)
+      setToast({
+        message: `${name} overwrote ${changes === 1 ? '1 change' : `${changes} changes`} in the draft with version ${made}.`,
+        action: { label: 'See it', onAction: () => void navigate({ href: links.files({ v: made, file: path }) }) },
+      })
+    },
     // someone else committed while you were in the draft: said here, not as "just came in"
     onTheirCommit: (committed, name) => {
       ours.current.add(committed)

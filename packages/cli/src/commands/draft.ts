@@ -59,15 +59,15 @@ async function people(names: Names, callers: Array<{ user: string }>): Promise<s
 }
 
 /**
- * Sends a write that makes a version. If the server says it would make
- * changes in the idea's draft outdated, a person at a terminal is shown them
- * and asked; otherwise it stops, saying to pass --outdate-draft. Null if they
- * said no: nothing changed.
+ * Sends a write that makes a version. If the server says it would overwrite
+ * changes in the idea's draft (a force push: everyone in the draft loses them,
+ * and is told), a person at a terminal is shown them and asked; otherwise it
+ * stops, saying to pass --overwrite-draft. Null if they said no: nothing changed.
  */
 export async function confirmingDraft<T>(
   ctx: Context,
   confirmed: boolean,
-  send: (outdateDraft: boolean) => Promise<T>,
+  send: (overwriteDraft: boolean) => Promise<T>,
 ): Promise<T | null> {
   try {
     return await send(confirmed)
@@ -87,19 +87,19 @@ export async function confirmingDraft<T>(
     const them = changes.length === 1 ? 'it' : 'them'
     if (!ctx.io.interactive || ctx.json) {
       throw new CliError(
-        `${error.message}:\n${lines.join('\n')}\nPass --outdate-draft to go ahead, making ${them} outdated.`,
+        `${error.message}:\n${lines.join('\n')}\nPass --overwrite-draft to overwrite ${them} for everyone in the draft.`,
         EXIT.draftOutdated,
         'draft_outdated',
         error.details,
       )
     }
     ctx.say(
-      `This would make ${changes.length === 1 ? 'a change' : `${changes.length} changes`} in the idea's draft outdated:`,
+      `This would overwrite ${changes.length === 1 ? 'a change' : `${changes.length} changes`} in the idea's draft, for everyone in it:`,
     )
     for (const line of lines) {
       ctx.say(line)
     }
-    if (!(await ctx.io.confirm(`Go ahead, making ${them} outdated?`))) {
+    if (!(await ctx.io.confirm(`Overwrite ${them}?`))) {
       ctx.say('Nothing changed.')
       return null
     }

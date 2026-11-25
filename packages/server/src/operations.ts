@@ -498,7 +498,7 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
             files: input.files,
             ...(input.deleted ? { deleted: input.deleted } : {}),
             ...(input.force !== undefined ? { force: input.force } : {}),
-            ...(input.outdateDraft ? { outdateDraft: true } : {}),
+            ...(input.overwriteDraft ? { overwriteDraft: true } : {}),
             ...(input.gitHint ? { gitHint: input.gitHint } : {}),
           },
           version,
@@ -524,7 +524,7 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         write(
           input.idea,
           context,
-          { type: 'edit', batch: input.batch, ...(input.outdateDraft ? { outdateDraft: true } : {}) },
+          { type: 'edit', batch: input.batch, ...(input.overwriteDraft ? { overwriteDraft: true } : {}) },
           version,
         ),
       ),

@@ -159,8 +159,8 @@ export const IdeaWrite = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('resolve'), comment: z.string(), resolved: z.boolean() }),
   /** The caller opened this version's document: kept if it's the latest they have. */
   z.strictObject({ type: z.literal('seen'), version: z.number().int().positive() }),
-  /** `outdateDraft`: make the version even though it makes changes in the draft outdated. */
-  z.strictObject({ type: z.literal('edit'), batch: Batch, outdateDraft: z.boolean().optional() }),
+  /** `overwriteDraft`: make the version even though it overwrites changes in the draft (a force push). */
+  z.strictObject({ type: z.literal('edit'), batch: Batch, overwriteDraft: z.boolean().optional() }),
   z.strictObject({
     type: z.literal('upload'),
     files: z
@@ -178,7 +178,7 @@ export const IdeaWrite = z.discriminatedUnion('type', [
     force: z.boolean().optional(),
     /** Where in git it was synced from: replaces the idea's git hint. */
     gitHint: schemas.GitHint.optional(),
-    outdateDraft: z.boolean().optional(),
+    overwriteDraft: z.boolean().optional(),
   }),
 ])
 export type IdeaWrite = z.infer<typeof IdeaWrite>
@@ -279,8 +279,14 @@ export type ThreadShape = CommentShape & {
  * reading the comments again.
  */
 export type IdeaEvent =
-  /** A new version; `committed` when it's the draft committed, not one made around it */
-  | { name: 'version'; payload: { version: number; how: VersionHow; by: Caller; committed: boolean } }
+  /**
+   * A new version; `committed` when it's the draft committed, not one made around it; `overwrote`, how
+   * many of the draft's changes one made around it overwrote (confirmed by its maker)
+   */
+  | {
+      name: 'version'
+      payload: { version: number; how: VersionHow; by: Caller; committed: boolean; overwrote: number }
+    }
   | { name: 'comment'; payload: { thread: ThreadShape; by: Caller } }
   | { name: 'reply'; payload: { parent: string; reply: CommentShape; by: Caller } }
   | { name: 'resolved'; payload: { comment: string; resolved: boolean; by: Caller } }
@@ -643,7 +649,7 @@ export class IdeaService {
     const result: WriteResult = { ok: true, value: { kind: 'created', version: 1 } }
     const stored = await this.#storeContents(idea)
     const events: IdeaEvent[] = [
-      { name: 'version', payload: { version: 1, how: 'created', by: request.caller, committed: false } },
+      { name: 'version', payload: { version: 1, how: 'created', by: request.caller, committed: false, overwrote: 0 } },
     ]
     await this.#transaction(async (tx) => {
       await tx
@@ -2084,7 +2090,7 @@ export class IdeaService {
     )
     const steps = write.batch.steps.map((command, step) => ({ step, command, addresses: command.addresses ?? [] }))
     return this.#newVersion(request, meta, latest, 'commands', ok.idea, ok.comments, steps, ok.steps, {
-      outdateDraft: write.outdateDraft === true,
+      overwriteDraft: write.overwriteDraft === true,
     })
   }
 
@@ -2137,7 +2143,7 @@ export class IdeaService {
     const ok = applied as Extract<typeof applied, { ok: true }>
     return this.#newVersion(request, meta, latest, 'upload', ok.idea, ok.comments, [], [], {
       ...(write.gitHint ? { gitHint: write.gitHint } : {}),
-      outdateDraft: write.outdateDraft === true,
+      overwriteDraft: write.overwriteDraft === true,
     })
   }
 
@@ -2157,8 +2163,12 @@ export class IdeaService {
       decide?: { ids: string[]; decision: Decision }
       /** Committing the draft: it's emptied with the new version. */
       clearDraft?: boolean
-      /** Make the version even if changes in the draft would become outdated (confirmed by the caller). */
-      outdateDraft?: boolean
+      /**
+       * Make the version even though it changes blocks the draft has changed, overwriting the draft's
+       * words in them (confirmed by the caller: a "force push", the escape hatch). Normally the
+       * difference is resolved on the caller's machine and sent as changes on top of the draft.
+       */
+      overwriteDraft?: boolean
     } = {},
   ) {
     const number = meta.latest + 1
@@ -2168,9 +2178,11 @@ export class IdeaService {
       comments: outcomes.flatMap((o) => (o.state !== 'outdated' && o.anchor ? [{ id: o.id, anchor: o.anchor }] : [])),
     }
     // the draft, moved onto the new version: committed, it's the version itself; made around it, its
-    // changes that still apply are in it, and those this version outdates are held, saying why
+    // changes that still apply are in it, and those this version changed too are overwritten by it
+    // (it's refused unless the caller confirms that), in everyone's editor, and everyone's told
     const state = await this.#draftState(latest.idea, true)
     let draft: NextDraft | null = null
+    let overwrote = 0
     if (more.clearDraft) {
       const before = await this.#derive(latest.idea, latest.comments, state, request.caller)
       draft = await this.#nextDraft(request, on, state, before, {
@@ -2186,11 +2198,11 @@ export class IdeaService {
       const overtaken = before.entries.filter(
         (e) => after.problems[e.key] !== undefined && before.built.problems[e.key] === undefined,
       )
-      if (overtaken.length > 0 && !more.outdateDraft) {
+      if (overtaken.length > 0 && !more.overwriteDraft) {
         const n = overtaken.length
         refuse(
           'draft_outdated',
-          `this version would make ${n === 1 ? 'a change' : `${n} changes`} in the draft outdated; confirm to make it anyway`,
+          `this version changes what ${n === 1 ? 'a change' : `${n} changes`} in the draft also changed: resolve it against the draft and send it as changes to the draft, or confirm to overwrite ${n === 1 ? 'it' : 'them'}`,
           {
             changes: overtaken.map((e) => ({
               key: e.key,
@@ -2201,20 +2213,19 @@ export class IdeaService {
           },
         )
       }
-      const held = [
-        ...state.held,
-        ...overtaken
-          .filter((e) => e.kind === 'derived')
-          .map((e) => ({ key: e.key, change: e.change, by: e.by, at: e.at })),
-      ]
-      const heldKeys = new Set(held.map((h) => h.key))
-      const kept = before.entries.filter((e) => !heldKeys.has(e.key))
+      // overwritten: out of the draft, so their blocks take the version's words; a suggestion accepted
+      // into the draft and overwritten is open again
+      const gone = new Set(overtaken.map((e) => e.key))
+      const heldKeys = new Set(state.held.map((h) => h.key))
+      const kept = before.entries.filter((e) => !heldKeys.has(e.key) && !gone.has(e.key))
+      const reopened = new Set(overtaken.flatMap((e) => (e.change.kind === 'suggestion' ? [e.change.comment] : [])))
       const rebased = await this.#core.buildDraft(this.id, idea, on.comments, kept.map(plainEntry))
       draft = await this.#nextDraft(request, on, state, before, {
         files: rebased.files,
-        suggestions: state.suggestions,
-        held,
+        suggestions: state.suggestions.filter((s) => !reopened.has(s.comment)),
+        held: state.held,
       })
+      overwrote = overtaken.length
     }
     const authorsOf = new Map(steps.map((s) => [s.step, s.authors ?? [request.caller]]))
     const result: WriteResult = {
@@ -2230,7 +2241,10 @@ export class IdeaService {
     const events: IdeaEvent[] = [
       // the documents' steps onto the new version first, so editors have them when it's announced
       ...(draft?.events ?? []),
-      { name: 'version', payload: { version: number, how, by: request.caller, committed: more.clearDraft === true } },
+      {
+        name: 'version',
+        payload: { version: number, how, by: request.caller, committed: more.clearDraft === true, overwrote },
+      },
       ...(decide?.ids ?? []).map((comment): IdeaEvent => ({
         name: 'decided',
         payload: { comment, decision: decide!.decision, by: request.caller },

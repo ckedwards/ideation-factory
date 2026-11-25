@@ -10,7 +10,7 @@ import { describeOutcomes } from './output.ts'
 
 export function sync(
   ctx: Context,
-  flags: { idea?: string; force?: boolean; outdateDraft?: boolean },
+  flags: { idea?: string; force?: boolean; overwriteDraft?: boolean },
   path: string | undefined,
 ): Promise<number> {
   return ctx.locked(flags.idea, ({ id, state }) => run(ctx, id, state, flags, path))
@@ -20,7 +20,7 @@ async function run(
   ctx: Context,
   id: string,
   state: IdeaState,
-  flags: { force?: boolean; outdateDraft?: boolean },
+  flags: { force?: boolean; overwriteDraft?: boolean },
   path: string | undefined,
 ): Promise<number> {
   const scope = scopeFrom(ctx.ws, ctx.io.cwd, path)
@@ -60,7 +60,7 @@ async function run(
   }
 
   const hint = gitHint(ctx.ws)
-  const result = await confirmingDraft(ctx, flags.outdateDraft === true, (outdateDraft) =>
+  const result = await confirmingDraft(ctx, flags.overwriteDraft === true, (overwriteDraft) =>
     ctx.api.sync({
       idea: id,
       files,
@@ -68,7 +68,7 @@ async function run(
       ...(flags.force ? { force: true } : {}),
       // the server remembers where it was last synced from, for other machines
       ...(hint ? { gitHint: hint } : {}),
-      ...(outdateDraft ? { outdateDraft } : {}),
+      ...(overwriteDraft ? { overwriteDraft } : {}),
     }),
   )
   if (!result) {
