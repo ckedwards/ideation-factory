@@ -1,10 +1,12 @@
-// Editing the idea's draft, in two places. The panel beside the document: its
-// changes, the faces of who typed in each, "Undo this change", and why one is
-// outdated if it is; and what committing would do to the comments. The actions,
-// in the idea's bar while the editor's open (IdeaMode): committing it as one
-// version, previewing it, discarding it, and closing the editor. The draft is
-// everyone's who can edit (docs/handoff-live-editing.md, step 5): with anyone
-// else in it, committing first names who it takes from, and discarding asks first.
+// Editing the idea's draft. The actions, in the idea's bar while the editor's
+// open (IdeaMode, or the focus view's top line): the draft's changes, committing
+// it as one version, previewing it, discarding it, and closing the editor. The
+// changes are for when you want them, not beside the page: a button opens them in
+// a dialog (the panel: each change, the faces of who typed in it, "Undo this
+// change", why one is outdated if it is, and what committing would do to the
+// comments). The draft is everyone's who can edit (docs/handoff-live-editing.md,
+// step 5): with anyone else in it, committing first names who it takes from, and
+// discarding asks first.
 import { useState } from 'react'
 import { AvatarStack, Button, Dialog, Section, Stack, type Person } from '@ideaf/ui'
 import './EditPanel.css'
@@ -136,11 +138,23 @@ export function EditActions(props: EditPanelProps) {
   const { changes, together } = props
   const [discarding, setDiscarding] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const [listing, setListing] = useState(false)
   const outdated = changes.filter((c) => c.problem).length
   // anything typed counts at once, before its save is in
   const changed = changes.length > 0 || props.unsaved === true
   return (
     <>
+      {changes.length > 0 && (
+        <Button
+          variant="ghost"
+          className={outdated > 0 ? 'edit-changes is-outdated' : 'edit-changes'}
+          aria-haspopup="dialog"
+          onClick={() => setListing(true)}
+        >
+          {plural(changes.length, 'change')}
+          {outdated > 0 && ` · ${outdated} outdated`}
+        </Button>
+      )}
       <Button
         variant="primary"
         disabled={!changed || outdated > 0 || props.committing}
@@ -192,6 +206,9 @@ export function EditActions(props: EditPanelProps) {
           {changes.length === 1 ? '1 change' : `${changes.length} changes`}
           {together ? `, by ${namesOf(together.people)}` : ''}.
         </p>
+      </Dialog>
+      <Dialog open={listing} title="The draft’s changes" onClose={() => setListing(false)}>
+        <EditPanel {...props} />
       </Dialog>
       {together && (
         <Dialog

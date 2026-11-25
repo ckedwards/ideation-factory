@@ -117,3 +117,7 @@
   border: var(--hairline) solid var(--del-ink);
   border-radius: var(--radius);
 }
+/* the button that opens the draft's changes: says when some are outdated, as committing waits on them */
+.edit-changes.is-outdated {
+  color: var(--del-ink);
+}

@@ -85,7 +85,7 @@ export const WithADraft: Story = {
   },
 }
 
-// The draft open: its changes listed, and compared with any version from here
+// The draft open: compared with any version from here (its changes are a dialog, from the idea's bar)
 export const EditingTheDraft: Story = {
   args: {
     draft: {
@@ -95,13 +95,13 @@ export const EditingTheDraft: Story = {
       open: true,
       comparedWith: null,
       onCompare: fn(),
-      detail: <p>Edited “Field technicians lose signal underground.” · Riley Park</p>,
     },
   },
   play: async ({ args, canvasElement, userEvent }) => {
     const list = within(canvasElement)
     await expect(list.getByText('editing')).toBeVisible()
-    await expect(list.getByText(/Field technicians lose signal/)).toBeVisible()
+    // its changes aren't listed here
+    await expect(list.queryByText(/Field technicians lose signal/)).toBeNull()
     // no version's shown while the draft is
     await expect(list.queryByText('viewing')).toBeNull()
     await expect(list.getAllByRole('button', { name: 'Compare with the draft' })).toHaveLength(4)
