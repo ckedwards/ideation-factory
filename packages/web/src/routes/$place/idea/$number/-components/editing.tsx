@@ -158,7 +158,8 @@ export function useEditing(args: UseEditingArgs): Editing | null {
   const names = usePeople(present.map((p) => p.user))
   const namesKey = present.map((p) => `${p.user}=${names.get(p.user)?.name ?? ''}`).join('\n')
   useEffect(() => {
-    live?.setNames((user) => (user === args.me ? 'You (other window)' : (names.get(user)?.name ?? 'Someone')))
+    // your other window's caret is just "You": its flag is small, between the lines
+    live?.setNames((user) => (user === args.me ? 'You' : (names.get(user)?.name ?? 'Someone')))
     // by the names, not the map they came in
   }, [live, namesKey, args.me])
   const goingTo = useRef(0)

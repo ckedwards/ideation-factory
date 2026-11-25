@@ -518,7 +518,16 @@
 }
 
 /* ---- other people in a live draft (carets.ts): a caret in each one's color, their selection tinted ---- */
+/* How far a flag drops into the caret's box: from the top of the text's box to just above its capitals,
+   so it sits in the space between the lines rather than over the line above. A length in the text's
+   own size (registered, so it's worked out on the caret, then passed to the flag in pixels). */
+@property --live-drop {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
 .live-caret {
+  --live-drop: 0.38em;
   position: relative;
   margin-inline: -1px;
   border-inline-start: 2px solid var(--live-c);
@@ -528,7 +537,7 @@
 /* their name, always shown, in the space between the lines (carets.ts moves flags that would overlap) */
 .live-flag {
   position: absolute;
-  bottom: 100%;
+  bottom: calc(100% - var(--live-drop));
   left: -2px;
   padding: 0 0.35em;
   border-radius: 3px 3px 3px 0;
@@ -541,6 +550,10 @@
   line-height: 1.25;
   white-space: nowrap;
   user-select: none;
+}
+/* from the element's data, not its text, so the word the caret stands in stays one word */
+.live-flag::before {
+  content: attr(data-name);
 }
 .live-selection {
   background: color-mix(in srgb, var(--live-c) 24%, transparent);
