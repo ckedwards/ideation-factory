@@ -48,7 +48,7 @@ describe('creating an idea', () => {
     const summary = await service.summary()
     expect(summary).toMatchObject({ id: 'idea-1', title: 'Plan', owner: 'riley', status: 'draft', latest: 1 })
     expect(summary!.versions).toEqual([
-      { number: 1, parent: null, createdAt: expect.any(Number), by: OWNER, how: 'created', steps: 0 },
+      { number: 1, parent: null, createdAt: expect.any(Number), by: OWNER, how: 'created', steps: 0, authors: [OWNER] },
     ])
     const manifest = await service.files()
     expect(manifest).toEqual([{ file: 'f1', path: 'plan.md', hash: await contentHash(PLAN), bytes: PLAN.length }])
@@ -116,8 +116,9 @@ describe('editing with a batch', () => {
         step: 0,
         command: { command: 'replace', in: 'b3', old: 'brown', new: 'red', addresses: ['c1'] },
         addresses: ['c1'],
+        authors: [OWNER],
       },
-      { step: 1, command: { command: 'move', target: 's4', to: { start: 'f1' } }, addresses: [] },
+      { step: 1, command: { command: 'move', target: 's4', to: { start: 'f1' } }, addresses: [], authors: [OWNER] },
     ])
 
     const v2 = await service.comments(2)
@@ -859,6 +860,33 @@ describe('typing in the draft', () => {
       ['e-b3', 'riley'],
       ['e-b5', 'maya'],
     ])
+  })
+
+  test('a change is everyone who typed in it, and committing credits each step and the version to them', async () => {
+    const { service, sql, write } = await created()
+    const ana = await editor(service, 'ana')
+    const raj = await editor(service, 'raj', REVIEWER)
+    const first = await ana.type((tr) => tr.insertText('red', 17, 22))
+    await raj.take(first.events[0]!.payload as { from: number; steps: unknown[] })
+    // Raj adds to Ana's paragraph, then to the last one: "It might rain." is 34 to 48 now
+    await raj.type((tr) => tr.insertText(' Soon.', 48))
+    await raj.type((tr) => tr.insertText(' Indeed.', 25))
+    const draft = await service.draft()
+    expect(draft.changes.map((c) => [c.key, c.by.user, c.authors.map((a) => a.user)])).toEqual([
+      ['e-b3', 'maya', ['maya', 'riley']],
+      ['e-b5', 'maya', ['maya']],
+    ])
+
+    // Ana commits: the version is hers, and what's in it is everyone's who typed it
+    const committed = value(await write({ type: 'commit' }))
+    expect(committed).toMatchObject({ kind: 'version', version: 2 })
+    const steps = (committed as { steps: Array<{ authors: Caller[] }> }).steps
+    expect(steps.map((s) => s.authors)).toEqual([[REVIEWER, OWNER], [REVIEWER]])
+    expect((await service.steps(2)).map((s) => s.authors)).toEqual([[REVIEWER, OWNER], [REVIEWER]])
+    const v2 = (await service.summary())!.versions.at(-1)!
+    expect(v2).toMatchObject({ number: 2, by: OWNER, authors: [REVIEWER, OWNER] })
+    // the draft starts again from it, with nobody's typing in it
+    expect(await sql.execute('SELECT * FROM draft_authors')).toEqual([])
   })
 
   test('behind is answered from the document held, as it would be in its turn', async () => {

@@ -227,7 +227,8 @@ describe('ideaf comment suggest', () => {
     // rejects the third
     expect((await maya.ideaf('comment', 'accept', 'c1', '--idea', idea)).exit).not.toBe(0)
     expect((await r.ideaf('comment', 'accept', 'c1', 'c2')).out).toBe('Added c1, c2 to the draft.')
-    expect((await r.ideaf('draft', 'commit')).out).toContain('Committed the draft as v2.')
+    // credited to whoever added them to the draft: the owner, accepting
+    expect((await r.ideaf('draft', 'commit')).out).toContain(`Committed the draft as v2, by @${h('riley')}.`)
     expect((await r.ideaf('comment', 'reject', 'c3')).out).toBe('Rejected c3.')
     const plan = (await api(h('riley')).pull({ idea })).files.find((f) => f.path === 'docs/plan.md')!
     expect(plan.content).toContain('We should ship the **local mode** in Q3.')
@@ -255,7 +256,8 @@ describe('ideaf draft', () => {
     expect(shown).toContain('suggestion c1: "this quarter" → "in Q3"')
     expect((await api(h('riley')).getIdea({ idea })).latest).toBe(1)
 
-    expect((await r.ideaf('draft', 'commit')).out).toContain('Committed the draft as v2.')
+    // credited to whoever added them to the draft: the owner, accepting
+    expect((await r.ideaf('draft', 'commit')).out).toContain(`Committed the draft as v2, by @${h('riley')}.`)
     const files = (await api(h('riley')).pull({ idea })).files
     expect(files.find((f) => f.path === 'docs/plan.md')!.content).toContain('**offline mode** in Q3.')
     expect(files.find((f) => f.path === 'docs/notes.md')!.content).toContain('It may rain.')

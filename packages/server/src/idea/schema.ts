@@ -40,9 +40,12 @@ export interface IdeaDB {
     created_by: string
     how: 'created' | 'commands' | 'upload'
     next_id: number
+    /** Who made what's in it, as Callers in JSON: who typed in a committed draft's blocks, else its maker */
+    authors: string
   }
   version_files: { version: number; file: string; path: string; hash: string; bytes: number; unit_ids: string }
-  steps: { version: number; step: number; command: string; addresses: string }
+  /** A version's commands, each with who made it (`authors`, Callers in JSON): who typed in its blocks, for a committed draft */
+  steps: { version: number; step: number; command: string; addresses: string; authors: string }
   comments: {
     id: string
     parent: string | null
@@ -137,9 +140,9 @@ export const IDEA_COLUMNS = {
     'git_uri',
     'git_branch',
   ],
-  versions: ['number', 'parent', 'created_at', 'created_by', 'how', 'next_id'],
+  versions: ['number', 'parent', 'created_at', 'created_by', 'how', 'next_id', 'authors'],
   version_files: ['version', 'file', 'path', 'hash', 'bytes', 'unit_ids'],
-  steps: ['version', 'step', 'command', 'addresses'],
+  steps: ['version', 'step', 'command', 'addresses', 'authors'],
   comments: [
     'id',
     'parent',
@@ -198,7 +201,8 @@ const MIGRATIONS: Migration[] = [
       created_at INTEGER NOT NULL,
       created_by TEXT NOT NULL,
       how TEXT NOT NULL CHECK (how IN ('created', 'commands', 'upload')),
-      next_id INTEGER NOT NULL
+      next_id INTEGER NOT NULL,
+      authors TEXT NOT NULL
     )`,
     `CREATE TABLE version_files (
       version INTEGER NOT NULL REFERENCES versions (number),
@@ -214,6 +218,7 @@ const MIGRATIONS: Migration[] = [
       step INTEGER NOT NULL,
       command TEXT NOT NULL,
       addresses TEXT NOT NULL,
+      authors TEXT NOT NULL,
       PRIMARY KEY (version, step)
     )`,
     `CREATE TABLE comments (

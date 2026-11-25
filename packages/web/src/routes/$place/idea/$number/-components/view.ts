@@ -81,6 +81,16 @@ export function place(thread: Thread, file: FileView): Placement | null {
   }
 }
 
+/** A face for whoever did something: a person as they are, an agent by its name (its own key, apart from its person's). */
+export function personOf(caller: Caller, people: ReadonlyMap<string, Person>): Person {
+  if (caller.purpose === 'me') {
+    return people.get(caller.user) ?? { id: caller.user, name: 'Someone' }
+  }
+  const bot = caller.bot ?? 'bot'
+  const of = people.get(caller.user)?.name
+  return { id: `${caller.user}/${bot}`, name: caller.purpose === 'bot-for-me' && of ? `${bot} for ${of}` : bot }
+}
+
 /** Who did something: agent work is always labeled. Someone not loaded yet shows by ID until they are. */
 export function actorOf(caller: Caller, people: ReadonlyMap<string, Person>): Actor {
   const person = people.get(caller.user) ?? { id: caller.user, name: caller.user }

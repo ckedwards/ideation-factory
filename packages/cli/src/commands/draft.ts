@@ -20,7 +20,7 @@ export async function show(ctx: Context, flags: { idea?: string }): Promise<numb
   const n = draft.changes.length
   ctx.say(`The draft of ${idea}, on v${draft.version}: ${n} change${n === 1 ? '' : 's'}`)
   for (const c of draft.changes) {
-    const by = await names.label({ kind: 'user', id: c.by.user })
+    const by = await people(names, c.authors)
     ctx.say(`  ${c.key}  ${describe(c.change)} · ${by}${c.problem ? `\n        outdated: ${c.problem}` : ''}`)
   }
   const outdated = draft.changes.filter((c) => c.problem).length
@@ -33,7 +33,11 @@ export async function show(ctx: Context, flags: { idea?: string }): Promise<numb
 export async function commit(ctx: Context, flags: { idea?: string }): Promise<number> {
   const idea = await ctx.ideaId(flags.idea)
   const done = await ctx.api.commitDraft({ idea })
-  ctx.say(`Committed the draft as v${done.version}. Run \`ideaf pull\` to bring it into your files.`)
+  const by = await people(
+    new Names(ctx),
+    done.steps.flatMap((s) => s.authors),
+  )
+  ctx.say(`Committed the draft as v${done.version}, by ${by}. Run \`ideaf pull\` to bring it into your files.`)
   ctx.result({ idea, ...done })
   return EXIT.ok
 }
@@ -44,6 +48,14 @@ export async function discard(ctx: Context, flags: { idea?: string }): Promise<n
   ctx.say(`Discarded the draft of ${idea}.`)
   ctx.result({ idea, discarded: true })
   return EXIT.ok
+}
+
+/** Each person once, by name, in the order given: "Priya, Zoe and Riley". */
+async function people(names: Names, callers: Array<{ user: string }>): Promise<string> {
+  const labels = await Promise.all(
+    [...new Set(callers.map((c) => c.user))].map((id) => names.label({ kind: 'user', id })),
+  )
+  return labels.length > 1 ? `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}` : (labels[0] ?? 'nobody')
 }
 
 /**

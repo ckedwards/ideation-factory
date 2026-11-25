@@ -15,14 +15,21 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../../../api.ts'
 import { accessToken } from '../../../../../session.ts'
 import { DraftLive } from './draft-live.ts'
-import { type CommentOutcomeRow, EditActions, EditPanel, type EditPanelProps } from './EditPanel.tsx'
+import {
+  type CommentOutcomeRow,
+  type Contributor,
+  EditActions,
+  EditPanel,
+  type EditPanelProps,
+  type Together,
+} from './EditPanel.tsx'
 import { IdeaMode } from './IdeaFrame.tsx'
 import { DraftEditor } from './DraftEditor.tsx'
 import { blockRange, headingOffset, toSource } from './anchors.ts'
 import { usePeople } from './shared.tsx'
 import { draftQuery, filesQuery, ideaQuery } from './queries.ts'
 import type { DraftVersion } from './VersionList.tsx'
-import type { FileView, Placement, Thread } from './view.ts'
+import { type FileView, personOf, type Placement, type Thread } from './view.ts'
 
 export type Draft = Output<Operations['getDraft']>
 
@@ -48,6 +55,8 @@ export interface UseEditingArgs {
   onNote: (message: string) => void
   /** Committed as this version. */
   onCommitted: (version: number) => void
+  /** Someone else committed the draft as this version (named): what's typed now is the next one's. */
+  onTheirCommit?: (version: number, by: string) => void
 }
 
 /** What the editor shows of the comments: those the panel shows, the one that's active, and a mark clicked. */
@@ -100,6 +109,10 @@ export function useEditing(args: UseEditingArgs): Editing | null {
   const [live, setLive] = useState<DraftLive | null>(null)
   const notes = useRef(args.onNote)
   notes.current = args.onNote
+  const theirCommit = useRef(args.onTheirCommit)
+  theirCommit.current = args.onTheirCommit
+  const peopleRef = useRef(args.people)
+  peopleRef.current = args.people
   useEffect(() => {
     if (!args.open) {
       return
@@ -107,10 +120,20 @@ export function useEditing(args: UseEditingArgs): Editing | null {
     const connection = new DraftLive(idea, {
       open: (path) => new WebSocket(`${location.origin.replace(/^http/, 'ws')}${path}`),
       token: accessToken,
-      // a version made: the bar moves on to it, and the list of changes is read again
-      onVersion: () => {
+      // a version made: the bar moves on to it, and the list of changes is read again; someone
+      // else committing it is named (your own commit says so itself)
+      onVersion: (version, by, committed) => {
         void queryClient.invalidateQueries({ queryKey: ideaQuery(idea).queryKey, exact: true })
         void queryClient.invalidateQueries({ queryKey: draftQuery(idea).queryKey, exact: true })
+        if (committed && by.user !== args.me) {
+          theirCommit.current?.(version, personOf(by, peopleRef.current).name)
+        }
+      },
+      onDiscarded: (by) => {
+        void queryClient.invalidateQueries({ queryKey: draftQuery(idea).queryKey, exact: true })
+        if (by.user !== args.me) {
+          notes.current(`${personOf(by, peopleRef.current).name} discarded the draft.`)
+        }
       },
       onClosed: (why) =>
         notes.current(
@@ -125,7 +148,7 @@ export function useEditing(args: UseEditingArgs): Editing | null {
       connection.stop()
       setLive(null)
     }
-  }, [idea, args.open, queryClient])
+  }, [idea, args.open, args.me, queryClient])
   // who else is in the draft, named, and their carets named the same
   useSyncExternalStore(
     (changed) => live?.subscribe(changed) ?? (() => {}),
@@ -283,9 +306,11 @@ export function useEditing(args: UseEditingArgs): Editing | null {
     changes: draft.changes.map((c) => ({
       key: c.key,
       label: describe(c.change),
-      by: args.people.get(c.by.user)?.name ?? 'someone',
+      authors: c.authors.map((a) => personOf(a, args.people)),
       problem: c.problem,
     })),
+    together: together(draft, args.latestFiles, present, args.me, args.people),
+    onConfirming: () => void reread(),
     outcomes: draft.comments.map((o): CommentOutcomeRow => {
       const thread = args.threads.find((t) => t.id === o.id)
       const anchor = thread?.anchor
@@ -512,4 +537,49 @@ function title(source: string): string {
     .replace(/^\s*#{1,6}\s+/, '')
     .replace(/\s+#+\s*$/, '')
     .trim()
+}
+
+/**
+ * The draft as committing takes it, when it isn't only yours (the commit dialog): everyone who typed
+ * in its changes, with how many, other people first and you last, and where each other person is
+ * typing now. Null when nobody else is in the draft or has changes in it.
+ */
+function together(
+  draft: Draft,
+  latestFiles: Array<{ file: string; content: string }>,
+  present: Array<{ user: string }>,
+  me: string,
+  people: ReadonlyMap<string, Person>,
+): Together | null {
+  const byKey = new Map<string, Contributor>()
+  for (const change of draft.changes) {
+    for (const author of change.authors) {
+      const key = `${author.user}/${author.bot ?? ''}`
+      const had = byKey.get(key)
+      if (had) {
+        had.changes++
+      } else {
+        const you = author.user === me && author.purpose === 'me'
+        const typing = author.purpose === 'me' && !you ? draft.typing.find((t) => t.user === author.user) : undefined
+        byKey.set(key, {
+          key,
+          person: personOf(author, people),
+          changes: 1,
+          typingIn: typing ? (typing.heading ?? '') : null,
+          you,
+        })
+      }
+    }
+  }
+  const all = [...byKey.values()]
+  const others = all.filter((c) => !c.you)
+  if (others.length === 0 && !present.some((p) => p.user !== me)) {
+    return null
+  }
+  const latest = new Map(latestFiles.map((f) => [f.file, f.content]))
+  const drafted = new Set(draft.files.map((f) => f.file))
+  const files =
+    draft.files.filter((f) => latest.get(f.file) !== f.content).length +
+    [...latest.keys()].filter((f) => !drafted.has(f)).length
+  return { changes: draft.changes.length, files, people: [...others, ...all.filter((c) => c.you)] }
 }

@@ -27,6 +27,9 @@ import { batcher } from './batch.ts'
 import { directoryOf } from './pools.ts'
 import { DraftPresences, type Joined, PRESENCE_TTL_MS } from './presence.ts'
 
+/** How recently a window has to have typed to be typing "now", for the commit dialog. */
+const TYPING_NOW_MS = 5000
+
 /**
  * How long an idea waits before updating its row in the directory's index, so a
  * burst of activity (a bot posting many comments) is one index write, not many
@@ -98,6 +101,9 @@ export const idea = actor({
      * count already is answered at once, without waiting for a turn: it would be refused in it.
      */
     draftTyping: (c, typing: Typing): Promise<TypingResult> => {
+      if (typing.window) {
+        c.vars.presence.typed(typing.window, Date.now())
+      }
       const count = serviceOf(c).behind(typing.file, typing.version)
       if (count !== null) {
         return Promise.resolve({ kind: 'behind', version: count })
@@ -145,7 +151,13 @@ export const idea = actor({
     comments: (c, version?: number, viewer?: string | null) => read(() => serviceOf(c).comments(version, viewer)),
     steps: (c, version: number) => read(() => serviceOf(c).steps(version)),
     preview: (c, batch: unknown) => read(() => serviceOf(c).preview(batch)),
-    draft: (c) => read(() => serviceOf(c).draft()),
+    /** The draft, and who is typing in it now and where (presence is the actor's, in memory). */
+    draft: (c) =>
+      read(async () => {
+        const service = serviceOf(c)
+        const draft = await service.draft()
+        return { ...draft, typing: service.typingIn(c.vars.presence.typing(Date.now(), TYPING_NOW_MS)) }
+      }),
     reviews: (c, viewer?: string | null) => read(() => serviceOf(c).reviews(viewer)),
     suggestionSource: (c, file: string, start: number, end: number) =>
       read(() => serviceOf(c).suggestionSource(file, start, end)),

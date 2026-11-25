@@ -6,13 +6,15 @@
 // the editor; while it's open, it lists its changes, and is compared with any version from here, in
 // place of the editor, until it's back to editing.
 import type { ReactNode } from 'react'
-import { type Actor, ActorLabel, Button, Link, RelativeTime, Tag } from '@ideaf/ui'
+import { type Actor, ActorLabel, AvatarStack, Button, Link, type Person, RelativeTime, Tag } from '@ideaf/ui'
 import { plural } from '../../../../../plural.ts'
 import './VersionList.css'
 
 export interface VersionInfo {
   number: number
   by: Actor
+  /** Who made what's in it: for a committed draft, everyone who typed in it. */
+  authors?: Person[]
   at: number
   how: 'created' | 'commands' | 'upload'
   /** Edit commands in it, for how: 'commands'. */
@@ -124,6 +126,12 @@ export function VersionList({ versions, viewing, latest, base, viewHref, compare
             </div>
             <div className="version-meta">
               <ActorLabel actor={v.by} short />
+              {typedBy(v) && (
+                <span className="version-authors">
+                  <span className="visually-hidden">Typed by </span>
+                  <AvatarStack people={typedBy(v)!} max={5} />
+                </span>
+              )}
               <span className="version-how">{describe(v)}</span>
             </div>
             {editing
@@ -148,6 +156,13 @@ export function VersionList({ versions, viewing, latest, base, viewHref, compare
       })}
     </ol>
   )
+}
+
+/** Who typed in a committed draft, when it's more than whoever committed it; null otherwise. */
+function typedBy(v: VersionInfo): Person[] | null {
+  const authors = v.authors ?? []
+  const committer = v.by.kind === 'person' ? v.by.person.id : null
+  return authors.length > 1 || (authors.length === 1 && authors[0]!.id !== committer) ? authors : null
 }
 
 /** "Created", "Uploaded from files", "Edited with 3 commands". */

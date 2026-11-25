@@ -1,20 +1,42 @@
 // Editing the idea's draft, in two places. The panel beside the document: its
-// changes, who made each, Undo, and why one is outdated if it is; and what
-// committing would do to the comments. The actions, in the idea's bar while
-// the editor's open (IdeaMode): committing it as one version, previewing it,
-// discarding it, and closing the editor. The draft is everyone's who can edit,
-// so discarding asks first.
+// changes, the faces of who typed in each, "Undo this change", and why one is
+// outdated if it is; and what committing would do to the comments. The actions,
+// in the idea's bar while the editor's open (IdeaMode): committing it as one
+// version, previewing it, discarding it, and closing the editor. The draft is
+// everyone's who can edit (docs/handoff-live-editing.md, step 5): with anyone
+// else in it, committing first names who it takes from, and discarding asks first.
 import { useState } from 'react'
-import { Button, Dialog, Section, Stack } from '@ideaf/ui'
+import { AvatarStack, Button, Dialog, Section, Stack, type Person } from '@ideaf/ui'
 import './EditPanel.css'
 
 export interface ChangeRow {
   key: string
   label: string
-  /** Who made it. */
-  by: string
+  /** Who made it: everyone who typed in it, the last first. */
+  authors: Person[]
   /** Why it no longer applies (outdated), if it doesn't. */
   problem?: string | null | undefined
+}
+
+/** Someone with changes in the draft, for the commit dialog. */
+export interface Contributor {
+  key: string
+  person: Person
+  /** How many of the draft's changes they typed in. */
+  changes: number
+  /** The section they're typing in now ("Why"), "" if it has no heading; null if they aren't typing. */
+  typingIn: string | null
+  you: boolean
+}
+
+/**
+ * The draft as committing takes it, when it's not only yours: everyone with changes, other people
+ * first. Null when nobody else is in the draft or has changes in it: committing just goes ahead.
+ */
+export interface Together {
+  changes: number
+  files: number
+  people: Contributor[]
 }
 
 export interface CommentOutcomeRow {
@@ -34,6 +56,10 @@ export interface EditPanelProps {
   committing: boolean
   /** Typed on the page and not saved yet: Commit and Preview save it first, so they can go ahead. */
   unsaved?: boolean
+  /** Who else committing takes from; null if nobody. */
+  together?: Together | null
+  /** The commit dialog opened: what it shows is read again, so who's typing is now. */
+  onConfirming?: () => void
   onUndo: (key: string) => void
   onPreview: (on: boolean) => void
   onCommit: () => void
@@ -66,13 +92,16 @@ export function EditPanel(props: EditPanelProps) {
               <ol className="edit-panel-changes">
                 {changes.map((change) => (
                   <li key={change.key} className={change.problem ? 'has-problem' : undefined}>
-                    <span className="edit-panel-label">
-                      {change.label}
-                      <span className="edit-panel-by"> · {change.by}</span>
-                    </span>
+                    <span className="edit-panel-label">{change.label}</span>
                     <Button size="sm" variant="link" onClick={() => props.onUndo(change.key)}>
-                      Undo
+                      Undo this change
                     </Button>
+                    {change.authors.length > 0 && (
+                      <span className="edit-panel-by">
+                        <span className="visually-hidden">By </span>
+                        <AvatarStack people={change.authors} max={4} />
+                      </span>
+                    )}
                     {change.problem && <span className="edit-panel-problem">Outdated: {change.problem}</span>}
                   </li>
                 ))}
@@ -104,14 +133,26 @@ export function EditPanel(props: EditPanelProps) {
 
 /** Finishing an edit, in the idea's bar: commit, preview, discard (asking first), or close the editor. */
 export function EditActions(props: EditPanelProps) {
-  const { changes } = props
+  const { changes, together } = props
   const [discarding, setDiscarding] = useState(false)
+  const [confirming, setConfirming] = useState(false)
   const outdated = changes.filter((c) => c.problem).length
   // anything typed counts at once, before its save is in
   const changed = changes.length > 0 || props.unsaved === true
   return (
     <>
-      <Button variant="primary" disabled={!changed || outdated > 0 || props.committing} onClick={props.onCommit}>
+      <Button
+        variant="primary"
+        disabled={!changed || outdated > 0 || props.committing}
+        onClick={() => {
+          if (together) {
+            setConfirming(true)
+            props.onConfirming?.()
+          } else {
+            props.onCommit()
+          }
+        }}
+      >
         {props.committing ? 'Committing…' : `Commit as v${props.version + 1}`}
       </Button>
       <Button disabled={!changed} onClick={() => props.onPreview(!props.previewing)}>
@@ -148,9 +189,66 @@ export function EditActions(props: EditPanelProps) {
       >
         <p className="edit-panel-lead">
           Every change in the draft goes, for everyone who can edit it:{' '}
-          {changes.length === 1 ? '1 change' : `${changes.length} changes`}.
+          {changes.length === 1 ? '1 change' : `${changes.length} changes`}
+          {together ? `, by ${namesOf(together.people)}` : ''}.
         </p>
       </Dialog>
+      {together && (
+        <Dialog
+          open={confirming}
+          title={`Commit as v${props.version + 1}`}
+          onClose={() => setConfirming(false)}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setConfirming(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setConfirming(false)
+                  props.onCommit()
+                }}
+              >
+                Commit for everyone
+              </Button>
+            </>
+          }
+        >
+          <Stack gap={3}>
+            <p className="edit-panel-lead">
+              This takes the whole draft as it is now: {plural(together.changes, 'change')} in{' '}
+              {plural(together.files, 'file')}.
+            </p>
+            <ul className="commit-people">
+              {together.people.map((p) => (
+                <li key={p.key}>
+                  <AvatarStack people={[p.person]} />
+                  <span className="commit-person">
+                    {p.you ? 'You' : p.person.name}
+                    {p.typingIn !== null && (
+                      <span className="commit-typing">
+                        {' · '}
+                        {p.typingIn ? `typing in “${p.typingIn}” now` : 'typing now'}
+                      </span>
+                    )}
+                  </span>
+                  <span className="commit-count">{plural(p.changes, 'change')}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="commit-note">Anything typed after you commit stays in the draft for the next version.</p>
+          </Stack>
+        </Dialog>
+      )}
     </>
   )
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
+/** "Priya, Zoe and you": everyone with changes, as the commit dialog lists them. */
+function namesOf(people: Contributor[]): string {
+  const names = people.map((p) => (p.you ? 'you' : p.person.name))
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : (names[0] ?? 'nobody')
 }

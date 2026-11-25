@@ -102,7 +102,7 @@ describe('data survives migration', () => {
     expect(hash).toBe(await contentHash(source))
     const caller = JSON.stringify({ user: 'riley', bot: null, purpose: 'me' })
     await sql.execute("INSERT INTO idea VALUES ('i1', 'Plan', '', 'riley', 'draft', 1000, 1, 2, NULL, NULL)")
-    await sql.execute("INSERT INTO versions VALUES (1, NULL, 1000, ?, 'created', 4)", caller)
+    await sql.execute("INSERT INTO versions VALUES (1, NULL, 1000, ?, 'created', 4, ?)", caller, `[${caller}]`)
     await sql.execute(`INSERT INTO version_files VALUES (1, 'f1', 'plan.md', ?, ?, '["s2","b3"]')`, hash, source.length)
     await sql.execute(
       'INSERT INTO comments (id, parent, version, author, created_at, body) VALUES (?, NULL, 1, ?, 1001, ?)',
