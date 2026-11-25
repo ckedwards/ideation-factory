@@ -67,9 +67,11 @@ function caretElement(caret: Caret, style: string): HTMLElement {
   element.setAttribute('contenteditable', 'false')
   element.setAttribute('aria-hidden', 'true')
   element.dataset['presence'] = caret.id
+  // the name is drawn by CSS (content: attr(data-name)), not a text node: text in the widget would be
+  // read as part of the word it stands in, so the browser's spellchecker marks both halves of it
   const flag = document.createElement('span')
   flag.className = 'live-flag'
-  flag.textContent = caret.name
+  flag.dataset['name'] = caret.name
   element.append(flag)
   return element
 }
