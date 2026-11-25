@@ -5,7 +5,6 @@
 // The draft, if there is one, heads the list: what the next version will be. Reading, it opens in
 // the editor; while it's open, it lists its changes, and is compared with any version from here, in
 // place of the editor, until it's back to editing.
-import type { ReactNode } from 'react'
 import { type Actor, ActorLabel, AvatarStack, Button, Link, type Person, RelativeTime, Tag } from '@ideaf/ui'
 import { plural } from '../../../../../plural.ts'
 import './VersionList.css'
@@ -35,8 +34,6 @@ export interface DraftVersion {
   /** While it's open: the version it's compared with (null: it's being edited), and changing that. */
   comparedWith?: number | null
   onCompare?: (version: number | null) => void
-  /** While it's open: its changes, each with Undo, and where comments go. */
-  detail?: ReactNode
 }
 
 export interface VersionListProps {
@@ -98,7 +95,6 @@ export function VersionList({ versions, viewing, latest, base, viewHref, compare
                   </Button>
                 </div>
               )}
-          {draft.detail && <div className="version-detail">{draft.detail}</div>}
         </li>
       )}
       {versions.map((v) => {

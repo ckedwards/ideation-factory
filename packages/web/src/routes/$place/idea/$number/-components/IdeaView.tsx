@@ -480,7 +480,6 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
                         label: editor.label,
                         people: editor.people,
                         sheet: editor.sheet,
-                        panel: editor.panel,
                         actions: editor.actions,
                         close: editor.close,
                       }

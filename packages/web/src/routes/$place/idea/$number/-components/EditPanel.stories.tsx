@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect, fn, within } from 'storybook/test'
+import { expect, fn, waitFor, within } from 'storybook/test'
 import { EditActions, EditPanel, type Together } from './EditPanel.tsx'
 
 const riley = { id: 'u-riley', name: 'Riley Park' }
@@ -28,13 +28,11 @@ const together: Together = {
 const meta = {
   title: 'Ideas/EditPanel',
   component: EditPanel,
-  // as the page has them: the actions in the idea's bar, the panel beside the document
+  // as the page has them: the actions in the idea's bar (or the focus view's top line), the changes
+  // a dialog from there
   render: (args) => (
-    <div style={{ display: 'grid', gap: '1rem', maxWidth: '24rem' }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-        <EditActions {...args} />
-      </div>
-      <EditPanel {...args} />
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+      <EditActions {...args} />
     </div>
   ),
   args: {
@@ -63,15 +61,21 @@ type Story = StoryObj<typeof meta>
 export const Changes: Story = {
   play: async ({ args, canvasElement, userEvent }) => {
     const page = within(canvasElement)
-    await expect(page.getByText('3 changes')).toBeVisible()
-    await expect(page.getAllByRole('img', { name: 'Maya Chen' })[0]).toBeVisible()
-    await expect(page.getAllByRole('img', { name: 'Priya Natarajan' })[0]).toBeVisible()
-    await expect(page.getByText('stays, on changed text')).toBeVisible()
-    await expect(page.getByText('loses its text: outdated')).toBeVisible()
+    const body = within(canvasElement.ownerDocument.body)
+    // not beside the page: the count, which opens them
+    await expect(body.queryByRole('dialog')).toBeNull()
+    await userEvent.click(page.getByRole('button', { name: '3 changes' }))
+    const dialog = within(await body.findByRole('dialog', { name: 'The draft’s changes' }))
+    await expect(dialog.getAllByRole('img', { name: 'Maya Chen' })[0]).toBeVisible()
+    await expect(dialog.getAllByRole('img', { name: 'Priya Natarajan' })[0]).toBeVisible()
+    await expect(dialog.getByText('stays, on changed text')).toBeVisible()
+    await expect(dialog.getByText('loses its text: outdated')).toBeVisible()
     // comments that stay where they are aren't listed
-    await expect(page.queryByText('“oldest first”')).toBeNull()
-    await userEvent.click(page.getAllByRole('button', { name: 'Undo this change' })[1]!)
+    await expect(dialog.queryByText('“oldest first”')).toBeNull()
+    await userEvent.click(dialog.getAllByRole('button', { name: 'Undo this change' })[1]!)
     await expect(args.onUndo).toHaveBeenCalledWith('k2')
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(body.queryByRole('dialog')).toBeNull())
     await userEvent.click(page.getByRole('button', { name: 'Commit as v4' }))
     await expect(args.onCommit).toHaveBeenCalled()
   },
@@ -121,7 +125,8 @@ export const Empty: Story = {
   args: { changes: [], outcomes: [] },
   play: async ({ canvasElement }) => {
     const page = within(canvasElement)
-    await expect(page.getByText('No changes yet.')).toBeVisible()
+    // nothing to list: no count
+    await expect(page.queryByRole('button', { name: /changes?$/ })).toBeNull()
     await expect(page.getByRole('button', { name: 'Commit as v4' })).toBeDisabled()
   },
 }
@@ -142,10 +147,14 @@ export const Outdated: Story = {
   args: {
     changes: [changes[0]!, { ...changes[1]!, problem: 'that block has changed since; undo this, and edit it again' }],
   },
-  play: async ({ canvasElement }) => {
+  play: async ({ canvasElement, userEvent }) => {
     const page = within(canvasElement)
-    await expect(page.getByText(/Outdated: that block has changed/)).toBeVisible()
-    await expect(page.getByText('A change is outdated: undo or redo it to commit.')).toBeVisible()
+    const body = within(canvasElement.ownerDocument.body)
+    // the count says so, as Commit waits on it; the list says which, and why
     await expect(page.getByRole('button', { name: 'Commit as v4' })).toBeDisabled()
+    await userEvent.click(page.getByRole('button', { name: '2 changes · 1 outdated' }))
+    const dialog = within(await body.findByRole('dialog', { name: 'The draft’s changes' }))
+    await expect(dialog.getByText(/Outdated: that block has changed/)).toBeVisible()
+    await expect(dialog.getByText('A change is outdated: undo or redo it to commit.')).toBeVisible()
   },
 }

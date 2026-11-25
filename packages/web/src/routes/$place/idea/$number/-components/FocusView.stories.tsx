@@ -361,7 +361,7 @@ export const ScrollToTheLastSection: Story = {
 
 /**
  * Editing the draft here: Edit opens it, every sheet in the editor (a stand-in for DraftEditor, which
- * needs the server), the draft's panel and actions in place of the comments.
+ * needs the server), the draft's actions in the top line in place of the comments' switch.
  */
 function Editing(props: FocusViewProps & { onClose: () => void }) {
   const [open, setOpen] = useState(false)
@@ -375,7 +375,6 @@ function Editing(props: FocusViewProps & { onClose: () => void }) {
           ? {
               label: 'Editing the draft, on v1',
               sheet: (page) => <textarea aria-label={`Editing ${page}`} defaultValue="…" />,
-              panel: <p>No changes yet.</p>,
               actions: <button type="button">Commit as v2</button>,
               close: async () => {
                 props.onClose()
@@ -390,7 +389,7 @@ function Editing(props: FocusViewProps & { onClose: () => void }) {
 }
 
 // Edit opens the draft: each sheet's file in the editor, the comments' switch and threads gone, the
-// draft beside the sheets; leaving saves and shuts the editor first
+// draft's actions in the top line and nothing beside the sheets; leaving saves and shuts the editor first
 export const EditingTheDraft: Story = {
   args: { onClose: fn() } as never,
   render: (args) => <Editing {...(args as unknown as FocusViewProps & { onClose: () => void })} />,
@@ -401,8 +400,9 @@ export const EditingTheDraft: Story = {
     await expect(view.getByText('Editing the draft, on v1')).toBeVisible()
     await expect(view.getByRole('textbox', { name: 'Editing f1' })).toBeVisible()
     await expect(view.getByRole('textbox', { name: 'Editing f2' })).toBeVisible()
-    // the panel where the comments were, and no comments
-    await expect(view.getByRole('complementary', { name: 'The draft' })).toHaveTextContent('No changes yet.')
+    // the actions in the top line, and nothing beside the sheets: no panel, no comments
+    await expect(view.getByRole('button', { name: 'Commit as v2' })).toBeVisible()
+    await expect(view.queryByRole('complementary', { name: 'The draft' })).toBeNull()
     await expect(view.queryByRole('radiogroup', { name: 'Comments' })).toBeNull()
     await expect(region().querySelector('.comment-gutter')).toBeNull()
     await userEvent.click(view.getByRole('button', { name: /Exit focus view/ }))

@@ -39,7 +39,7 @@ export type FocusComments = 'off' | 'selected' | 'all'
 /** still: open from the start (its address opened directly), nothing to carry from. */
 export type FocusPhase = 'still' | 'entering' | 'open' | 'leaving'
 
-/** Editing the idea's draft here: the button that opens it, and, open, each sheet's editor and the panel. */
+/** Editing the idea's draft here: the button that opens it, and, open, each sheet's editor and the actions. */
 export interface FocusEditing {
   /** "Edit", or "Open the draft" when it has changes. */
   label: string
@@ -54,9 +54,7 @@ export interface FocusEditing {
     people?: ReactNode
     /** A page's file in the editor (or compared, previewing); null for one the draft hasn't got. */
     sheet: (page: string) => ReactNode
-    /** The draft's changes and what committing does to the comments. */
-    panel: ReactNode
-    /** Commit, Preview, Discard and Close editor. */
+    /** The draft's changes (a dialog), Commit, Preview, Discard and Close editor: in the top line. */
     actions: ReactNode
     /** What's typed saved, then the editor closed; false if something couldn't be saved. */
     close: () => Promise<boolean>
@@ -119,7 +117,7 @@ export function FocusView(props: FocusViewProps) {
   // focus view's own look: open (the ground, the sheets in place) and comments on
   const [open, setOpen] = useState(phase === 'still')
   const [mode, setMode] = useState<FocusComments>('off')
-  // editing, the panel's where the comments were
+  // editing, the comments are put away: the draft's actions are in the top line
   const editing = props.editing?.open ?? null
   const comments = mode !== 'off' && editing === null
   // no transitions for a change that's measured, not shown (comments off on the way out)
@@ -487,6 +485,7 @@ export function FocusView(props: FocusViewProps) {
             <>
               {editing.people}
               <span className="focus-editing-label">{editing.label}</span>
+              <span className="focus-edit-actions">{editing.actions}</span>
             </>
           ) : (
             props.editing && (
@@ -495,7 +494,7 @@ export function FocusView(props: FocusViewProps) {
               </Button>
             )
           )}
-          {/* editing, the panel's where the comments were */}
+          {/* editing, no comments: the draft's actions are here instead */}
           {editing === null && (
             <span className="focus-comments">
               <span className="focus-comments-label">
@@ -549,13 +548,6 @@ export function FocusView(props: FocusViewProps) {
           })}
         </ol>
       </nav>
-      {/* editing: the draft beside the sheets (before them, for a narrow screen, where it heads them) */}
-      {editing && (
-        <aside className="focus-edit" aria-label="The draft">
-          <div className="focus-edit-actions">{editing.actions}</div>
-          {editing.panel}
-        </aside>
-      )}
       <div className="focus-pages">
         {pages.map((page, i) => (
           <Row
@@ -565,7 +557,7 @@ export function FocusView(props: FocusViewProps) {
             page={page}
             tree={trees.get(page.id)!}
             comments={comments}
-            // editing, no comments beside the sheets: the draft's panel is there
+            // editing, no comments beside the sheets
             mode={editing ? 'off' : mode}
             carried={carried === page.id}
             current={page.id === current.page}

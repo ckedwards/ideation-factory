@@ -370,36 +370,16 @@ html[data-focus='open'] .idea-page-measure .prose {
 
 /* ---- narrower windows ---- */
 /* the page list only just fits beside the sheet and its threads */
-/* editing: the draft's panel on the right, where the comments were, staying as the sheets scroll */
 .focus-editing-label {
   color: var(--ink-2);
   font-weight: 600;
 }
-.focus-edit {
-  position: fixed;
-  top: var(--top);
-  right: var(--space-5);
-  z-index: 4;
-  /* as tall as it needs, up to the window's foot */
-  max-height: calc(100% - var(--top) - var(--space-5));
-  display: grid;
-  align-content: start;
-  gap: var(--space-4);
-  width: var(--note-w);
-  overflow-y: auto;
-  padding: var(--space-4);
-  border: var(--hairline) solid var(--rule);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  box-shadow: var(--shadow-sm);
-}
+/* editing: the draft's actions in the top line, beside who's in it */
 .focus-edit-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-2);
-}
-.focus-view.is-editing .focus-pages {
-  padding-right: calc(var(--note-w) + var(--space-5) * 2);
 }
 /* the sheets' toolbar, pinned under the top line as the Files page's is at the top of its pane, as
    wide as a sheet (FocusView measures where): the one sheet's being typed in, or else the one being
@@ -481,15 +461,6 @@ html[data-focus='open'] .idea-page-measure .prose {
 }
 /* one column: the sheet the window's width, and a page's threads listed under it, each quoting its text */
 @media (max-width: 62.5rem) {
-  /* the draft heads the sheets */
-  .focus-edit {
-    position: static;
-    width: auto;
-    margin: var(--space-2) var(--space-3) 0;
-  }
-  .focus-view.is-editing .focus-pages {
-    padding-right: var(--space-3);
-  }
   .focus-pages,
   .focus-view.has-comments .focus-pages {
     padding: var(--space-2) var(--space-3) var(--scroll-past);

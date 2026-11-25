@@ -19,7 +19,6 @@ import {
   type CommentOutcomeRow,
   type Contributor,
   EditActions,
-  EditPanel,
   type EditPanelProps,
   type Together,
 } from './EditPanel.tsx'
@@ -71,9 +70,7 @@ export interface Editing {
   document: (view: EditingView) => ReactNode
   /** Any file of the draft, edited (or, previewing, compared): a sheet of the focus view. */
   sheet: (file: string) => ReactNode
-  /** The draft's changes and what committing does to the comments, with Undo (EditPanel). */
-  panel: ReactNode
-  /** Commit, Preview, Discard and Close editor (EditActions). */
+  /** The draft's changes (a dialog: EditPanel), Commit, Preview, Discard and Close editor (EditActions). */
   actions: ReactNode
   /** "Editing the draft, on v3". */
   label: string
@@ -389,7 +386,6 @@ export function useEditing(args: UseEditingArgs): Editing | null {
           bare
         />
       ) : null,
-    panel: <EditPanel {...panelProps} />,
     actions: <EditActions {...panelProps} />,
     label,
     people,
@@ -401,7 +397,6 @@ export function useEditing(args: UseEditingArgs): Editing | null {
       open: true,
       comparedWith,
       onCompare: (version) => void saved().then((ok) => ok && setComparedWith(version)),
-      detail: <EditPanel {...panelProps} />,
     },
     places: placed.places,
     // the editor's words and actions in the idea's bar, while it's open
