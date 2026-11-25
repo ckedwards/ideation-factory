@@ -27,7 +27,7 @@ Every window typing 3 keystrokes a second, each crowd in a new idea, two runs at
 
 ## What limits one draft
 
-1. **A Rivet bug: a one-second pause in every new idea.** At its database's 1,025th commit, Rivet's depot client refuses a write twice, 500 ms apart, because it never learned that the engine had applied the earlier ones. It happens once per idea, whatever the crowd's size. The cause and a minimal repro are in [rivet-backlog-stall-repro](https://github.com/ckedwards/rivet-backlog-stall-repro); [rivet-dev/rivet#5963](https://github.com/rivet-dev/rivet/pull/5963) fixes it and is open, unreviewed. It's on 3.1.1 and on Rivet's `main` (3.1.2-rc.7).
+1. **A Rivet bug: a one-second pause in every new idea.** At its database's 1,025th commit, Rivet's depot client refuses a write twice, 500 ms apart, because it never learned that the engine had applied the earlier ones. It happens once per idea, whatever the crowd's size. It's reported as [rivet-dev/rivet#6031](https://github.com/rivet-dev/rivet/issues/6031), with the cause and a minimal repro in [rivet-backlog-stall-repro](https://github.com/ckedwards/rivet-backlog-stall-repro); [rivet-dev/rivet#5963](https://github.com/rivet-dev/rivet/pull/5963) fixes it and is open, unreviewed. It's on 3.1.1 and on Rivet's `main` (3.1.2-rc.7).
 2. **The behind loop: the p95.** A send that arrives after someone else's typing has landed is answered "behind": the window receives those steps, rebases and sends again. At 40 windows two thirds of sends are behind, so a keystroke takes about three sends, and the p95 goes from 16 ms at 20 windows to about 48 ms. The odds of being behind grow with the windows, the typing rate and the round trip together.
 3. **Sending everything to everyone: the ceiling.** From 20 to 40 windows, the idea's app process went from about 22% to 55% of a core, and its engine from about 18% to 43%. The actor runs on one JS thread, so on that trend it reaches a full core at about 55 to 60 windows. That's an estimate: nothing past 40 was run on AWS.
 
@@ -55,4 +55,4 @@ In this order, each step deciding whether the next is worth it:
 - The limit and its default: `packages/server/src/limits.ts`.
 - The crowd test and the laptop results: `packages/load/src/draft-crowd.ts`, `packages/load/README.md` (A crowd in one draft).
 - The deployment: `packages/load/DEPLOYMENT.md`.
-- The Rivet bug: [rivet-backlog-stall-repro](https://github.com/ckedwards/rivet-backlog-stall-repro), [rivet-dev/rivet#5963](https://github.com/rivet-dev/rivet/pull/5963).
+- The Rivet bug: [rivet-dev/rivet#6031](https://github.com/rivet-dev/rivet/issues/6031) (the issue), [rivet-backlog-stall-repro](https://github.com/ckedwards/rivet-backlog-stall-repro) (the repro), [rivet-dev/rivet#5963](https://github.com/rivet-dev/rivet/pull/5963) (the fix).
