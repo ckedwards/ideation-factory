@@ -43,6 +43,13 @@ function select(root: HTMLElement, text: string, by: 'pointer' | 'keyboard' = 'p
   throw new Error(`no "${text}" in the document`)
 }
 
+/** Waits for the browser to draw `n` more frames. */
+const frames = (n: number) =>
+  new Promise<void>((done) => {
+    const next = (left: number) => (left === 0 ? done() : requestAnimationFrame(() => next(left - 1)))
+    next(n)
+  })
+
 const meta = {
   title: 'Comments/SelectionMenu',
   component: Document,
@@ -319,8 +326,14 @@ export const BlockKeys: Story = {
 export const BlockKeysFromTheDocument: Story = {
   args: { onBlockComment: fn(), onSectionComment: fn() },
   play: async ({ canvasElement, userEvent }) => {
-    // at the top of the page, whatever a story before scrolled
-    window.scrollTo(0, 0)
+    // at the top of the page, and staying there: the story before ends with a smooth scroll (the
+    // block arrowed to, scrolled into view), which can still be running here and carry the page
+    // down past the first block after a scroll to the top that had nothing to do
+    await waitFor(async () => {
+      window.scrollTo(0, 0)
+      await frames(2)
+      await expect(window.scrollY).toBe(0)
+    })
     canvasElement.querySelector<HTMLElement>('[role="region"]')!.focus({ preventScroll: true })
     await userEvent.keyboard('{ArrowDown}')
     await waitFor(() => expect(document.activeElement).toBe(canvasElement.querySelector('h1')))
