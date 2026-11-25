@@ -147,7 +147,9 @@ export function createDraftLive({
         send(ws, { type: 'steps', file: e.file, from: e.from, steps: e.steps, clients: e.clients })
       }
     })
-    conn.on('version', (e) => send(ws, { type: 'version', version: e.version, by: e.by, committed: e.committed }))
+    conn.on('version', (e) =>
+      send(ws, { type: 'version', version: e.version, by: e.by, committed: e.committed, overwrote: e.overwrote }),
+    )
     conn.on('draft', (e) => {
       if (e.discarded) {
         send(ws, { type: 'discarded', by: e.by })

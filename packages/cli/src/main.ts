@@ -772,15 +772,15 @@ const commands: Array<Command | Family> = [
   },
   {
     name: 'sync',
-    usage: 'ideaf sync [path] [--force] [--outdate-draft]',
+    usage: 'ideaf sync [path] [--force] [--overwrite-draft]',
     summary:
       'Upload the Markdown that changed since your last sync or pull. Refuses with "pull first" if the idea moved on',
     flags: {
       idea: IDEA,
       force: { type: 'boolean', description: 'upload even if the idea moved on (its newer changes show as undone)' },
-      'outdate-draft': {
+      'overwrite-draft': {
         type: 'boolean',
-        description: 'upload even if it makes changes in the idea’s draft outdated (asked otherwise)',
+        description: 'upload even if it overwrites changes in the idea’s draft (a force push; asked otherwise)',
       },
     },
     run: (ctx, f, args) =>
@@ -789,7 +789,7 @@ const commands: Array<Command | Family> = [
         {
           ...(typeof f.idea === 'string' ? { idea: f.idea } : {}),
           force: f.force === true,
-          outdateDraft: f['outdate-draft'] === true,
+          overwriteDraft: f['overwrite-draft'] === true,
         },
         args[0],
       ),
@@ -821,15 +821,15 @@ const commands: Array<Command | Family> = [
   },
   {
     name: 'edit',
-    usage: 'ideaf edit <batch.json | -> [--dry-run] [--outdate-draft]',
+    usage: 'ideaf edit <batch.json | -> [--dry-run] [--overwrite-draft]',
     summary:
       'Edit the idea in place with a batch of commands (one new version). --dry-run shows the diff and what happens to each comment',
     flags: {
       idea: IDEA,
       'dry-run': { type: 'boolean', description: 'show what would happen, changing nothing' },
-      'outdate-draft': {
+      'overwrite-draft': {
         type: 'boolean',
-        description: 'apply it even if it makes changes in the idea’s draft outdated (asked otherwise)',
+        description: 'apply it even if it overwrites changes in the idea’s draft (a force push; asked otherwise)',
       },
     },
     run: (ctx, f, args) =>
@@ -838,7 +838,7 @@ const commands: Array<Command | Family> = [
         {
           ...(typeof f.idea === 'string' ? { idea: f.idea } : {}),
           'dry-run': f['dry-run'] === true,
-          outdateDraft: f['outdate-draft'] === true,
+          overwriteDraft: f['overwrite-draft'] === true,
         },
         args[0],
         () => Bun.stdin.text(),

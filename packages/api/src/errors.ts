@@ -11,7 +11,7 @@ export const ERROR_STATUS = {
   stale_version: 409,
   pull_first: 409,
   conflict: 409,
-  /** A version would make changes in the idea's draft outdated: send it again with `outdateDraft` to confirm. */
+  /** A version would overwrite changes in the idea's draft: send them into the draft, or again with `overwriteDraft` to overwrite them. */
   draft_outdated: 409,
   /** Something stands in the way, like a reviewer's objection to closing an idea as accepted. */
   blocked: 409,

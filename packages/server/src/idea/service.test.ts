@@ -604,7 +604,7 @@ describe('the draft', () => {
     expect((await service.draft()).changes).toEqual([])
   })
 
-  test('is on the latest version: a version made elsewhere can make its changes outdated', async () => {
+  test('is on the latest version: a version made over its changes overwrites them, once confirmed', async () => {
     const { service, write } = await created()
     const stale = value(
       await write({
@@ -618,29 +618,29 @@ describe('the draft', () => {
         changes: [{ kind: 'edit', id: 'b5', source: 'It may pour.', was: 'It might rain.' }],
       }),
     )
-    // an agent's batch changes the fox: it has to confirm it outdates the draft's edit
+    // an agent's batch changes the fox too: refused, naming the draft's change, until it confirms
     const batch = { base: 1, steps: [{ command: 'replace', in: 'b3', old: 'quick', new: 'slow' }] }
     expect(await write({ type: 'edit', batch })).toMatchObject({
       ok: false,
       error: {
         code: 'draft_outdated',
-        message: 'this version would make a change in the draft outdated; confirm to make it anyway',
+        message:
+          'this version changes what a change in the draft also changed: resolve it against the draft and send it as changes to the draft, or confirm to overwrite it',
         details: { changes: [{ key: (stale as { keys: string[] }).keys[0], by: OWNER }] },
       },
     })
     expect((await service.summary())!.latest).toBe(1)
-    value(await write({ type: 'edit', batch, outdateDraft: true }))
+    // confirmed, a force push: the draft's fox is overwritten with the version's, and the other change stays
+    const made = await service.write({
+      key: 'force',
+      caller: OWNER,
+      write: { type: 'edit', batch, overwriteDraft: true },
+    })
+    expect(made.events.find((e) => e.name === 'version')!.payload).toMatchObject({ version: 2, overwrote: 1 })
     const draft = await service.draft()
     expect(draft.version).toBe(2)
-    expect(draft.changes.map((c) => c.problem)).toEqual([
-      'that block has changed since; undo this, and edit it again',
-      null,
-    ])
-    expect(await write({ type: 'commit' })).toMatchObject({
-      ok: false,
-      error: { code: 'conflict', message: '1 change is outdated: undo or redo it first' },
-    })
-    value(await write({ type: 'undraft', key: (stale as { keys: string[] }).keys[0] }))
+    expect(draft.changes.map((c) => [c.key, c.problem])).toEqual([['e-b5', null]])
+    expect(draft.files[0]!.content).toBe('# Plan\n\nThe slow brown fox.\n\n## Risks\n\nIt may pour.\n')
     expect(value(await write({ type: 'commit' }))).toMatchObject({ version: 3 })
     expect((await service.file(3, 'f1'))!.content).toContain('The slow brown fox.\n\n## Risks\n\nIt may pour.')
   })
@@ -916,7 +916,7 @@ describe('typing in the draft', () => {
     const ana = await editor(service, 'ana')
     await ana.type((tr) => tr.insertText('red', 17, 22))
     const gone = { base: 2, steps: [{ command: 'delete-file', file: 'f1' }] }
-    value(await write({ type: 'edit', batch: gone, outdateDraft: true }))
+    value(await write({ type: 'edit', batch: gone, overwriteDraft: true }))
     expect(service.behind('f1', 0)).toBeNull()
     const sent = { file: 'f1', version: 0, steps: [], client: 'raj', caller: REVIEWER }
     expect((await service.typing(sent)).result).toEqual({

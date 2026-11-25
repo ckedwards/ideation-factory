@@ -12,7 +12,7 @@ import { describeOutcomes } from './output.ts'
 
 export function edit(
   ctx: Context,
-  flags: { idea?: string; 'dry-run'?: boolean; outdateDraft?: boolean },
+  flags: { idea?: string; 'dry-run'?: boolean; overwriteDraft?: boolean },
   file: string | undefined,
   readStdin: () => Promise<string>,
 ): Promise<number> {
@@ -27,7 +27,7 @@ async function run(
   ctx: Context,
   id: string,
   state: IdeaState,
-  flags: { 'dry-run'?: boolean; outdateDraft?: boolean },
+  flags: { 'dry-run'?: boolean; overwriteDraft?: boolean },
   file: string,
   readStdin: () => Promise<string>,
 ): Promise<number> {
@@ -92,8 +92,8 @@ async function run(
     )
   }
 
-  const result = await confirmingDraft(ctx, flags.outdateDraft === true, (outdateDraft) =>
-    ctx.api.edit({ idea: id, batch, ...(outdateDraft ? { outdateDraft } : {}) }),
+  const result = await confirmingDraft(ctx, flags.overwriteDraft === true, (overwriteDraft) =>
+    ctx.api.edit({ idea: id, batch, ...(overwriteDraft ? { overwriteDraft } : {}) }),
   )
   if (!result) {
     return EXIT.ok

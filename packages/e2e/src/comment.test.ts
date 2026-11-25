@@ -264,7 +264,7 @@ describe('ideaf draft', () => {
     expect((await r.ideaf('comment', 'list', '--all')).out).toContain('suggestion · accepted in v2')
     expect((await r.ideaf('draft', 'commit')).exit).not.toBe(0)
   })
-  test('a push that would make changes in the draft outdated stops until it is confirmed', async () => {
+  test('a push that would overwrite changes in the draft stops until it is confirmed', async () => {
     const { r, idea } = await started()
     const blocks = await api(h('riley')).showBlocks({ idea })
     const para = blocks.files.flatMap((f) => f.entries).find((e) => e.source.startsWith('We should ship'))!
@@ -275,13 +275,15 @@ describe('ideaf draft', () => {
     await r.write('docs/plan.md', PLAN.replace('this quarter', 'next quarter'))
     const stopped = await r.ideaf('sync')
     expect(stopped.exit).toBe(11)
-    expect(stopped.err).toContain('this version would make a change in the draft outdated')
+    expect(stopped.err).toContain('this version changes what a change in the draft also changed')
     expect(stopped.err).toContain('edited')
-    expect(stopped.err).toContain('Pass --outdate-draft to go ahead')
+    expect(stopped.err).toContain('Pass --overwrite-draft to overwrite it for everyone in the draft')
     expect((await api(h('riley')).getIdea({ idea })).latest).toBe(1)
 
-    expect((await r.ideaf('sync', '--outdate-draft')).exit).toBe(0)
+    // forced: the draft's words are overwritten with the version's, and nothing's left in the draft
+    expect((await r.ideaf('sync', '--overwrite-draft')).exit).toBe(0)
     const draft = await api(h('riley')).getDraft({ idea })
-    expect(draft.changes[0]!.problem).toContain('changed since')
+    expect(draft.changes).toEqual([])
+    expect(draft.files.find((f) => f.path === 'docs/plan.md')!.content).toContain('next quarter')
   })
 })

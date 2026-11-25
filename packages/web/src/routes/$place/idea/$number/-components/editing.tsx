@@ -56,6 +56,8 @@ export interface UseEditingArgs {
   onCommitted: (version: number) => void
   /** Someone else committed the draft as this version (named): what's typed now is the next one's. */
   onTheirCommit?: (version: number, by: string) => void
+  /** A version made around the draft (by whom, named) overwrote some of its changes: a force push. */
+  onOverwritten?: (version: number, by: string, changes: number) => void
 }
 
 /** What the editor shows of the comments: those the panel shows, the one that's active, and a mark clicked. */
@@ -108,6 +110,8 @@ export function useEditing(args: UseEditingArgs): Editing | null {
   notes.current = args.onNote
   const theirCommit = useRef(args.onTheirCommit)
   theirCommit.current = args.onTheirCommit
+  const overwritten = useRef(args.onOverwritten)
+  overwritten.current = args.onOverwritten
   const peopleRef = useRef(args.people)
   peopleRef.current = args.people
   useEffect(() => {
@@ -119,11 +123,15 @@ export function useEditing(args: UseEditingArgs): Editing | null {
       token: accessToken,
       // a version made: the bar moves on to it, and the list of changes is read again; someone
       // else committing it is named (your own commit says so itself)
-      onVersion: (version, by, committed) => {
+      onVersion: (version, by, committed, overwrote) => {
         void queryClient.invalidateQueries({ queryKey: ideaQuery(idea).queryKey, exact: true })
         void queryClient.invalidateQueries({ queryKey: draftQuery(idea).queryKey, exact: true })
         if (committed && by.user !== args.me) {
           theirCommit.current?.(version, personOf(by, peopleRef.current).name)
+        }
+        // overwriting the draft is never this window's doing: everyone's told, its maker's people too
+        if (overwrote > 0) {
+          overwritten.current?.(version, personOf(by, peopleRef.current).name, overwrote)
         }
       },
       onDiscarded: (by) => {

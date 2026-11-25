@@ -114,7 +114,7 @@ test('a new version reads the threads again, and tells the page', async () => {
   const { comments, sockets, ready, setServer } = setup([thread('c1')], {}, { onVersion: (v) => versions.push(v) })
   await ready()
   setServer([thread('c1', { state: 'moved' })])
-  await sockets[0]!.emit({ type: 'version', version: 2, how: 'commands', by: riley, committed: false })
+  await sockets[0]!.emit({ type: 'version', version: 2, how: 'commands', by: riley, committed: false, overwrote: 0 })
   expect(comments.get('c1')!.state).toBe('moved')
   expect(versions).toEqual([2])
 })
