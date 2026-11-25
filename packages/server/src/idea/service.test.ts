@@ -861,6 +861,42 @@ describe('typing in the draft', () => {
     ])
   })
 
+  test('behind is answered from the document held, as it would be in its turn', async () => {
+    const { service, sql, files } = await created()
+    expect(service.behind('f1', 0)).toBeNull()
+    const ana = await editor(service, 'ana')
+    await ana.type((tr) => tr.insertText('red', 17, 22))
+    expect(service.behind('f1', 1)).toBeNull()
+    expect(service.behind('f1', 0)).toBe(1)
+    expect(service.behind('f2', 0)).toBeNull()
+    // the same answer from a service that holds nothing yet, which reads the draft in its turn
+    const fresh = new IdeaService('idea-1', { sql, files, core: inProcessCore(), limits: DEFAULT_LIMITS })
+    expect(fresh.behind('f1', 0)).toBeNull()
+    const sent = { file: 'f1', version: 0, steps: [], client: 'raj', caller: REVIEWER }
+    expect((await fresh.typing(sent)).result).toEqual({ kind: 'behind', version: 1 })
+    expect((await service.typing(sent)).result).toEqual({ kind: 'behind', version: 1 })
+  })
+
+  test('a file a new version doesn’t have isn’t held: typing in it is refused, not told it’s behind', async () => {
+    const { service, write } = await created()
+    value(
+      await write({
+        type: 'edit',
+        batch: { base: 1, steps: [{ command: 'create-file', path: 'notes.md', markdown: 'Hi.' }] },
+      }),
+    )
+    const ana = await editor(service, 'ana')
+    await ana.type((tr) => tr.insertText('red', 17, 22))
+    const gone = { base: 2, steps: [{ command: 'delete-file', file: 'f1' }] }
+    value(await write({ type: 'edit', batch: gone, outdateDraft: true }))
+    expect(service.behind('f1', 0)).toBeNull()
+    const sent = { file: 'f1', version: 0, steps: [], client: 'raj', caller: REVIEWER }
+    expect((await service.typing(sent)).result).toEqual({
+      kind: 'refused',
+      message: 'the latest version has no such file',
+    })
+  })
+
   test('a paragraph split in two: the new one takes the ID committing gives it, from the server', async () => {
     const { service } = await created()
     const ana = await editor(service)

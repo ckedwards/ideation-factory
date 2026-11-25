@@ -1455,7 +1455,8 @@ export class IdeaService {
     for (const [file, text] of finalTexts) {
       // a document's starting point: its own, or the file as the draft was read against
       const start = this.#baseOf(state.base, file) ?? { source: text.source, ids: text.ids as string[] }
-      const live = state.lives.get(file) ?? (await this.#live.load(file, null, start, async () => [], true))
+      // a file new to the draft: held once its row is stored (done())
+      const live = state.lives.get(file) ?? (await this.#live.load(file, null, start, async () => [], false))
       const r = this.#live.retarget(file, live, text)
       if (r.steps.length > 0 || !state.rows.has(file)) {
         retargeted.push({ live, r, text, row: state.rows.has(file) })
@@ -1615,7 +1616,8 @@ export class IdeaService {
       return null
     }
     const row = await this.#db.selectFrom('draft_files').selectAll().where('file', '=', file).executeTakeFirst()
-    const live = await this.#live.load(file, row ?? null, base, () => this.#stepsAfter(file, row!.steps), true)
+    // held once its row is stored, so a held document is always of a file open in the draft
+    const live = await this.#live.load(file, row ?? null, base, () => this.#stepsAfter(file, row!.steps), !!row)
     if (!row) {
       const at = this.#now()
       await this.#db
@@ -1670,8 +1672,24 @@ export class IdeaService {
     }
   }
 
+  /**
+   * The file's count, if typing sent on `version` is behind it: from the document held, so with no
+   * reads; null if it isn't held, or the count is `version`. A held document is of a file the latest
+   * version has, open in the draft, so a send this refuses would be refused as behind in its turn too.
+   * The count only goes up (no file's row in the draft is deleted), so a send behind now stays behind.
+   */
+  behind(file: string, version: number): number | null {
+    const count = this.#live.count(file)
+    return count !== null && count !== version ? count : null
+  }
+
   /** Typing: stored, with the IDs new blocks take, and sent to everyone editing the file. */
   async typing(t: Typing): Promise<{ result: TypingResult; events: IdeaEvent[] }> {
+    // behind: answered from the document held, before any reads
+    const count = this.behind(t.file, t.version)
+    if (count !== null) {
+      return { result: { kind: 'behind', version: count }, events: [] }
+    }
     const refused = (message: string) => ({ result: { kind: 'refused' as const, message }, events: [] })
     await this.#requireMeta()
     const latest = await this.#loadLatest()
@@ -2199,6 +2217,8 @@ export class IdeaService {
       throw error
     })
     draft?.done()
+    // a file the new version doesn't have isn't held: typing in it is refused, not told it's behind
+    this.#live.keepOnly(idea.files.map((f) => f.id))
     this.#latest = {
       version: number,
       idea,
