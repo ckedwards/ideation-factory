@@ -19,10 +19,21 @@ export interface Workspace {
 
 export interface FileState {
   file: string
-  /** Content hash of what was last uploaded or pulled here: the base for the next sync. */
+  /** Content hash of the version's file last uploaded or pulled here: the base for the next sync. */
   base: string
   /** The version that base came from. */
   version: number
+  /**
+   * The draft's text of the file, and its blocks, when it was pulled while the idea's draft had
+   * changes: what's here is then edited from that, and syncing sends the difference into the draft.
+   */
+  draft?: DraftBase
+}
+
+/** A file as the idea's draft had it: its text, and each block's ID, text and kind. */
+export interface DraftBase {
+  content: string
+  units: Array<{ id: string; source: string; kind: string }>
 }
 
 export interface IdeaState {

@@ -264,7 +264,61 @@ describe('ideaf draft', () => {
     expect((await r.ideaf('comment', 'list', '--all')).out).toContain('suggestion · accepted in v2')
     expect((await r.ideaf('draft', 'commit')).exit).not.toBe(0)
   })
-  test('a push that would overwrite changes in the draft stops until it is confirmed', async () => {
+  test('with changes in the draft, sync puts yours on top of them: pull first, merge, sync again', async () => {
+    const { r, idea } = await started()
+    const riley = api(h('riley'))
+    const blocks = await riley.showBlocks({ idea })
+    const ship = blocks.files.flatMap((f) => f.entries).find((e) => e.source.startsWith('We should ship'))!
+    // someone's editing the draft: the first paragraph
+    await riley.changeDraft({
+      idea,
+      changes: [{ kind: 'edit', id: ship.id, source: 'We should ship it this quarter.', was: ship.source }],
+    })
+    // here, the risks, in files pulled before that: the draft has changes they don't, so pull first
+    await r.write('docs/plan.md', PLAN.replace('It might rain again.', 'It might snow.'))
+    const first = await r.ideaf('sync')
+    expect(first.exit).toBe(3)
+    expect(first.err).toContain("the idea's draft has changes your files don't have: run `ideaf pull`")
+    const pulled = await r.ideaf('pull')
+    expect(pulled.out).toContain('Pulled the draft (on v1)')
+    expect(pulled.out).toContain('merged')
+    const merged = await r.read('docs/plan.md')
+    expect(merged).toContain('We should ship it this quarter.')
+    expect(merged).toContain('It might snow.')
+    // now it goes into the draft, on top of the other change; no version is made
+    const synced = await r.ideaf('sync')
+    expect(synced.exit).toBe(0)
+    expect(synced.out).toContain("Sent 1 change to the draft, on top of everyone's.")
+    expect((await riley.getIdea({ idea })).latest).toBe(1)
+    const draft = await riley.getDraft({ idea })
+    expect(draft.changes).toHaveLength(2)
+    expect(draft.files.find((f) => f.path === 'docs/plan.md')!.content).toBe(await r.read('docs/plan.md'))
+
+    // someone changes the risks again; what's here changed them too: refused, until pulled and resolved
+    const risks = (await riley.getDraft({ idea })).files
+      .find((f) => f.path === 'docs/plan.md')!
+      .units.find((u) => u.source.startsWith('It might rain.'))!
+    await riley.changeDraft({
+      idea,
+      changes: [{ kind: 'edit', id: risks.id, source: 'It might hail.', was: risks.source }],
+    })
+    await r.write('docs/plan.md', (await r.read('docs/plan.md')).replace('It might snow.', 'It might sleet.'))
+    const clash = await r.ideaf('sync')
+    expect(clash.exit).toBe(3)
+    expect(clash.err).toContain('someone changed some of the same text in the draft since you pulled')
+    expect((await r.ideaf('pull')).exit).toBe(7)
+    expect(await r.read('docs/plan.md')).toContain('<<<<<<<')
+    await r.write(
+      'docs/plan.md',
+      (await r.read('docs/plan.md')).replace(/<<<<<<<[\s\S]*>>>>>>>[^\n]*\n/, 'It might hail, then sleet.\n'),
+    )
+    expect((await r.ideaf('sync')).exit).toBe(0)
+    expect((await riley.getDraft({ idea })).files.find((f) => f.path === 'docs/plan.md')!.content).toContain(
+      'It might hail, then sleet.',
+    )
+  })
+
+  test('--overwrite-draft makes a version over the draft: a force push, its changes overwritten', async () => {
     const { r, idea } = await started()
     const blocks = await api(h('riley')).showBlocks({ idea })
     const para = blocks.files.flatMap((f) => f.entries).find((e) => e.source.startsWith('We should ship'))!
@@ -273,15 +327,8 @@ describe('ideaf draft', () => {
       changes: [{ kind: 'edit', id: para.id, source: 'We should ship it this quarter.', was: para.source }],
     })
     await r.write('docs/plan.md', PLAN.replace('this quarter', 'next quarter'))
-    const stopped = await r.ideaf('sync')
-    expect(stopped.exit).toBe(11)
-    expect(stopped.err).toContain('this version changes what a change in the draft also changed')
-    expect(stopped.err).toContain('edited')
-    expect(stopped.err).toContain('Pass --overwrite-draft to overwrite it for everyone in the draft')
-    expect((await api(h('riley')).getIdea({ idea })).latest).toBe(1)
-
-    // forced: the draft's words are overwritten with the version's, and nothing's left in the draft
     expect((await r.ideaf('sync', '--overwrite-draft')).exit).toBe(0)
+    expect((await api(h('riley')).getIdea({ idea })).latest).toBe(2)
     const draft = await api(h('riley')).getDraft({ idea })
     expect(draft.changes).toEqual([])
     expect(draft.files.find((f) => f.path === 'docs/plan.md')!.content).toContain('next quarter')

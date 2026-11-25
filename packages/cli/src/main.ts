@@ -774,7 +774,7 @@ const commands: Array<Command | Family> = [
     name: 'sync',
     usage: 'ideaf sync [path] [--force] [--overwrite-draft]',
     summary:
-      'Upload the Markdown that changed since your last sync or pull. Refuses with "pull first" if the idea moved on',
+      'Upload the Markdown that changed since your last sync or pull, or, while the idea’s draft has changes, send it into the draft on top of them. Refuses with "pull first" if the idea or the draft moved on',
     flags: {
       idea: IDEA,
       force: { type: 'boolean', description: 'upload even if the idea moved on (its newer changes show as undone)' },
@@ -798,7 +798,7 @@ const commands: Array<Command | Family> = [
     name: 'pull',
     usage: 'ideaf pull',
     summary:
-      'Bring the latest version into your files, merging with your local edits (conflicts are left in the files, like git)',
+      'Bring the latest version into your files, or the draft while it has changes, merging with your local edits (conflicts are left in the files, like git)',
     flags: { idea: IDEA },
     run: (ctx, f) => pull(ctx, typeof f.idea === 'string' ? { idea: f.idea } : {}),
   },
