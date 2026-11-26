@@ -34,6 +34,24 @@ test('opened again after a long gap, the page is told it’s saved', async () =>
   expect(live.version()).toBe(40)
 })
 
+test('a second editor attached while the first still is carries on from it, not from the document as opened', async () => {
+  const { doc } = await pageDocument('# Plan\n\nShip it now.\n', ['b1', 'b2'])
+  const live = new LiveDoc({ doc: doc.toJSON(), version: 0 }, { send: () => {}, since: () => {} }, 'ana')
+  const first = view(doc)
+  live.attach(first, { replace: () => {} })
+  first.dispatch(first.state.tr.insertText('So ', 7))
+  // React's development mount: a second editor, made before the first is gone
+  const second = view(doc)
+  live.attach(second, {
+    replace: (d) => second.dispatch(second.state.tr.replaceWith(0, second.state.doc.content.size, d.content)),
+  })
+  expect(second.state.doc.child(1).textContent).toBe('So Ship it now.')
+  // the first going late leaves the second as it is
+  live.detach(first)
+  expect(live.status()).not.toBe('gone')
+  expect(second.state.doc.child(1).textContent).toBe('So Ship it now.')
+})
+
 describe('carets', () => {
   /** Two windows on one file and the actor between them, in memory: steps go when `deliver` is called. */
   async function setup() {

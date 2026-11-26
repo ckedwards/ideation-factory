@@ -215,6 +215,11 @@ export class LiveDoc {
 
   /** The editor drawing this document: it shows the document, and its typing is sent from now on. */
   attach(view: EditorView, host: LiveHost): void {
+    // another editor still attached (React's development mount makes a second before the first goes):
+    // this one carries on from where that one is, not from the document as first opened
+    if (this.#view && this.#view !== view) {
+      this.detach(this.#view)
+    }
     const schema = view.state.schema
     let doc: Node
     let version: number
