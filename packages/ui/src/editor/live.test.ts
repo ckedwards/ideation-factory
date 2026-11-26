@@ -2,9 +2,25 @@
 import { describe, expect, test } from 'bun:test'
 import { EditorState, TextSelection, type Transaction } from '@milkdown/kit/prose/state'
 import type { EditorView } from '@milkdown/kit/prose/view'
+import { agentMarksOf } from './agent-marks.ts'
 import { caretsOf } from './carets.ts'
 import { type LiveCaret, LiveDoc, type LiveStatus } from './live.ts'
-import { type Node, pageDocument } from './model.ts'
+import { type Node, pageDocument, Transform } from './model.ts'
+
+/** An editor view as LiveDoc uses one: its state, dispatching and replacing it (no DOM). */
+function view(doc: Node): EditorView {
+  const v = {
+    state: EditorState.create({ doc }),
+    dispatch: (tr: Transaction) => {
+      v.state = v.state.apply(tr)
+    },
+    updateState: (state: EditorState) => {
+      v.state = state
+    },
+    hasFocus: () => false,
+  }
+  return v as unknown as EditorView
+}
 
 test('opened again after a long gap, the page is told it’s saved', async () => {
   const { doc } = await pageDocument('# Plan\n\nShip it.\n', ['b1', 'b2'])
@@ -19,21 +35,6 @@ test('opened again after a long gap, the page is told it’s saved', async () =>
 })
 
 describe('carets', () => {
-  /** An editor view as LiveDoc uses one: its state, dispatching and replacing it (no DOM). */
-  function view(doc: Node): EditorView {
-    const v = {
-      state: EditorState.create({ doc }),
-      dispatch: (tr: Transaction) => {
-        v.state = v.state.apply(tr)
-      },
-      updateState: (state: EditorState) => {
-        v.state = state
-      },
-      hasFocus: () => false,
-    }
-    return v as unknown as EditorView
-  }
-
   /** Two windows on one file and the actor between them, in memory: steps go when `deliver` is called. */
   async function setup() {
     const { doc } = await pageDocument('# Plan\n\nShip it now.\n', ['b1', 'b2'])
@@ -133,5 +134,39 @@ describe('carets', () => {
     // and gone when the window leaves the file
     ana.live.presence('w-raj', null)
     expect(caretsOf(ana.view.state)).toEqual([])
+  })
+})
+
+describe('agents’ edits', () => {
+  // "Ship it now." is the paragraph after the heading (6): its text starts at 7, "now" at 15
+  async function opened() {
+    const { doc, schema } = await pageDocument('# Plan\n\nShip it now.\n', ['b1', 'b2'])
+    const live = new LiveDoc({ doc: doc.toJSON(), version: 0 }, { send: () => {}, since: () => {} }, 'ana')
+    const v = view(doc)
+    live.attach(v, { replace: () => {} })
+    return { live, v, doc, schema }
+  }
+
+  test('the words an agent put in are marked as its, where they are after what’s typed here', async () => {
+    const { live, v, doc, schema } = await opened()
+    // typed here, not confirmed yet: "So " before the paragraph's words
+    v.dispatch(v.state.tr.insertText('So ', 7))
+    const step = new Transform(doc).replaceWith(15, 18, schema.text('today')).steps[0]!.toJSON()
+    live.receive(0, [step], ['server'], ['checkbot for Maya'])
+    expect(v.state.doc.child(1).textContent).toBe('So Ship it today.')
+    const [mark] = agentMarksOf(v.state)
+    expect(mark).toMatchObject({ name: 'checkbot for Maya', fading: false })
+    expect(mark!.ranges.map((r) => v.state.doc.textBetween(r.from, r.to))).toEqual(['today'])
+  })
+
+  test('words an agent only took out are marked where they were; a person’s steps aren’t marked', async () => {
+    const { live, v, doc, schema } = await opened()
+    const cut = new Transform(doc).delete(14, 18).steps[0]!
+    live.receive(0, [cut.toJSON()], ['server'], ['checkbot'])
+    expect(v.state.doc.child(1).textContent).toBe('Ship it.')
+    expect(agentMarksOf(v.state)).toEqual([{ name: 'checkbot', ranges: [{ from: 14, to: 14 }], fading: false }])
+    const typed = new Transform(v.state.doc).insert(15, schema.text(' Soon.')).steps[0]!.toJSON()
+    live.receive(1, [typed], ['raj'], [null])
+    expect(agentMarksOf(v.state)).toHaveLength(1)
   })
 })

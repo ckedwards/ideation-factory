@@ -558,3 +558,48 @@
 .live-selection {
   background: color-mix(in srgb, var(--live-c) 24%, transparent);
 }
+
+/* ---- an agent's edit (agent-marks.ts): its words underlined in dots, its name on a flag above them ---- */
+.agent-edit {
+  text-decoration: underline dotted var(--bot);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.22em;
+}
+/* where the flag stands: an empty box in the line, as a caret is */
+.agent-at {
+  --live-drop: 0.38em;
+  --live-c: var(--bot);
+  position: relative;
+  word-break: normal;
+}
+.agent-flag {
+  left: 0;
+}
+/* the last second: drawn anew to fade, so an animation, not a transition */
+@keyframes agent-edit-fade {
+  to {
+    text-decoration-color: transparent;
+  }
+}
+@keyframes agent-flag-fade {
+  to {
+    opacity: 0;
+  }
+}
+.agent-edit.is-fading {
+  animation: agent-edit-fade 1s ease-out forwards;
+}
+.agent-flag.is-fading {
+  animation: agent-flag-fade 1s ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* gone at once, rather than faded */
+  .agent-edit.is-fading {
+    animation: none;
+    text-decoration-color: transparent;
+  }
+  .agent-flag.is-fading {
+    animation: none;
+    opacity: 0;
+  }
+}
