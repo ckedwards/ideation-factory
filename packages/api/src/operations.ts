@@ -438,7 +438,7 @@ export const operations = {
     name: 'list_restore_points',
     summary: "List the draft's restore points",
     description:
-      'The draft as it was, kept so a bad edit or a discard can be taken back, the latest first: one is taken once the draft has been quiet a couple of minutes, every ten while it’s busy, and before a discard, an overwrite or a restore. Each is kept until two versions after the one it was taken on. Needs edit access.',
+      'The draft as it was, kept so a bad edit or a discard can be taken back, the latest first: one is taken once the draft has been quiet five minutes, when someone who changed it leaves it, and before an agent changes it or someone discards, overwrites or restores it. Each is labelled with who changed what since the one before. They are kept until together they pass a size the site sets (50 MB unless changed); then the oldest are dropped, leaving their labels, marked not kept. Needs edit access.',
     method: 'GET',
     path: '/ideas/{idea}/draft/restore-points',
     kind: 'read',
@@ -455,6 +455,18 @@ export const operations = {
     path: '/ideas/{idea}/draft/restore',
     kind: 'write',
     input: z.strictObject({ idea: IdeaId, point: z.number().int().positive() }),
+    output: z.object({}),
+  }),
+
+  deleteRestorePoint: defineOperation({
+    name: 'delete_restore_point',
+    summary: 'Delete a restore point',
+    description:
+      'Deletes a restore point of the draft, label and all, so what it kept (something pasted by mistake, say) is gone. Only the idea’s owner, or someone who made one of its changes, can. Needs edit access.',
+    method: 'POST',
+    path: '/ideas/{idea}/draft/restore-points/{point}/delete',
+    kind: 'write',
+    input: z.strictObject({ idea: IdeaId, point: z.coerce.number().int().positive() }),
     output: z.object({}),
   }),
 

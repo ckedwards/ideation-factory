@@ -64,6 +64,8 @@ export function startTestActors(deps: Partial<NodeDeps> = {}): Promise<Client<Re
   }
   // index rows catch up quickly in tests
   process.env.IDEAF_INDEX_DELAY_MS ??= '100'
+  // and someone who typed in a draft has left it soon after their window closes
+  process.env.IDEAF_LEFT_DELAY_MS ??= '200'
   configureNode({
     files: new MemoryFileStore(),
     core: inProcessCore(),

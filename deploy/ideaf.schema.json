@@ -421,18 +421,18 @@
               "default": 200
             },
             "restore_quiet_minutes": {
-              "description": "How long the draft is quiet before a restore point is kept, in minutes (one is also kept before a discard)",
+              "description": "How long the draft is quiet before a restore point is kept, in minutes (one is also kept when someone who changed it leaves, and before an agent’s change, a discard, an overwrite or a restore)",
               "type": "integer",
               "minimum": 1,
               "maximum": 1440,
-              "default": 2
+              "default": 5
             },
-            "restore_every_minutes": {
-              "description": "How often a restore point is kept while the draft is busy, at most, in minutes",
+            "restore_keep_mb": {
+              "description": "How much of the draft’s restore points an idea keeps, in MB: past it, the oldest are dropped (their labels stay, marked no longer kept)",
               "type": "integer",
               "minimum": 1,
-              "maximum": 10080,
-              "default": 10
+              "maximum": 10000,
+              "default": 50
             }
           },
           "additionalProperties": false,
@@ -442,8 +442,8 @@
             "keep_steps": 2000,
             "keep_minutes": 10,
             "snapshot_every": 200,
-            "restore_quiet_minutes": 2,
-            "restore_every_minutes": 10
+            "restore_quiet_minutes": 5,
+            "restore_keep_mb": 50
           }
         }
       },
@@ -457,8 +457,8 @@
           "keep_steps": 2000,
           "keep_minutes": 10,
           "snapshot_every": 200,
-          "restore_quiet_minutes": 2,
-          "restore_every_minutes": 10
+          "restore_quiet_minutes": 5,
+          "restore_keep_mb": 50
         }
       }
     },

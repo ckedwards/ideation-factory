@@ -67,6 +67,7 @@ export function inboxEvents(events: IdeaEvent[], at: number): InboxEvent[] {
       case 'resolved':
       case 'draft':
       case 'draftSteps':
+      case 'restorePoints':
         return []
     }
   })

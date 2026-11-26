@@ -227,14 +227,13 @@ export const settingsSchema = z.strictObject({
           )
             .default(DEFAULT_DRAFT_LIMITS.restoreQuietMinutes)
             .describe(
-              'How long the draft is quiet before a restore point is kept, in minutes (one is also kept before a discard)',
+              'How long the draft is quiet before a restore point is kept, in minutes (one is also kept when someone who changed it leaves, and before an agent’s change, a discard, an overwrite or a restore)',
             ),
-          restore_every_minutes: whole(
-            LIMIT_RANGES.draft.restoreEveryMinutes.min,
-            LIMIT_RANGES.draft.restoreEveryMinutes.max,
-          )
-            .default(DEFAULT_DRAFT_LIMITS.restoreEveryMinutes)
-            .describe('How often a restore point is kept while the draft is busy, at most, in minutes'),
+          restore_keep_mb: whole(LIMIT_RANGES.draft.restoreKeepMb.min, LIMIT_RANGES.draft.restoreKeepMb.max)
+            .default(DEFAULT_DRAFT_LIMITS.restoreKeepMb)
+            .describe(
+              'How much of the draft’s restore points an idea keeps, in MB: past it, the oldest are dropped (their labels stay, marked no longer kept)',
+            ),
         })
         .default({
           editors: DEFAULT_DRAFT_LIMITS.editors,
@@ -243,7 +242,7 @@ export const settingsSchema = z.strictObject({
           keep_minutes: DEFAULT_DRAFT_LIMITS.keepMinutes,
           snapshot_every: DEFAULT_DRAFT_LIMITS.snapshotEvery,
           restore_quiet_minutes: DEFAULT_DRAFT_LIMITS.restoreQuietMinutes,
-          restore_every_minutes: DEFAULT_DRAFT_LIMITS.restoreEveryMinutes,
+          restore_keep_mb: DEFAULT_DRAFT_LIMITS.restoreKeepMb,
         }),
     })
     .default({
@@ -256,7 +255,7 @@ export const settingsSchema = z.strictObject({
         keep_minutes: DEFAULT_DRAFT_LIMITS.keepMinutes,
         snapshot_every: DEFAULT_DRAFT_LIMITS.snapshotEvery,
         restore_quiet_minutes: DEFAULT_DRAFT_LIMITS.restoreQuietMinutes,
-        restore_every_minutes: DEFAULT_DRAFT_LIMITS.restoreEveryMinutes,
+        restore_keep_mb: DEFAULT_DRAFT_LIMITS.restoreKeepMb,
       },
     }),
 

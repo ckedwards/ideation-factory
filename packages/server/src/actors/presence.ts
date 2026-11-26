@@ -27,6 +27,12 @@ interface Present {
   typed: number
 }
 
+/** A window gone from the draft, and whose it was. */
+export interface Gone {
+  window: string
+  user: string
+}
+
 export type Joined =
   | { joined: true; person: DraftPresence; people: DraftPresence[] }
   | { joined: false; people: DraftPresence[] }
@@ -105,20 +111,27 @@ export class DraftPresences {
     )
   }
 
-  /** A window's socket closed: whether it was the window's own (a reconnect's newer one keeps it). */
-  leave(window: string, session: string): boolean {
+  /** A window's socket closed: whose it was, if it was the window's own socket (a reconnect's newer one keeps it); null if not. */
+  leave(window: string, session: string): Gone | null {
     const present = this.#windows.get(window)
     if (!present || present.session !== session) {
-      return false
+      return null
     }
     this.#windows.delete(window)
-    return true
+    return { window, user: present.user }
+  }
+
+  /** Whether someone is in the draft, in any window. */
+  has(user: string): boolean {
+    return [...this.#windows.values()].some((p) => p.user === user)
   }
 
   /** The windows not heard from in PRESENCE_TTL_MS, taken out. */
-  sweep(now: number): string[] {
-    const gone = [...this.#windows].filter(([, p]) => now - p.seen > PRESENCE_TTL_MS).map(([w]) => w)
-    for (const window of gone) {
+  sweep(now: number): Gone[] {
+    const gone = [...this.#windows]
+      .filter(([, p]) => now - p.seen > PRESENCE_TTL_MS)
+      .map(([window, p]) => ({ window, user: p.user }))
+    for (const { window } of gone) {
       this.#windows.delete(window)
     }
     return gone

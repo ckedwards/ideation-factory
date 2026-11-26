@@ -649,6 +649,11 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         write(input.idea, context, { type: 'restore', point: input.point }, () => ({})),
       ),
 
+    deleteRestorePoint: (input, context) =>
+      withAccess(input.idea, context, 'edit', () =>
+        write(input.idea, context, { type: 'deleteRestorePoint', point: input.point }, () => ({})),
+      ),
+
     commitDraft: (input, context) =>
       withAccess(input.idea, context, 'edit', () => write(input.idea, context, { type: 'commit' }, version)),
 

@@ -16,8 +16,11 @@ export const IDEA_STATUSES = [
 export type IdeaStatus = (typeof IDEA_STATUSES)[number]
 export const VERDICTS = ['approve', 'request-changes', 'reject'] as const
 export type Verdict = (typeof VERDICTS)[number]
-export const RESTORE_WHYS = ['quiet', 'busy', 'discard', 'overwrite', 'restore'] as const
-/** Why a restore point was taken: the draft went quiet, it's been busy a while, or before someone discarded, overwrote or restored it. */
+export const RESTORE_WHYS = ['quiet', 'left', 'agent', 'discard', 'overwrite', 'restore'] as const
+/**
+ * Why a restore point was taken: the draft went quiet, someone who changed it left it, or before an
+ * agent changed it, or someone discarded, overwrote or restored it.
+ */
 export type RestoreWhy = (typeof RESTORE_WHYS)[number]
 
 /** The idea actor's tables, as Kysely types: what its queries are written against. */
@@ -37,6 +40,10 @@ export interface IdeaDB {
     git_branch: string | null
     /** When the draft last changed (null: never): a restore point is taken once it's been quiet. */
     draft_at: number | null
+    /** How many times the draft has changed: a restore point taken at the same count has it as it is. */
+    draft_change: number
+    /** Who changed the draft last, as a Caller in JSON (null: nobody yet). */
+    draft_by: string | null
   }
   versions: {
     number: number
@@ -122,11 +129,15 @@ export interface IdeaDB {
   draft_moved: { seq: Generated<number>; words: string; by: string; at: number }
   /**
    * The draft as it was, kept on purpose so a bad edit or a discard can be taken back
-   * (docs/handoff-live-editing.md, step 8): taken once it's been quiet, at most so often while it's
-   * busy, and before a discard, an overwrite or a restore. `version` is the latest version then; a
-   * point goes once two versions after it are made. `draft` is its changes, who changed each block
-   * and the words seen moved, as JSON; `by` who discarded, overwrote or restored it (null when it was
-   * just quiet or busy).
+   * (docs/architecture.md, Restore points): taken once it's been quiet, when someone who changed it
+   * leaves it, and before an agent changes it or someone discards, overwrites or restores it.
+   * `version` is the latest version then; `change` the idea's draft_change it has the draft at; `by`
+   * who left, or whose write it was taken before (null when it went quiet). Its label is worked out
+   * once, when it's taken: how many changes it has, and against the one before, who changed what
+   * (`who`, Callers in JSON; `first`, the first change new since, a DraftChange in JSON cut short,
+   * with `more` new after it; `undone`, how many of the one before's it no longer has). `draft` is its
+   * changes, who changed each block and the words seen moved, as JSON, of `bytes`; null once it's
+   * dropped to make room (limits.draft.restoreKeepMb), when only its label is left.
    */
   draft_restore_points: {
     seq: Generated<number>
@@ -134,7 +145,14 @@ export interface IdeaDB {
     why: RestoreWhy
     by: string | null
     at: number
-    draft: string
+    change: number
+    changes: number
+    who: string
+    first: string | null
+    more: number
+    undone: number
+    bytes: number
+    draft: string | null
   }
   writes: { key: string; result: string; at: number }
   /**
@@ -161,6 +179,8 @@ export const IDEA_COLUMNS = {
     'git_uri',
     'git_branch',
     'draft_at',
+    'draft_change',
+    'draft_by',
   ],
   versions: ['number', 'parent', 'created_at', 'created_by', 'how', 'next_id', 'authors'],
   version_files: ['version', 'file', 'path', 'hash', 'bytes', 'unit_ids'],
@@ -187,7 +207,21 @@ export const IDEA_COLUMNS = {
   draft_held: ['key', 'change', 'by', 'at'],
   draft_authors: ['block', 'by', 'at'],
   draft_moved: ['seq', 'words', 'by', 'at'],
-  draft_restore_points: ['seq', 'version', 'why', 'by', 'at', 'draft'],
+  draft_restore_points: [
+    'seq',
+    'version',
+    'why',
+    'by',
+    'at',
+    'change',
+    'changes',
+    'who',
+    'first',
+    'more',
+    'undone',
+    'bytes',
+    'draft',
+  ],
   writes: ['key', 'result', 'at'],
   outbox: ['id', 'events', 'at', 'attempts', 'next_at'],
   schema_version: ['version'],
@@ -217,7 +251,9 @@ const MIGRATIONS: Migration[] = [
       next_comment INTEGER NOT NULL,
       git_uri TEXT,
       git_branch TEXT,
-      draft_at INTEGER
+      draft_at INTEGER,
+      draft_change INTEGER NOT NULL DEFAULT 0,
+      draft_by TEXT
     )`,
     `CREATE TABLE versions (
       number INTEGER PRIMARY KEY,
@@ -313,10 +349,17 @@ const MIGRATIONS: Migration[] = [
     `CREATE TABLE draft_restore_points (
       seq INTEGER PRIMARY KEY,
       version INTEGER NOT NULL,
-      why TEXT NOT NULL CHECK (why IN ('quiet', 'busy', 'discard', 'overwrite', 'restore')),
+      why TEXT NOT NULL CHECK (why IN ('quiet', 'left', 'agent', 'discard', 'overwrite', 'restore')),
       by TEXT,
       at INTEGER NOT NULL,
-      draft TEXT NOT NULL
+      change INTEGER NOT NULL,
+      changes INTEGER NOT NULL,
+      who TEXT NOT NULL,
+      first TEXT,
+      more INTEGER NOT NULL,
+      undone INTEGER NOT NULL,
+      bytes INTEGER NOT NULL,
+      draft TEXT
     )`,
     // results of recent writes by idempotency key, so a retried write isn't applied twice
     `CREATE TABLE writes (key TEXT PRIMARY KEY, result TEXT NOT NULL, at INTEGER NOT NULL)`,

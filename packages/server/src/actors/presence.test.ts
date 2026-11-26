@@ -11,7 +11,7 @@ describe('who is in a draft', () => {
     // the same person in a second window: another entity, another color
     expect(p.join('w-riley-2', 'riley', 's2', 20, 0)).toMatchObject({ joined: true, person: { color: 2 } })
     expect(p.join('w-priya-1', 'priya', 's3', 20, 0)).toMatchObject({ joined: true, person: { color: 3 } })
-    expect(p.leave('w-riley-2', 's2')).toBe(true)
+    expect(p.leave('w-riley-2', 's2')).toEqual({ window: 'w-riley-2', user: 'riley' })
     // the color freed goes to the next to arrive; the others keep theirs
     expect(p.join('w-zoe-1', 'zoe', 's4', 20, 0)).toMatchObject({ joined: true, person: { color: 2 } })
     expect(p.people().map((q) => [q.window, q.color])).toEqual([
@@ -47,7 +47,7 @@ describe('who is in a draft', () => {
     expect(p.move('window-a', 'old', { ...at }, 1)).toMatchObject({ moved: false })
     // back on a new socket: the same window, color and caret
     expect(p.join('window-a', 'riley', 'new', 20, 2)).toMatchObject({ joined: true, person: { color: 1, at } })
-    expect(p.leave('window-a', 'old')).toBe(false)
+    expect(p.leave('window-a', 'old')).toBeNull()
     expect(p.move('window-a', 'old', null, 3)).toBeNull()
     expect(p.size).toBe(1)
     // someone else can't take a window over by its name
@@ -59,7 +59,7 @@ describe('who is in a draft', () => {
     p.join('window-a', 'a', 'sa', 20, 0)
     p.join('window-b', 'b', 'sb', 20, 0)
     p.move('window-b', 'sb', at, PRESENCE_TTL_MS - 1)
-    expect(p.sweep(PRESENCE_TTL_MS + 1)).toEqual(['window-a'])
+    expect(p.sweep(PRESENCE_TTL_MS + 1).map((g) => g.window)).toEqual(['window-a'])
     expect(p.people().map((q) => q.window)).toEqual(['window-b'])
   })
 })

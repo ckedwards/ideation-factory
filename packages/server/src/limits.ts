@@ -26,8 +26,8 @@ export interface DraftLimits {
   snapshotEvery: number
   /** How long the draft is quiet before a restore point is kept, in minutes. */
   restoreQuietMinutes: number
-  /** How often, at most, a restore point is kept while the draft is busy, in minutes. */
-  restoreEveryMinutes: number
+  /** How much of the draft's restore points an idea keeps, in MB: past it, the oldest are dropped. */
+  restoreKeepMb: number
 }
 
 export const DEFAULT_DRAFT_LIMITS: DraftLimits = {
@@ -36,8 +36,8 @@ export const DEFAULT_DRAFT_LIMITS: DraftLimits = {
   keepSteps: 2000,
   keepMinutes: 10,
   snapshotEvery: 200,
-  restoreQuietMinutes: 2,
-  restoreEveryMinutes: 10,
+  restoreQuietMinutes: 5,
+  restoreKeepMb: 50,
 }
 
 export const DEFAULT_LIMITS: Limits = {
@@ -55,7 +55,7 @@ export const LIMIT_RANGES = {
     keepMinutes: { min: 1, max: 7 * 24 * 60 },
     snapshotEvery: { min: 10, max: 100_000 },
     restoreQuietMinutes: { min: 1, max: 24 * 60 },
-    restoreEveryMinutes: { min: 1, max: 7 * 24 * 60 },
+    restoreKeepMb: { min: 1, max: 10_000 },
   },
 } as const
 
@@ -79,7 +79,7 @@ export const limitsFrom = (limits: {
     keep_minutes: number
     snapshot_every: number
     restore_quiet_minutes: number
-    restore_every_minutes: number
+    restore_keep_mb: number
   }
 }): Limits => ({
   maxFileBytes: limits.max_file_bytes,
@@ -91,7 +91,7 @@ export const limitsFrom = (limits: {
     keepMinutes: limits.draft.keep_minutes,
     snapshotEvery: limits.draft.snapshot_every,
     restoreQuietMinutes: limits.draft.restore_quiet_minutes,
-    restoreEveryMinutes: limits.draft.restore_every_minutes,
+    restoreKeepMb: limits.draft.restore_keep_mb,
   },
 })
 
