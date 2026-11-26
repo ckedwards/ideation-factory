@@ -30,8 +30,8 @@ async function setup(limits: Limits = DEFAULT_LIMITS) {
   return { sql, files, service, write, wait }
 }
 
-async function created() {
-  const s = await setup()
+async function created(limits: Limits = DEFAULT_LIMITS) {
+  const s = await setup(limits)
   expect(await s.write({ type: 'create', title: 'Plan', files: [{ path: 'plan.md', content: PLAN }] })).toEqual({
     ok: true,
     value: { kind: 'created', version: 1 },
@@ -784,6 +784,8 @@ describe('restore points', () => {
   const FOX = { kind: 'edit', id: 'b3', source: 'The quick red fox.', was: 'The quick brown fox.' } as const
   const RAIN = { kind: 'edit', id: 'b5', source: 'It may pour.', was: 'It might rain.' } as const
   const REDFOX = '# Plan\n\nThe quick red fox.\n\n## Risks\n\nIt may pour.\n'
+  const ZOE: Caller = { user: 'zoe', bot: null, purpose: 'me' }
+  const AGENT: Caller = { user: 'riley', bot: 'checkbot', purpose: 'bot-for-me' }
 
   test('a discard keeps one, and restoring it brings the draft back for everyone, with who made each change', async () => {
     const { service, write } = await created()
@@ -807,9 +809,11 @@ describe('restore points', () => {
       by: OWNER,
       discarded: { point: 1 },
     })
-    expect(await service.restorePoints()).toEqual([
-      { point: 1, version: 1, why: 'discard', by: OWNER, at: expect.any(Number), changes: 2 },
-    ])
+    // the list of them changed too
+    expect(discarded.events.at(-1)).toEqual({ name: 'restorePoints', payload: { by: OWNER } })
+    const [point] = await service.restorePoints()
+    expect(point).toMatchObject({ point: 1, version: 1, why: 'discard', by: OWNER, changes: 2, more: 1, kept: true })
+    expect(point!.who.map((c) => c.user).sort()).toEqual(['maya', 'riley'])
     expect((await service.draft()).changes).toEqual([])
 
     const restored = await service.write({ key: 'restore', caller: OWNER, write: { type: 'restore', point: 1 } })
@@ -849,26 +853,95 @@ describe('restore points', () => {
     )
   })
 
-  test('one is kept before a change once the draft has been quiet a while, and every so often while it is busy', async () => {
+  test('one is kept once the draft has been quiet five minutes, labelled with who changed what since the one before', async () => {
     const { service, write, wait } = await created()
+    // nothing changed yet: nothing to wait for
+    expect(await service.quietPoint()).toEqual({ point: null, due: null, events: [] })
     value(await write({ type: 'draft', changes: [FOX] }))
-    // straight after: nothing yet
+    // not quiet long enough: when to look again
+    const early = await service.quietPoint()
+    expect(early.point).toBeNull()
+    expect(early.due).toBeGreaterThan(4 * 60_000)
+    wait(5)
+    const quiet = await service.quietPoint()
+    expect(quiet.due).toBeNull()
+    expect(quiet.events).toEqual([{ name: 'restorePoints', payload: { by: null } }])
+    expect(await service.restorePoints()).toEqual([
+      {
+        point: 1,
+        version: 1,
+        why: 'quiet',
+        by: null,
+        at: expect.any(Number),
+        changes: 1,
+        who: [OWNER],
+        first: FOX,
+        more: 0,
+        undone: 0,
+        kept: true,
+      },
+    ])
+    // nothing's changed since: none more
+    wait(5)
+    expect((await service.quietPoint()).point).toBeNull()
+    // Maya edits the rain and takes back the fox: the next is hers, and says one is gone
+    value(await write({ type: 'draft', changes: [RAIN] }, REVIEWER))
+    const [fox] = (await service.draft()).changes.filter((c) => c.change.kind === 'edit' && c.change.id === 'b3')
+    value(await write({ type: 'undraft', key: fox!.key }, REVIEWER))
+    wait(5)
+    await service.quietPoint()
+    expect((await service.restorePoints())[0]).toMatchObject({
+      point: 2,
+      why: 'quiet',
+      changes: 1,
+      who: [REVIEWER],
+      first: RAIN,
+      more: 0,
+      undone: 1,
+    })
+  })
+
+  test('one is kept when someone who changed the draft leaves it, unless it has one of it already', async () => {
+    const { service, write } = await created()
+    value(await write({ type: 'draft', changes: [FOX] }, REVIEWER))
+    expect(await service.leftPoint(REVIEWER)).toEqual([{ name: 'restorePoints', payload: { by: REVIEWER } }])
+    expect(await service.leftPoint(OWNER)).toEqual([])
+    expect((await service.restorePoints()).map((p) => [p.why, p.by?.user])).toEqual([['left', 'maya']])
+  })
+
+  test('one is kept before an agent changes the draft, unless it changed it last', async () => {
+    const { service, write } = await created()
+    value(await write({ type: 'draft', changes: [FOX] }))
+    const first = await service.write({ key: 'a1', caller: AGENT, write: { type: 'draft', changes: [RAIN] } })
+    expect(first.events.at(-1)).toEqual({ name: 'restorePoints', payload: { by: AGENT } })
+    // its next change: the draft before it is the agent's own, kept already
+    value(
+      await write(
+        { type: 'draft', changes: [{ kind: 'insert', at: { after: 'b3' }, markdown: 'Bring the list.' }] },
+        AGENT,
+      ),
+    )
+    expect((await service.restorePoints()).map((p) => [p.why, p.by, p.changes])).toEqual([['agent', AGENT, 1]])
+    // someone else changes it in between: the agent's next change keeps one again
     value(
       await write({ type: 'draft', changes: [{ ...FOX, source: 'The quick tan fox.', was: 'The quick red fox.' }] }),
     )
-    expect(await service.restorePoints()).toEqual([])
-    // quiet for two minutes, then a change: the draft as it was before it
-    wait(2)
-    value(await write({ type: 'draft', changes: [RAIN] }))
-    expect(await service.restorePoints()).toEqual([
-      { point: 1, version: 1, why: 'quiet', by: null, at: expect.any(Number), changes: 1 },
-    ])
-    // busy, a change a minute: one more after ten minutes, not one a minute
-    for (let i = 0; i < 12; i++) {
-      wait(1)
-      value(await write({ type: 'draft', changes: [{ kind: 'insert', at: { after: 'b3' }, markdown: `Line ${i}.` }] }))
-    }
-    expect((await service.restorePoints()).map((p) => p.why)).toEqual(['busy', 'quiet'])
+    value(
+      await write(
+        { type: 'draft', changes: [{ kind: 'insert', at: { after: 'b5' }, markdown: 'Call the depot.' }] },
+        AGENT,
+      ),
+    )
+    expect((await service.restorePoints()).map((p) => p.why)).toEqual(['agent', 'agent'])
+  })
+
+  test('never two of the same draft: one before a discard takes over the quiet one', async () => {
+    const { service, write, wait } = await created()
+    value(await write({ type: 'draft', changes: [FOX] }))
+    wait(5)
+    await service.quietPoint()
+    expect(value(await write({ type: 'discard' }))).toEqual({ kind: 'discarded', point: 1 })
+    expect((await service.restorePoints()).map((p) => [p.point, p.why, p.by])).toEqual([[1, 'discard', OWNER]])
   })
 
   test('one is kept before a version overwrites the draft', async () => {
@@ -876,8 +949,8 @@ describe('restore points', () => {
     value(await write({ type: 'draft', changes: [FOX] }))
     const batch = { base: 1, steps: [{ command: 'replace', in: 'b3', old: 'quick', new: 'slow' }] }
     value(await write({ type: 'edit', batch, overwriteDraft: true }))
-    expect(await service.restorePoints()).toEqual([
-      { point: 1, version: 1, why: 'overwrite', by: OWNER, at: expect.any(Number), changes: 1 },
+    expect(await service.restorePoints()).toMatchObject([
+      { point: 1, version: 1, why: 'overwrite', by: OWNER, changes: 1, first: FOX, kept: true },
     ])
   })
 
@@ -901,16 +974,60 @@ describe('restore points', () => {
     ])
   })
 
-  test('each is kept until two versions after the one it was taken on', async () => {
+  test('versions made since leave them be', async () => {
     const { service, write } = await created()
     value(await write({ type: 'draft', changes: [FOX] }))
     value(await write({ type: 'discard' }))
-    value(await write({ type: 'draft', changes: [FOX] }))
-    value(await write({ type: 'commit' }))
-    expect((await service.restorePoints()).map((p) => p.version)).toEqual([1])
-    value(await write({ type: 'draft', changes: [RAIN] }))
-    value(await write({ type: 'commit' }))
+    for (const change of [FOX, RAIN]) {
+      value(await write({ type: 'draft', changes: [change] }))
+      value(await write({ type: 'commit' }))
+    }
+    expect((await service.restorePoints()).map((p) => [p.point, p.version, p.kept])).toEqual([[1, 1, true]])
+    value(await write({ type: 'restore', point: 1 }))
+  })
+
+  test('past the room for them, the oldest are dropped: their labels stay, and they can no longer be restored', async () => {
+    // room for less than one: only the latest is kept
+    const { service, write } = await created({
+      ...DEFAULT_LIMITS,
+      draft: { ...DEFAULT_LIMITS.draft, restoreKeepMb: 1e-6 },
+    })
+    for (const change of [FOX, RAIN, FOX]) {
+      value(await write({ type: 'draft', changes: [change] }))
+      value(await write({ type: 'discard' }))
+    }
+    expect((await service.restorePoints()).map((p) => [p.point, p.kept, p.first])).toEqual([
+      [3, true, FOX],
+      [2, false, RAIN],
+      [1, false, FOX],
+    ])
+    expect(await write({ type: 'restore', point: 2 })).toMatchObject({
+      ok: false,
+      error: { code: 'not_found', message: expect.stringContaining('no longer kept') },
+    })
+  })
+
+  test('the idea’s owner, or someone who made one of its changes, can delete one, label and all', async () => {
+    const { service, write } = await created()
+    value(await write({ type: 'draft', changes: [FOX] }, REVIEWER))
+    value(await write({ type: 'discard' }))
+    value(await write({ type: 'draft', changes: [RAIN] }, REVIEWER))
+    value(await write({ type: 'discard' }))
+    expect(await write({ type: 'deleteRestorePoint', point: 1 }, ZOE)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    })
+    const deleted = await service.write({ key: 'd', caller: REVIEWER, write: { type: 'deleteRestorePoint', point: 1 } })
+    expect(deleted).toEqual({
+      result: { ok: true, value: { kind: 'deleted', point: 1 } },
+      events: [{ name: 'restorePoints', payload: { by: REVIEWER } }],
+    })
+    expect(value(await write({ type: 'deleteRestorePoint', point: 2 }))).toEqual({ kind: 'deleted', point: 2 })
     expect(await service.restorePoints()).toEqual([])
+    expect(await write({ type: 'deleteRestorePoint', point: 2 })).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    })
   })
 })
 
@@ -982,14 +1099,14 @@ describe('typing in the draft', () => {
     expect(await sql.execute('SELECT seq, client FROM draft_steps')).toEqual([{ seq: 1, client: 'c1' }])
   })
 
-  test('typing after the draft has been quiet a while keeps a restore point of it first', async () => {
+  test('typing keeps no restore point itself: once it has been quiet a while, the alarm keeps one of it as typed', async () => {
     const { service, wait } = await created()
     const ana = await editor(service)
     await ana.type((tr) => tr.insertText('red', 17, 22))
     await ana.type((tr) => tr.insertText('!', 20))
     expect(await service.restorePoints()).toEqual([])
-    wait(3)
-    // the draft, quiet, is kept as it was: without the question mark
+    wait(5)
+    expect((await service.quietPoint()).due).toBeNull()
     await ana.type((tr) => tr.insertText('?', 21))
     expect(await service.restorePoints()).toMatchObject([{ point: 1, why: 'quiet', changes: 1 }])
     value(await service.write({ key: 'r', caller: OWNER, write: { type: 'restore', point: 1 } }).then((w) => w.result))

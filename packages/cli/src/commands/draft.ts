@@ -55,14 +55,6 @@ export async function discard(ctx: Context, flags: { idea?: string }): Promise<n
   return EXIT.ok
 }
 
-const WHY = {
-  quiet: 'quiet',
-  busy: 'while busy',
-  discard: 'before a discard',
-  overwrite: 'before a version overwrote it',
-  restore: 'before a restore',
-} as const
-
 /** The draft's restore points, or, given one, the draft brought back as it has it. */
 export async function restore(ctx: Context, flags: { idea?: string }, args: string[]): Promise<number> {
   const idea = await ctx.ideaId(flags.idea)
@@ -79,9 +71,8 @@ export async function restore(ctx: Context, flags: { idea?: string }, args: stri
     const names = new Names(ctx)
     ctx.say(`Restore points of the draft of ${idea}, the latest first:`)
     for (const p of points) {
-      const by = p.by ? ` by ${await names.label({ kind: 'user', id: p.by.user })}` : ''
-      const n = `${p.changes} change${p.changes === 1 ? '' : 's'}`
-      ctx.say(`  ${p.point}  ${ago(p.at)} · on v${p.version} · ${n} · ${WHY[p.why]}${by}`)
+      const gone = p.kept ? '' : ' · no longer kept'
+      ctx.say(`  ${p.point}  ${ago(p.at)} · on v${p.version} · ${await pointLabel(names, p)}${gone}`)
     }
     ctx.say('\n`ideaf draft restore <point>` brings the draft back as it was then.')
     return EXIT.ok
@@ -91,6 +82,48 @@ export async function restore(ctx: Context, flags: { idea?: string }, args: stri
   ctx.say(`Restored the draft of ${idea} from point ${point}. Run \`ideaf draft show\` to see it.`)
   ctx.result({ idea, restored: point })
   return EXIT.ok
+}
+
+/** Deletes a restore point, so what it kept is gone. */
+export async function forget(ctx: Context, flags: { idea?: string }, args: string[]): Promise<number> {
+  const idea = await ctx.ideaId(flags.idea)
+  if (args.length !== 1 || !/^[1-9]\d*$/.test(args[0]!)) {
+    throw new CliError('usage: ideaf draft forget <point>', EXIT.usage, 'usage')
+  }
+  const point = Number(args[0])
+  await ctx.api.deleteRestorePoint({ idea, point })
+  ctx.say(`Deleted restore point ${point} of the draft of ${idea}.`)
+  ctx.result({ idea, deleted: point })
+  return EXIT.ok
+}
+
+type Point = Output<Operations['listRestorePoints']>['points'][number]
+
+/**
+ * What a restore point is called: what it was taken before, if anything; otherwise who changed what
+ * since the one before.
+ */
+async function pointLabel(names: Names, p: Point): Promise<string> {
+  const by = p.by ? await names.label({ kind: 'user', id: p.by.user }) : 'someone'
+  const n = `${p.changes} change${p.changes === 1 ? '' : 's'}`
+  switch (p.why) {
+    case 'agent':
+      return `before ${p.by?.bot ? `an agent for ${by}` : by} changed it · ${n}`
+    case 'discard':
+      return `before ${by} discarded it · ${n}`
+    case 'overwrite':
+      return `before ${by}’s version overwrote it · ${n}`
+    case 'restore':
+      return `before ${by} restored an earlier one · ${n}`
+    case 'quiet':
+    case 'left': {
+      const who = p.who.length > 0 ? `${await people(names, p.who)} · ` : ''
+      if (p.first) {
+        return `${who}${describe(p.first)}${p.more > 0 ? ` and ${p.more} more` : ''}`
+      }
+      return p.undone > 0 ? `took back ${p.undone} change${p.undone === 1 ? '' : 's'}` : n
+    }
+  }
 }
 
 /** Each person once, by name, in the order given: "Priya, Zoe and Riley". */

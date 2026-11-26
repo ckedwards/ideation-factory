@@ -272,6 +272,8 @@ export const LiveEvent = z.discriminatedUnion('type', [
     discarded: z.object({ point: z.number().int().nullable() }).optional(),
     restored: z.boolean().optional(),
   }),
+  /** A restore point of the draft taken or deleted: read list_restore_points again (people with edit access). */
+  z.object({ type: z.literal('restorePoints'), by: Caller.nullable() }),
   /** The idea's status changed. */
   z.object({ type: z.literal('status'), status: IdeaStatus, change: StatusChange, by: Caller }),
   /** A verdict given or dismissed: the reviewer's verdict as it stands. */
@@ -471,13 +473,26 @@ export const RestorePoint = z.object({
   point: z.number().int(),
   /** The latest version when it was taken. */
   version: z.number().int(),
-  /** The draft went quiet, it had been busy a while, or someone was about to discard, overwrite or restore it. */
-  why: z.enum(['quiet', 'busy', 'discard', 'overwrite', 'restore']),
-  /** Who discarded, overwrote or restored it; null for a quiet or busy one. */
+  /**
+   * The draft went quiet, someone who changed it left it, or it was taken before an agent changed it
+   * or someone discarded, overwrote or restored it.
+   */
+  why: z.enum(['quiet', 'left', 'agent', 'discard', 'overwrite', 'restore']),
+  /** Who left, or whose change, discard, overwrite or restore it was taken before; null for a quiet one. */
   by: Caller.nullable(),
   at: z.number(),
   /** How many changes the draft had. */
   changes: z.number().int(),
+  /** Who made the changes new since the restore point before it. */
+  who: z.array(Caller),
+  /** The first change new since the one before, its text cut short; null if none is new. */
+  first: DraftChange.nullable(),
+  /** How many more changes are new since the one before. */
+  more: z.number().int(),
+  /** How many of the one before's changes it doesn't have. */
+  undone: z.number().int(),
+  /** False once it's been dropped to make room for newer ones: only its label is left, and it can't be restored. */
+  kept: z.boolean(),
 })
 
 /** A suggestion left out of an accept, and why. */

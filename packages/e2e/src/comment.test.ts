@@ -274,7 +274,7 @@ describe('ideaf draft', () => {
     )
     expect((await r.ideaf('draft', 'show')).out).toBe(`The draft of ${idea} is empty.`)
     const listed = (await r.ideaf('draft', 'restore')).out
-    expect(listed).toContain(`  1  just now · on v1 · 1 change · before a discard by @${h('riley')}`)
+    expect(listed).toContain(`  1  just now · on v1 · before @${h('riley')} discarded it · 1 change`)
     expect((await r.ideaf('draft', 'restore', '1')).out).toBe(
       `Restored the draft of ${idea} from point 1. Run \`ideaf draft show\` to see it.`,
     )

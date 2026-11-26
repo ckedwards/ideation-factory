@@ -209,6 +209,37 @@ test('a version made around the draft isn’t a commit, and a discard and a rest
   ana.ws.close()
 }, 30_000)
 
+test('someone who typed in the draft and left keeps a restore point of it; a reload is not leaving', async () => {
+  const riley = await signIn(app, name('riley'))
+  const api = client(riley.jwt)
+  const { idea } = await api.createIdea({ title: 'Leaving', files: [{ path: 'plan.md', content: PLAN }] })
+  const window = `window-${crypto.randomUUID()}`
+  const ana = connect(idea, riley.jwt, window)
+  await ana.next('ready')
+  ana.send({ type: 'open', file: 'f1' })
+  const doc = schema.nodeFromJSON((await ana.next('opened')).doc)
+  ana.send({ type: 'steps', file: 'f1', version: 0, steps: typing(doc, 15, ' Soon.'), client: 'ana' })
+  await ana.next('steps')
+  // a reload: the window back at once, on a new socket
+  ana.ws.close()
+  await ana.closed
+  const back = connect(idea, riley.jwt, window)
+  await back.next('ready')
+  await Bun.sleep(500)
+  expect((await api.listRestorePoints({ idea })).points).toEqual([])
+  // gone for good
+  back.ws.close()
+  for (let i = 0; i < 50; i++) {
+    const { points } = await api.listRestorePoints({ idea })
+    if (points.length > 0) {
+      expect(points).toMatchObject([{ point: 1, why: 'left', by: { user: riley.id }, changes: 1, kept: true }])
+      return
+    }
+    await Bun.sleep(100)
+  }
+  throw new Error('no restore point after leaving')
+}, 30_000)
+
 test('a version forced over the draft overwrites its words there, and says how many changes it overwrote', async () => {
   const riley = await signIn(app, name('riley'))
   const api = client(riley.jwt)

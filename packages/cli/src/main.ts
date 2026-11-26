@@ -459,9 +459,17 @@ const draftFamily: Family = {
       name: 'restore',
       usage: 'ideaf draft restore [point]',
       summary:
-        'The draft’s restore points (kept when it goes quiet, every ten minutes while it’s busy, and before a discard); given one, bring the draft back as it was then, for everyone',
+        'The draft’s restore points (kept when it goes quiet, when someone who changed it leaves, and before an agent’s change, a discard, an overwrite or a restore); given one, bring the draft back as it was then, for everyone',
       flags: { idea: IDEA },
       run: (ctx, f, a) => drafts.restore(ctx, str(f, 'idea') ? { idea: str(f, 'idea')! } : {}, a),
+    },
+    {
+      name: 'forget',
+      usage: 'ideaf draft forget <point>',
+      summary:
+        'Delete one of the draft’s restore points, so what it kept is gone (the idea’s owner, or someone who made one of its changes)',
+      flags: { idea: IDEA },
+      run: (ctx, f, a) => drafts.forget(ctx, str(f, 'idea') ? { idea: str(f, 'idea')! } : {}, a),
     },
   ],
 }

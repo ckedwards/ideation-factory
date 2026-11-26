@@ -25,7 +25,7 @@ import type { Registry } from '../registry.ts'
 import { callRetrying, retryOverloaded } from '../sql/retry.ts'
 import { batcher } from './batch.ts'
 import { directoryOf } from './pools.ts'
-import { DraftPresences, type Joined, PRESENCE_TTL_MS } from './presence.ts'
+import { DraftPresences, type Gone, type Joined, PRESENCE_TTL_MS } from './presence.ts'
 
 /** How recently a window has to have typed to be typing "now", for the commit dialog. */
 const TYPING_NOW_MS = 5000
@@ -42,6 +42,12 @@ const indexDelayMs = () => Number(process.env.IDEAF_INDEX_DELAY_MS ?? 2000)
  * read the draft again for its list of changes. Editors have the steps themselves (`draftSteps`).
  */
 const TYPING_DRAFT_EVENT_MS = 1000
+
+/**
+ * How long after someone who typed in the draft leaves it (their last window closed, or gone quiet)
+ * a restore point is taken, unless they're back: a reload, or a dropped connection, isn't leaving.
+ */
+const leftDelayMs = () => Number(process.env.IDEAF_LEFT_DELAY_MS ?? 60_000)
 
 type Payload<N extends IdeaEvent['name']> = Extract<IdeaEvent, { name: N }>['payload']
 
@@ -62,6 +68,8 @@ export const idea = actor({
     presence: event<DraftPresence>(),
     /** A window left the draft. */
     presenceLeft: event<{ window: string }>(),
+    /** A restore point of the draft taken or deleted: the list of them changed. */
+    restorePoints: event<Payload<'restorePoints'>>(),
   },
   state: { indexDue: false, lastActivity: 0 },
   createVars: () => ({
@@ -76,6 +84,11 @@ export const idea = actor({
     // who's in the draft and where (presence.ts): memory only, and the sweep for windows gone quiet
     presence: new DraftPresences(),
     presenceSweep: null as ReturnType<typeof setTimeout> | null,
+    // when the quiet restore point's alarm goes (0: none set); who typed in the draft since they came
+    // (or since a restore point of it as they left it); and who left, waiting to see they're gone
+    quietAt: 0,
+    typers: new Set<string>(),
+    leaving: new Map<string, ReturnType<typeof setTimeout>>(),
   }),
   onWake: (c) => {
     // one write at a time, in the order they came (actors/batch.ts), with this wake-up's context
@@ -104,6 +117,7 @@ export const idea = actor({
       if (typing.window) {
         c.vars.presence.typed(typing.window, Date.now())
       }
+      c.vars.typers.add(typing.caller.user)
       const count = serviceOf(c).behind(typing.file, typing.version)
       if (count !== null) {
         return Promise.resolve({ kind: 'behind', version: count })
@@ -136,10 +150,16 @@ export const idea = actor({
     },
     /** A window's socket closed. */
     presenceLeave: (c, window: string, session: string): void => {
-      if (c.vars.presence.leave(window, session)) {
-        c.broadcast('presenceLeft', { window })
+      const gone = c.vars.presence.leave(window, session)
+      if (gone) {
+        left(c, gone)
       }
     },
+    /**
+     * A restore point of the draft, once it's been quiet a while (the alarm armQuiet sets calls it), in
+     * the write queue's turn; the alarm set again if it isn't quiet long enough yet.
+     */
+    quietPoint: (c) => (c.vars.writes ??= writerOf(c))({ kind: 'quiet' }) as Promise<null>,
     /** What an editor missed in a file since its count, if it's still kept. */
     draftSince: (c, file: string, version: number) => read(() => serviceOf(c).draftSince(file, version)),
     summary: (c) => read(() => serviceOf(c).summary()),
@@ -220,16 +240,46 @@ async function read<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-type PresenceContext = {
-  vars: { presence: DraftPresences; presenceSweep: ReturnType<typeof setTimeout> | null }
-  broadcast(name: string, payload: unknown): void
+type PresenceContext = WriteContext & {
+  vars: WriteContext['vars'] & {
+    presence: DraftPresences
+    presenceSweep: ReturnType<typeof setTimeout> | null
+    typers: Set<string>
+    leaving: Map<string, ReturnType<typeof setTimeout>>
+    writes: ((task: Task) => Promise<WriteResult | TypingResult | Opened>) | null
+  }
 }
 
 /** Windows not heard from in a while taken out of the draft, and everyone told. */
 function sweepPresence(c: PresenceContext): void {
-  for (const window of c.vars.presence.sweep(Date.now())) {
-    c.broadcast('presenceLeft', { window })
+  for (const gone of c.vars.presence.sweep(Date.now())) {
+    left(c, gone)
   }
+}
+
+/**
+ * A window gone from the draft: everyone told, and if its person typed in the draft, a restore point
+ * once they've been gone leftDelayMs (in no window of it: a reload isn't leaving).
+ */
+function left(c: PresenceContext, gone: Gone): void {
+  c.broadcast('presenceLeft', { window: gone.window })
+  if (!c.vars.typers.has(gone.user)) {
+    return
+  }
+  clearTimeout(c.vars.leaving.get(gone.user))
+  c.vars.leaving.set(
+    gone.user,
+    setTimeout(() => {
+      c.vars.leaving.delete(gone.user)
+      if (c.vars.presence.has(gone.user)) {
+        return
+      }
+      c.vars.typers.delete(gone.user)
+      void (c.vars.writes ??= writerOf(c))({ kind: 'left', user: gone.user }).catch((error: unknown) =>
+        c.log.error({ msg: 'the restore point on leaving failed', error: String(error) }),
+      )
+    }, leftDelayMs()),
+  )
 }
 
 /** The sweep, every third of the expiry while anyone's in the draft. */
@@ -261,6 +311,7 @@ type WriteContext = OutboxContext & {
   vars: OutboxContext['vars'] & {
     draftEventAt: number
     draftEventTimer: ReturnType<typeof setTimeout> | null
+    quietAt: number
   }
   broadcast(name: string, payload: unknown): void
   keepAwake<T>(promise: Promise<T>): Promise<T>
@@ -273,6 +324,8 @@ type Task =
   | { kind: 'open'; file: string }
   | { kind: 'typing'; typing: Typing }
   | { kind: 'moved'; words: MovedWords; caller: Typing['caller'] }
+  | { kind: 'quiet' }
+  | { kind: 'left'; user: string }
 
 type Opened = { version: number; doc: unknown } | null
 
@@ -294,6 +347,14 @@ function writerOf(c: WriteContext): (task: Task) => Promise<WriteResult | Typing
           await serviceOf(c).movedWords(task!.words, task!.caller)
           draftEventSoon(c, task!.caller)
           return [null]
+        case 'quiet':
+          await applyQuiet(c)
+          return [null]
+        case 'left':
+          for (const e of await serviceOf(c).leftPoint({ user: task!.user, bot: null, purpose: 'me' })) {
+            c.broadcast(e.name, e.payload)
+          }
+          return [null]
       }
     },
     { max: 1, waiting: WAITING_WRITES },
@@ -309,8 +370,48 @@ async function applyTyping(c: WriteContext, typing: Typing): Promise<TypingResul
   if (result.kind === 'taken') {
     c.state.lastActivity = Date.now()
     draftEventSoon(c, typing.caller)
+    armQuiet(c)
   }
   return result
+}
+
+/**
+ * The quiet restore point's alarm, restoreQuietMinutes after a change, unless one's set: at most one
+ * at a time, so typing costs nothing but this check. When it goes, quietPoint takes the restore point,
+ * or sets it again for restoreQuietMinutes after the latest change.
+ */
+function armQuiet(c: WriteContext): void {
+  const now = Date.now()
+  if (c.vars.quietAt > now) {
+    return
+  }
+  const at = now + serviceOf(c).quietMs
+  c.vars.quietAt = at
+  void (async () => {
+    // one set before the actor last slept is still set
+    const set = (await c.schedule.list()).find((e) => e.action === 'quietPoint' && e.runAt > now)
+    if (set) {
+      c.vars.quietAt = set.runAt
+      return
+    }
+    await c.schedule.at(at, 'quietPoint')
+  })().catch((error: unknown) => {
+    c.vars.quietAt = 0
+    c.log.error({ msg: 'setting the quiet restore point’s alarm failed', error: String(error) })
+  })
+}
+
+/** The quiet restore point, or its alarm again for when the draft will have been quiet long enough. */
+async function applyQuiet(c: WriteContext): Promise<void> {
+  const { due, events } = await serviceOf(c).quietPoint()
+  for (const e of events) {
+    c.broadcast(e.name, e.payload)
+  }
+  c.vars.quietAt = 0
+  if (due !== null) {
+    c.vars.quietAt = due
+    await c.schedule.at(due, 'quietPoint')
+  }
 }
 
 function draftEventSoon(c: WriteContext, by: Typing['caller']): void {
@@ -346,6 +447,9 @@ async function applyWrite(c: WriteContext, request: WriteRequest): Promise<Write
   const { result, events } = written
   for (const e of events) {
     await broadcastEvent(c, e)
+  }
+  if (events.some((e) => e.name === 'draft')) {
+    armQuiet(c)
   }
   // the write stands from here: what follows can't undo it, so its failures are logged, not returned.
   // Its notifications are in the outbox already; send them now, with an alarm in case this stops first.
