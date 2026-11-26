@@ -14,6 +14,7 @@ import {
   Draft,
   DraftChange,
   Skipped,
+  RestorePoint,
   FileContent,
   FileId,
   FileOutline,
@@ -423,11 +424,37 @@ export const operations = {
   discardDraft: defineOperation({
     name: 'discard_draft',
     summary: 'Discard the draft',
-    description: "Empties the idea's draft. Suggestions accepted into it are open again. Needs edit access.",
+    description:
+      "Empties the idea's draft, for everyone editing it. Suggestions accepted into it are open again. It's kept as a restore point first: restore_draft brings it back. Needs edit access.",
     method: 'POST',
     path: '/ideas/{idea}/draft/discard',
     kind: 'write',
     input: z.strictObject({ idea: IdeaId }),
+    /** The restore point that brings it back; null if it was empty. */
+    output: z.object({ point: z.number().int().nullable() }),
+  }),
+
+  listRestorePoints: defineOperation({
+    name: 'list_restore_points',
+    summary: "List the draft's restore points",
+    description:
+      'The draft as it was, kept so a bad edit or a discard can be taken back, the latest first: one is taken once the draft has been quiet a couple of minutes, every ten while it’s busy, and before a discard, an overwrite or a restore. Each is kept until two versions after the one it was taken on. Needs edit access.',
+    method: 'GET',
+    path: '/ideas/{idea}/draft/restore-points',
+    kind: 'read',
+    input: z.strictObject({ idea: IdeaId }),
+    output: z.object({ points: z.array(RestorePoint) }),
+  }),
+
+  restoreDraft: defineOperation({
+    name: 'restore_draft',
+    summary: 'Restore the draft',
+    description:
+      'Brings the draft back as a restore point has it, on the latest version, for everyone editing it. Its changes that still apply go back in; one a version made since has outdated comes back outdated, to undo or redo; a suggestion accepted or rejected since stays so. The draft as it was is kept as a restore point first. Needs edit access.',
+    method: 'POST',
+    path: '/ideas/{idea}/draft/restore',
+    kind: 'write',
+    input: z.strictObject({ idea: IdeaId, point: z.number().int().positive() }),
     output: z.object({}),
   }),
 

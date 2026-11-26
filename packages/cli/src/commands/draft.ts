@@ -1,9 +1,10 @@
 // ideaf draft …: the idea's one draft, shared by everyone with edit access.
 // People change it in the web app, and suggestions are accepted into it; here
-// it's read, committed as one version, or discarded.
+// it's read, committed as one version, discarded, or brought back from a
+// restore point.
 import { ApiError, type Operations, type Output } from '@ideaf/api'
 import { CliError, type Context, EXIT } from '../context.ts'
-import { excerpt } from './output.ts'
+import { ago, excerpt } from './output.ts'
 import { Names } from './subjects.ts'
 
 type Change = Output<Operations['getDraft']>['changes'][number]['change']
@@ -44,9 +45,51 @@ export async function commit(ctx: Context, flags: { idea?: string }): Promise<nu
 
 export async function discard(ctx: Context, flags: { idea?: string }): Promise<number> {
   const idea = await ctx.ideaId(flags.idea)
-  await ctx.api.discardDraft({ idea })
-  ctx.say(`Discarded the draft of ${idea}.`)
-  ctx.result({ idea, discarded: true })
+  const { point } = await ctx.api.discardDraft({ idea })
+  ctx.say(
+    point === null
+      ? `Discarded the draft of ${idea}.`
+      : `Discarded the draft of ${idea}. \`ideaf draft restore ${point}\` brings it back.`,
+  )
+  ctx.result({ idea, discarded: true, point })
+  return EXIT.ok
+}
+
+const WHY = {
+  quiet: 'quiet',
+  busy: 'while busy',
+  discard: 'before a discard',
+  overwrite: 'before a version overwrote it',
+  restore: 'before a restore',
+} as const
+
+/** The draft's restore points, or, given one, the draft brought back as it has it. */
+export async function restore(ctx: Context, flags: { idea?: string }, args: string[]): Promise<number> {
+  const idea = await ctx.ideaId(flags.idea)
+  if (args.length > 1 || (args[0] !== undefined && !/^[1-9]\d*$/.test(args[0]))) {
+    throw new CliError('usage: ideaf draft restore [point]', EXIT.usage, 'usage')
+  }
+  if (args[0] === undefined) {
+    const { points } = await ctx.api.listRestorePoints({ idea })
+    ctx.result({ idea, points })
+    if (points.length === 0) {
+      ctx.say(`The draft of ${idea} has no restore points.`)
+      return EXIT.ok
+    }
+    const names = new Names(ctx)
+    ctx.say(`Restore points of the draft of ${idea}, the latest first:`)
+    for (const p of points) {
+      const by = p.by ? ` by ${await names.label({ kind: 'user', id: p.by.user })}` : ''
+      const n = `${p.changes} change${p.changes === 1 ? '' : 's'}`
+      ctx.say(`  ${p.point}  ${ago(p.at)} · on v${p.version} · ${n} · ${WHY[p.why]}${by}`)
+    }
+    ctx.say('\n`ideaf draft restore <point>` brings the draft back as it was then.')
+    return EXIT.ok
+  }
+  const point = Number(args[0])
+  await ctx.api.restoreDraft({ idea, point })
+  ctx.say(`Restored the draft of ${idea} from point ${point}. Run \`ideaf draft show\` to see it.`)
+  ctx.result({ idea, restored: point })
   return EXIT.ok
 }
 

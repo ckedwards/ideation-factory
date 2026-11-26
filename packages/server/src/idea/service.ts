@@ -59,7 +59,7 @@ import {
   touched,
 } from './draft.ts'
 import { reviewerOf } from './reviewer.ts'
-import { type IdeaDB, type IdeaStatus, VERDICTS, type Verdict } from './schema.ts'
+import { type IdeaDB, type IdeaStatus, type RestoreWhy, VERDICTS, type Verdict } from './schema.ts'
 
 import { type Caller, type DraftCaret, schemas } from '@ideaf/api'
 
@@ -140,6 +140,8 @@ export const IdeaWrite = z.discriminatedUnion('type', [
   /** Takes a change out of the draft. */
   z.strictObject({ type: z.literal('undraft'), key: z.string().min(1).max(64) }),
   z.strictObject({ type: z.literal('discard') }),
+  /** Brings the draft back as a restore point has it, on the latest version. */
+  z.strictObject({ type: z.literal('restore'), point: z.number().int().positive() }),
   /** Commits the draft as one version. */
   z.strictObject({ type: z.literal('commit') }),
   z.strictObject({ type: z.literal('reject'), suggestion: z.string() }),
@@ -206,6 +208,8 @@ export type WriteValue =
   /** The draft changed: the change added (or merged into), if any. */
   /** The draft changed: each change's key (a change folded into another has that one's), null where one was taken out. */
   | { kind: 'draft'; keys: Array<string | null> }
+  /** The draft discarded, and the restore point that brings it back (null: it was empty). */
+  | { kind: 'discarded'; point: number | null }
   /** Suggestions accepted into the draft, and those left out. */
   | { kind: 'drafted'; accepted: string[]; skipped: Skipped[] }
   | { kind: 'resolved'; comment: string; resolved: boolean }
@@ -292,9 +296,17 @@ export type IdeaEvent =
   | { name: 'resolved'; payload: { comment: string; resolved: boolean; by: Caller } }
   /** A suggestion accepted or rejected: its thread is resolved too. */
   | { name: 'decided'; payload: { comment: string; decision: Decision; by: Caller } }
-  /** The draft changed (or was committed or discarded): editors read it again. */
-  /** The draft changed; `discarded` when someone discarded it */
-  | { name: 'draft'; payload: { by: Caller; discarded?: boolean } }
+  /** The draft changed (or was committed, discarded or restored): editors read it again. */
+  | {
+      name: 'draft'
+      payload: {
+        by: Caller
+        /** Someone discarded it, and the restore point that brings it back (null: there was nothing in it) */
+        discarded?: { point: number | null }
+        /** Someone brought it back from a restore point */
+        restored?: boolean
+      }
+    }
   /** The idea's status changed: opened, moved, closed or reopened. */
   | { name: 'status'; payload: { status: IdeaStatus; change: StatusChange; by: Caller } }
   /** A verdict given, or dismissed: the reviewer's verdict as it stands now. */
@@ -385,10 +397,34 @@ interface Derived {
 }
 /** The draft as a write leaves it: worked out, to keep in the write's transaction, and the steps to send. */
 interface NextDraft {
+  /** The draft as it was before the write: what a restore point taken now keeps. */
+  before: Derived
   after: Derived
   save: (tx: Kysely<IdeaDB>) => Promise<void>
   done: () => void
   events: IdeaEvent[]
+}
+
+/** What a restore point keeps: the draft's changes, who changed each block, and the words seen moved. */
+interface PointDraft {
+  entries: DraftItem[]
+  authors: Array<{ block: string; by: string; at: number }>
+  moved: Array<{ words: string; by: string; at: number }>
+}
+/** A restore point about to be taken: its number, and what keeps it, in the write's transaction. */
+interface Point {
+  seq: number
+  save: (tx: Kysely<IdeaDB>) => Promise<void>
+}
+
+/** A restore point, as listed: when and why it was taken, on which version, and how many changes it has. */
+export interface RestorePoint {
+  point: number
+  version: number
+  why: RestoreWhy
+  by: Caller | null
+  at: number
+  changes: number
 }
 
 /** Typing in a file of the draft: steps from an editor, on the count of steps it had. */
@@ -613,6 +649,8 @@ export class IdeaService {
           return await this.#undraft(request, write.key)
         case 'discard':
           return await this.#discard(request)
+        case 'restore':
+          return await this.#restore(request, write.point)
         case 'commit':
           return await this.#commit(request)
         case 'reply':
@@ -670,6 +708,7 @@ export class IdeaService {
           next_comment: 1,
           git_uri: write.gitHint?.uri ?? null,
           git_branch: write.gitHint?.branch ?? null,
+          draft_at: null,
         })
         .execute()
       await this.#insertVersion(tx, {
@@ -1275,7 +1314,7 @@ export class IdeaService {
       suggestions: state.suggestions.filter((s) => s.comment !== row!.id),
       held: state.held,
     })
-    return this.#keepDraft(request, result, next, (tx) => this.#decide(tx, [row!.id], decision), events)
+    return this.#keepDraft(request, result, next, { also: (tx) => this.#decide(tx, [row!.id], decision), events })
   }
 
   /** Suggestions by ID, refusing any that isn't one. */
@@ -1459,6 +1498,8 @@ export class IdeaService {
       held: DraftHeld[]
       /** Committed or discarded: the words seen moved are forgotten. */
       clearMoved?: boolean
+      /** Restored: the words seen moved are these, as stored. */
+      moved?: PointDraft['moved']
     },
   ): Promise<NextDraft> {
     const at = this.#now()
@@ -1481,7 +1522,11 @@ export class IdeaService {
         suggestions: next.suggestions,
         held: next.held,
         authors: state.authors,
-        moved: next.clearMoved ? [] : state.moved,
+        moved: next.moved
+          ? next.moved.map((m) => JSON.parse(m.words) as MovedWords)
+          : next.clearMoved
+            ? []
+            : state.moved,
       },
       request.caller,
     )
@@ -1559,9 +1604,13 @@ export class IdeaService {
         await tx.deleteFrom('draft_authors').where('block', 'in', gone).execute()
       }
       await this.#authored(tx, authoredBlocks, by, at)
-      if (next.clearMoved) {
+      if (next.clearMoved || next.moved) {
         await tx.deleteFrom('draft_moved').execute()
       }
+      for (const m of next.moved ?? []) {
+        await tx.insertInto('draft_moved').values(m).execute()
+      }
+      await tx.updateTable('idea').set({ draft_at: at }).execute()
     }
     const events: IdeaEvent[] = retargeted
       .filter(({ r }) => r.steps.length > 0)
@@ -1576,6 +1625,7 @@ export class IdeaService {
         },
       }))
     return {
+      before,
       after,
       save,
       done: () => {
@@ -1611,20 +1661,29 @@ export class IdeaService {
       .execute()
   }
 
-  /** Writes the draft as it's to be, with the write's result, in one transaction. */
+  /**
+   * Writes the draft as it's to be, with the write's result, in one transaction. A restore point of
+   * the draft as it was is taken first if it's due (quiet a while, or busy since the last), or `point`.
+   */
   async #keepDraft(
     request: WriteRequest,
     result: WriteResult,
     next: NextDraft,
-    also?: (tx: Kysely<IdeaDB>) => Promise<void>,
-    events: IdeaEvent[] = [{ name: 'draft', payload: { by: request.caller } }],
+    more: {
+      also?: (tx: Kysely<IdeaDB>) => Promise<void>
+      events?: IdeaEvent[]
+      /** The write's own restore point (a discard's, a restore's), or null for none */
+      point?: Point | null
+    } = {},
   ) {
+    const point = more.point !== undefined ? more.point : await this.#pointIfDue(next.before)
     // the steps first, so editors have the documents as they are when they read the draft again
-    const all = [...next.events, ...events]
+    const all = [...next.events, ...(more.events ?? [{ name: 'draft', payload: { by: request.caller } }])]
     try {
       await this.#transaction(async (tx) => {
+        await point?.save(tx)
         await next.save(tx)
-        await also?.(tx)
+        await more.also?.(tx)
         await this.#remember(tx, request.key, result, all)
       })
     } catch (error) {
@@ -1633,6 +1692,86 @@ export class IdeaService {
     }
     next.done()
     return { result, events: all }
+  }
+
+  // --- restore points ---------------------------------------------------------------
+  //
+  // The draft as it was, kept so a bad edit or a discard can be taken back before any version exists:
+  // taken before a change once the draft has been quiet limits.draft.restoreQuietMinutes, or busy
+  // restoreEveryMinutes since the last one, and always before a discard, an overwrite or a restore.
+  // Each is the draft's changes: restoring one puts them back on the latest version, so it works on a
+  // version made since too. A point goes once two versions after the one it was taken on are made.
+
+  /** A restore point of the draft as `derived` has it, unless it's empty: taken in the write's transaction. */
+  async #point(derived: Derived, why: RestoreWhy, by: Caller | null): Promise<Point | null> {
+    if (derived.entries.length === 0) {
+      return null
+    }
+    const meta = await this.#requireMeta()
+    const last = await this.#db
+      .selectFrom('draft_restore_points')
+      .select((eb) => eb.fn.max('seq').as('seq'))
+      .executeTakeFirst()
+    const seq = (last?.seq ?? 0) + 1
+    const draft: PointDraft = {
+      entries: derived.entries,
+      authors: await this.#db.selectFrom('draft_authors').selectAll().execute(),
+      moved: await this.#db.selectFrom('draft_moved').select(['words', 'by', 'at']).orderBy('seq').execute(),
+    }
+    const row = {
+      seq,
+      version: meta.latest,
+      why,
+      by: by ? JSON.stringify(by) : null,
+      at: this.#now(),
+      draft: JSON.stringify(draft),
+    }
+    return { seq, save: async (tx) => void (await tx.insertInto('draft_restore_points').values(row).execute()) }
+  }
+
+  /** Whether the draft is due a restore point before a change: quiet a while, or busy since the last one. */
+  async #pointDue(): Promise<'quiet' | 'busy' | null> {
+    const meta = await this.#requireMeta()
+    if (meta.draft_at === null) {
+      return null
+    }
+    const last = await this.#db
+      .selectFrom('draft_restore_points')
+      .select((eb) => eb.fn.max('at').as('at'))
+      .executeTakeFirst()
+    const lastAt = last?.at ?? null
+    // nothing's changed since the last one
+    if (lastAt !== null && lastAt >= meta.draft_at) {
+      return null
+    }
+    const now = this.#now()
+    if (now - meta.draft_at >= this.#limits.draft.restoreQuietMinutes * 60_000) {
+      return 'quiet'
+    }
+    if (now - (lastAt ?? 0) >= this.#limits.draft.restoreEveryMinutes * 60_000) {
+      return 'busy'
+    }
+    return null
+  }
+
+  /** A restore point of the draft as `derived` has it, if one's due. */
+  async #pointIfDue(derived: Derived): Promise<Point | null> {
+    const why = await this.#pointDue()
+    return why ? this.#point(derived, why, null) : null
+  }
+
+  /** The restore points kept, the latest first. */
+  async restorePoints(): Promise<RestorePoint[]> {
+    await this.#requireMeta()
+    const rows = await this.#db.selectFrom('draft_restore_points').selectAll().orderBy('seq', 'desc').execute()
+    return rows.map((r) => ({
+      point: r.seq,
+      version: r.version,
+      why: r.why,
+      by: r.by ? (JSON.parse(r.by) as Caller) : null,
+      at: r.at,
+      changes: (JSON.parse(r.draft) as PointDraft).entries.length,
+    }))
   }
 
   /** The draft on the latest version, as stored: a write's (`keep`), or a read's. */
@@ -1746,6 +1885,9 @@ export class IdeaService {
     if (t.version !== live.steps) {
       return { result: { kind: 'behind', version: live.steps }, events: [] }
     }
+    // the draft as it was, kept if it's been quiet a while or busy since the last restore point
+    const due = await this.#pointDue()
+    const point = due ? await this.#point((await this.#draftNow(t.caller)).derived, due, null) : null
     let applied: ReturnType<typeof applyEach>
     try {
       applied = applyEach(live.env.schema, live.doc, t.steps)
@@ -1791,6 +1933,8 @@ export class IdeaService {
     const snapshots = new Map<string, number>()
     try {
       await this.#transaction(async (tx) => {
+        await point?.save(tx)
+        await tx.updateTable('idea').set({ draft_at: at }).execute()
         for (const [file, f] of files) {
           for (const [i, step] of f.steps.entries()) {
             await tx
@@ -1980,18 +2124,85 @@ export class IdeaService {
     return this.#keepDraft(request, { ok: true, value: { kind: 'draft', keys: [] } }, next)
   }
 
+  /** Empties the draft, after a restore point that brings it back. */
   async #discard(request: WriteRequest) {
     await this.#requireMeta()
     const { latest, state, derived } = await this.#draftNow(request.caller)
+    const point = await this.#point(derived, 'discard', request.caller)
     const next = await this.#nextDraft(request, latest, state, derived, {
       files: latest.idea.files,
       suggestions: [],
       held: [],
       clearMoved: true,
     })
-    return this.#keepDraft(request, { ok: true, value: { kind: 'draft', keys: [] } }, next, undefined, [
-      { name: 'draft', payload: { by: request.caller, discarded: true } },
-    ])
+    return this.#keepDraft(request, { ok: true, value: { kind: 'discarded', point: point?.seq ?? null } }, next, {
+      point,
+      events: [{ name: 'draft', payload: { by: request.caller, discarded: { point: point?.seq ?? null } } }],
+    })
+  }
+
+  /**
+   * The draft as a restore point has it, on the latest version, after a restore point of the draft as
+   * it is (so a restore can be taken back too). Its changes that still apply go back in; one a version
+   * made since has outdated is held, to undo or redo; a suggestion decided since stays decided. Who
+   * changed each block, and the words seen moved, are the point's.
+   */
+  async #restore(request: WriteRequest, seq: number) {
+    await this.#requireMeta()
+    const row = await this.#db
+      .selectFrom('draft_restore_points')
+      .select('draft')
+      .where('seq', '=', seq)
+      .executeTakeFirst()
+    if (!row) {
+      refuse('not_found', `no restore point ${seq}: it may be from more than two versions ago`)
+    }
+    const kept = JSON.parse(row!.draft) as PointDraft
+    const { latest, state, derived } = await this.#draftNow(request.caller)
+    const suggested = kept.entries.flatMap((e) => (e.change.kind === 'suggestion' ? [e.change.comment] : []))
+    const open = new Set(
+      suggested.length > 0
+        ? (await this.#suggestions(suggested)).filter((r) => r.decision === null).map((r) => r.id)
+        : [],
+    )
+    const held = kept.entries.filter((e) => e.kind === 'held')
+    let rest = kept.entries.filter(
+      (e) => e.kind !== 'held' && (e.change.kind !== 'suggestion' || open.has(e.change.comment)),
+    )
+    let built = await this.#core.buildDraft(this.id, latest.idea, latest.comments, rest.map(plainEntry))
+    // those a version since has outdated are held, until what's left applies
+    for (;;) {
+      const outdated = rest.filter((e) => built.problems[e.key] !== undefined)
+      if (outdated.length === 0) {
+        break
+      }
+      held.push(...outdated.filter((e) => e.change.kind !== 'suggestion'))
+      rest = rest.filter((e) => built.problems[e.key] === undefined)
+      built = await this.#core.buildDraft(this.id, latest.idea, latest.comments, rest.map(plainEntry))
+    }
+    const point = await this.#point(derived, 'restore', request.caller)
+    const next = await this.#nextDraft(request, latest, state, derived, {
+      files: built.files,
+      suggestions: rest.flatMap((e) =>
+        e.change.kind === 'suggestion' ? [{ comment: e.change.comment, change: e.change, by: e.by, at: e.at }] : [],
+      ),
+      held: held.map((e) => ({ key: e.key, change: e.change, by: e.by, at: e.at })),
+      moved: kept.moved,
+    })
+    const authored = [...new Set(kept.authors.map((a) => a.block))]
+    return this.#keepDraft(request, { ok: true, value: { kind: 'draft', keys: [] } }, next, {
+      point,
+      // who changed each block is the point's, not the restorer's
+      also: async (tx) => {
+        if (authored.length > 0) {
+          await tx.deleteFrom('draft_authors').where('block', 'in', authored).execute()
+        }
+        for (const a of kept.authors) {
+          await tx.insertInto('draft_authors').values(a).execute()
+        }
+      },
+      events: [{ name: 'draft', payload: { by: request.caller, restored: true } }],
+    })
   }
 
   /** Suggestions into the draft, one by one; one that doesn't apply to the draft as it is stays open, saying why. */
@@ -2196,6 +2407,7 @@ export class IdeaService {
     // (it's refused unless the caller confirms that), in everyone's editor, and everyone's told
     const state = await this.#draftState(latest.idea, true)
     let draft: NextDraft | null = null
+    let point: Point | null = null
     let overwrote = 0
     if (more.clearDraft) {
       const before = await this.#derive(latest.idea, latest.comments, state, request.caller)
@@ -2228,7 +2440,9 @@ export class IdeaService {
         )
       }
       // overwritten: out of the draft, so their blocks take the version's words; a suggestion accepted
-      // into the draft and overwritten is open again
+      // into the draft and overwritten is open again. A restore point brings them back
+      point =
+        overtaken.length > 0 ? await this.#point(before, 'overwrite', request.caller) : await this.#pointIfDue(before)
       const gone = new Set(overtaken.map((e) => e.key))
       const heldKeys = new Set(state.held.map((h) => h.key))
       const kept = before.entries.filter((e) => !heldKeys.has(e.key) && !gone.has(e.key))
@@ -2284,6 +2498,12 @@ export class IdeaService {
       if (decide) {
         await this.#decide(tx, decide.ids, decide.decision)
       }
+      await point?.save(tx)
+      // a restore point goes once two versions after the one it was taken on are made
+      await tx
+        .deleteFrom('draft_restore_points')
+        .where('version', '<', number - 1)
+        .execute()
       await draft?.save(tx)
       await this.#remember(tx, request.key, result, events)
     }).catch((error: unknown) => {

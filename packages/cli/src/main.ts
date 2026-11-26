@@ -432,7 +432,7 @@ const comment: Family = {
 const draftFamily: Family = {
   name: 'draft',
   summary:
-    'The idea’s draft: its changes (made in the web app, or suggestions accepted into it), committing and discarding it',
+    'The idea’s draft: its changes (made in the web app, or suggestions accepted into it), committing, discarding and restoring it',
   subcommands: [
     {
       name: 'show',
@@ -454,6 +454,14 @@ const draftFamily: Family = {
       summary: 'Discard every change in the draft, for everyone',
       flags: { idea: IDEA },
       run: (ctx, f) => drafts.discard(ctx, str(f, 'idea') ? { idea: str(f, 'idea')! } : {}),
+    },
+    {
+      name: 'restore',
+      usage: 'ideaf draft restore [point]',
+      summary:
+        'The draft’s restore points (kept when it goes quiet, every ten minutes while it’s busy, and before a discard); given one, bring the draft back as it was then, for everyone',
+      flags: { idea: IDEA },
+      run: (ctx, f, a) => drafts.restore(ctx, str(f, 'idea') ? { idea: str(f, 'idea')! } : {}, a),
     },
   ],
 }

@@ -261,8 +261,17 @@ export const LiveEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('resolved'), comment: z.string(), resolved: z.boolean(), by: Caller }),
   /** A suggestion accepted or rejected; its thread is resolved with it. */
   z.object({ type: z.literal('decided'), comment: z.string(), decision: Decision, by: Caller }),
-  /** The idea's draft changed, was committed or was discarded (`discarded`): read it again (people with edit access). */
-  z.object({ type: z.literal('draft'), by: Caller, uncommitted: z.boolean(), discarded: z.boolean().optional() }),
+  /**
+   * The idea's draft changed, was committed, discarded (`discarded`, with the restore point that brings
+   * it back, null if it was empty) or restored (`restored`): read it again (people with edit access).
+   */
+  z.object({
+    type: z.literal('draft'),
+    by: Caller,
+    uncommitted: z.boolean(),
+    discarded: z.object({ point: z.number().int().nullable() }).optional(),
+    restored: z.boolean().optional(),
+  }),
   /** The idea's status changed. */
   z.object({ type: z.literal('status'), status: IdeaStatus, change: StatusChange, by: Caller }),
   /** A verdict given or dismissed: the reviewer's verdict as it stands. */
@@ -402,8 +411,10 @@ export const DraftLiveEvent = z.discriminatedUnion('type', [
     committed: z.boolean(),
     overwrote: z.number().int(),
   }),
-  /** Someone discarded the draft: every file is back to the latest version. */
-  z.object({ type: z.literal('discarded'), by: Caller }),
+  /** Someone discarded the draft: every file is back to the latest version. `point` brings it back (null: it was empty). */
+  z.object({ type: z.literal('discarded'), by: Caller, point: z.number().int().nullable() }),
+  /** Someone brought the draft back from a restore point. */
+  z.object({ type: z.literal('restored'), by: Caller }),
 ])
 export type DraftLiveEvent = z.infer<typeof DraftLiveEvent>
 
@@ -449,6 +460,24 @@ export const Draft = z.object({
   steps: z.number().int(),
   /** Who is typing in it now (in the last few seconds), and where: the heading of the section, if any. */
   typing: z.array(z.object({ user: z.string(), file: z.string(), heading: z.string().nullable() })),
+})
+
+/**
+ * The draft as it was, kept so a bad edit or a discard can be taken back: taken once the draft has
+ * been quiet a couple of minutes, every ten while it's busy, and before a discard, an overwrite or a
+ * restore. Kept until two versions after the one it was taken on.
+ */
+export const RestorePoint = z.object({
+  point: z.number().int(),
+  /** The latest version when it was taken. */
+  version: z.number().int(),
+  /** The draft went quiet, it had been busy a while, or someone was about to discard, overwrite or restore it. */
+  why: z.enum(['quiet', 'busy', 'discard', 'overwrite', 'restore']),
+  /** Who discarded, overwrote or restored it; null for a quiet or busy one. */
+  by: Caller.nullable(),
+  at: z.number(),
+  /** How many changes the draft had. */
+  changes: z.number().int(),
 })
 
 /** A suggestion left out of an accept, and why. */

@@ -152,7 +152,10 @@ export function createDraftLive({
     )
     conn.on('draft', (e) => {
       if (e.discarded) {
-        send(ws, { type: 'discarded', by: e.by })
+        send(ws, { type: 'discarded', by: e.by, point: e.discarded.point })
+      }
+      if (e.restored) {
+        send(ws, { type: 'restored', by: e.by })
       }
     })
     conn.on('presence', (person) => send(ws, { type: 'presence', person }))

@@ -264,6 +264,24 @@ describe('ideaf draft', () => {
     expect((await r.ideaf('comment', 'list', '--all')).out).toContain('suggestion · accepted in v2')
     expect((await r.ideaf('draft', 'commit')).exit).not.toBe(0)
   })
+  test('a discarded draft comes back from its restore point', async () => {
+    const { r, idea } = await started()
+    expect((await r.ideaf('draft', 'restore')).out).toBe(`The draft of ${idea} has no restore points.`)
+    await r.ideaf('comment', 'suggest', 'in Q3', '--quote', 'this quarter')
+    await r.ideaf('comment', 'accept', 'c1')
+    expect((await r.ideaf('draft', 'discard')).out).toBe(
+      `Discarded the draft of ${idea}. \`ideaf draft restore 1\` brings it back.`,
+    )
+    expect((await r.ideaf('draft', 'show')).out).toBe(`The draft of ${idea} is empty.`)
+    const listed = (await r.ideaf('draft', 'restore')).out
+    expect(listed).toContain(`  1  just now · on v1 · 1 change · before a discard by @${h('riley')}`)
+    expect((await r.ideaf('draft', 'restore', '1')).out).toBe(
+      `Restored the draft of ${idea} from point 1. Run \`ideaf draft show\` to see it.`,
+    )
+    expect((await r.ideaf('draft', 'show')).out).toContain('suggestion c1: "this quarter" → "in Q3"')
+    expect((await r.ideaf('draft', 'restore', 'one')).exit).not.toBe(0)
+  })
+
   test('with changes in the draft, sync puts yours on top of them: pull first, merge, sync again', async () => {
     const { r, idea } = await started()
     const riley = api(h('riley'))
