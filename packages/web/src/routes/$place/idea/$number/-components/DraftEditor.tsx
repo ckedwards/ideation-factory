@@ -11,14 +11,16 @@
 // theirs or their own. Switching to it waits for what's typed to be stored; switching back saves it,
 // and the rich side opens the live document again, with it in.
 //
-// Away too long for the server to have kept what was missed, the page is compared with the draft and
-// saved the same way, block by block, then opened again from the server (until step 8 has its own).
+// Away too long for the server to have kept what was missed, the page is compared with the draft
+// paragraph by paragraph (long-gap.ts): what only you changed goes in, the page opens again from the
+// server, and the paragraphs someone else changed too wait, with yours, for you to choose: "Some of
+// what you typed needs a look", with "Review 2 changes".
 // Edit access gone, the page turns read-only, with what was typed still there to copy. While the draft
 // is full (its limit of windows, the server's limits.draft.editors), it's read-only and still live,
 // until someone leaves.
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { ApiError } from '@ideaf/api'
-import { draftChanges, type Idea } from '@ideaf/core'
+import { type DraftChange, draftChanges, type EditorBlock, type Idea } from '@ideaf/core'
 import { Button } from '@ideaf/ui'
 import { MarkdownEditor, type MarkdownEditorHandle, type PageMark } from '@ideaf/ui/editor'
 import type { LiveDoc, LiveStatus } from '@ideaf/ui/editor/live'
@@ -26,6 +28,8 @@ import { useBlocker } from '@tanstack/react-router'
 import { api } from '../../../../../api.ts'
 import type { DraftLive } from './draft-live.ts'
 import type { Draft, EditingView } from './editing.tsx'
+import { needsALook, type Sent, sendEach } from './long-gap.ts'
+import { LongGapReview } from './LongGapReview.tsx'
 import './DraftEditor.css'
 
 /** On the Markdown side: how long typing stops before what's typed is saved. */
@@ -33,8 +37,17 @@ const PAUSE_MS = 1000
 /** How long something's on its way before the line says Saving…. */
 const SAVING_AFTER_MS = 500
 
-/** A save by block (the Markdown side, or after a long gap): done, under way, refused as outdated, or failed. */
-type Status = 'saved' | 'saving' | { problem: string } | { outdated: string }
+/**
+ * A save by block (the Markdown side, or after a long gap): done, under way, refused as outdated, or
+ * failed; or, after a long gap, your changes someone else also changed, to choose between (`mine`, the
+ * page's blocks then).
+ */
+type Status =
+  | 'saved'
+  | 'saving'
+  | { problem: string }
+  | { outdated: string }
+  | { review: DraftChange[]; mine: EditorBlock[] }
 
 export interface DraftEditorProps {
   idea: string
@@ -112,8 +125,8 @@ export function DraftEditor(props: DraftEditorProps) {
   const agreed = useRef(file.content)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inFlight = useRef<Promise<boolean> | null>(null)
-  const latest = useRef({ text, base, props, markdownSide, doc })
-  latest.current = { text, base, props, markdownSide, doc }
+  const latest = useRef({ text, base, props, markdownSide, doc, status })
+  latest.current = { text, base, props, markdownSide, doc, status }
 
   // what the editor opens with: the draft as last agreed (the live document takes its place on the
   // rich side, and IDs come from the server, so it changes only on the Markdown side)
@@ -207,7 +220,9 @@ export function DraftEditor(props: DraftEditorProps) {
       return timer.current !== null || inFlight.current !== null || !same(latest.current.text, agreed.current)
     }
     const live = latest.current.doc
-    return live !== null && (live.pending() > 0 || live.status() === 'gone')
+    // yours, still to choose about after a long gap, is only here
+    const choosing = typeof latest.current.status === 'object' && 'review' in latest.current.status
+    return choosing || (live !== null && (live.pending() > 0 || live.status() === 'gone'))
   }
   const onUnsaved = props.onUnsaved
   useEffect(() => {
@@ -248,9 +263,23 @@ export function DraftEditor(props: DraftEditorProps) {
     }
   }, [props.draft, file.file, markdownSide])
 
-  // away too long: the page saved by block onto the file as the server last confirmed it here (the
-  // draft as last read can be older: typing confirmed since isn't in it, and would read as someone
-  // else's), then opened again
+  /** Changes sent to the draft: taken, refused as outdated (someone else changed them), or failed. */
+  const send = async (changes: DraftChange[]): Promise<Sent> => {
+    try {
+      await api.changeDraft({ idea: latest.current.props.idea, changes })
+      return 'taken'
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'conflict') {
+        return 'outdated'
+      }
+      return { failed: error instanceof Error ? error.message : String(error) }
+    }
+  }
+
+  // away too long: the page compared, paragraph by paragraph, with the file as the server last
+  // confirmed it here (the draft as last read can be older: typing confirmed since isn't in it, and
+  // would read as someone else's). What only you changed goes in, then the page opens again; what
+  // someone else changed too waits, to choose
   const recover = async (draft: Draft) => {
     const handle = editor.current
     const blocks = handle?.blocks()
@@ -263,11 +292,57 @@ export function DraftEditor(props: DraftEditorProps) {
     const from = ideaOf(draft)
     from.files = from.files.map((f) => (f.id === file.file ? { ...f, source: text.source, unitIds: ids } : f))
     from.nextId = Math.max(from.nextId, ...ids.map((id) => (Number(id.slice(1)) || 0) + 1))
-    if (await saveBlocks(from, blocks)) {
+    const made = draftChanges(from, { [file.file]: blocks }, handle?.movedWords() ?? [])
+    if (!made.ok) {
+      setStatus({ problem: made.message })
+      return
+    }
+    setStatus('saving')
+    const sent = await sendEach(made.changes, send)
+    if ('failed' in sent) {
+      setStatus({ problem: sent.failed })
+      return
+    }
+    props.live.reopen(file.file)
+    if (sent.unsettled.length > 0) {
+      await props.reread()
+      setStatus({ review: sent.unsettled, mine: blocks })
+    } else {
       setStatus('saved')
-      props.live.reopen(file.file)
     }
   }
+
+  // choosing, for one of them: yours over the draft as it now is, or the draft's
+  const [reviewing, setReviewing] = useState(false)
+  const [busy, setBusy] = useState<number | null>(null)
+  const review = typeof status === 'object' && 'review' in status ? status : null
+  const looks = review ? review.review.map((c) => needsALook(c, props.draft, file.file, review.mine)) : []
+  const settle = (index: number) => {
+    const left = review!.review.filter((_, i) => i !== index)
+    if (left.length === 0) {
+      setReviewing(false)
+      setStatus('saved')
+    } else {
+      setStatus({ review: left, mine: review!.mine })
+    }
+  }
+  const takeYours = async (index: number) => {
+    setBusy(index)
+    try {
+      // made on the draft as it is now, read again: someone may have typed since it was shown
+      const fresh = await props.reread()
+      const over = fresh ? needsALook(review!.review[index]!, fresh, file.file, review!.mine).over : null
+      const done = over ? await send([over]) : 'taken'
+      if (done === 'taken') {
+        settle(index)
+      } else if (done !== 'outdated') {
+        setStatus({ problem: done.failed })
+      }
+    } finally {
+      setBusy(null)
+    }
+  }
+
   useEffect(() => {
     if (liveStatus === 'gone' && !markdownSide) {
       void recover(latest.current.props.draft)
@@ -350,9 +425,11 @@ export function DraftEditor(props: DraftEditorProps) {
     : full
       ? `The draft is full: ${props.live.limit()} people are editing it. You can read along, and type once someone leaves.`
       : typeof status === 'object'
-        ? 'outdated' in status
-          ? outdatedChoice(status.outdated)
-          : `Not saved: ${status.problem}`
+        ? 'review' in status
+          ? needsALookLine(status.review.length, () => setReviewing(true))
+          : 'outdated' in status
+            ? outdatedChoice(status.outdated)
+            : `Not saved: ${status.problem}`
         : markdownSide
           ? status === 'saving'
             ? 'Saving…'
@@ -414,7 +491,27 @@ export function DraftEditor(props: DraftEditorProps) {
           timer.current = setTimeout(() => void save(), PAUSE_MS)
         }}
       />
+      <LongGapReview
+        open={reviewing && looks.length > 0}
+        items={looks}
+        busy={busy}
+        onYours={(i) => void takeYours(i)}
+        onTheirs={settle}
+        onClose={() => setReviewing(false)}
+      />
     </div>
+  )
+}
+
+/** After a long gap: some of yours waits, with "Review 2 changes" to choose for each. */
+function needsALookLine(n: number, onReview: () => void) {
+  return (
+    <span className="draft-editor-outdated">
+      Some of what you typed needs a look
+      <Button size="sm" variant="link" onClick={onReview}>
+        {n === 1 ? 'Review 1 change' : `Review ${n} changes`}
+      </Button>
+    </span>
   )
 }
 
