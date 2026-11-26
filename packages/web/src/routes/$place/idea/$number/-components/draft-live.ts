@@ -13,7 +13,8 @@
 // are, which go to the file each is in; it sends its own caret at most every `caretMs` the server
 // gives, and every few seconds while it stays put, so the server knows it's still here. Offline,
 // everyone else is gone from the page until it's back. Past the draft's limit of windows it isn't
-// in: the page shows the draft read-only, still live, until the server lets it in.
+// in: the page shows the draft read-only, still live, until the server lets it in. Steps an agent
+// made (step 7) go to the file with the agent's name, for the editor to mark them.
 import { type Caller, type DraftCaret, DRAFT_LIVE_CLOSE, DraftLiveEvent, type DraftPresence } from '@ideaf/api'
 import { LiveDoc } from '@ideaf/ui/editor/live'
 
@@ -160,6 +161,20 @@ export class DraftLive {
     for (const person of this.#people.values()) {
       this.#route(person)
     }
+  }
+
+  /** An agent's name, as its edits are marked in the text ("Claude for Tomás", or "for you"); null for a person. */
+  #agentOf(by: Caller | null): string | null {
+    if (!by || by.purpose === 'me') {
+      return null
+    }
+    const bot = by.bot ?? 'bot'
+    if (by.purpose !== 'bot-for-me') {
+      return bot
+    }
+    // your own agent is "for you", in the middle of the name as in a sentence
+    const mine = this.#people.get(this.window)?.user === by.user
+    return `${bot} for ${mine ? 'you' : this.#nameOf(by.user)}`
   }
 
   #changed() {
@@ -347,7 +362,12 @@ export class DraftLive {
         return
       }
       case 'steps':
-        this.#docs.get(event.file)?.receive(event.from, event.steps, event.clients)
+        this.#docs.get(event.file)?.receive(
+          event.from,
+          event.steps,
+          event.clients,
+          event.by.map((by) => this.#agentOf(by)),
+        )
         return
       case 'behind':
         this.#docs.get(event.file)?.behind(event.version)
