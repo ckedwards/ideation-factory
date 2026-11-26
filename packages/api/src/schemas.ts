@@ -373,13 +373,17 @@ export const DraftLiveEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('left'), window: DraftWindowId }),
   /** A file opened: its document, at its count of steps. */
   z.object({ type: z.literal('opened'), file: DraftFileId, version: StepCount, doc: z.unknown() }),
-  /** Steps stored, from count `from`, each with the client that sent it (`server` for the server's own). */
+  /**
+   * Steps stored, from count `from`, each with the client that sent it (`server` for the server's own)
+   * and, for the server's own, who made it (an agent's change is shown as its); null for a window's.
+   */
   z.object({
     type: z.literal('steps'),
     file: DraftFileId,
     from: StepCount,
     steps: z.array(z.unknown()),
     clients: z.array(z.string()),
+    by: z.array(Caller.nullable()),
   }),
   /** Your steps were sent on an older count than `version`: take what you missed, and send them again. */
   z.object({ type: z.literal('behind'), file: DraftFileId, version: StepCount }),
