@@ -12,10 +12,13 @@
 // - **Carets** (step 4): other windows' are drawn where they said they were, on the count they had,
 //   mapped through the steps since and what's typed here (carets.ts). This window's own is sent on
 //   the actor's count, without what's typed here and not confirmed, so everyone can map it the same.
+// - **Agents' edits** (step 7): steps the actor says an agent made are marked where they land
+//   (agent-marks.ts), so the words changing under you read as the agent's.
 import { Node } from '@milkdown/kit/prose/model'
 import { EditorState, type Transaction } from '@milkdown/kit/prose/state'
 import { Step, type StepMap } from '@milkdown/kit/prose/transform'
 import type { EditorView } from '@milkdown/kit/prose/view'
+import { type AgentEdit, agentMarks, markAgentEdits } from './agent-marks.ts'
 import { carets, caretsKey, removeCaret, setCaret } from './carets.ts'
 import type { MovedWords } from './identity.ts'
 import {
@@ -58,7 +61,8 @@ export interface LivePresence extends LiveCaret {
 const KEEP_MAPS = 2000
 
 /** The plugins that belong to a live document, taken out of an editor's state when another takes their place. */
-const isLivePlugin = (key: string) => key.startsWith('collab$') || key.startsWith('liveCarets$')
+const isLivePlugin = (key: string) =>
+  key.startsWith('collab$') || key.startsWith('liveCarets$') || key.startsWith('agentMarks$')
 
 /**
  * Where a live document is:
@@ -251,6 +255,7 @@ export class LiveDoc {
           ...plugins,
           collab({ version, clientID: this.clientID, unconfirmed }),
           carets(() => this.#caretMoved()),
+          agentMarks(),
         ],
       }),
     )
@@ -329,8 +334,11 @@ export class LiveDoc {
     )
   }
 
-  /** The actor's steps from count `from`, and whose each is: ours are confirmed, the rest applied. */
-  receive(from: number, steps: unknown[], clientIDs: Array<string | number>): void {
+  /**
+   * The actor's steps from count `from`, and whose each is: ours are confirmed, the rest applied.
+   * `agents` names the agent that made each step, if one did (null for a person's): those are marked.
+   */
+  receive(from: number, steps: unknown[], clientIDs: Array<string | number>, agents: Array<string | null> = []): void {
     if (this.#status === 'gone' || this.#status === 'closed') {
       return
     }
@@ -343,6 +351,7 @@ export class LiveDoc {
     const skip = version - from
     const fresh = steps.slice(skip)
     const ids = clientIDs.slice(skip)
+    const madeBy = agents.slice(skip)
     if (fresh.length > 0) {
       const state = this.#state()
       if (!state) {
@@ -353,6 +362,7 @@ export class LiveDoc {
         const parsed = fresh.map((s) => Step.fromJSON(schema, s))
         this.#dispatch(receiveTransaction(state, parsed, ids, { mapSelectionBackward: true }))
         this.#keepMaps(parsed)
+        this.#markAgents(parsed, madeBy)
         // ours were among them: the send is answered
         if (ids.includes(this.clientID) || unconfirmedOf(this.#state()!).length < before) {
           this.#inFlight = false
@@ -363,6 +373,61 @@ export class LiveDoc {
     }
     this.#update()
     this.#send()
+  }
+
+  /** The words agents' steps put in (or where they took words out), marked in the editor as theirs. */
+  #markAgents(steps: Step[], agents: Array<string | null>) {
+    const view = this.#view
+    const state = view ? this.#state() : null
+    if (!view || !state || !agents.some(Boolean)) {
+      return
+    }
+    // where each agent step's change is once every step after it, and what's typed here, has gone in
+    const later = (i: number) => [
+      ...steps.slice(i + 1).map((s) => s.getMap()),
+      ...unconfirmedOf(state).map((r) => r.step.getMap()),
+    ]
+    const found: Array<{ name: string; from: number; to: number }> = []
+    steps.forEach((step, i) => {
+      const name = agents[i]
+      if (!name) {
+        return
+      }
+      const maps = later(i)
+      step.getMap().forEach((oldStart, oldEnd, newStart, newEnd) => {
+        if (oldStart === oldEnd && newStart === newEnd) {
+          return
+        }
+        let from = newStart
+        let to = newEnd
+        for (const map of maps) {
+          from = map.map(from, 1)
+          to = Math.max(from, map.map(to, -1))
+        }
+        found.push({ name, from, to })
+      })
+    })
+    // one mark for each agent in each paragraph it changed: its words, joined where they touch
+    const edits = new Map<string, AgentEdit>()
+    for (const r of found.sort((a, b) => a.from - b.from)) {
+      const $from = state.doc.resolve(Math.min(r.from, state.doc.content.size))
+      const key = `${$from.depth > 0 ? $from.before($from.depth) : 0} ${r.name}`
+      const edit = edits.get(key) ?? { name: r.name, ranges: [] }
+      edits.set(key, edit)
+      const last = edit.ranges.at(-1)
+      if (last && r.from <= last.to) {
+        last.to = Math.max(last.to, r.to)
+      } else {
+        edit.ranges.push({ from: r.from, to: r.to })
+      }
+    }
+    // a deletion beside words put in is part of that change: only the words are marked
+    for (const edit of edits.values()) {
+      if (edit.ranges.some((r) => r.to > r.from)) {
+        edit.ranges = edit.ranges.filter((r) => r.to > r.from)
+      }
+    }
+    view.dispatch(markAgentEdits(view.state.tr, [...edits.values()]))
   }
 
   #keepMaps(steps: Step[]) {
