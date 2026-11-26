@@ -179,7 +179,7 @@ test('a commit is announced after the steps that move the documents onto it', as
   ana.ws.close()
 }, 30_000)
 
-test('a version made around the draft isn’t a commit, and a discard is announced, after its steps', async () => {
+test('a version made around the draft isn’t a commit, and a discard and a restore are announced, after their steps', async () => {
   const riley = await signIn(app, name('riley'))
   const api = client(riley.jwt)
   const { idea } = await api.createIdea({ title: 'Discard', files: [{ path: 'plan.md', content: PLAN }] })
@@ -197,7 +197,15 @@ test('a version made around the draft isn’t a commit, and a discard is announc
   await api.discardDraft({ idea })
   // the steps back to the version first, then who discarded it
   expect(await ana.next('steps')).toMatchObject({ from: 1, clients: ['server'] })
-  expect(await ana.next('discarded')).toMatchObject({ by: { user: riley.id } })
+  const discarded = await ana.next('discarded')
+  const point = discarded.point!
+  expect(discarded).toEqual({ type: 'discarded', by: expect.objectContaining({ user: riley.id }), point })
+  // brought back from the restore point the discard kept: its steps, then who restored it
+  const { points } = await api.listRestorePoints({ idea })
+  expect(points).toMatchObject([{ point, why: 'discard', changes: 1 }])
+  await api.restoreDraft({ idea, point })
+  expect(await ana.next('steps')).toMatchObject({ from: 2, clients: ['server'] })
+  expect(await ana.next('restored')).toMatchObject({ by: { user: riley.id } })
   ana.ws.close()
 }, 30_000)
 

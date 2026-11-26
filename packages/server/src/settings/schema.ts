@@ -221,6 +221,20 @@ export const settingsSchema = z.strictObject({
             .describe(
               'How often a file’s document is stored whole, in steps: an idea waking up replays at most this many',
             ),
+          restore_quiet_minutes: whole(
+            LIMIT_RANGES.draft.restoreQuietMinutes.min,
+            LIMIT_RANGES.draft.restoreQuietMinutes.max,
+          )
+            .default(DEFAULT_DRAFT_LIMITS.restoreQuietMinutes)
+            .describe(
+              'How long the draft is quiet before a restore point is kept, in minutes (one is also kept before a discard)',
+            ),
+          restore_every_minutes: whole(
+            LIMIT_RANGES.draft.restoreEveryMinutes.min,
+            LIMIT_RANGES.draft.restoreEveryMinutes.max,
+          )
+            .default(DEFAULT_DRAFT_LIMITS.restoreEveryMinutes)
+            .describe('How often a restore point is kept while the draft is busy, at most, in minutes'),
         })
         .default({
           editors: DEFAULT_DRAFT_LIMITS.editors,
@@ -228,6 +242,8 @@ export const settingsSchema = z.strictObject({
           keep_steps: DEFAULT_DRAFT_LIMITS.keepSteps,
           keep_minutes: DEFAULT_DRAFT_LIMITS.keepMinutes,
           snapshot_every: DEFAULT_DRAFT_LIMITS.snapshotEvery,
+          restore_quiet_minutes: DEFAULT_DRAFT_LIMITS.restoreQuietMinutes,
+          restore_every_minutes: DEFAULT_DRAFT_LIMITS.restoreEveryMinutes,
         }),
     })
     .default({
@@ -239,6 +255,8 @@ export const settingsSchema = z.strictObject({
         keep_steps: DEFAULT_DRAFT_LIMITS.keepSteps,
         keep_minutes: DEFAULT_DRAFT_LIMITS.keepMinutes,
         snapshot_every: DEFAULT_DRAFT_LIMITS.snapshotEvery,
+        restore_quiet_minutes: DEFAULT_DRAFT_LIMITS.restoreQuietMinutes,
+        restore_every_minutes: DEFAULT_DRAFT_LIMITS.restoreEveryMinutes,
       },
     }),
 

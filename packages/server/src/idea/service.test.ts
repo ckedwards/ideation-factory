@@ -23,7 +23,11 @@ async function setup(limits: Limits = DEFAULT_LIMITS) {
   let n = 0
   const write = async (write: unknown, caller: Caller = OWNER, key = `k${++n}`) =>
     (await service.write({ key, caller, write })).result
-  return { sql, files, service, write }
+  /** Time passing, as the service sees it. */
+  const wait = (minutes: number) => {
+    clock += minutes * 60_000
+  }
+  return { sql, files, service, write, wait }
 }
 
 async function created() {
@@ -776,6 +780,140 @@ describe('the draft', () => {
   })
 })
 
+describe('restore points', () => {
+  const FOX = { kind: 'edit', id: 'b3', source: 'The quick red fox.', was: 'The quick brown fox.' } as const
+  const RAIN = { kind: 'edit', id: 'b5', source: 'It may pour.', was: 'It might rain.' } as const
+  const REDFOX = '# Plan\n\nThe quick red fox.\n\n## Risks\n\nIt may pour.\n'
+
+  test('a discard keeps one, and restoring it brings the draft back for everyone, with who made each change', async () => {
+    const { service, write } = await created()
+    value(await write({ type: 'draft', changes: [FOX] }, REVIEWER))
+    value(
+      await write(
+        {
+          type: 'suggest',
+          version: 1,
+          anchor: { kind: 'text', file: 'f1', start: 35, end: 45 },
+          new: 'may pour',
+          body: '',
+        },
+        REVIEWER,
+      ),
+    )
+    value(await write({ type: 'accept', suggestions: ['c1'] }))
+    const discarded = await service.write({ key: 'discard', caller: OWNER, write: { type: 'discard' } })
+    expect(discarded.result).toEqual({ ok: true, value: { kind: 'discarded', point: 1 } })
+    expect(discarded.events.find((e) => e.name === 'draft')!.payload).toEqual({
+      by: OWNER,
+      discarded: { point: 1 },
+    })
+    expect(await service.restorePoints()).toEqual([
+      { point: 1, version: 1, why: 'discard', by: OWNER, at: expect.any(Number), changes: 2 },
+    ])
+    expect((await service.draft()).changes).toEqual([])
+
+    const restored = await service.write({ key: 'restore', caller: OWNER, write: { type: 'restore', point: 1 } })
+    expect(restored.result).toEqual({ ok: true, value: { kind: 'draft', keys: [] } })
+    // everyone editing gets the steps, and is told
+    expect(restored.events.map((e) => e.name)).toEqual(['draftSteps', 'draft'])
+    expect(restored.events.at(-1)!.payload).toEqual({ by: OWNER, restored: true })
+    const draft = await service.draft()
+    expect(draft.files[0]!.content).toBe(REDFOX)
+    // the fox is still Maya's, and the suggestion is in the draft again
+    expect(draft.changes.map((c) => [c.change.kind, c.by.user])).toEqual([
+      ['suggestion', 'riley'],
+      ['edit', 'maya'],
+    ])
+    expect((await service.comments())[0]).toMatchObject({ suggestion: { inDraft: true, decision: null } })
+    // an empty draft keeps no restore point of itself
+    expect((await service.restorePoints()).map((p) => p.why)).toEqual(['discard'])
+    expect(await write({ type: 'restore', point: 9 })).toMatchObject({ ok: false, error: { code: 'not_found' } })
+  })
+
+  test('restoring keeps the draft as it was first, so a restore can be taken back', async () => {
+    const { service, write } = await created()
+    value(await write({ type: 'draft', changes: [FOX] }))
+    value(await write({ type: 'discard' }))
+    value(await write({ type: 'draft', changes: [RAIN] }))
+    value(await write({ type: 'restore', point: 1 }))
+    expect((await service.draft()).files[0]!.content).toBe(
+      '# Plan\n\nThe quick red fox.\n\n## Risks\n\nIt might rain.\n',
+    )
+    expect((await service.restorePoints()).map((p) => [p.point, p.why, p.changes])).toEqual([
+      [2, 'restore', 1],
+      [1, 'discard', 1],
+    ])
+    value(await write({ type: 'restore', point: 2 }))
+    expect((await service.draft()).files[0]!.content).toBe(
+      '# Plan\n\nThe quick brown fox.\n\n## Risks\n\nIt may pour.\n',
+    )
+  })
+
+  test('one is kept before a change once the draft has been quiet a while, and every so often while it is busy', async () => {
+    const { service, write, wait } = await created()
+    value(await write({ type: 'draft', changes: [FOX] }))
+    // straight after: nothing yet
+    value(
+      await write({ type: 'draft', changes: [{ ...FOX, source: 'The quick tan fox.', was: 'The quick red fox.' }] }),
+    )
+    expect(await service.restorePoints()).toEqual([])
+    // quiet for two minutes, then a change: the draft as it was before it
+    wait(2)
+    value(await write({ type: 'draft', changes: [RAIN] }))
+    expect(await service.restorePoints()).toEqual([
+      { point: 1, version: 1, why: 'quiet', by: null, at: expect.any(Number), changes: 1 },
+    ])
+    // busy, a change a minute: one more after ten minutes, not one a minute
+    for (let i = 0; i < 12; i++) {
+      wait(1)
+      value(await write({ type: 'draft', changes: [{ kind: 'insert', at: { after: 'b3' }, markdown: `Line ${i}.` }] }))
+    }
+    expect((await service.restorePoints()).map((p) => p.why)).toEqual(['busy', 'quiet'])
+  })
+
+  test('one is kept before a version overwrites the draft', async () => {
+    const { service, write } = await created()
+    value(await write({ type: 'draft', changes: [FOX] }))
+    const batch = { base: 1, steps: [{ command: 'replace', in: 'b3', old: 'quick', new: 'slow' }] }
+    value(await write({ type: 'edit', batch, overwriteDraft: true }))
+    expect(await service.restorePoints()).toEqual([
+      { point: 1, version: 1, why: 'overwrite', by: OWNER, at: expect.any(Number), changes: 1 },
+    ])
+  })
+
+  test('restored on a later version, a change a version since has outdated comes back held, to undo or redo', async () => {
+    const { service, write } = await created()
+    value(await write({ type: 'draft', changes: [FOX, RAIN] }))
+    value(await write({ type: 'discard' }))
+    value(
+      await write({
+        type: 'edit',
+        batch: { base: 1, steps: [{ command: 'replace', in: 'b3', old: 'quick', new: 'slow' }] },
+      }),
+    )
+    value(await write({ type: 'restore', point: 1 }))
+    const draft = await service.draft()
+    expect(draft.version).toBe(2)
+    expect(draft.files[0]!.content).toBe('# Plan\n\nThe slow brown fox.\n\n## Risks\n\nIt may pour.\n')
+    expect(draft.changes.map((c) => [c.change.kind === 'edit' && c.change.id, c.problem !== null])).toEqual([
+      ['b3', true],
+      ['b5', false],
+    ])
+  })
+
+  test('each is kept until two versions after the one it was taken on', async () => {
+    const { service, write } = await created()
+    value(await write({ type: 'draft', changes: [FOX] }))
+    value(await write({ type: 'discard' }))
+    value(await write({ type: 'draft', changes: [FOX] }))
+    value(await write({ type: 'commit' }))
+    expect((await service.restorePoints()).map((p) => p.version)).toEqual([1])
+    value(await write({ type: 'draft', changes: [RAIN] }))
+    value(await write({ type: 'commit' }))
+    expect(await service.restorePoints()).toEqual([])
+  })
+})
+
 describe('typing in the draft', () => {
   // f1: s2 "Plan" at 0, b3 "The quick brown fox." at 6 (its text from 7), s4, b5
 
@@ -842,6 +980,20 @@ describe('typing in the draft', () => {
     const draft = await service.draft()
     expect(draft.changes).toMatchObject([{ key: 'e-b3', by: OWNER, change: { source: 'The quick red fox.' } }])
     expect(await sql.execute('SELECT seq, client FROM draft_steps')).toEqual([{ seq: 1, client: 'c1' }])
+  })
+
+  test('typing after the draft has been quiet a while keeps a restore point of it first', async () => {
+    const { service, wait } = await created()
+    const ana = await editor(service)
+    await ana.type((tr) => tr.insertText('red', 17, 22))
+    await ana.type((tr) => tr.insertText('!', 20))
+    expect(await service.restorePoints()).toEqual([])
+    wait(3)
+    // the draft, quiet, is kept as it was: without the question mark
+    await ana.type((tr) => tr.insertText('?', 21))
+    expect(await service.restorePoints()).toMatchObject([{ point: 1, why: 'quiet', changes: 1 }])
+    value(await service.write({ key: 'r', caller: OWNER, write: { type: 'restore', point: 1 } }).then((w) => w.result))
+    expect((await service.draft()).files[0]!.content).toContain('The quick red! fox.')
   })
 
   test('steps on an older count are behind: the editor takes what it missed, and sends again', async () => {

@@ -633,7 +633,21 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
       ),
 
     discardDraft: (input, context) =>
-      withAccess(input.idea, context, 'edit', () => write(input.idea, context, { type: 'discard' }, () => ({}))),
+      withAccess(input.idea, context, 'edit', () =>
+        write(input.idea, context, { type: 'discard' }, (value) => ({
+          point: value.kind === 'discarded' ? value.point : null,
+        })),
+      ),
+
+    listRestorePoints: (input, { caller, token }) =>
+      withAccess(input.idea, { caller, token }, 'edit', () =>
+        read(async () => ({ points: await ideaOf(input.idea).restorePoints() })),
+      ),
+
+    restoreDraft: (input, context) =>
+      withAccess(input.idea, context, 'edit', () =>
+        write(input.idea, context, { type: 'restore', point: input.point }, () => ({})),
+      ),
 
     commitDraft: (input, context) =>
       withAccess(input.idea, context, 'edit', () => write(input.idea, context, { type: 'commit' }, version)),

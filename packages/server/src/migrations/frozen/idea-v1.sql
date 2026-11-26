@@ -1,5 +1,5 @@
 CREATE TABLE schema_version (version INTEGER NOT NULL);
-CREATE TABLE idea ( id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL, owner TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('draft', 'requesting-review', 'changes-in-progress', 'closed-accepted', 'closed-rejected')), created_at INTEGER NOT NULL, latest INTEGER NOT NULL, next_comment INTEGER NOT NULL, git_uri TEXT, git_branch TEXT );
+CREATE TABLE idea ( id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL, owner TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('draft', 'requesting-review', 'changes-in-progress', 'closed-accepted', 'closed-rejected')), created_at INTEGER NOT NULL, latest INTEGER NOT NULL, next_comment INTEGER NOT NULL, git_uri TEXT, git_branch TEXT, draft_at INTEGER );
 CREATE TABLE versions ( number INTEGER PRIMARY KEY, parent INTEGER, created_at INTEGER NOT NULL, created_by TEXT NOT NULL, how TEXT NOT NULL CHECK (how IN ('created', 'commands', 'upload')), next_id INTEGER NOT NULL, authors TEXT NOT NULL );
 CREATE TABLE version_files ( version INTEGER NOT NULL REFERENCES versions (number), file TEXT NOT NULL, path TEXT NOT NULL, hash TEXT NOT NULL, bytes INTEGER NOT NULL, unit_ids TEXT NOT NULL, PRIMARY KEY (version, file) );
 CREATE TABLE steps ( version INTEGER NOT NULL REFERENCES versions (number), step INTEGER NOT NULL, command TEXT NOT NULL, addresses TEXT NOT NULL, authors TEXT NOT NULL, PRIMARY KEY (version, step) );
@@ -17,6 +17,7 @@ CREATE TABLE draft_suggestions (comment TEXT PRIMARY KEY, change TEXT NOT NULL, 
 CREATE TABLE draft_held (key TEXT PRIMARY KEY, change TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE TABLE draft_authors (block TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (block, by));
 CREATE TABLE draft_moved (seq INTEGER PRIMARY KEY, words TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL);
+CREATE TABLE draft_restore_points ( seq INTEGER PRIMARY KEY, version INTEGER NOT NULL, why TEXT NOT NULL CHECK (why IN ('quiet', 'busy', 'discard', 'overwrite', 'restore')), by TEXT, at INTEGER NOT NULL, draft TEXT NOT NULL );
 CREATE TABLE writes (key TEXT PRIMARY KEY, result TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE INDEX writes_at ON writes (at);
 CREATE TABLE outbox (id TEXT PRIMARY KEY, events TEXT NOT NULL, at INTEGER NOT NULL, attempts INTEGER NOT NULL, next_at INTEGER NOT NULL);

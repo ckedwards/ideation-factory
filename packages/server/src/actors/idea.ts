@@ -158,6 +158,7 @@ export const idea = actor({
         const draft = await service.draft()
         return { ...draft, typing: service.typingIn(c.vars.presence.typing(Date.now(), TYPING_NOW_MS)) }
       }),
+    restorePoints: (c) => read(() => serviceOf(c).restorePoints()),
     reviews: (c, viewer?: string | null) => read(() => serviceOf(c).reviews(viewer)),
     suggestionSource: (c, file: string, start: number, end: number) =>
       read(() => serviceOf(c).suggestionSource(file, start, end)),
