@@ -221,6 +221,12 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
         action: { label: 'See it', onAction: () => void navigate({ href: links.files({ v: made, file: path }) }) },
       })
     },
+    // discarded, here or by someone else, with Restore while there's something to bring back
+    onDiscarded: (name, restore) =>
+      setToast({
+        message: name ? `${name} discarded the draft.` : 'The draft is discarded.',
+        ...(restore ? { action: { label: 'Restore', onAction: restore } } : {}),
+      }),
     // someone else committed while you were in the draft: said here, not as "just came in"
     onTheirCommit: (committed, name) => {
       ours.current.add(committed)

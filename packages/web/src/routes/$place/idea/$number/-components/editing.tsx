@@ -58,6 +58,11 @@ export interface UseEditingArgs {
   onTheirCommit?: (version: number, by: string) => void
   /** A version made around the draft (by whom, named) overwrote some of its changes: a force push. */
   onOverwritten?: (version: number, by: string, changes: number) => void
+  /**
+   * The draft was discarded, by someone else (named) or here (null), and `restore` brings it back
+   * from the restore point the discard kept (null: it was empty, so there's nothing to bring back).
+   */
+  onDiscarded?: (by: string | null, restore: (() => void) | null) => void
 }
 
 /** What the editor shows of the comments: those the panel shows, the one that's active, and a mark clicked. */
@@ -112,6 +117,23 @@ export function useEditing(args: UseEditingArgs): Editing | null {
   theirCommit.current = args.onTheirCommit
   const overwritten = useRef(args.onOverwritten)
   overwritten.current = args.onOverwritten
+  const discarded = useRef(args.onDiscarded)
+  discarded.current = args.onDiscarded
+  // a discarded draft brought back, for everyone, from the restore point its discard kept
+  const restoring = (point: number | null) =>
+    point === null
+      ? null
+      : () =>
+          void api.restoreDraft({ idea, point }).then(
+            () => {
+              notes.current('The draft is restored.')
+              void queryClient.invalidateQueries({ queryKey: draftQuery(idea).queryKey, exact: true })
+            },
+            (error: unknown) =>
+              notes.current(
+                `The draft couldn’t be restored: ${error instanceof Error ? error.message : String(error)}`,
+              ),
+          )
   const peopleRef = useRef(args.people)
   peopleRef.current = args.people
   useEffect(() => {
@@ -134,10 +156,21 @@ export function useEditing(args: UseEditingArgs): Editing | null {
           overwritten.current?.(version, personOf(by, peopleRef.current).name, overwrote)
         }
       },
-      onDiscarded: (by) => {
+      onDiscarded: (by, point) => {
         void queryClient.invalidateQueries({ queryKey: draftQuery(idea).queryKey, exact: true })
         if (by.user !== args.me) {
-          notes.current(`${personOf(by, peopleRef.current).name} discarded the draft.`)
+          const name = personOf(by, peopleRef.current).name
+          if (discarded.current) {
+            discarded.current(name, restoring(point))
+          } else {
+            notes.current(`${name} discarded the draft.`)
+          }
+        }
+      },
+      onRestored: (by) => {
+        void queryClient.invalidateQueries({ queryKey: draftQuery(idea).queryKey, exact: true })
+        if (by.user !== args.me) {
+          notes.current(`${personOf(by, peopleRef.current).name} restored the draft.`)
         }
       },
       onClosed: (why) =>
@@ -339,8 +372,12 @@ export function useEditing(args: UseEditingArgs): Editing | null {
     onDiscard: () =>
       void api
         .discardDraft({ idea })
-        .then(() => {
-          args.onNote('The draft is discarded.')
+        .then(({ point }) => {
+          if (args.onDiscarded) {
+            args.onDiscarded(null, restoring(point))
+          } else {
+            args.onNote('The draft is discarded.')
+          }
           setPreviewing(false)
         }, failed)
         .finally(() => void reread()),

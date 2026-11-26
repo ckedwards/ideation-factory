@@ -31,8 +31,10 @@ export interface DraftLiveDeps {
    * overwrote `overwrote` of the draft's changes.
    */
   onVersion?: (version: number, by: Caller, committed: boolean, overwrote: number) => void
-  /** Someone discarded the draft. */
-  onDiscarded?: (by: Caller) => void
+  /** Someone discarded the draft; `point` is the restore point that brings it back (null: it was empty). */
+  onDiscarded?: (by: Caller, point: number | null) => void
+  /** Someone brought the draft back from a restore point. */
+  onRestored?: (by: Caller) => void
   /** Edit access is gone, or the idea. */
   onClosed?: (why: 'forbidden' | 'gone') => void
   /** Typing in a file was refused, and why. */
@@ -389,7 +391,10 @@ export class DraftLive {
         this.#deps.onVersion?.(event.version, event.by, event.committed, event.overwrote)
         return
       case 'discarded':
-        this.#deps.onDiscarded?.(event.by)
+        this.#deps.onDiscarded?.(event.by, event.point)
+        return
+      case 'restored':
+        this.#deps.onRestored?.(event.by)
         return
       case 'joined':
         this.#joined = true
