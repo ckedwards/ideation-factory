@@ -644,6 +644,11 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         read(async () => ({ points: await ideaOf(input.idea).restorePoints() })),
       ),
 
+    getRestorePoint: (input, { caller, token }) =>
+      withAccess(input.idea, { caller, token }, 'edit', () =>
+        read(async () => await ideaOf(input.idea).restorePoint(input.point)),
+      ),
+
     restoreDraft: (input, context) =>
       withAccess(input.idea, context, 'edit', () =>
         write(input.idea, context, { type: 'restore', point: input.point }, () => ({})),

@@ -15,6 +15,7 @@ import {
   DraftChange,
   Skipped,
   RestorePoint,
+  RestorePointPreview,
   FileContent,
   FileId,
   FileOutline,
@@ -444,6 +445,18 @@ export const operations = {
     kind: 'read',
     input: z.strictObject({ idea: IdeaId }),
     output: z.object({ points: z.array(RestorePoint) }),
+  }),
+
+  getRestorePoint: defineOperation({
+    name: 'get_restore_point',
+    summary: 'Show a restore point',
+    description:
+      'A restore point of the draft as restoring it would make it, without restoring it: each file as it would read on the latest version, and how many of its changes would come back outdated. Needs edit access.',
+    method: 'GET',
+    path: '/ideas/{idea}/draft/restore-points/{point}',
+    kind: 'read',
+    input: z.strictObject({ idea: IdeaId, point: z.coerce.number().int().positive() }),
+    output: RestorePointPreview,
   }),
 
   restoreDraft: defineOperation({
