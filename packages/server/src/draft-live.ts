@@ -144,7 +144,7 @@ export function createDraftLive({
     ws.data.conn = conn
     conn.on('draftSteps', (e) => {
       if (ws.data.files.has(e.file)) {
-        send(ws, { type: 'steps', file: e.file, from: e.from, steps: e.steps, clients: e.clients })
+        send(ws, { type: 'steps', file: e.file, from: e.from, steps: e.steps, clients: e.clients, by: e.by })
       }
     })
     conn.on('version', (e) =>
@@ -268,6 +268,7 @@ export function createDraftLive({
           from: missed.from,
           steps: missed.steps,
           clients: missed.clients,
+          by: missed.by,
         })
       }
     }

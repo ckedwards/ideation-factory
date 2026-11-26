@@ -303,7 +303,10 @@ export type IdeaEvent =
    * Steps taken in a file of the draft, from its count `from`, each with the editor that sent it
    * (`server` for the server's own): stored, for every editor of the file to take in, in order.
    */
-  | { name: 'draftSteps'; payload: { file: string; from: number; steps: unknown[]; clients: string[] } }
+  | {
+      name: 'draftSteps'
+      payload: { file: string; from: number; steps: unknown[]; clients: string[]; by: Array<Caller | null> }
+    }
 
 export type VersionHow = 'created' | 'commands' | 'upload'
 
@@ -406,7 +409,9 @@ export type TypingResult =
   | { kind: 'refused'; message: string }
 
 /** What an editor missed: the steps after its count, with whose each is; or too long ago to have kept. */
-export type Missed = { kind: 'steps'; from: number; steps: unknown[]; clients: string[] } | { kind: 'gone' }
+export type Missed =
+  | { kind: 'steps'; from: number; steps: unknown[]; clients: string[]; by: Array<Caller | null> }
+  | { kind: 'gone' }
 
 /** A file's blocks given the IDs they should have: its document after, the steps (attributes only), the IDs renamed. */
 interface Renamed {
@@ -1567,6 +1572,7 @@ export class IdeaService {
           from: r.count - r.steps.length,
           steps: r.steps,
           clients: r.steps.map(() => 'server'),
+          by: r.steps.map(() => request.caller),
         },
       }))
     return {
@@ -1686,7 +1692,7 @@ export class IdeaService {
     const row = await this.#db.selectFrom('draft_files').select('steps').where('file', '=', file).executeTakeFirst()
     const rows = await this.#db
       .selectFrom('draft_steps')
-      .select(['seq', 'step', 'client'])
+      .select(['seq', 'step', 'client', 'by'])
       .where('file', '=', file)
       .where('seq', '>', version)
       .orderBy('seq')
@@ -1705,6 +1711,8 @@ export class IdeaService {
       from: version,
       steps: rows.map((r) => JSON.parse(r.step) as unknown),
       clients: rows.map((r) => r.client),
+      // who made the server's own steps (an agent's change, say); a window's are known by their client
+      by: rows.map((r) => (r.client === 'server' ? (JSON.parse(r.by) as Caller) : null)),
     }
   }
 
@@ -1841,7 +1849,13 @@ export class IdeaService {
       this.#live.commit(file, f.live, f.doc, count, snapshots.get(file))
       events.push({
         name: 'draftSteps',
-        payload: { file, from: f.live.steps, steps: f.steps, clients: f.clients },
+        payload: {
+          file,
+          from: f.live.steps,
+          steps: f.steps,
+          clients: f.clients,
+          by: f.clients.map((c) => (c === 'server' ? t.caller : null)),
+        },
       })
     }
     return { result: { kind: 'taken', version: live.steps + files.get(t.file)!.steps.length }, events }

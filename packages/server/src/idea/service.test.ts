@@ -953,7 +953,7 @@ describe('typing in the draft', () => {
     await ana.type((tr) => tr.insertText('red', 17, 22))
     await ana.type((tr) => tr.insertText('!', 22))
     expect(await service.draftSince('f1', 1)).toMatchObject({ kind: 'steps', from: 1, clients: ['c1'] })
-    expect(await service.draftSince('f1', 2)).toEqual({ kind: 'steps', from: 2, steps: [], clients: [] })
+    expect(await service.draftSince('f1', 2)).toEqual({ kind: 'steps', from: 2, steps: [], clients: [], by: [] })
     await sql.execute('DELETE FROM draft_steps WHERE seq = 1')
     expect(await service.draftSince('f1', 0)).toEqual({ kind: 'gone' })
   })
@@ -977,6 +977,26 @@ describe('typing in the draft', () => {
     expect(ana.doc.child(1).textContent).toBe('The quick brown fox. ')
     expect(ana.doc.child(3).textContent).toBe('It may pour.')
     void write
+  })
+
+  test('an agent’s change reaches editors as its steps, so they can mark it; typing is a window’s', async () => {
+    const { service } = await created()
+    const ana = await editor(service)
+    await ana.type((tr) => tr.insertText('red', 17, 22))
+    const agent: Caller = { user: 'maya', bot: 'checkbot', purpose: 'bot-for-me' }
+    const changed = await service.write({
+      key: 'agent',
+      caller: agent,
+      write: { type: 'draft', changes: [{ kind: 'edit', id: 'b5', source: 'It may pour.', was: 'It might rain.' }] },
+    })
+    value(changed.result)
+    const sent = changed.events.find((e) => e.name === 'draftSteps')!.payload as { steps: unknown[]; by: unknown[] }
+    expect(sent.steps.length).toBeGreaterThan(0)
+    expect(sent.by).toEqual(sent.steps.map(() => agent))
+    // and to an editor catching up: the typing is the window's, the change the agent's
+    const missed = await service.draftSince('f1', 0)
+    expect(missed).toMatchObject({ kind: 'steps', clients: ['c1', ...sent.steps.map(() => 'server')] })
+    expect(missed.kind === 'steps' && missed.by).toEqual([null, ...sent.steps.map(() => agent)])
   })
 
   test('committed while someone types: the documents carry on, on the new version', async () => {
