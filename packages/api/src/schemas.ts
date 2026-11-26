@@ -495,6 +495,15 @@ export const RestorePoint = z.object({
   kept: z.boolean(),
 })
 
+/** A restore point as restoring it would make the draft, without restoring it. */
+export const RestorePointPreview = z.object({
+  point: z.number().int(),
+  /** Each file as it would read. */
+  files: z.array(z.object({ file: z.string(), path: z.string(), content: z.string() })),
+  /** How many of its changes would come back held: a version made since has outdated them. */
+  held: z.number().int(),
+})
+
 /** A suggestion left out of an accept, and why. */
 export const Skipped = z.object({ id: z.string(), message: z.string() })
 

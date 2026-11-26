@@ -445,6 +445,13 @@ export interface RestorePoint {
   kept: boolean
 }
 
+/** A restore point as restoring it would make the draft: each file as it would read, and how many changes would be held. */
+export interface RestorePointPreview {
+  point: number
+  files: Array<{ file: string; path: string; content: string }>
+  held: number
+}
+
 /** Reasons a restore point is listed with: something someone did. Quiet and left have none. */
 const REASONED = new Set<RestoreWhy>(['agent', 'discard', 'overwrite', 'restore'])
 /** The most labels of dropped restore points an idea keeps. */
@@ -2382,13 +2389,11 @@ export class IdeaService {
   }
 
   /**
-   * The draft as a restore point has it, on the latest version, after a restore point of the draft as
-   * it is (so a restore can be taken back too). Its changes that still apply go back in; one a version
-   * made since has outdated is held, to undo or redo; a suggestion decided since stays decided. Who
-   * changed each block, and the words seen moved, are the point's.
+   * A restore point's draft rebuilt on the latest version, as restoring it would make it: its changes
+   * that still apply (`rest`), with a suggestion decided since left out, and those a version since
+   * has outdated held.
    */
-  async #restore(request: WriteRequest, seq: number) {
-    await this.#requireMeta()
+  async #rebuilt(seq: number, latest: Latest) {
     const row = await this.#db
       .selectFrom('draft_restore_points')
       .select('draft')
@@ -2401,7 +2406,6 @@ export class IdeaService {
       refuse('not_found', `restore point ${seq} is no longer kept: it was dropped to make room for newer ones`)
     }
     const kept = JSON.parse(row!.draft!) as PointDraft
-    const { latest, state, derived } = await this.#draftNow(request.caller)
     const suggested = kept.entries.flatMap((e) => (e.change.kind === 'suggestion' ? [e.change.comment] : []))
     const open = new Set(
       suggested.length > 0
@@ -2423,6 +2427,34 @@ export class IdeaService {
       rest = rest.filter((e) => built.problems[e.key] === undefined)
       built = await this.#core.buildDraft(this.id, latest.idea, latest.comments, rest.map(plainEntry))
     }
+    return { kept, built, rest, held }
+  }
+
+  /**
+   * A restore point as restoring it would make the draft, without restoring it: each file as it would
+   * read, and how many of its changes would come back held (a version since has outdated them).
+   */
+  async restorePoint(seq: number): Promise<RestorePointPreview> {
+    await this.#requireMeta()
+    const latest = await this.#loadLatest()
+    const { built, held } = await this.#rebuilt(seq, latest)
+    return {
+      point: seq,
+      files: built.files.map((f) => ({ file: f.id, path: f.path, content: f.source })),
+      held: held.length,
+    }
+  }
+
+  /**
+   * The draft as a restore point has it, on the latest version, after a restore point of the draft as
+   * it is (so a restore can be taken back too). Its changes that still apply go back in; one a version
+   * made since has outdated is held, to undo or redo; a suggestion decided since stays decided. Who
+   * changed each block, and the words seen moved, are the point's.
+   */
+  async #restore(request: WriteRequest, seq: number) {
+    await this.#requireMeta()
+    const { latest, state, derived } = await this.#draftNow(request.caller)
+    const { kept, built, rest, held } = await this.#rebuilt(seq, latest)
     const point = await this.#point(derived, 'restore', request.caller)
     const next = await this.#nextDraft(request, latest, state, derived, {
       files: built.files,

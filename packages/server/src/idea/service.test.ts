@@ -964,6 +964,13 @@ describe('restore points', () => {
         batch: { base: 1, steps: [{ command: 'replace', in: 'b3', old: 'quick', new: 'slow' }] },
       }),
     )
+    // shown first, without restoring: the files as it would make them, and one change held
+    expect(await service.restorePoint(1)).toEqual({
+      point: 1,
+      files: [{ file: 'f1', path: 'plan.md', content: '# Plan\n\nThe slow brown fox.\n\n## Risks\n\nIt may pour.\n' }],
+      held: 1,
+    })
+    expect((await service.draft()).changes).toEqual([])
     value(await write({ type: 'restore', point: 1 }))
     const draft = await service.draft()
     expect(draft.version).toBe(2)

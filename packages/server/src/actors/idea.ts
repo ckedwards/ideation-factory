@@ -179,6 +179,8 @@ export const idea = actor({
         return { ...draft, typing: service.typingIn(c.vars.presence.typing(Date.now(), TYPING_NOW_MS)) }
       }),
     restorePoints: (c) => read(() => serviceOf(c).restorePoints()),
+    /** A restore point as restoring it would make the draft, without restoring it. */
+    restorePoint: (c, point: number) => read(() => serviceOf(c).restorePoint(point)),
     reviews: (c, viewer?: string | null) => read(() => serviceOf(c).reviews(viewer)),
     suggestionSource: (c, file: string, start: number, end: number) =>
       read(() => serviceOf(c).suggestionSource(file, start, end)),
