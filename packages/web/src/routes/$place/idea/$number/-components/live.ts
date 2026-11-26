@@ -5,7 +5,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { api } from '../../../../../api.ts'
 import { accessToken } from '../../../../../session.ts'
 import { type CommentsCollection, commentsCollection } from './comments.ts'
-import { draftQuery, ideaQuery, reviewsQuery } from './queries.ts'
+import { draftQuery, ideaQuery, restorePointsQuery, reviewsQuery } from './queries.ts'
 
 const collections = new Map<string, CommentsCollection>()
 
@@ -24,6 +24,9 @@ export function commentsOf(idea: string, queryClient: QueryClient): CommentsColl
         queryClient.setQueryData(ideaQuery(idea).queryKey, (was) => (was ? { ...was, uncommitted } : was))
         void queryClient.invalidateQueries({ queryKey: draftQuery(idea).queryKey, exact: true })
       },
+      // its earlier drafts, listed under the draft while it's open
+      onRestorePoints: () =>
+        void queryClient.invalidateQueries({ queryKey: restorePointsQuery(idea).queryKey, exact: true }),
       // the status shows on every page of the idea, and its reviews on the overview
       onReviews: () => {
         void queryClient.invalidateQueries({ queryKey: ideaQuery(idea).queryKey, exact: true })

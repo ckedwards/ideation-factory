@@ -26,8 +26,9 @@ import { IdeaMode } from './IdeaFrame.tsx'
 import { DraftEditor } from './DraftEditor.tsx'
 import { blockRange, headingOffset, toSource } from './anchors.ts'
 import { usePeople } from './shared.tsx'
-import { draftQuery, filesQuery, ideaQuery } from './queries.ts'
+import { draftQuery, filesQuery, ideaQuery, restorePointQuery, restorePointsQuery } from './queries.ts'
 import type { DraftVersion } from './VersionList.tsx'
+import { type EarlierDraft, EarlierDraftBand, EarlierDraftDialogs } from './EarlierDrafts.tsx'
 import { type FileView, personOf, type Placement, type Thread } from './view.ts'
 
 export type Draft = Output<Operations['getDraft']>
@@ -49,6 +50,8 @@ export interface UseEditingArgs {
   people: Map<string, Person>
   /** Who's signed in: their other windows in the draft say so. */
   me: string
+  /** The idea's owner, who can delete any earlier draft. */
+  owner?: string
   /** Show a file of the draft that isn't shown (going to someone in it). */
   onShowFile?: (file: string) => void
   onNote: (message: string) => void
@@ -104,6 +107,11 @@ export function useEditing(args: UseEditingArgs): Editing | null {
     ...filesQuery(idea, comparedWith ?? 0),
     enabled: comparedWith !== null && draft !== undefined && comparedWith !== draft.version,
   })
+  // an earlier draft (restore point) shown in place of the editor, and restoring or deleting one, asked first
+  const [opened, setOpened] = useState<number | null>(null)
+  const [asking, setAsking] = useState<{ kind: 'restore' | 'delete'; point: number } | null>(null)
+  const points = useQuery({ ...restorePointsQuery(idea), enabled: args.open && draft !== undefined })
+  const shownPoint = useQuery({ ...restorePointQuery(idea, opened ?? 0), enabled: opened !== null })
   const [committing, setCommitting] = useState(false)
   // the files typed in and not saved yet
   const [unsavedFiles, setUnsavedFiles] = useState<ReadonlySet<string>>(new Set())
@@ -331,10 +339,89 @@ export function useEditing(args: UseEditingArgs): Editing | null {
       />
     )
   }
+  // the earlier drafts, named as the list names them
+  const named = (c: { user: string; bot: string | null }) => {
+    const name = args.people.get(c.user)?.name ?? 'someone'
+    return c.bot ? `${c.bot} for ${name}` : name
+  }
+  const earlierDrafts: EarlierDraft[] = (points.data?.points ?? []).map((p) => {
+    const by = p.by ? named(p.by) : 'someone'
+    const reason = {
+      quiet: null,
+      left: null,
+      agent: `Before ${by} changed it`,
+      discard: `Before ${by} discarded it`,
+      overwrite: `Before ${by}’s version overwrote it`,
+      restore: `Before ${by} restored an earlier one`,
+    }[p.why]
+    return {
+      point: p.point,
+      at: p.at,
+      reason,
+      who: [...new Set(p.who.map(named))],
+      changes: p.changes,
+      first: p.first ? describe(p.first) : null,
+      more: p.more,
+      undone: p.undone,
+      on: p.version < draft.version ? p.version : null,
+      kept: p.kept,
+      canDelete: args.owner === args.me || p.who.some((w) => w.user === args.me),
+    }
+  })
+  const shownEarlier = earlierDrafts.find((d) => d.point === opened) ?? null
+  const askingAbout = asking ? earlierDrafts.find((d) => d.point === asking.point) : undefined
+  /** A file of the draft as the earlier draft shown would make it, marked against the draft now. */
+  const pointCompared = (id: string) => {
+    if (!shownPoint.data) {
+      return <p className="draft-editor-opening">Opening…</p>
+    }
+    const now = draft.files.find((f) => f.file === id)?.content ?? ''
+    const then = shownPoint.data.files.find((f) => f.file === id)?.content ?? ''
+    return (
+      <Redline
+        base={{ source: now, tree: markdownTree(now) }}
+        current={{ source: then, tree: markdownTree(then) }}
+        renderCode={renderMermaid}
+      />
+    )
+  }
+  const rereadPoints = () =>
+    void queryClient.invalidateQueries({ queryKey: restorePointsQuery(idea).queryKey, exact: true })
+  /** What was asked, confirmed: an earlier draft restored for everyone, or deleted. */
+  const confirmed = () => {
+    if (!asking) {
+      return
+    }
+    const { kind, point } = asking
+    setAsking(null)
+    if (kind === 'restore') {
+      void saved()
+        .then((ok) =>
+          ok ? api.restoreDraft({ idea, point }) : Promise.reject(new Error('what you typed isn’t saved')),
+        )
+        .then(() => {
+          setOpened(null)
+          args.onNote('The draft is restored. The draft as it was is kept as an earlier draft.')
+        }, failed)
+        .finally(() => {
+          void reread()
+          rereadPoints()
+        })
+    } else {
+      void api
+        .deleteRestorePoint({ idea, point })
+        .then(() => {
+          setOpened((was) => (was === point ? null : was))
+          args.onNote('The earlier draft is deleted.')
+        }, failed)
+        .finally(rereadPoints)
+    }
+  }
   const close = async () => {
     if (!(await saved())) {
       return false
     }
+    setOpened(null)
     setPreviewing(false)
     args.setOpen(false)
     return true
@@ -367,7 +454,13 @@ export function useEditing(args: UseEditingArgs): Editing | null {
         .undoDraftChange({ idea, key })
         .catch(failed)
         .finally(() => void reread()),
-    onPreview: (on) => void saved().then((ok) => ok && setPreviewing(on)),
+    onPreview: (on) =>
+      void saved().then((ok) => {
+        if (ok) {
+          setOpened(null)
+          setPreviewing(on)
+        }
+      }),
     onCommit: () => void commit(),
     onDiscard: () =>
       void api
@@ -384,9 +477,23 @@ export function useEditing(args: UseEditingArgs): Editing | null {
     onClose: () => void close(),
   }
   const label = `Editing the draft, on v${draft.version}`
+  const band = shownEarlier && (
+    <EarlierDraftBand
+      draft={shownEarlier}
+      held={shownPoint.data?.held ?? 0}
+      onBack={() => setOpened(null)}
+      onRestore={() => setAsking({ kind: 'restore', point: shownEarlier.point })}
+    />
+  )
   return {
     document: (view) =>
-      previewing ? (
+      shownEarlier ? (
+        <>
+          {band}
+          <p className="draft-editor-file">{file?.path}</p>
+          {file && pointCompared(file.file)}
+        </>
+      ) : previewing ? (
         <>
           <p className="draft-editor-file">
             {file?.path} <span className="draft-editor-compared">· the draft compared with v{comparedWith}</span>
@@ -416,7 +523,9 @@ export function useEditing(args: UseEditingArgs): Editing | null {
     // the focus view's: every file, without its comments (the panel's in their place), its sheet's head
     // naming it
     sheet: (id) =>
-      previewing ? (
+      shownEarlier ? (
+        pointCompared(id)
+      ) : previewing ? (
         compared(id)
       ) : draft.files.some((f) => f.file === id) && live ? (
         <DraftEditor
@@ -441,11 +550,40 @@ export function useEditing(args: UseEditingArgs): Editing | null {
       by: [...new Set(draft.changes.map((c) => args.people.get(c.by.user)?.name ?? 'someone'))],
       open: true,
       comparedWith,
-      onCompare: (version) => void saved().then((ok) => ok && setComparedWith(version)),
+      onCompare: (version) =>
+        void saved().then((ok) => {
+          if (ok) {
+            setOpened(null)
+            setComparedWith(version)
+          }
+        }),
+      earlier: {
+        drafts: earlierDrafts,
+        opened,
+        onOpen: (point) =>
+          void saved().then((ok) => {
+            if (ok) {
+              setComparedWith(null)
+              setOpened(point)
+            }
+          }),
+        onRestore: (point) => setAsking({ kind: 'restore', point }),
+        onDelete: (point) => setAsking({ kind: 'delete', point }),
+      },
     },
     places: placed.places,
     // the editor's words and actions in the idea's bar, while it's open
-    bar: <IdeaMode people={people} label={label} actions={<EditActions {...panelProps} />} />,
+    bar: (
+      <>
+        <IdeaMode people={people} label={label} actions={<EditActions {...panelProps} />} />
+        <EarlierDraftDialogs
+          asking={asking && askingAbout ? { kind: asking.kind, draft: askingAbout } : null}
+          changes={draft.changes.length}
+          onCancel={() => setAsking(null)}
+          onConfirm={confirmed}
+        />
+      </>
+    ),
   }
 }
 

@@ -42,6 +42,8 @@ export interface CommentsDeps {
   onDraft?: (uncommitted: boolean) => void
   /** Its status changed, or a verdict was given or dismissed: the page reads its reviews again. */
   onReviews?: () => void
+  /** A restore point of its draft was taken or deleted: the page reads the list of them again. */
+  onRestorePoints?: () => void
   /** How long a write waits for the socket to echo it before reading the threads again instead. */
   echoTimeoutMs?: number
   /** How often the socket gets a fresh token (one counts for 15 minutes at most, and is refreshed in its last minute). */
@@ -190,6 +192,8 @@ export function commentsCollection(idea: string, deps: CommentsDeps) {
               deps.onDraft?.(event.uncommitted)
             } else if (event.type === 'status' || event.type === 'review') {
               deps.onReviews?.()
+            } else if (event.type === 'restorePoints') {
+              deps.onRestorePoints?.()
             } else if (reading) {
               reading.push(event)
             } else {

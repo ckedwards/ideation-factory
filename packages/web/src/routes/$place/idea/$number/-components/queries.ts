@@ -49,6 +49,20 @@ export const commentsQuery = (idea: string, version: number) =>
 export const draftQuery = (idea: string) =>
   queryOptions({ queryKey: ['idea', idea, 'draft'], queryFn: () => api.getDraft({ idea }) })
 
+/** The draft's earlier drafts (restore points), labelled: live (the socket's restorePoints event). */
+export const restorePointsQuery = (idea: string) =>
+  queryOptions({ queryKey: ['idea', idea, 'restore-points'], queryFn: () => api.listRestorePoints({ idea }) })
+
+/**
+ * An earlier draft as restoring it would make the draft now. Not kept long: what it makes depends on
+ * the latest version and the suggestions decided since.
+ */
+export const restorePointQuery = (idea: string, point: number) =>
+  queryOptions({
+    queryKey: ['idea', idea, 'restore-points', point],
+    queryFn: () => api.getRestorePoint({ idea, point }),
+  })
+
 /** Who has access to an idea, and what you can do with it. */
 export const accessQuery = (idea: string) =>
   queryOptions({ queryKey: ['idea', idea, 'access'], queryFn: () => api.getAccess({ idea }) })

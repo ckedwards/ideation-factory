@@ -202,6 +202,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
     threads,
     people,
     me: me.id,
+    owner: idea.owner,
     onShowFile: (shown) => {
       const path = draft.data?.files.find((f) => f.file === shown)?.path
       if (path) {
