@@ -124,3 +124,109 @@ export const ComparingTheDraft: Story = {
     await expect(list.getAllByRole('button', { name: 'Back to editing' })).toHaveLength(2)
   },
 }
+
+const minutes = (n: number) => NOW - n * 60_000
+const earlier = {
+  drafts: [
+    {
+      point: 7,
+      at: minutes(12),
+      reason: 'Before Priya Natarajan discarded it',
+      who: ['Priya Natarajan', 'Riley Park', 'checkbot for Riley Park'],
+      changes: 5,
+      first: null,
+      more: 0,
+      undone: 0,
+      on: null,
+      kept: true,
+      canDelete: true,
+    },
+    {
+      point: 6,
+      at: minutes(40),
+      reason: null,
+      who: ['Riley Park', 'checkbot for Riley Park'],
+      changes: 4,
+      first: 'Added “Bring the list of open jobs.”',
+      more: 1,
+      undone: 0,
+      on: null,
+      kept: true,
+      canDelete: true,
+    },
+    {
+      point: 5,
+      at: minutes(95),
+      reason: null,
+      who: ['Priya Natarajan'],
+      changes: 2,
+      first: 'Edited “You hand over on Tuesday at nine.”',
+      more: 0,
+      undone: 0,
+      on: null,
+      kept: true,
+      canDelete: false,
+    },
+    {
+      point: 2,
+      at: hours(30),
+      reason: null,
+      who: ['Riley Park'],
+      changes: 1,
+      first: 'Edited “Riley takes the early shift…”',
+      more: 0,
+      undone: 0,
+      on: 3,
+      kept: false,
+      canDelete: true,
+    },
+  ],
+  opened: null,
+  onOpen: fn(),
+  onRestore: fn(),
+  onDelete: fn(),
+}
+
+// The draft's earlier drafts under it: named by when and who, or by what they were kept before; the
+// rest behind Show more, one dropped to make room among them
+export const EarlierDrafts: Story = {
+  args: {
+    draft: { on: 4, changes: 3, by: ['Riley Park'], open: true, comparedWith: null, onCompare: fn(), earlier },
+  },
+  play: async ({ args, canvasElement, userEvent }) => {
+    const list = within(canvasElement)
+    await expect(list.getByRole('heading', { name: 'Earlier drafts' })).toBeVisible()
+    await expect(list.getByText('Added “Bring the list of open jobs.” and 1 more')).toBeVisible()
+    // three show; the dropped one is behind Show more
+    await expect(list.queryByText(/No longer kept/)).toBeNull()
+    await userEvent.click(list.getByRole('button', { name: 'Show 1 more' }))
+    await expect(list.getByText(/No longer kept/)).toBeVisible()
+    await expect(list.getByText('on v3')).toBeVisible()
+    // opening one shows it in the page
+    await userEvent.click(list.getByRole('button', { name: 'Before Priya Natarajan discarded it' }))
+    await expect(args.draft!.earlier!.onOpen).toHaveBeenCalledWith(7)
+  },
+}
+
+// One opened: shown in the page, with Restore and, for whoever may, Delete
+export const AnEarlierDraftOpened: Story = {
+  args: {
+    draft: {
+      on: 4,
+      changes: 3,
+      by: ['Riley Park'],
+      open: true,
+      comparedWith: null,
+      onCompare: fn(),
+      earlier: { ...earlier, opened: 6 },
+    },
+  },
+  play: async ({ args, canvasElement, userEvent }) => {
+    const list = within(canvasElement)
+    await expect(list.getByRole('button', { name: '40m ago' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(list.getByRole('button', { name: 'Restore this draft' }))
+    await expect(args.draft!.earlier!.onRestore).toHaveBeenCalledWith(6)
+    await userEvent.click(list.getByRole('button', { name: 'Delete' }))
+    await expect(args.draft!.earlier!.onDelete).toHaveBeenCalledWith(6)
+  },
+}
