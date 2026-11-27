@@ -59,7 +59,7 @@ A stale version (409) counts as `op_stale`, not as a failure: it's what a write 
 
 From seeding, on one machine (22 cores), RivetKit 3.0.6 and `rivetdev/engine:3.0.6`:
 
-- **A RivetKit bug makes concurrent calls to one actor collapse** (rivet-dev/rivet#5991; fix proposed in rivet-dev/rivet#5992). After every request, RivetKit starts a task that waits for the actor's requests to reach zero. Under steady load they never do, so these tasks pile up, and every idle notification wakes all of them. One directory write (`set_team_watch`) from outside:
+- **A RivetKit bug makes concurrent calls to one actor collapse** (rivet-dev/rivet#5991, fixed in RivetKit 3.1.2-rc.7: on 27 November CPU per call stayed at 1.4 ms up to 64 calls in flight, against 54 ms on 3.1.1). After every request, RivetKit starts a task that waits for the actor's requests to reach zero. Under steady load they never do, so these tasks pile up, and every idle notification wakes all of them. One directory write (`set_team_watch`) from outside:
 
   | In flight          | Writes a second | CPU per write |
   | ------------------ | --------------- | ------------- |
