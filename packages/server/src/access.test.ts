@@ -304,7 +304,9 @@ describe('lists and search', () => {
       handle('riley'),
     ])
     // a grant names a person by ID; get_person finds them by ID or handle
-    const me = await riley.me({})
+    // whoami is the person, and what their work is labeled as; get_person is just the person
+    const { bot, purpose, ...me } = await riley.me({})
+    expect({ bot, purpose }).toEqual({ bot: null, purpose: 'me' })
     expect(await riley.getUser({ user: me.id })).toEqual(me)
     expect(await riley.getUser({ user: `@${me.handle}` })).toEqual(me)
     await expect(riley.getUser({ user: handle('nobody') })).rejects.toMatchObject({ code: 'not_found' })

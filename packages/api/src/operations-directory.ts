@@ -32,6 +32,7 @@ import {
   InboxShow,
   Limit,
   Member,
+  Me,
   Memberships,
   MovePreview,
   Notification,
@@ -153,12 +154,13 @@ export const directoryOperations = {
     name: 'whoami',
     mcp: true,
     summary: 'Who am I',
-    description: 'The signed-in person.',
+    description:
+      'The signed-in person, and what your work is labeled as: purpose `me` is that person; `bot-for-me` is the bot named in `bot`, acting for them; `bot` is that bot on its own.',
     method: 'GET',
     path: '/me',
     kind: 'read',
     input: z.strictObject({}),
-    output: User,
+    output: Me,
   }),
   myMemberships: defineOperation({
     name: 'list_my_memberships',

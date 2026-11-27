@@ -526,6 +526,11 @@ export const Cursor = z.string().max(500).optional()
 export const Limit = z.coerce.number().int().min(1).max(100).optional()
 
 export const User = z.object({ id: z.string(), handle: z.string(), name: z.string(), inactive: z.boolean() })
+/**
+ * The signed-in person, and what their work is labeled as: `me` is themselves; `bot-for-me` is the
+ * bot named in `bot`, acting for them; `bot` is the bot on its own.
+ */
+export const Me = User.extend({ bot: Caller.shape.bot, purpose: Caller.shape.purpose })
 export const Role = z.enum(['admin', 'maintainer', 'member'])
 export const CreatePolicy = z.enum(['anyone', 'members', 'maintainers'])
 export const TeamDefaults = z.strictObject({

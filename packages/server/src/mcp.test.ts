@@ -194,8 +194,11 @@ describe('the hosted MCP server', () => {
       body: 'From the agent',
       author: { user: riley.id, bot: 'test-agent', purpose: 'bot-for-me' },
     })
+    // and whoami says so, as the instructions promise
     expect((await agent.callTool({ name: 'whoami', arguments: {} })).structuredContent).toMatchObject({
       id: riley.id,
+      bot: 'test-agent',
+      purpose: 'bot-for-me',
     })
     await agent.close()
   })
@@ -225,6 +228,8 @@ describe('the hosted MCP server', () => {
     const withPersonal = await connect(sam.token)
     expect((await withPersonal.callTool({ name: 'whoami', arguments: {} })).structuredContent).toMatchObject({
       id: sam.id,
+      bot: null,
+      purpose: 'me',
     })
     await withPersonal.close()
   })

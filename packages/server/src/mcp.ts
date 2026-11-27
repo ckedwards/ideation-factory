@@ -39,7 +39,7 @@ const INSTRUCTIONS = `Ideation Factory is where people and agents write, review 
 - Read one with show_blocks: each file's sections and blocks, with stable IDs and their text, and the open comments. pull gives the files whole.
 - Change an idea with editing commands: build a batch against the blocks you read, check it with preview_edit, then apply it with edit. A batch makes one new version; if the idea moved on, it's replayed onto the latest or refused with what conflicts.
 - Comment with add_comment, reply, and suggest_edit (a change others accept or reject). Review with review_idea.
-- Your work is labeled with who you are acting as (whoami), so people can tell what an agent did.`
+- whoami says who you are acting as: the person, and the bot acting for them when you signed in as one. Your work is labeled with it, so people can tell what an agent did.`
 
 export function createMcp(options: {
   operations: Operations

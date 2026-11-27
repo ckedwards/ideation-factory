@@ -740,7 +740,7 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
     me: (_input, { caller }) =>
       read(async () => {
         const user = await directory().user(caller.user)
-        return user ?? notFound('unknown user')
+        return user ? { ...user, bot: caller.bot, purpose: caller.purpose } : notFound('unknown user')
       }),
 
     findUsers: (input) => read(async () => ({ items: await directory().findUsers(input.q, input.limit) })),
