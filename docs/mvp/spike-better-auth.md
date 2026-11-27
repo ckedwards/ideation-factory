@@ -184,7 +184,7 @@ Better Auth 1.7.14 with these plugins needs **15 tables**, plus **1 for single s
 
 ### MCP, end to end
 
-- ◐ **Discovery:** RFC 8414 authorization server metadata (with `client_id_metadata_document_supported`, S256 only, and `authorization_response_iss_parameter_supported`), RFC 9728 protected resource metadata at `/.well-known/oauth-protected-resource/mcp`, and a 401 carrying `WWW-Authenticate: Bearer resource_metadata=…`. All checked by script; **the MCP Inspector hasn't run yet.**
+- ◐ **Discovery:** RFC 8414 authorization server metadata (with `client_id_metadata_document_supported`, S256 only, and `authorization_response_iss_parameter_supported`), RFC 9728 protected resource metadata at `/.well-known/oauth-protected-resource/mcp`, and a 401 carrying `WWW-Authenticate: Bearer resource_metadata=…`. All checked by script, and Claude Code, VS Code and the MCP Inspector each found the metadata from the 401 alone (the Inspector then stops: it needs Dynamic Client Registration).
 - ✅ **PKCE (S256 only), exact redirect URIs, `iss` and resource indicators** are each enforced. Each of these was refused:
   - authorizing without a challenge;
   - `plain` PKCE;
@@ -201,12 +201,15 @@ Better Auth 1.7.14 with these plugins needs **15 tables**, plus **1 for single s
   3. `customAccessTokenClaims` turns the `referenceId` back into `purpose` and `bot` claims.
 
   One caveat: a re-authorization that skips the consent screen reuses the session's last choice, so we should always ask for consent when the purpose matters.
-- ⏳ **Real clients:** not yet connected. The groundwork is done:
-  - Claude Code, Claude.ai and VS Code publish CIMD documents, and our server fetched and accepted each one.
-  - The Claude Code document went through a full code flow to a working JWT.
-  - OpenAI's docs say ChatGPT uses CIMD when the server advertises it.
+- ◐ **Real clients** (checked on 27 November against the local test site, `scripts/test-ui.sh`):
+  - ✅ **Claude Code** signs in with its CIMD document (`https://claude.ai/oauth/claude-code-client-metadata`), lists the 25 tools and calls them. A comment it added is labeled with the bot: `{user, bot: "claude-code", purpose: "bot-for-me"}`.
+  - ✅ **VS Code's own MCP client** (`.vscode/mcp.json`, the Local chat) signs in from the browser and calls whoami. It doesn't sign in on its own when a chat starts the server: start it from **MCP: List Servers** and accept the prompt.
+  - ✗ **The Copilot CLI session in VS Code** is a separate client. Its sign-in failed with "State does not match" on Copilot's side: our server returns the `state` it's given (`auth/oauth.test.ts`), and the other clients check it. Probably an older sign-in tab finishing last.
+  - ✗ **The MCP Inspector** (v2.17) needs Dynamic Client Registration, which stays off. A personal token in the header works at `/mcp` instead (`mcp.test.ts`), though not yet tried from the Inspector.
+  - ⏳ **Claude.ai and ChatGPT** aren't checked yet: they need a public HTTPS URL.
 
-  Still to do: sign in from each client. Claude Code, VS Code and the Inspector can connect to a local server; Claude.ai and ChatGPT need a public HTTPS URL.
+  **A client's name is what it claims.** With no sign-in of its own, Copilot's agent found Claude Code's client ID in Claude Code's logs and signed in with it from its own loopback port. That's allowed: loopback redirects match on any port (RFC 8252), so a desktop client's CIMD document can't tell it from an imitation. The consent page said Claude Code, and its work would have been labeled as Claude Code. whoami now returns the bot and purpose with the person, so an agent can see the label its work will carry.
+
 - **Dynamic Client Registration: leave it off.** All four named clients use CIMD. It's a config flag if a client we need turns out to lack CIMD: `allowDynamicClientRegistration`, plus `allowUnauthenticatedClientRegistration` for open registration. Its endpoint is rate-limited to 5 a minute by default.
 
 ### CIMD
