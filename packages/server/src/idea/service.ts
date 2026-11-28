@@ -2470,11 +2470,33 @@ export class IdeaService {
     const named = changes.map((change) =>
       change.kind === 'create-file' ? { ...change, file: `f${nextFile++}` } : change,
     )
-    const incoming = named.map((change, i) => ({ key: `+${i}`, change }))
-    const built = await this.#core.buildDraft(this.id, latest.idea, latest.comments, [
+    const sent = named.map((change, i) => ({ key: `+${i}`, change }))
+    // a rename keeps links to the file, and the file's own, pointing where they did; the caller's
+    // own changes to a block, or a file it deletes, are left as it has them
+    const renames = named.flatMap((c) => (c.kind === 'rename-file' ? [{ file: c.file, path: c.path }] : []))
+    const own = new Set(named.flatMap((c) => blocksNamed(c)))
+    const gone = new Set(named.flatMap((c) => (c.kind === 'delete-file' ? [c.file] : [])))
+    const fixes =
+      renames.length > 0
+        ? (await this.#core.linkFixes(this.id, derived.built.idea, renames))
+            .filter((f) => !own.has(f.id) && !gone.has(f.file))
+            .map((f, i) => ({
+              key: `+fix${i}`,
+              change: { kind: 'edit' as const, id: f.id, source: f.source, was: f.was },
+            }))
+        : []
+    let incoming = [...sent, ...fixes]
+    let built = await this.#core.buildDraft(this.id, latest.idea, latest.comments, [
       ...derived.entries.map(plainEntry),
       ...incoming,
     ])
+    if (fixes.some((f) => built.problems[f.key] !== undefined)) {
+      incoming = sent
+      built = await this.#core.buildDraft(this.id, latest.idea, latest.comments, [
+        ...derived.entries.map(plainEntry),
+        ...incoming,
+      ])
+    }
     for (const [i] of changes.entries()) {
       const problem = built.problems[`+${i}`]
       if (problem !== undefined) {
@@ -2732,7 +2754,18 @@ export class IdeaService {
       refuse('invalid', `the batch is built on v${write.batch.base}, but the latest is v${meta.latest}`)
     }
     const latest = await this.#loadLatest()
-    const applied = await this.#core.applyBatch(this.id, latest.idea, latest.comments, write.batch)
+    // a rename keeps links to the file, and the file's own, pointing where they did
+    const fixes =
+      write.batch.base === meta.latest
+        ? await this.#core.renameFixCommands(this.id, latest.idea, write.batch.steps)
+        : []
+    let applied = await this.#core.applyBatch(this.id, latest.idea, latest.comments, {
+      ...write.batch,
+      steps: [...write.batch.steps, ...fixes],
+    })
+    if (!applied.ok && fixes.length > 0) {
+      applied = await this.#core.applyBatch(this.id, latest.idea, latest.comments, write.batch)
+    }
     if (!applied.ok) {
       refuse('conflict', 'some steps no longer apply; re-read the idea and try again', {
         conflicts: applied.conflicts satisfies Conflict[],
@@ -2743,7 +2776,8 @@ export class IdeaService {
       latest.bytes,
       ok.idea.files.map((f) => ({ file: f.id, path: f.path, bytes: byteLength(f.source) })),
     )
-    const steps = write.batch.steps.map((command, step) => ({ step, command, addresses: command.addresses ?? [] }))
+    const sent = ok.steps.length > write.batch.steps.length ? [...write.batch.steps, ...fixes] : write.batch.steps
+    const steps = sent.map((command, step) => ({ step, command, addresses: command.addresses ?? [] }))
     return this.#newVersion(request, meta, latest, 'commands', ok.idea, ok.comments, steps, ok.steps, {
       overwriteDraft: write.overwriteDraft === true,
     })

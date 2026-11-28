@@ -12,7 +12,9 @@
 // - **Several at once:** a folder renamed is every file in it renamed together, so links between
 //   two of them, which don't change, aren't touched.
 import type { Root, RootContent } from 'mdast'
+import type { Command } from './batch.ts'
 import type { DraftChange } from './draft.ts'
+import { blockEdit } from './edit.ts'
 import { type Idea, pathProblem } from './idea.ts'
 import { markdownTree, parseMarkdown } from './markdown.ts'
 
@@ -134,6 +136,48 @@ export function renameChanges(
     changes.push({ kind: 'edit', id: fix.id, source: fix.source, was: fix.was })
   }
   return { ok: true, changes, links: fixes.reduce((n, f) => n + f.links, 0) }
+}
+
+/**
+ * The commands that fix the links a batch's renames break, to go after its steps, worked out from
+ * the links as they are before it. What the batch changes itself is left as the batch has it: a block
+ * it names, a file it deletes, and the files where it changes a whole section.
+ */
+export function renameFixCommands(idea: Idea, steps: readonly Command[]): Command[] {
+  const renames = steps.flatMap((s) => (s.command === 'rename-file' ? [{ file: s.file, path: s.path }] : []))
+  if (renames.length === 0) {
+    return []
+  }
+  const blocks = new Set<string>()
+  const files = new Set<string>()
+  const fileOf = (id: string) => idea.files.find((f) => f.unitIds.includes(id))?.id
+  for (const step of steps) {
+    const named = [
+      'target' in step ? step.target : null,
+      'in' in step ? step.in : null,
+      step.command === 'move-text' ? step.to.in : null,
+    ].filter((id): id is string => typeof id === 'string')
+    for (const id of named) {
+      blocks.add(id)
+      if (id.startsWith('s')) {
+        // a section's blocks go with it
+        const file = fileOf(id)
+        if (file) {
+          files.add(file)
+        }
+      }
+    }
+    if (step.command === 'delete-file') {
+      files.add(step.file)
+    }
+  }
+  return linkFixes(idea, renames).flatMap((fix) => {
+    if (blocks.has(fix.id) || files.has(fix.file)) {
+      return []
+    }
+    const edit = blockEdit(idea, fix.id, fix.source)
+    return edit.ok ? edit.commands : []
+  })
 }
 
 /** The renames that move a folder (its path, `research`) to `to`: every file under it. */
