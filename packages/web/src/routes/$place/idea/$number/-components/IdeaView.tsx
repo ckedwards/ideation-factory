@@ -298,9 +298,11 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
     me: me.id,
     owner: idea.owner,
     onShowFile: (shown) => {
-      const path = draft.data?.files.find((f) => f.file === shown)?.path
+      const path = (
+        draft.data?.files.find((f) => f.file === shown) ?? draft.data?.deleted.find((d) => d.file === shown)
+      )?.path
       if (path) {
-        void navigate({ href: links.files({ file: path }) })
+        void navigate({ href: toFile(path) })
       }
     },
     onNote: setNote,

@@ -5,10 +5,16 @@
 // a dialog (the panel: each change, the faces of who typed in it, "Undo this
 // change", why one is outdated if it is, and what committing would do to the
 // comments). The draft is everyone's who can edit (docs/handoff-live-editing.md,
-// step 5): with anyone else in it, committing first names who it takes from, and
-// discarding asks first.
-import { useState } from 'react'
-import { AvatarStack, Button, Dialog, Section, Stack, type Person } from '@ideaf/ui'
+// step 5), and discarding it asks first.
+//
+// Commit opens a dialog first, every time (docs: Committing the draft): how many
+// changes in how many files, by whom; a warning while someone else is still
+// typing; and the files it takes, shaped like the Files tree, with what happens to
+// each (a rename is its old name struck through beside the new one: the only place
+// a rename shows). A file opens its comparison.
+import { type CSSProperties, useState } from 'react'
+import { AvatarStack, Button, Dialog, Icon, isImage, Section, Stack, type Person } from '@ideaf/ui'
+import type { CommitRow } from './commit-files.ts'
 import './EditPanel.css'
 
 export interface ChangeRow {
@@ -33,7 +39,7 @@ export interface Contributor {
 
 /**
  * The draft as committing takes it, when it's not only yours: everyone with changes, other people
- * first. Null when nobody else is in the draft or has changes in it: committing just goes ahead.
+ * first. Null when nobody else is in the draft or has changes in it.
  */
 export interface Together {
   changes: number
@@ -62,6 +68,10 @@ export interface EditPanelProps {
   unsaved?: boolean
   /** Who else committing takes from; null if nobody. */
   together?: Together | null
+  /** The files committing takes, as its dialog lists them. */
+  commitFiles?: CommitRow[]
+  /** Open a file's comparison with the latest version (from the commit dialog). */
+  onCompareFile?: (file: string) => void
   /** The commit dialog opened: what it shows is read again, so who's typing is now. */
   onConfirming?: () => void
   onUndo: (key: string) => void
@@ -162,12 +172,8 @@ export function EditActions(props: EditPanelProps) {
         variant="primary"
         disabled={!changed || outdated > 0 || props.committing}
         onClick={() => {
-          if (together) {
-            setConfirming(true)
-            props.onConfirming?.()
-          } else {
-            props.onCommit()
-          }
+          setConfirming(true)
+          props.onConfirming?.()
         }}
       >
         {props.committing ? 'Committing…' : `Commit as v${props.version + 1}`}
@@ -213,59 +219,121 @@ export function EditActions(props: EditPanelProps) {
       <Dialog open={listing} title="The draft’s changes" onClose={() => setListing(false)}>
         <EditPanel {...props} />
       </Dialog>
-      {together && (
-        <Dialog
-          open={confirming}
-          title={`Commit as v${props.version + 1}`}
-          onClose={() => setConfirming(false)}
-          footer={
-            <>
-              <Button variant="ghost" onClick={() => setConfirming(false)}>
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                onClick={() => {
-                  setConfirming(false)
-                  props.onCommit()
-                }}
-              >
-                Commit for everyone
-              </Button>
-            </>
-          }
-        >
-          <Stack gap={3}>
-            <p className="edit-panel-lead">
-              This takes the whole draft as it is now: {plural(together.changes, 'change')} in{' '}
-              {plural(together.files, 'file')}.
-            </p>
-            <ul className="commit-people">
-              {together.people.map((p) => (
-                <li key={p.key}>
-                  <AvatarStack people={[p.person]} />
-                  <span className="commit-person">
-                    {p.you ? 'You' : p.person.name}
-                    {p.typingIn !== null && (
-                      <span className="commit-typing">
-                        {' · '}
-                        {p.typingIn ? `typing in “${p.typingIn}” now` : 'typing now'}
-                      </span>
-                    )}
-                  </span>
-                  <span className="commit-count">{plural(p.changes, 'change')}</span>
-                </li>
+      <Dialog
+        open={confirming}
+        title={`Commit as v${props.version + 1}`}
+        onClose={() => setConfirming(false)}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirming(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              disabled={outdated > 0 || props.committing}
+              onClick={() => {
+                setConfirming(false)
+                props.onCommit()
+              }}
+            >
+              {together ? 'Commit for everyone' : 'Commit'}
+            </Button>
+          </>
+        }
+      >
+        <Stack gap={3}>
+          <p className="edit-panel-lead">
+            {(together?.changes ?? changes.length) === 0
+              ? 'What you’ve just typed: it’s saved, then committed'
+              : plural(together?.changes ?? changes.length, 'change')}
+            {(together?.files ?? props.files ?? 0) > 0 && ` in ${plural(together?.files ?? props.files!, 'file')}`}
+            {together ? `, by ${namesOf(together.people)}` : ''}.
+          </p>
+          <StillTyping people={together?.people ?? []} next={props.version + 1} />
+          {(props.commitFiles ?? []).length > 0 && (
+            <ul className="commit-files" aria-label="Files">
+              {props.commitFiles!.map((row) => (
+                <CommitFile
+                  key={`${row.kind}:${row.path}`}
+                  row={row}
+                  onCompare={
+                    props.onCompareFile &&
+                    ((file) => {
+                      setConfirming(false)
+                      props.onCompareFile!(file)
+                    })
+                  }
+                />
               ))}
             </ul>
-            <p className="commit-note">Anything typed after you commit stays in the draft for the next version.</p>
-          </Stack>
-        </Dialog>
-      )}
+          )}
+        </Stack>
+      </Dialog>
     </>
   )
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
+/**
+ * A warning, while someone else with changes is typing: what they type after you commit isn't in the
+ * version, it stays in the draft.
+ */
+function StillTyping({ people, next }: { people: Contributor[]; next: number }) {
+  const typing = people.filter((p) => !p.you && p.typingIn !== null)
+  if (typing.length === 0) {
+    return null
+  }
+  const where = typing.length === 1 && typing[0]!.typingIn ? ` in “${typing[0]!.typingIn}”` : ''
+  return (
+    <p className="commit-warning" role="alert">
+      <svg className="icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden>
+        <path d="M8 2 14.5 13.5h-13z" />
+        <path d="M8 6.5v3.5M8 11.75v.01" />
+      </svg>
+      <span>
+        <strong>
+          {namesOf(typing)} {typing.length === 1 ? 'is' : 'are'} still typing
+        </strong>
+        {where}. Anything typed after you commit isn’t in v{next}: it stays in the draft for the next version.
+      </span>
+    </p>
+  )
+}
+
+/** A row of the commit's files: a folder, or a file that opens its comparison. */
+function CommitFile({ row, onCompare }: { row: CommitRow; onCompare: ((file: string) => void) | undefined }) {
+  const inner = (
+    <>
+      <Icon name={row.kind === 'folder' ? 'folderOpen' : isImage(row.path) ? 'image' : 'page'} />
+      <span className="commit-file-name">
+        {row.was && (
+          <s className="commit-file-was">
+            <span className="visually-hidden">was </span>
+            {row.was}
+          </s>
+        )}
+        <span className="commit-file-now">{row.name}</span>
+      </span>
+      {row.note && <span className="commit-file-note">{row.note}</span>}
+    </>
+  )
+  const props = {
+    className: ['commit-file', row.state && `is-${row.state}`].filter(Boolean).join(' '),
+    style: { '--depth': row.depth } as CSSProperties,
+  }
+  return (
+    <li>
+      {row.file && onCompare ? (
+        <button type="button" {...props} onClick={() => onCompare(row.file!)}>
+          {inner}
+        </button>
+      ) : (
+        <div {...props}>{inner}</div>
+      )}
+    </li>
+  )
+}
 
 /** "Priya, Zoe and you": everyone with changes, as the commit dialog lists them. */
 function namesOf(people: Contributor[]): string {
