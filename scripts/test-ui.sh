@@ -11,6 +11,8 @@
 #   scripts/test-ui.sh restore name    put that copy back, in place of whatever's there now (after a wipe too);
 #                                      without a name, the saves there are to restore
 #   scripts/test-ui.sh saves           list the copies kept
+#   scripts/test-ui.sh restage         start again from nothing: wipe, up, seed medium, and save it as medium
+#                                      (any other saves are kept), so restore medium gets back to it
 #   scripts/test-ui.sh down            stop it, keeping its data
 #   scripts/test-ui.sh wipe            stop it and delete its data, and its settings; saves are kept
 #   scripts/test-ui.sh logs            follow the app's log
@@ -158,6 +160,12 @@ case "${1:-}" in
   saves)
     list_saves
     ;;
+  restage)
+    "$0" wipe
+    "$0" up
+    "$0" seed medium
+    "$0" save medium
+    ;;
   down)
     settings
     dc down
@@ -172,7 +180,7 @@ case "${1:-}" in
     dc logs -f app
     ;;
   *)
-    sed -n '2,20p' "$0"
+    sed -n '2,22p' "$0"
     exit 2
     ;;
 esac
