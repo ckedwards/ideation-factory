@@ -177,6 +177,13 @@ export interface Discussion extends Remark {
   resolved?: boolean
 }
 
+/** A file renamed (or moved), a folder renamed (every file in it, together), a file removed or added. */
+export type FileSeed =
+  | { rename: [from: string, to: string] }
+  | { renameFolder: [from: string, to: string] }
+  | { remove: string }
+  | { add: [path: string, content: string] }
+
 export interface IdeaSeed {
   by: string
   team?: string
@@ -194,9 +201,12 @@ export interface IdeaSeed {
   discussion?: Discussion[]
   /**
    * New versions, in order, after the discussion: each [old, new] replaced once, by its author unless
-   * `by` names someone else who can edit it.
+   * `by` names someone else who can edit it. Files renamed, removed or added make a version of their
+   * own, after the text's (the server fixes links to a renamed file, as it does for anyone).
    */
-  versions?: Array<{ by?: string; changes: Array<[string, string]> }>
+  versions?: Array<{ by?: string; changes: Array<[string, string]>; files?: FileSeed[] }>
+  /** Left in its draft, not committed, by its author unless `by` says: files made, renamed and deleted, text edited. */
+  draft?: { by?: string; changes: Array<FileSeed | { edit: [string, string] }> }
   reviews?: Array<{ by: string; verdict: Verdict; body?: string }>
   /** Where it ends up. */
   ends?: { status: 'changes-in-progress'; note: string } | { close: 'accepted' | 'rejected'; note?: string }

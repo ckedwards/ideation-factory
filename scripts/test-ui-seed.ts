@@ -270,13 +270,81 @@ async function fillIdea(seed: IdeaSeed, idea: string) {
       }
       edited.set(path, (edited.get(path) ?? now.files.get(path)!.content).replace(old, replacement))
     }
-    await by.api.sync({
-      idea,
-      files: [...edited].map(([path, content]) => {
-        const file = now.files.get(path)!
-        return { file: file.file, path, content, base: file.hash }
-      }),
-    })
+    if (edited.size > 0) {
+      await by.api.sync({
+        idea,
+        files: [...edited].map(([path, content]) => {
+          const file = now.files.get(path)!
+          return { file: file.file, path, content, base: file.hash }
+        }),
+      })
+    }
+    if (version.files?.length) {
+      const now = await latest(by.api, idea)
+      const id = (path: string) => {
+        const file = now.files.get(path)
+        if (!file) {
+          throw new Error(`${seed.title}: no file ${path} to change`)
+        }
+        return file.file
+      }
+      const steps = version.files.flatMap((f): Array<Parameters<typeof by.api.edit>[0]['batch']['steps'][number]> => {
+        if ('rename' in f) {
+          return [{ command: 'rename-file', file: id(f.rename[0]), path: f.rename[1] }]
+        }
+        if ('renameFolder' in f) {
+          const [from, to] = f.renameFolder
+          return [...now.files.keys()]
+            .filter((p) => p.startsWith(`${from}/`))
+            .map((p) => ({ command: 'rename-file' as const, file: id(p), path: `${to}/${p.slice(from.length + 1)}` }))
+        }
+        if ('remove' in f) {
+          return [{ command: 'delete-file', file: id(f.remove) }]
+        }
+        return [{ command: 'create-file', path: f.add[0], markdown: f.add[1] }]
+      })
+      await by.api.edit({ idea, batch: { base: now.version, steps } })
+    }
+  }
+
+  // left in the draft: each change its own (a folder's renames together), as someone would make them
+  if (seed.draft) {
+    const by = seed.draft.by ? who(seed.draft.by) : author
+    for (const change of seed.draft.changes) {
+      const draft = await by.api.getDraft({ idea })
+      const id = (path: string) => {
+        const file = draft.files.find((f) => f.path === path)
+        if (!file) {
+          throw new Error(`${seed.title}: no file ${path} in the draft`)
+        }
+        return file.file
+      }
+      const changes: Parameters<typeof by.api.changeDraft>[0]['changes'] =
+        'edit' in change
+          ? (() => {
+              const [old, replacement] = change.edit
+              const unit = draft.files.flatMap((f) => f.units).find((u) => u.source.includes(old))
+              if (!unit) {
+                throw new Error(`${seed.title}: "${old}" isn't in its draft`)
+              }
+              return [{ kind: 'edit', id: unit.id, source: unit.source.replace(old, replacement), was: unit.source }]
+            })()
+          : 'rename' in change
+            ? [{ kind: 'rename-file', file: id(change.rename[0]), path: change.rename[1], was: change.rename[0] }]
+            : 'renameFolder' in change
+              ? draft.files
+                  .filter((f) => f.path.startsWith(`${change.renameFolder[0]}/`))
+                  .map((f) => ({
+                    kind: 'rename-file' as const,
+                    file: f.file,
+                    path: `${change.renameFolder[1]}/${f.path.slice(change.renameFolder[0].length + 1)}`,
+                    was: f.path,
+                  }))
+              : 'remove' in change
+                ? [{ kind: 'delete-file', file: id(change.remove) }]
+                : [{ kind: 'create-file', path: change.add[0], markdown: change.add[1] }]
+      await by.api.changeDraft({ idea, changes })
+    }
   }
 
   for (const review of seed.reviews ?? []) {

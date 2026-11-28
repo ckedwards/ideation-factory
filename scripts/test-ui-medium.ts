@@ -400,6 +400,11 @@ ${pick(RISKS)}
     }
   }
 
+  // the Files team: hand-written ideas for files in the browser, with folders the generated ones don't have
+  const files = filesTeam(some(handles, 8), small.people[0]!.handle)
+  teams.push(files.team)
+  ideas.push(...files.ideas)
+
   // a few asking to join a team or group they're not in
   const joinRequests = some(handles, 6).flatMap((by, i) => {
     const outside: Data['joinRequests'] =
@@ -416,4 +421,183 @@ ${pick(RISKS)}
     joinRequests: [...small.joinRequests, ...joinRequests],
     ideas: [...small.ideas, ...ideas],
   }
+}
+
+/**
+ * The Files team: ideas laid out in folders, as ideas pushed from a repository are, to try files in the
+ * browser on (docs: Files in the browser). One pushed from a repository, sparse and deep; one long, of
+ * 60 files; one with a draft that makes, moves, deletes and renames files and a folder; and one whose
+ * later versions renamed and removed files, so its older versions have some to restore.
+ */
+function filesTeam(people: string[], siteAdmin: string): { team: TeamSeed; ideas: IdeaSeed[] } {
+  const [admin, second, third, ...rest] = people
+  const team: TeamSeed = {
+    handle: 'files',
+    name: 'Files',
+    description: 'Ideas in folders, pushed from repositories: the Files tree, made, renamed and deleted.',
+    admin: admin!,
+    members: Object.fromEntries([
+      [second!, 'maintainer'],
+      [third!, 'member'],
+      ...rest.map((h) => [h, 'member'] as const),
+      [siteAdmin, 'maintainer'],
+    ]),
+    requirements: { approvals: 0, resolved: false },
+  }
+
+  // pushed from a repository: its Markdown, sparse and deep, linking across folders
+  const repository: IdeaSeed = {
+    by: admin!,
+    team: 'files',
+    title: 'Sync engine docs',
+    description: 'The sync engine’s docs, pushed from its repository: deep folders with little in them.',
+    files: {
+      'README.md': `# Sync engine
+
+How the sync engine stores changes and sends them on. Start with [storage](packages/server/docs/storage.md), then [sync](packages/server/docs/sync.md).
+
+The decisions behind it are in [the ADRs](docs/adr/0001-use-rivet.md).
+`,
+      'packages/server/docs/storage.md': `# Storage
+
+Each idea is an actor with its own SQLite database. Versions are kept whole; [sync](sync.md) sends the steps between them.
+
+## Snapshots
+
+A snapshot is taken every 200 steps.
+`,
+      'packages/server/docs/sync.md': `# Sync
+
+Clients send steps on the count they have. A client that's behind takes what it missed first.
+
+See [storage](storage.md) for where steps are kept, and [routing](../../web/docs/routing.md) for how a page finds its idea.
+`,
+      'packages/web/docs/routing.md': `# Routing
+
+A page's address names its idea by team and number: \`/mobile/idea/9\`.
+`,
+      'docs/adr/0001-use-rivet.md': `# 1. Use Rivet actors
+
+We keep each idea in an actor, so its writes are in order without locks. [ADR 2](0002-use-bun.md) follows from it.
+`,
+      'docs/adr/0002-use-bun.md': `# 2. Use Bun
+
+One runtime for the server, the cli and the tests.
+`,
+    },
+    discussion: [
+      { by: second!, file: 'packages/server/docs/sync.md', on: 'A client that', body: 'Behind by how much, at most?' },
+      { by: third!, file: 'docs/adr/0002-use-bun.md', body: 'Worth saying what we gave up.' },
+      { by: second!, file: 'docs/adr/0001-use-rivet.md', on: 'without locks', body: 'And what if the actor moves?' },
+    ],
+  }
+
+  // long: twelve folders of five pages each
+  const areas = [
+    'accounts',
+    'billing',
+    'devices',
+    'exports',
+    'integrations',
+    'mobile',
+    'notifications',
+    'permissions',
+    'reports',
+    'search',
+    'security',
+    'sharing',
+  ]
+  const pages = ['overview', 'common-questions', 'known-problems', 'escalation', 'canned-replies']
+  const handbook: IdeaSeed = {
+    by: second!,
+    team: 'files',
+    title: 'Support handbook',
+    description: 'Every area support answers questions about: sixty pages in twelve folders.',
+    files: Object.fromEntries([
+      [
+        'README.md',
+        `# Support handbook\n\nOne folder per area. Start with each area's [overview](accounts/overview.md).\n`,
+      ],
+      ...areas.flatMap((area) =>
+        pages.map((page) => [
+          `${area}/${page}.md`,
+          `# ${area[0]!.toUpperCase()}${area.slice(1)}: ${page.replace(/-/g, ' ')}\n\nWhat support says about ${area}, and when to hand it on.\n`,
+        ]),
+      ),
+    ]),
+    discussion: [
+      { by: third!, file: 'billing/known-problems.md', body: 'The refund delay belongs here too.' },
+      { by: admin!, file: 'security/escalation.md', body: 'Who’s on call for this now?' },
+      { by: third!, file: 'mobile/overview.md', body: 'Out of date since the last release.' },
+    ],
+  }
+
+  // a draft with files in it: one made, one moved (its links follow), one deleted, a folder renamed
+  const research: IdeaSeed = {
+    by: admin!,
+    team: 'files',
+    title: 'Offline mode research',
+    description: 'What we learned about working offline, with a draft that reorganizes it.',
+    files: {
+      'offline.md': `# Offline mode
+
+See [the interviews](research/interviews.md), [what competitors do](research/competitors.md) and [the sync states](notes/sync-states.md).
+`,
+      'research/interviews.md': `# Interviews
+
+Five field technicians. All of them lose signal in basements, and two kept paper notes to type up later.
+`,
+      'research/competitors.md': `# Competitors
+
+Two apps queue changes offline; neither says when a change failed to send.
+`,
+      'notes/sync-states.md': `# Sync states
+
+Offline, then syncing, then done. Back to [offline mode](../offline.md).
+`,
+      'notes/standup.md': `# Standup notes
+
+Nothing here that isn't in the other files.
+`,
+    },
+    discussion: [{ by: second!, file: 'notes/sync-states.md', body: 'Does "done" mean the server has it?' }],
+    draft: {
+      changes: [
+        { add: ['research/costs.md', '# Costs\n\nAbout a pound a month per device, for storage.\n'] },
+        { rename: ['notes/sync-states.md', 'decisions/sync-states.md'] },
+        { remove: 'notes/standup.md' },
+        { renameFolder: ['research', 'findings'] },
+        { edit: ['Five field technicians.', 'Five field technicians, in three cities.'] },
+      ],
+    },
+  }
+
+  // versions since that renamed and removed files: older versions have some to restore, old addresses
+  const pricing: IdeaSeed = {
+    by: third!,
+    team: 'files',
+    title: 'Pricing page rewrite',
+    description: 'The pricing page’s words, over three versions that moved its files around.',
+    files: {
+      'plan.md': `# Pricing page rewrite
+
+The words are in [the copy](copy.md); [the old FAQ](old-faq.md) goes.
+`,
+      'copy.md': `# Copy
+
+Simple pricing for teams of any size.
+`,
+      'old-faq.md': `# Old FAQ
+
+Questions nobody asks any more.
+`,
+    },
+    versions: [
+      { changes: [], files: [{ rename: ['copy.md', 'copy/headline.md'] }, { remove: 'old-faq.md' }] },
+      { changes: [], files: [{ add: ['copy/plans.md', '# Plans\n\nFree, Team and Business.\n'] }] },
+      { changes: [], files: [{ renameFolder: ['copy', 'website-copy'] }] },
+    ],
+  }
+
+  return { team, ideas: [repository, handbook, research, pricing] }
 }
