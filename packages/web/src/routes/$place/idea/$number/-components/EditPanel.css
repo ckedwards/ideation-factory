@@ -71,44 +71,93 @@
   flex-basis: 100%;
   color: var(--ink-3);
 }
-/* the commit dialog: each person with changes, and how many */
-.commit-people {
-  display: grid;
+/* the commit dialog: wide enough for a path and what happens to it */
+.dialog:has(.commit-files) {
+  width: min(36rem, calc(100vw - var(--space-6)));
+}
+/* someone else still typing: a warning, read before Commit */
+.commit-warning {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
   margin: 0;
-  padding: 0;
+  padding: var(--space-2) var(--space-3);
+  border: var(--hairline) solid color-mix(in srgb, var(--warn) 45%, transparent);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--warn) 12%, var(--surface));
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+}
+.commit-warning .icon {
+  margin-top: 0.2em;
+  color: var(--warn);
+}
+.commit-warning strong {
+  font-weight: 600;
+}
+/* the files it takes, shaped like the Files tree; the list scrolls when there are many */
+.commit-files {
+  max-height: 20rem;
+  margin: 0;
+  padding: var(--space-1) 0;
+  overflow-y: auto;
+  border-block: var(--hairline) solid var(--rule);
   list-style: none;
   font-family: var(--font-ui);
+  font-size: var(--text-sm);
 }
-.commit-people li {
+.commit-file {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) 0;
-  border-bottom: var(--hairline) solid var(--rule);
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 1.85rem;
+  padding: 0 var(--space-1) 0 calc(var(--space-1) + var(--depth, 0) * var(--space-4));
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
 }
-.commit-people li:last-child {
-  border-bottom: 0;
+button.commit-file {
+  cursor: pointer;
 }
-.commit-person {
+button.commit-file:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+.commit-file .icon {
+  color: var(--ink-2);
+}
+.commit-file-name {
+  display: flex;
   flex: 1;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.commit-typing {
-  color: var(--warn);
-}
-.commit-count {
+/* its old name, struck through beside the new one */
+.commit-file-was {
   color: var(--ink-2);
-  white-space: nowrap;
 }
-.commit-note {
-  margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius);
-  background: var(--surface-2);
+/* as the Files tree colors a name: new green, changed amber, deleted struck through */
+.commit-file.is-new .commit-file-now {
+  color: color-mix(in srgb, var(--ok) 80%, var(--ink));
+}
+.commit-file.is-changed .commit-file-now {
+  color: color-mix(in srgb, var(--warn) 80%, var(--ink));
+}
+.commit-file.is-deleted .commit-file-now {
   color: var(--ink-2);
-  font-family: var(--font-ui);
-  font-size: var(--text-sm);
+  text-decoration: line-through;
+}
+.commit-file-note {
+  flex: none;
+  color: var(--ink-2);
+  font-size: var(--text-xs);
 }
 .edit-panel-confirm {
   display: grid;

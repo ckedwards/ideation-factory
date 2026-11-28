@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, fn, waitFor, within } from 'storybook/test'
+import type { CommitRow } from './commit-files.ts'
 import { EditActions, EditPanel, type Together } from './EditPanel.tsx'
 
 const riley = { id: 'u-riley', name: 'Riley Park' }
@@ -25,6 +26,57 @@ const together: Together = {
   ],
 }
 
+// the files a commit takes, as commitRows gives them: a file moved, a folder renamed with a new and an
+// edited file in it, one deleted, one edited
+const row = (r: Partial<CommitRow> & Pick<CommitRow, 'path' | 'name'>): CommitRow => ({
+  kind: 'file',
+  depth: 0,
+  was: null,
+  file: null,
+  state: null,
+  note: null,
+  ...r,
+})
+const commitFiles: CommitRow[] = [
+  row({ kind: 'folder', path: 'decisions', name: 'decisions' }),
+  row({
+    path: 'decisions/sync-states.md',
+    name: 'sync-states.md',
+    depth: 1,
+    file: 'f5',
+    was: 'notes/sync-states.md',
+    note: 'Moved',
+  }),
+  row({ kind: 'folder', path: 'findings', name: 'findings', was: 'research', note: 'Renamed · 3 files' }),
+  row({ path: 'findings/costs.md', name: 'costs.md', depth: 1, file: 'f4', state: 'new', note: 'New' }),
+  row({
+    path: 'findings/interviews.md',
+    name: 'interviews.md',
+    depth: 1,
+    file: 'f2',
+    state: 'changed',
+    note: 'Edited',
+  }),
+  row({ kind: 'folder', path: 'notes', name: 'notes' }),
+  row({ path: 'notes/standup.md', name: 'standup.md', depth: 1, file: 'f7', state: 'deleted', note: 'Deleted' }),
+  row({ path: 'offline.md', name: 'offline.md', file: 'f1', state: 'changed', note: 'Edited' }),
+]
+// a big draft: 30 more files edited, so the list scrolls
+const manyFiles: CommitRow[] = [
+  ...commitFiles,
+  row({ kind: 'folder', path: 'weekly', name: 'weekly' }),
+  ...Array.from({ length: 30 }, (_, i) =>
+    row({
+      path: `weekly/week-${i + 1}.md`,
+      name: `week-${i + 1}.md`,
+      depth: 1,
+      file: `w${i}`,
+      state: 'changed',
+      note: 'Edited',
+    }),
+  ),
+]
+
 const meta = {
   title: 'Ideas/EditPanel',
   component: EditPanel,
@@ -48,6 +100,7 @@ const meta = {
     onUndo: fn(),
     onPreview: fn(),
     onCommit: fn(),
+    onCompareFile: fn(),
     onDiscard: fn(),
     onClose: fn(),
   },
@@ -56,8 +109,8 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-// The draft's changes, the faces of who typed in each, and what committing does to comments. With
-// nobody else in the draft, committing goes ahead at once.
+// The draft's changes, the faces of who typed in each, and what committing does to comments.
+// Committing asks first, even with nobody else in the draft.
 export const Changes: Story = {
   play: async ({ args, canvasElement, userEvent }) => {
     const page = within(canvasElement)
@@ -77,24 +130,64 @@ export const Changes: Story = {
     await userEvent.keyboard('{Escape}')
     await waitFor(() => expect(body.queryByRole('dialog')).toBeNull())
     await userEvent.click(page.getByRole('button', { name: 'Commit as v4' }))
+    const commit = within(await body.findByRole('dialog', { name: 'Commit as v4' }))
+    await expect(commit.getByText('3 changes.')).toBeVisible()
+    await expect(args.onCommit).not.toHaveBeenCalled()
+    await userEvent.click(commit.getByRole('button', { name: 'Commit' }))
     await expect(args.onCommit).toHaveBeenCalled()
   },
 }
 
-// With others in the draft, committing names who it takes from first, and who's typing now
+// Committing lists the files it takes, shaped like the Files tree: a rename is the old name struck
+// through beside the new one, and a file opens its comparison
+export const CommitFiles: Story = {
+  args: { commitFiles, files: 6 },
+  play: async ({ args, canvasElement, userEvent }) => {
+    const page = within(canvasElement)
+    const body = within(canvasElement.ownerDocument.body)
+    await userEvent.click(page.getByRole('button', { name: 'Commit as v4' }))
+    const commit = within(await body.findByRole('dialog', { name: 'Commit as v4' }))
+    await expect(commit.getByText('3 changes in 6 files.')).toBeVisible()
+    const files = within(commit.getByRole('list', { name: 'Files' }))
+    await expect(files.getByText('research')).toHaveStyle({ textDecorationLine: 'line-through' })
+    await expect(files.getByText('Renamed · 3 files')).toBeVisible()
+    await expect(
+      files.getByRole('button', { name: /^was notes\/sync-states\.md ?sync-states\.md ?Moved$/ }),
+    ).toBeVisible()
+    // a folder isn't a button; a file opens its comparison, closing the dialog
+    await expect(files.queryByRole('button', { name: /^decisions/ })).toBeNull()
+    await userEvent.click(files.getByRole('button', { name: /^interviews\.md/ }))
+    await expect(args.onCompareFile).toHaveBeenCalledWith('f2')
+    await waitFor(() => expect(body.queryByRole('dialog')).toBeNull())
+  },
+}
+
+// Many files: the list scrolls in the dialog
+export const CommitManyFiles: Story = {
+  args: { commitFiles: manyFiles, files: 36 },
+  play: async ({ canvasElement, userEvent }) => {
+    const page = within(canvasElement)
+    const body = within(canvasElement.ownerDocument.body)
+    await userEvent.click(page.getByRole('button', { name: 'Commit as v4' }))
+    const list = (await body.findByRole('dialog', { name: 'Commit as v4' })).querySelector('.commit-files')!
+    await waitFor(() => expect(list.scrollHeight).toBeGreaterThan(list.clientHeight))
+  },
+}
+
+// With others in the draft, committing names who it takes from, and warns while one is still typing
 export const CommittingTogether: Story = {
-  args: { together },
+  args: { together, commitFiles },
   play: async ({ args, canvasElement, userEvent }) => {
     const page = within(canvasElement)
     const body = within(canvasElement.ownerDocument.body)
     await userEvent.click(page.getByRole('button', { name: 'Commit as v4' }))
     await expect(args.onCommit).not.toHaveBeenCalled()
-    await expect(body.getByText('This takes the whole draft as it is now: 3 changes in 2 files.')).toBeVisible()
-    await expect(body.getByText('· typing in “Why” now')).toBeVisible()
-    await expect(body.getByText('You')).toBeVisible()
     await expect(
-      body.getByText('Anything typed after you commit stays in the draft for the next version.'),
+      body.getByText('3 changes in 2 files, by Priya Natarajan, Maya Chen, Agent for Tomás and you.'),
     ).toBeVisible()
+    await expect(body.getByRole('alert')).toHaveTextContent(
+      'Priya Natarajan is still typing in “Why”. Anything typed after you commit isn’t in v4: it stays in the draft for the next version.',
+    )
     await userEvent.click(body.getByRole('button', { name: 'Cancel' }))
     await expect(args.onCommit).not.toHaveBeenCalled()
     await userEvent.click(page.getByRole('button', { name: 'Commit as v4' }))
@@ -136,8 +229,12 @@ export const Unsaved: Story = {
   args: { changes: [], outcomes: [], unsaved: true },
   play: async ({ args, canvasElement, userEvent }) => {
     const page = within(canvasElement)
+    const body = within(canvasElement.ownerDocument.body)
     await expect(page.getByRole('button', { name: 'Preview' })).toBeEnabled()
     await userEvent.click(page.getByRole('button', { name: 'Commit as v4' }))
+    const commit = within(await body.findByRole('dialog', { name: 'Commit as v4' }))
+    await expect(commit.getByText('What you’ve just typed: it’s saved, then committed.')).toBeVisible()
+    await userEvent.click(commit.getByRole('button', { name: 'Commit' }))
     await expect(args.onCommit).toHaveBeenCalled()
   },
 }

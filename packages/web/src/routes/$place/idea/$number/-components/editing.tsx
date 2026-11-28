@@ -31,6 +31,7 @@ import { draftQuery, filesQuery, ideaQuery, restorePointQuery, restorePointsQuer
 import type { DraftVersion } from './VersionList.tsx'
 import { type EarlierDraft, EarlierDraftBand, EarlierDraftDialogs } from './EarlierDrafts.tsx'
 import { filesChanged, rowsOf } from './draft-rows.ts'
+import { commitRows } from './commit-files.ts'
 import { type FileView, personOf, type Placement, type Thread } from './view.ts'
 
 export type Draft = Output<Operations['getDraft']>
@@ -458,11 +459,8 @@ export function useEditing(args: UseEditingArgs): Editing | null {
     deletedPath,
     draft.files.map((f) => f.path),
   )
-  const files = filesChanged(
-    draft.files,
-    draft.deleted.length,
-    new Map(args.latestFiles.map((f) => [f.file, f.content])),
-  )
+  const latestText = new Map(args.latestFiles.map((f) => [f.file, f.content]))
+  const files = filesChanged(draft.files, draft.deleted.length, latestText)
   // the panel's and the bar's: the same draft, and the same ways of acting on it
   const panelProps: EditPanelProps = {
     version: draft.version,
@@ -474,6 +472,16 @@ export function useEditing(args: UseEditingArgs): Editing | null {
     })),
     files,
     together: together(draft, rows.length, files, present, args.me, args.people),
+    commitFiles: commitRows(draft.files, draft.deleted, latestText),
+    // the file compared with the latest version, as Preview shows it
+    onCompareFile: (file) =>
+      void saved().then((ok) => {
+        if (ok) {
+          setOpened(null)
+          setPreviewing(true)
+          args.onShowFile?.(file)
+        }
+      }),
     onConfirming: () => void reread(),
     outcomes: draft.comments.map((o): CommentOutcomeRow => {
       const thread = args.threads.find((t) => t.id === o.id)
