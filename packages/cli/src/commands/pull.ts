@@ -83,12 +83,23 @@ export async function pullInto(
   const changes: Change[] = []
   const files: IdeaState['files'] = {}
 
-  for (const version of latest.files) {
-    const drafted = drafting?.files.find((f) => f.file === version.file)
-    // the file as it's to be here: the draft's, while it has changes, else the version's
-    const remote = drafted
-      ? { ...version, content: drafted.content, hash: await contentHash(drafted.content) }
-      : version
+  // the files as they're to be here: the draft's (new ones too, renamed where it renames them, and
+  // without those it deletes) while it has changes, else the version's
+  const versionHash = new Map(latest.files.map((f) => [f.file, f.hash]))
+  const remotes = drafting
+    ? await Promise.all(
+        drafting.files.map(async (d) => ({
+          file: d.file,
+          path: d.path,
+          content: d.content,
+          hash: await contentHash(d.content),
+          base: versionHash.get(d.file) ?? '',
+          drafted: d,
+        })),
+      )
+    : latest.files.map((v) => ({ ...v, base: v.hash, drafted: null }))
+  for (const remote of remotes) {
+    const { drafted } = remote
     const tracked = byFile.get(remote.file)
     byFile.delete(remote.file)
     const oldPath = tracked?.path ?? remote.path
@@ -98,7 +109,8 @@ export async function pullInto(
     const trackedHash = tracked?.draft ? await contentHash(tracked.draft.content) : tracked?.base
     files[remote.path] = {
       file: remote.file,
-      base: version.hash,
+      // a file new in the draft has no version to be based on
+      base: remote.base,
       version: latest.version,
       ...(drafted
         ? {
@@ -138,12 +150,14 @@ export async function pullInto(
     }
   }
 
-  // files deleted on the server
+  // files deleted on the server, or in the draft
   for (const gone of byFile.values()) {
     const local = await readText(ctx.ws, gone.path)
-    if (local !== null && (await contentHash(local)) !== gone.base) {
+    const pulledHash = gone.draft ? await contentHash(gone.draft.content) : gone.base
+    if (local !== null && (await contentHash(local)) !== pulledHash) {
       changes.push({ path: gone.path, change: 'kept' })
-      ctx.say(`  ${gone.path} was deleted in v${latest.version}; your edited copy is kept, untracked`)
+      const where = drafting ? 'in the draft' : `in v${latest.version}`
+      ctx.say(`  ${gone.path} was deleted ${where}; your edited copy is kept, untracked`)
       continue
     }
     await removeFile(ctx.ws, gone.path)

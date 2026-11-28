@@ -152,6 +152,41 @@ describe('sync', () => {
   })
 })
 
+describe('sync with changes in the draft', () => {
+  test('sends new, moved and deleted files into it, and pull brings the draft’s files here', async () => {
+    const r = await repo({ 'a.md': '# A\n\nSee [b](b.md).\n', 'b.md': '# B\n', 'c.md': '# C\n' })
+    const { idea } = (await r.ideaf('start', '--title', 'Draft files', '--json')).json()
+    // someone's editing the draft
+    const blocks = await api().showBlocks({ idea })
+    const c = blocks.files.find((f) => f.path === 'c.md')!.entries[0]!
+    await api().changeDraft({ idea, changes: [{ kind: 'edit', id: c.id, source: '# C, edited', was: c.source }] })
+    expect((await r.ideaf('pull')).out).toContain('Pulled the draft (on v1)')
+
+    // here: b.md moved into docs/, a new file, and c.md removed
+    await r.write('docs/b.md', '# B\n')
+    Bun.spawnSync(['rm', join(r.dir, 'b.md')])
+    await r.write('new.md', '# New\n')
+    Bun.spawnSync(['rm', join(r.dir, 'c.md')])
+    const synced = await r.ideaf('sync')
+    expect(synced.exit).toBe(0)
+    expect(synced.out).toContain("Sent 3 changes to the draft, on top of everyone's.")
+
+    // into the draft, no version made; the link to the moved file follows it
+    expect((await api().getIdea({ idea })).latest).toBe(1)
+    const draft = await api().getDraft({ idea })
+    expect(draft.files.map((f) => [f.path, f.made !== null, f.was])).toEqual([
+      ['a.md', false, null],
+      ['docs/b.md', false, 'b.md'],
+      ['new.md', true, null],
+    ])
+    expect(draft.deleted.map((d) => [d.path, d.content])).toEqual([['c.md', '# C, edited\n']])
+    // and pulled back here: the fixed link too
+    expect(await r.read('a.md')).toBe('# A\n\nSee [b](docs/b.md).\n')
+    expect(existsSync(join(r.dir, 'c.md'))).toBe(false)
+    expect((await r.ideaf('sync')).out).toContain('Nothing to sync.')
+  })
+})
+
 describe('pull', () => {
   test('merges local and remote edits to different parts of a file', async () => {
     const r = await repo({ 'plan.md': PLAN })
