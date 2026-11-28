@@ -87,10 +87,15 @@ const meta = {
   component: IdeaOverview,
   parameters: { layout: 'fullscreen' },
   args: {
-    files: [
-      { path: 'plan.md', href: '#plan' },
-      { path: 'notes/risks.md', href: '#risks' },
-    ],
+    files: {
+      files: [
+        { id: 'f1', path: 'plan.md', href: '#plan' },
+        { id: 'f2', path: 'notes/risks.md', href: '#risks' },
+      ],
+      current: null,
+      closed: [],
+      onClosedChange: fn(),
+    },
     team: { name: 'Mobile' },
     startedBy: actors.person,
     startedAt: hours(72),

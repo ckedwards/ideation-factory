@@ -1,36 +1,6 @@
 .idea-nav {
   padding: var(--space-4);
 }
-.idea-files {
-  display: grid;
-  gap: var(--space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: var(--text-sm);
-}
-.idea-files a {
-  color: var(--ink-2);
-  text-decoration: none;
-  word-break: break-all;
-}
-.idea-files a[aria-current='page'] {
-  color: var(--ink);
-  font-weight: 600;
-}
-.idea-file-comments {
-  margin-left: var(--space-2);
-  padding: 0 var(--space-1);
-  border-radius: var(--radius-pill);
-  background: var(--mark);
-  color: var(--mark-ink);
-  font-size: var(--text-xs);
-  font-variant-numeric: tabular-nums;
-}
-.idea-file-changed {
-  color: var(--changed);
-  font-size: var(--text-xs);
-}
 .idea-panel-note {
   margin: 0;
   color: var(--ink-2);

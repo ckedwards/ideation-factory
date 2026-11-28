@@ -7,7 +7,7 @@
 // The routes say which version, which file and what to compare against.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { type Anchor, parseMarkdown, suggestionSource } from '@ideaf/core'
-import { RelativeTime, Toast } from '@ideaf/ui'
+import { type FileTreeFile, RelativeTime, Toast } from '@ideaf/ui'
 import { useLiveSuspenseQuery } from '@tanstack/react-db'
 import { useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
@@ -23,6 +23,8 @@ import { VersionBanner } from './VersionBanner.tsx'
 import { DocToolbar } from './DocToolbar.tsx'
 import { CommentBox } from './CommentBox.tsx'
 import { FileLine } from './FileLine.tsx'
+import { useClosedFolders } from './closed-folders.ts'
+import { useFileActions } from './file-actions.tsx'
 import { type FocusPhase, FocusView } from './FocusView.tsx'
 import { actorOf, type FileView, personOf, place, type Thread } from './view.ts'
 
@@ -59,6 +61,9 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
   const older = version < latest
   // the idea's draft, for people who can edit it
   const draft = useQuery({ ...draftQuery(id), enabled: idea.you.edit })
+  // on the latest version, they see its files as the draft has them: new, renamed and deleted ones too
+  const drafting = idea.you.edit && !older && base === null && draft.data ? draft.data : null
+  const [closedFolders, setClosedFolders] = useClosedFolders(id)
   const { data: pulled } = useSuspenseQuery(filesQuery(id, version))
   const { data: outlines } = useSuspenseQuery(outlineQuery(id, version))
   const baseFiles = useQuery({ ...filesQuery(id, base ?? 0), enabled: base !== null })
@@ -101,7 +106,18 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
     const titles = new Map(entries.map((e) => [e.id, e.kind === 'heading' ? (e.path.at(-1) ?? '') : blockLabel(e)]))
     return { view, titles }
   })
-  const shown = views.find((f) => f.view.path === path) ?? views[0]!
+  // the file at the path; or one the draft has there (renamed to it, or new, so not in the version)
+  const inDraft = drafting?.files.find((f) => f.path === path) ?? drafting?.deleted.find((d) => d.path === path)
+  const shown =
+    views.find((f) => f.view.path === path) ??
+    (inDraft
+      ? (views.find((f) => f.view.id === inDraft.file) ?? {
+          view: { id: inDraft.file, path: inDraft.path, source: '', unitIds: [] },
+          titles: new Map<string, string>(),
+        })
+      : views[0]!)
+  // a file only the draft has: it can only be shown in the draft
+  const onlyInDraft = !views.some((f) => f.view.id === shown.view.id)
   const file = shown.view
   const titles = shown.titles
   const made = idea.versions.find((n) => n.number === version)
@@ -238,6 +254,65 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
     },
   })
   const canEdit = idea.you.edit && !older && base === null && !editing
+  useEffect(() => {
+    if (onlyInDraft && drafting && !editing) {
+      setEditing(true)
+    }
+  }, [onlyInDraft, drafting, editing])
+  const files = useFileActions({
+    idea: id,
+    draft: drafting,
+    threads,
+    me: me.id,
+    nameOf: (user) => people.get(user)?.name ?? 'Someone',
+    openDraft: () => setEditing(true),
+    showFile: (to) => void navigate({ href: links.files({ file: to }) }),
+    shown: file.path,
+    onNote: setToast,
+  })
+  // its open comments, on its text and as a whole
+  const commentsOn = (fileId: string) =>
+    threads.filter(
+      (t) => !t.resolved && t.state !== 'outdated' && t.anchor?.kind !== 'idea' && t.anchor?.file === fileId,
+    ).length
+  const treeFiles: FileTreeFile[] = drafting
+    ? [
+        ...drafting.files.map((f): FileTreeFile => {
+          const inVersion = pulled.files.find((p) => p.file === f.file)
+          const state = f.made
+            ? 'new'
+            : f.was
+              ? 'renamed'
+              : inVersion && inVersion.content !== f.content
+                ? 'changed'
+                : null
+          return {
+            id: f.file,
+            path: f.path,
+            href: links.files({ file: f.path }),
+            state,
+            was: f.was,
+            comments: commentsOn(f.file),
+          }
+        }),
+        ...drafting.deleted.map((d): FileTreeFile => ({
+          id: d.file,
+          path: d.path,
+          href: links.files({ file: d.path }),
+          state: 'deleted',
+          comments: commentsOn(d.file),
+        })),
+      ]
+    : pulled.files.map((f): FileTreeFile => {
+        const before = baseFiles.data?.files.find((b) => b.file === f.file)
+        return {
+          id: f.file,
+          path: f.path,
+          href: base !== null ? links.changes(base, shownV, f.path) : links.files({ v: shownV, file: f.path }),
+          state: base !== null && baseFiles.data && before?.hash !== f.hash ? 'changed' : null,
+          comments: commentsOn(f.file),
+        }
+      })
 
   // the focus view: open while the address says so, and not while comparing; editing can happen in it.
   // Opening it here carries the text into it; its address opened directly shows it at once
@@ -286,19 +361,13 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
         opened={opened}
         // while the focus view's open, editing is in it: the page beneath doesn't open the file twice
         editing={focusPhase ? null : editor}
-        files={pulled.files.map((f) => {
-          const before = baseFiles.data?.files.find((b) => b.file === f.file)
-          return {
-            path: f.path,
-            href: base !== null ? links.changes(base, shownV, f.path) : links.files({ v: shownV, file: f.path }),
-            current: f.file === file.id,
-            // its open comments, on its text and as a whole
-            comments: threads.filter(
-              (t) => !t.resolved && t.state !== 'outdated' && t.anchor?.kind !== 'idea' && t.anchor?.file === f.file,
-            ).length,
-            ...(base !== null && baseFiles.data ? { changed: before?.hash !== f.hash } : {}),
-          }
-        })}
+        files={{
+          files: treeFiles,
+          current: treeFiles.find((f) => f.id === file.id)?.path ?? file.path,
+          closed: closedFolders,
+          onClosedChange: setClosedFolders,
+          ...(files.actions ? { actions: files.actions } : {}),
+        }}
         source={file.source}
         compare={base !== null && baseFiles.data ? { base, source: baseFile?.content ?? '' } : null}
         showSource={showSource}
@@ -506,6 +575,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
       )}
       {/* the editor's words and actions, in the idea's bar while it's open (in focus view, its own) */}
       {!focusPhase && editor?.bar}
+      {files.dialog}
       <Toast message={toast?.message ?? null} action={toast?.action} onDismiss={() => setNote(null)} />
     </>
   )

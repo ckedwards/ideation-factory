@@ -9,6 +9,8 @@
 import { type ReactNode, useState } from 'react'
 import { markdownTree } from '@ideaf/core'
 import {
+  FileTree,
+  type FileTreeProps,
   type Actor,
   ActorLabel,
   Button,
@@ -65,8 +67,8 @@ export type ActivityItem =
     }
 
 export interface IdeaOverviewProps {
-  /** Its files, each a link straight to it: reading it is one obvious click away. */
-  files: Array<{ path: string; href: string }>
+  /** Its files, as a tree, each a link straight to it: reading it is one obvious click away. */
+  files: Omit<FileTreeProps, 'labelClassName'>
   /** What used to crowd the title: its team, who started it and when, its latest version, its address. */
   team: TeamRef & { href?: string | undefined }
   startedBy: Actor
@@ -95,16 +97,7 @@ export function IdeaOverview(props: IdeaOverviewProps) {
     <IdeaPageLayout
       nav={
         <div className="idea-overview-nav">
-          <nav aria-label="Files">
-            <h2 className="idea-overview-label">Files</h2>
-            <ul className="idea-overview-files">
-              {props.files.map((f) => (
-                <li key={f.path}>
-                  <Link href={f.href}>{f.path}</Link>
-                </li>
-              ))}
-            </ul>
-          </nav>
+          <FileTree {...props.files} labelClassName="idea-overview-label" />
           <div>
             <h2 className="idea-overview-label">Details</h2>
             <dl className="idea-overview-details">
