@@ -182,6 +182,7 @@ export const idea = actor({
     /** A restore point as restoring it would make the draft, without restoring it. */
     restorePoint: (c, point: number) => read(() => serviceOf(c).restorePoint(point)),
     reviews: (c, viewer?: string | null) => read(() => serviceOf(c).reviews(viewer)),
+    findFile: (c, path: string) => read(() => serviceOf(c).findFile(path)),
     suggestionSource: (c, file: string, start: number, end: number) =>
       read(() => serviceOf(c).suggestionSource(file, start, end)),
     /** Sends this idea's current index row to the directory, without waiting (scheduled after a write). */

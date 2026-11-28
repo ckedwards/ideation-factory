@@ -266,3 +266,18 @@ describe('restore points', () => {
     expect(draft.deleted.map((d) => d.file)).toEqual(['f6'])
   })
 })
+
+describe('an address made before a rename', () => {
+  test('still finds the file, where it is now; one deleted since finds nothing', async () => {
+    const { service, write } = await created()
+    value(
+      await write({ type: 'draft', changes: [{ kind: 'rename-file', file: 'f6', path: 'found.md', was: 'notes.md' }] }),
+    )
+    value(await write({ type: 'commit' }))
+    expect(await service.findFile('found.md')).toEqual({ file: 'f6', path: 'found.md', was: null })
+    expect(await service.findFile('notes.md')).toEqual({ file: 'f6', path: 'found.md', was: 'notes.md' })
+    value(await write({ type: 'draft', changes: [{ kind: 'delete-file', file: 'f6' }] }))
+    value(await write({ type: 'commit' }))
+    expect(await service.findFile('notes.md')).toBeNull()
+  })
+})

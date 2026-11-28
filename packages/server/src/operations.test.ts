@@ -162,6 +162,15 @@ test("the API is under /api; every other path is the web app's", async () => {
   expect((await app(new Request(`${TEST_URL}/teams/mobile`))).status).toBe(404)
 })
 
+test('find_file finds a file by its path, and by one it had before it was renamed', async () => {
+  const api = client()
+  const { idea } = await api.createIdea({ title: 'Find', files: [{ path: 'plan.md', content: PLAN }] })
+  expect(await api.findFile({ idea, path: 'plan.md' })).toEqual({ file: 'f1', path: 'plan.md', was: null })
+  await api.edit({ idea, batch: { base: 1, steps: [{ command: 'rename-file', file: 'f1', path: 'docs/plan.md' }] } })
+  expect(await api.findFile({ idea, path: 'plan.md' })).toEqual({ file: 'f1', path: 'docs/plan.md', was: 'plan.md' })
+  await expect(api.findFile({ idea, path: 'nothing.md' })).rejects.toMatchObject({ code: 'not_found' })
+})
+
 test('get_people names several people in one call, leaving out anyone not found', async () => {
   const api = client()
   const me = await api.me({})

@@ -3080,6 +3080,29 @@ export class IdeaService {
     }
   }
 
+  /**
+   * The file at `path` in the latest version; or the file that had it last, if it's been renamed or
+   * moved since (an address saved before still finds it), with its path now. Null if none ever did,
+   * or the one that did is gone.
+   */
+  async findFile(path: string): Promise<{ file: string; path: string; was: string | null } | null> {
+    const meta = await this.#requireMeta()
+    const now = await this.#manifest(meta.latest)
+    const here = now.find((f) => f.path === path)
+    if (here) {
+      return { file: here.file, path, was: null }
+    }
+    const before = await this.#db
+      .selectFrom('version_files')
+      .select('file')
+      .where('path', '=', path)
+      .orderBy('version', 'desc')
+      .limit(1)
+      .executeTakeFirst()
+    const moved = before ? now.find((f) => f.file === before.file) : undefined
+    return moved ? { file: moved.file, path: moved.path, was: path } : null
+  }
+
   async file(version: number | undefined, fileId: string) {
     const v = await this.#versionNumber(version)
     const entry = (await this.#manifest(v)).find((f) => f.file === fileId)
