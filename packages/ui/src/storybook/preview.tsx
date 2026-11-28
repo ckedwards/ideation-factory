@@ -3,6 +3,7 @@
 // Each package's .storybook/preview.tsx uses these as they are.
 import { useEffect } from 'react'
 import type { Decorator, Preview } from '@storybook/react-vite'
+import { configure } from 'storybook/test'
 import '../theme/theme.css'
 import { NOW } from '../stories/fixtures.ts'
 import { NowProvider } from '../time/RelativeTime.tsx'
@@ -10,6 +11,10 @@ import { loadFonts } from '../theme/fonts.ts'
 
 // the typefaces fetched at start, as the app does (fonts.ts)
 loadFonts()
+
+// A wait for something to show (findBy…, waitFor) gives up after 5 s, not 1: the editor loads in
+// stages, and with every story running in three themes at once it can take longer than 1 s to.
+configure({ asyncUtilTimeout: 5_000 })
 
 // The toolbar's theme and text size go on <html>, where the app sets them, so
 // every story is seen as a page would show it.

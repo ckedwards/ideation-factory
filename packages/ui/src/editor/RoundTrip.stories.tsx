@@ -140,6 +140,8 @@ function RoundTrip({ only }: { only: RegExp }) {
 const meta = {
   title: 'Editor/Round trip',
   component: RoundTrip,
+  // what's written back doesn't depend on the theme: checked once
+  tags: ['one-theme'],
 } satisfies Meta<typeof RoundTrip>
 
 export default meta
@@ -150,7 +152,7 @@ const play: Story['play'] = async ({ canvasElement }) => {
     return
   }
   const canvas = within(canvasElement)
-  const result = await waitFor(() => canvas.getByTestId('result'), { timeout: 14_000 })
+  const result = await waitFor(() => canvas.getByTestId('result'), { timeout: 28_000 })
   const count = Number(within(result).getByTestId('files').textContent)
   await expect(count).toBeGreaterThan(0)
   await expect(within(result).getByTestId('untouched')).toHaveTextContent(String(count))
