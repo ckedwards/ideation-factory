@@ -34,6 +34,14 @@ export { IdeaState, type IdeaStateProps } from './ideas/IdeaState.tsx'
 export { ApprovalProgress, type ApprovalProgressProps } from './ideas/ApprovalProgress.tsx'
 export { RequirementList } from './ideas/RequirementList.tsx'
 export { ReviewerStack, type ReviewerStackProps } from './ideas/ReviewerStack.tsx'
+export { buildTree, type FileState, folderOf, type TreeFile } from './ideas/file-tree.ts'
+export {
+  FileTree,
+  type FileTreeActions,
+  type FileTreeFile,
+  type FileTreeProps,
+  type NameBox,
+} from './ideas/FileTree.tsx'
 export { IdeaRow, type IdeaRowHide, type IdeaRowProps } from './ideas/IdeaRow.tsx'
 export { StatusControl, type OpenStatus, type StatusControlProps } from './ideas/StatusControl.tsx'
 export { IdeaHeading, type IdeaHeadingProps } from './ideas/IdeaHeading.tsx'

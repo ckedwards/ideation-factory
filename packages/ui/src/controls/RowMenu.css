@@ -48,6 +48,10 @@
 .row-menu-item.is-danger {
   color: var(--lost);
 }
+/* one that can't be used now isn't a warning */
+.row-menu-item.is-danger[data-disabled] {
+  color: var(--ink-2);
+}
 .row-menu-check {
   width: 1em;
   color: var(--accent);
@@ -62,4 +66,18 @@
   height: var(--hairline);
   margin: var(--space-1) 0;
   background: var(--rule);
+}
+
+.row-menu-text {
+  display: grid;
+  flex: 1;
+}
+.row-menu-why {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
+.row-menu-shortcut {
+  color: var(--ink-3);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
 }
