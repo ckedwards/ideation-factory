@@ -379,6 +379,11 @@ export function createCodec(env: {
 
   /** The doc as Markdown: unchanged blocks as they were opened, changed ones written in the file's style. */
   function write(doc: Node, span?: (node: Node, pos: number, start: number, end: number) => void): string {
+    // nothing but the empty line a document can't be without: an empty file (a new one, say), not a line
+    const only = doc.childCount === 1 ? doc.firstChild! : null
+    if (flavor === 'page' && only?.type.name === 'paragraph' && only.content.size === 0 && !opened.origin.has(only)) {
+      return ''
+    }
     const used = new Set<Block>()
     const parts: Array<{ text: string; from: Block | null; node: Node; pos: number }> = []
     doc.forEach((node, pos) => {
