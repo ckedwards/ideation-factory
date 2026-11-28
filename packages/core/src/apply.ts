@@ -367,7 +367,15 @@ function plan(idea: Idea, ids: Ids, command: Command): Plan {
     }
     case 'create-file': {
       checkNewPath(idea, command.path, null)
-      const id = ids.file()
+      const id = command.file ?? ids.file()
+      if (command.file) {
+        // an ID the draft was given: unused, and the next IDs come after it
+        const used = idea.files.some((f) => f.id === id || f.unitIds.includes(id))
+        if (used) {
+          throw new Fail('invalid', `${id} is already used`)
+        }
+        ids.next = Math.max(ids.next, Number(id.slice(1)) + 1)
+      }
       const markdown = tidy(command.markdown)
       out.pieces.set(id, markdown ? [text(`${markdown}\n`)] : [])
       out.paths.set(id, command.path)

@@ -54,8 +54,11 @@ export const DraftChange = z.discriminatedUnion('kind', [
   }),
   /** A suggestion accepted into the draft: its comment, and its change. */
   z.strictObject({ kind: z.literal('suggestion'), comment: z.string().max(64), old: Source, new: Source }),
-  /** A new file; it takes the ID committing gives it, so later changes can name it and its blocks. */
-  z.strictObject({ kind: z.literal('create-file'), path: Path, markdown: Source }),
+  /**
+   * A new file. `file` is the ID the server gives it, which committing keeps; without one, it takes
+   * the next ID, as committing would give it.
+   */
+  z.strictObject({ kind: z.literal('create-file'), path: Path, markdown: Source, file: FileId.optional() }),
   /** A file's new path; `was`, its path as the change was made against. */
   z.strictObject({ kind: z.literal('rename-file'), file: FileId, path: Path, was: Path }),
   /** A file, gone when the draft is committed; its comments become outdated. */
@@ -319,7 +322,17 @@ export function commandsFor(
 ): { ok: true; commands: Command[] } | { ok: false; message: string } {
   switch (change.kind) {
     case 'create-file':
-      return { ok: true, commands: [{ command: 'create-file', path: change.path, markdown: change.markdown }] }
+      return {
+        ok: true,
+        commands: [
+          {
+            command: 'create-file',
+            path: change.path,
+            markdown: change.markdown,
+            ...(change.file ? { file: change.file } : {}),
+          },
+        ],
+      }
     case 'rename-file': {
       const file = idea.files.find((f) => f.id === change.file)
       if (!file) {

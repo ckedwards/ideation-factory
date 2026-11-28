@@ -59,7 +59,7 @@ export function keyOf(change: DraftChange, taken: Set<string>): string {
       case 'suggestion':
         return `s-${change.comment}`
       case 'create-file':
-        return `c-${change.path}`.slice(0, 60)
+        return change.file ? `c-${change.file}` : `c-${change.path}`.slice(0, 60)
       case 'rename-file':
         return `r-${change.file}`
       case 'delete-file':

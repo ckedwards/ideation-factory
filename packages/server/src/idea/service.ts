@@ -372,6 +372,9 @@ interface DraftState {
   authors: Map<string, Array<{ by: Caller; at: number }>>
   /** Words editors saw moved between blocks, in order. */
   moved: MovedWords[]
+  /** Files the draft makes, renames or deletes, in the order made. */
+  fileChanges: DraftHeld[]
+  /** The latest version, with the files the draft makes as they start (empty): what documents are written against. */
   base: Idea
 }
 interface DraftSuggestion {
@@ -395,7 +398,7 @@ interface DraftItem {
   at: number
   /** Everyone who changed it, the last first: for a change from the documents, whoever typed in its blocks */
   authors: Caller[]
-  kind: 'held' | 'suggestion' | 'derived'
+  kind: 'held' | 'suggestion' | 'derived' | 'file'
 }
 interface Derived {
   entries: DraftItem[]
@@ -545,6 +548,81 @@ interface Renamed {
  * paste, say), so they go after the nearest text before them the version has once, or else before the
  * nearest after them. Words moved back, or typed over since, are edits like any other.
  */
+/** The file a file change is to (a new file's, once it has its ID). */
+function fileOf(change: DraftChange): string | null {
+  return change.kind === 'create-file'
+    ? (change.file ?? null)
+    : change.kind === 'rename-file' || change.kind === 'delete-file'
+      ? change.file
+      : null
+}
+
+/**
+ * The draft's file changes with `changes`' in: the draft keeps the difference from the latest
+ * version, so renaming a file again is the same rename, renaming it back leaves none, and renaming a
+ * file the draft makes moves where it's made. A new file's change makes it empty: its text is in its
+ * document. With each one's key, by its index in `changes`.
+ */
+function foldFileChanges(
+  had: DraftHeld[],
+  changes: DraftChange[],
+  latest: Idea,
+  by: Caller,
+  at: number,
+): { fileChanges: DraftHeld[]; keys: Map<number, string> } {
+  let out = had.map((f) => ({ ...f }))
+  const keys = new Map<number, string>()
+  const taken = new Set(out.map((f) => f.key))
+  for (const [i, change] of changes.entries()) {
+    if (change.kind === 'create-file') {
+      const key = keyOf(change, taken)
+      out.push({ key, change: { ...change, markdown: '' }, by, at })
+      keys.set(i, key)
+    } else if (change.kind === 'rename-file') {
+      const made = out.find((f) => f.change.kind === 'create-file' && f.change.file === change.file)
+      const renamed = out.find((f) => f.change.kind === 'rename-file' && f.change.file === change.file)
+      if (made && made.change.kind === 'create-file') {
+        made.change = { ...made.change, path: change.path }
+        keys.set(i, made.key)
+      } else if (renamed && renamed.change.kind === 'rename-file') {
+        const was = renamed.change.was
+        if (latest.files.some((f) => f.id === change.file && f.path === change.path)) {
+          out = out.filter((f) => f !== renamed)
+        } else {
+          renamed.change = { ...renamed.change, path: change.path, was }
+          renamed.by = by
+          renamed.at = at
+          keys.set(i, renamed.key)
+        }
+      } else if (!latest.files.some((f) => f.id === change.file && f.path === change.path)) {
+        const key = keyOf(change, taken)
+        out.push({ key, change, by, at })
+        keys.set(i, key)
+      }
+    } else if (change.kind === 'delete-file') {
+      const key = keyOf(change, taken)
+      out.push({ key, change, by, at })
+      keys.set(i, key)
+    }
+  }
+  return { fileChanges: out, keys }
+}
+
+/** The latest version with the files the draft makes, empty, as their documents start. */
+function withNewFiles(idea: Idea, fileChanges: DraftHeld[]): Idea {
+  const made = fileChanges.flatMap(({ change }) =>
+    change.kind === 'create-file' && change.file && !idea.files.some((g) => g.id === change.file)
+      ? [{ id: change.file, path: change.path, source: '', unitIds: [] }]
+      : [],
+  )
+  return made.length > 0 ? { ...idea, files: [...idea.files, ...made] } : idea
+}
+
+/** An ID's number (12 for f12), or 0 for none. */
+function idNumber(id: string | null | undefined): number {
+  return id ? Number(id.slice(1)) : 0
+}
+
 function stillMoved(moved: MovedWords[], blocks: Map<string, EditorBlock[]>, base: Idea): MovedWords[] {
   const sources = new Map([...blocks.values()].flat().flatMap((b) => (b.id ? [[b.id, b.source] as const] : [])))
   const seen = new Set<string>()
@@ -793,6 +871,7 @@ export class IdeaService {
           draft_at: null,
           draft_change: 0,
           draft_by: null,
+          draft_next_id: 0,
         })
         .execute()
       await this.#insertVersion(tx, {
@@ -1461,7 +1540,9 @@ export class IdeaService {
    * The draft as stored, read against `base` (the latest version): each file's document as it now
    * is. `keep`: a write's, which holds the documents from here on; a read's doesn't.
    */
-  async #draftState(base: Idea, keep: boolean): Promise<DraftState> {
+  async #draftState(latest: Idea, keep: boolean): Promise<DraftState> {
+    const fileChanges = await this.#fileChanges()
+    const base = withNewFiles(latest, fileChanges)
     const files = await this.#db.selectFrom('draft_files').selectAll().execute()
     const lives = new Map<string, Live>()
     const blocks = new Map<string, EditorBlock[]>()
@@ -1507,8 +1588,20 @@ export class IdeaService {
       })),
       authors,
       moved,
+      fileChanges,
       base,
     }
+  }
+
+  /** The files the draft makes, renames or deletes, in the order made. */
+  async #fileChanges(): Promise<DraftHeld[]> {
+    const rows = await this.#db.selectFrom('draft_file_changes').selectAll().orderBy('seq').execute()
+    return rows.map((r) => ({
+      key: r.key,
+      change: JSON.parse(r.change) as DraftChange,
+      by: JSON.parse(r.by) as Caller,
+      at: r.at,
+    }))
   }
 
   /**
@@ -1519,10 +1612,15 @@ export class IdeaService {
   async #derive(
     idea: Idea,
     comments: Comment[],
-    state: Pick<DraftState, 'blocks' | 'suggestions' | 'held' | 'authors' | 'moved'>,
+    state: Pick<DraftState, 'blocks' | 'suggestions' | 'held' | 'authors' | 'moved' | 'fileChanges'>,
     fallback: Caller,
   ): Promise<Derived> {
-    const taken = new Set(state.held.map((h) => h.key))
+    const taken = new Set([...state.held, ...state.fileChanges].map((h) => h.key))
+    // files made go first, so the documents' changes can be in them; renames and deletes last, so a
+    // file deleted keeps what was typed in it
+    const fileItems = state.fileChanges.map((f) => ({ ...f, authors: [f.by], kind: 'file' as const }))
+    const made = fileItems.filter((f) => f.change.kind === 'create-file')
+    const renamedOrDeleted = fileItems.filter((f) => f.change.kind !== 'create-file')
     const accepted: DraftItem[] = state.suggestions.map((s) => ({
       key: keyOf(s.change, taken),
       change: s.change,
@@ -1532,8 +1630,8 @@ export class IdeaService {
       kind: 'suggestion',
     }))
     let base = idea
-    if (accepted.length > 0) {
-      base = (await this.#core.buildDraft(this.id, idea, comments, accepted.map(plainEntry))).idea
+    if (accepted.length > 0 || made.length > 0) {
+      base = (await this.#core.buildDraft(this.id, idea, comments, [...made, ...accepted].map(plainEntry))).idea
     }
     const derived: DraftItem[] = []
     const files = Object.fromEntries([...state.blocks].filter(([file]) => base.files.some((f) => f.id === file)))
@@ -1547,9 +1645,11 @@ export class IdeaService {
       }
     }
     const entries: DraftItem[] = [
+      ...made,
       ...state.held.map((h) => ({ ...h, authors: [h.by], kind: 'held' as const })),
       ...accepted,
       ...derived,
+      ...renamedOrDeleted,
     ]
     const built = await this.#core.buildDraft(this.id, idea, comments, entries.map(plainEntry))
     for (const e of derived) {
@@ -1584,9 +1684,12 @@ export class IdeaService {
       clearMoved?: boolean
       /** Restored: the words seen moved are these, as stored. */
       moved?: PointDraft['moved']
+      /** The files it makes, renames or deletes; without, those it has. */
+      fileChanges?: DraftHeld[]
     },
   ): Promise<NextDraft> {
     const at = this.#now()
+    const fileChanges = next.fileChanges ?? state.fileChanges
     const version = new Map(on.idea.files.map((f) => [f.id, { source: f.source, ids: f.unitIds }]))
     const same = (a: DraftText | undefined, b: DraftText) =>
       a !== undefined && a.source === b.source && JSON.stringify(a.ids) === JSON.stringify(b.ids)
@@ -1605,6 +1708,7 @@ export class IdeaService {
         blocks: new Map([...targets].map(([file, text]) => [file, blocksOf(text)])),
         suggestions: next.suggestions,
         held: next.held,
+        fileChanges,
         authors: state.authors,
         moved: next.moved
           ? next.moved.map((m) => JSON.parse(m.words) as MovedWords)
@@ -1673,6 +1777,24 @@ export class IdeaService {
         await tx
           .insertInto('draft_suggestions')
           .values({ comment: s.comment, change: JSON.stringify(s.change), by: JSON.stringify(s.by), at: s.at })
+          .execute()
+      }
+      await tx.deleteFrom('draft_file_changes').execute()
+      for (const [seq, f] of fileChanges.entries()) {
+        await tx
+          .insertInto('draft_file_changes')
+          .values({ key: f.key, seq, change: JSON.stringify(f.change), by: JSON.stringify(f.by), at: f.at })
+          .execute()
+      }
+      // a new file's ID is never given to anything else: every version's IDs start after it
+      const last = Math.max(
+        0,
+        ...fileChanges.map((f) => idNumber(f.change.kind === 'create-file' ? f.change.file : null)),
+      )
+      if (last > 0) {
+        await tx
+          .updateTable('idea')
+          .set((eb) => ({ draft_next_id: raw<number>`max(${eb.ref('draft_next_id')}, ${last + 1})` }))
           .execute()
       }
       await tx.deleteFrom('draft_held').execute()
@@ -2048,7 +2170,7 @@ export class IdeaService {
   async openDraftFile(file: string): Promise<{ version: number; doc: unknown } | null> {
     await this.#requireMeta()
     const latest = await this.#loadLatest()
-    const base = this.#baseOf(latest.idea, file)
+    const base = this.#baseOf(withNewFiles(latest.idea, await this.#fileChanges()), file)
     if (!base) {
       return null
     }
@@ -2132,10 +2254,14 @@ export class IdeaService {
     const refused = (message: string) => ({ result: { kind: 'refused' as const, message }, events: [] })
     await this.#requireMeta()
     const latest = await this.#loadLatest()
-    const base = this.#baseOf(latest.idea, t.file)
+    const fileChanges = await this.#fileChanges()
+    const base = this.#baseOf(withNewFiles(latest.idea, fileChanges), t.file)
     const row = await this.#db.selectFrom('draft_files').selectAll().where('file', '=', t.file).executeTakeFirst()
     if (!base || !row) {
       return refused(base ? 'the file isn’t open in the draft' : 'the latest version has no such file')
+    }
+    if (fileChanges.some((f) => f.change.kind === 'delete-file' && f.change.file === t.file)) {
+      return refused('this file is deleted in the draft: restore it to type in it')
     }
     const live = await this.#live.load(t.file, row, base, () => this.#stepsAfter(t.file, row.steps), true)
     if (t.version !== live.steps) {
@@ -2334,13 +2460,17 @@ export class IdeaService {
     if (changes.some((c) => c.kind === 'suggestion')) {
       refuse('invalid', 'suggestions go into the draft by accepting them')
     }
-    // the draft doesn't keep file changes yet (docs: Files in the browser, step 2)
-    if (changes.some((c) => c.kind === 'create-file' || c.kind === 'rename-file' || c.kind === 'delete-file')) {
-      refuse('invalid', 'the draft can’t make, rename or delete files yet; use edit, which makes a version')
+    if (changes.some((c) => c.kind === 'create-file' && c.file !== undefined)) {
+      refuse('invalid', 'a new file takes the ID the server gives it: leave out file')
     }
     await this.#requireMeta()
     const { latest, state, derived } = await this.#draftNow(request.caller)
-    const incoming = changes.map((change, i) => ({ key: `+${i}`, change }))
+    // a new file's ID: after every ID the latest version, and the draft, has given
+    let nextFile = Math.max(latest.idea.nextId, ...state.fileChanges.map((f) => idNumber(fileOf(f.change)) + 1))
+    const named = changes.map((change) =>
+      change.kind === 'create-file' ? { ...change, file: `f${nextFile++}` } : change,
+    )
+    const incoming = named.map((change, i) => ({ key: `+${i}`, change }))
     const built = await this.#core.buildDraft(this.id, latest.idea, latest.comments, [
       ...derived.entries.map(plainEntry),
       ...incoming,
@@ -2352,12 +2482,20 @@ export class IdeaService {
         refuse('conflict', `outdated: ${which}${problem}`, { problem, change: i })
       }
     }
+    const { fileChanges, keys: fileKeys } = foldFileChanges(
+      state.fileChanges,
+      named,
+      latest.idea,
+      request.caller,
+      this.#now(),
+    )
     const next = await this.#nextDraft(request, latest, state, derived, {
       files: built.files,
       suggestions: state.suggestions,
       held: state.held,
+      fileChanges,
     })
-    const keys = changes.map((change) => changeKey(change, next.after))
+    const keys = named.map((change, i) => fileKeys.get(i) ?? changeKey(change, next.after))
     return this.#keepDraft(request, { ok: true, value: { kind: 'draft', keys } }, next)
   }
 
@@ -2376,6 +2514,7 @@ export class IdeaService {
         (s) => !(entry!.change.kind === 'suggestion' && s.comment === entry!.change.comment),
       ),
       held: state.held.filter((h) => h.key !== key),
+      fileChanges: state.fileChanges.filter((f) => f.key !== key),
     })
     return this.#keepDraft(request, { ok: true, value: { kind: 'draft', keys: [] } }, next)
   }
@@ -2389,6 +2528,7 @@ export class IdeaService {
       files: latest.idea.files,
       suggestions: [],
       held: [],
+      fileChanges: [],
       clearMoved: true,
     })
     return this.#keepDraft(request, { ok: true, value: { kind: 'discarded', point: point?.seq ?? null } }, next, {
@@ -2471,6 +2611,9 @@ export class IdeaService {
         e.change.kind === 'suggestion' ? [{ comment: e.change.comment, change: e.change, by: e.by, at: e.at }] : [],
       ),
       held: held.map((e) => ({ key: e.key, change: e.change, by: e.by, at: e.at })),
+      fileChanges: rest.flatMap((e) =>
+        e.kind === 'file' ? [{ key: e.key, change: e.change, by: e.by, at: e.at }] : [],
+      ),
       moved: kept.moved,
     })
     const authored = [...new Set(kept.authors.map((a) => a.block))]
@@ -2581,6 +2724,9 @@ export class IdeaService {
   }
 
   async #edit(request: WriteRequest, write: Extract<IdeaWrite, { type: 'edit' }>) {
+    if (write.batch.steps.some((c) => c.command === 'create-file' && c.file !== undefined)) {
+      refuse('invalid', 'a new file takes the next ID: leave out file')
+    }
     const meta = await this.#requireMeta()
     if (write.batch.base > meta.latest) {
       refuse('invalid', `the batch is built on v${write.batch.base}, but the latest is v${meta.latest}`)
@@ -2699,14 +2845,31 @@ export class IdeaService {
         files: idea.files,
         suggestions: [],
         held: [],
+        fileChanges: [],
         clearMoved: true,
       })
-    } else if (state.blocks.size > 0 || state.suggestions.length > 0 || state.held.length > 0) {
+    } else if (
+      state.blocks.size > 0 ||
+      state.suggestions.length > 0 ||
+      state.held.length > 0 ||
+      state.fileChanges.length > 0
+    ) {
       const before = await this.#derive(latest.idea, latest.comments, state, request.caller)
       const plain = before.entries.map(plainEntry)
       const after = await this.#core.buildDraft(this.id, idea, on.comments, plain)
+      // a file the version changes that the draft deletes: deleting it would lose the version's words
+      const changedFiles = new Set(
+        latest.idea.files
+          .filter((f) => {
+            const now = idea.files.find((g) => g.id === f.id)
+            return !now || now.source !== f.source
+          })
+          .map((f) => f.id),
+      )
       const overtaken = before.entries.filter(
-        (e) => after.problems[e.key] !== undefined && before.built.problems[e.key] === undefined,
+        (e) =>
+          (after.problems[e.key] !== undefined && before.built.problems[e.key] === undefined) ||
+          (e.change.kind === 'delete-file' && changedFiles.has(e.change.file) && !before.built.problems[e.key]),
       )
       if (overtaken.length > 0 && !more.overwriteDraft) {
         const n = overtaken.length
@@ -2735,6 +2898,7 @@ export class IdeaService {
         files: rebased.files,
         suggestions: state.suggestions.filter((s) => !reopened.has(s.comment)),
         held: state.held,
+        fileChanges: state.fileChanges.filter((f) => !gone.has(f.key)),
       })
       overwrote = overtaken.length
     }
@@ -2790,8 +2954,12 @@ export class IdeaService {
       throw error
     })
     draft?.done()
-    // a file the new version doesn't have isn't held: typing in it is refused, not told it's behind
-    this.#live.keepOnly(idea.files.map((f) => f.id))
+    // a file the new version doesn't have, nor the draft makes, isn't held: typing in it is refused,
+    // not told it's behind
+    const stillMade = more.clearDraft
+      ? []
+      : state.fileChanges.flatMap((f) => (f.change.kind === 'create-file' && f.change.file ? [f.change.file] : []))
+    this.#live.keepOnly([...idea.files.map((f) => f.id), ...stillMade])
     this.#latest = {
       version: number,
       idea,
@@ -3067,7 +3235,21 @@ export class IdeaService {
         authors: e.authors,
         problem: built.problems[e.key] ?? null,
       })),
-      files: built.files.map((f) => ({ file: f.id, path: f.path, content: f.source, units: f.units })),
+      files: built.files.map((f) => ({
+        file: f.id,
+        path: f.path,
+        content: f.source,
+        units: f.units,
+        made: f.made,
+        was: f.was,
+      })),
+      deleted: built.deleted.map((d) => ({
+        file: d.id,
+        path: d.path,
+        content: d.source,
+        change: d.change,
+        made: d.made,
+      })),
       // pending comments are their authors' alone
       comments: built.comments.filter((c) => !pending.has(c.id)),
       steps: built.commands.length,
@@ -3221,6 +3403,14 @@ export class IdeaService {
 
   async #loadLatest(): Promise<Latest> {
     const meta = await this.#requireMeta()
+    const latest = await this.#loadVersionLatest(meta)
+    // a file made in the draft has an ID of its own: every new version's IDs start after it
+    return meta.draft_next_id > latest.idea.nextId
+      ? { ...latest, idea: { ...latest.idea, nextId: meta.draft_next_id } }
+      : latest
+  }
+
+  async #loadVersionLatest(meta: Meta): Promise<Latest> {
     if (this.#latest?.version === meta.latest) {
       return this.#latest
     }

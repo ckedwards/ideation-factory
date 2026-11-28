@@ -456,7 +456,29 @@ export const Draft = z.object({
       problem: z.string().nullable(),
     }),
   ),
-  files: z.array(z.object({ file: z.string(), path: z.string(), content: z.string(), units: z.array(DraftUnit) })),
+  files: z.array(
+    z.object({
+      file: z.string(),
+      path: z.string(),
+      content: z.string(),
+      units: z.array(DraftUnit),
+      /** The change that makes it, for a file new in the draft. */
+      made: z.string().nullable(),
+      /** Its path in the latest version, if the draft renames it. */
+      was: z.string().nullable(),
+    }),
+  ),
+  /** Files the draft deletes, as they were when deleted (with what was typed in them), to restore. */
+  deleted: z.array(
+    z.object({
+      file: z.string(),
+      path: z.string(),
+      content: z.string(),
+      /** The change that deletes it: undoing it restores the file. */
+      change: z.string(),
+      made: z.string().nullable(),
+    }),
+  ),
   comments: z.array(CommentOutcome),
   /** How many commands committing makes. */
   steps: z.number().int(),

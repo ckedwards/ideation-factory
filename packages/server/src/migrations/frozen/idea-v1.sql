@@ -1,5 +1,5 @@
 CREATE TABLE schema_version (version INTEGER NOT NULL);
-CREATE TABLE idea ( id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL, owner TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('draft', 'requesting-review', 'changes-in-progress', 'closed-accepted', 'closed-rejected')), created_at INTEGER NOT NULL, latest INTEGER NOT NULL, next_comment INTEGER NOT NULL, git_uri TEXT, git_branch TEXT, draft_at INTEGER, draft_change INTEGER NOT NULL DEFAULT 0, draft_by TEXT );
+CREATE TABLE idea ( id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL, owner TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('draft', 'requesting-review', 'changes-in-progress', 'closed-accepted', 'closed-rejected')), created_at INTEGER NOT NULL, latest INTEGER NOT NULL, next_comment INTEGER NOT NULL, git_uri TEXT, git_branch TEXT, draft_at INTEGER, draft_change INTEGER NOT NULL DEFAULT 0, draft_by TEXT, draft_next_id INTEGER NOT NULL DEFAULT 0 );
 CREATE TABLE versions ( number INTEGER PRIMARY KEY, parent INTEGER, created_at INTEGER NOT NULL, created_by TEXT NOT NULL, how TEXT NOT NULL CHECK (how IN ('created', 'commands', 'upload')), next_id INTEGER NOT NULL, authors TEXT NOT NULL );
 CREATE TABLE version_files ( version INTEGER NOT NULL REFERENCES versions (number), file TEXT NOT NULL, path TEXT NOT NULL, hash TEXT NOT NULL, bytes INTEGER NOT NULL, unit_ids TEXT NOT NULL, PRIMARY KEY (version, file) );
 CREATE TABLE steps ( version INTEGER NOT NULL REFERENCES versions (number), step INTEGER NOT NULL, command TEXT NOT NULL, addresses TEXT NOT NULL, authors TEXT NOT NULL, PRIMARY KEY (version, step) );
@@ -16,6 +16,7 @@ CREATE TABLE draft_steps ( file TEXT NOT NULL, seq INTEGER NOT NULL, step TEXT N
 CREATE TABLE draft_suggestions (comment TEXT PRIMARY KEY, change TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE TABLE draft_held (key TEXT PRIMARY KEY, change TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE TABLE draft_authors (block TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (block, by));
+CREATE TABLE draft_file_changes (key TEXT PRIMARY KEY, seq INTEGER NOT NULL, change TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE TABLE draft_moved (seq INTEGER PRIMARY KEY, words TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE TABLE draft_restore_points ( seq INTEGER PRIMARY KEY, version INTEGER NOT NULL, why TEXT NOT NULL CHECK (why IN ('quiet', 'left', 'agent', 'discard', 'overwrite', 'restore')), by TEXT, at INTEGER NOT NULL, change INTEGER NOT NULL, changes INTEGER NOT NULL, who TEXT NOT NULL, first TEXT, more INTEGER NOT NULL, undone INTEGER NOT NULL, bytes INTEGER NOT NULL, draft TEXT );
 CREATE TABLE writes (key TEXT PRIMARY KEY, result TEXT NOT NULL, at INTEGER NOT NULL);

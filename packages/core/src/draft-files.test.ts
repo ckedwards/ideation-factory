@@ -269,3 +269,22 @@ describe('the links a fix rewrites', () => {
     expect(fixes('See [notes][n].\n\n[n]: notes.md\n', 'plan.md', 'docs/plan.md')).toEqual(['[n]: ../notes.md'])
   })
 })
+
+describe('a file the server gave an ID', () => {
+  test('keeps it when committed, and the next IDs come after it', () => {
+    const base = idea()
+    const [made, typed] = entries(
+      { kind: 'create-file', path: 'costs.md', markdown: '', file: 'f20' },
+      { kind: 'insert', at: { start: 'f20' }, markdown: 'A pound a month.' },
+    )
+    const draft = buildDraft(base, [], [made!, typed!])
+    expect(draft.problems).toEqual({})
+    expect(draft.files.find((f) => f.path === 'costs.md')).toMatchObject({ id: 'f20', unitIds: ['b21'] })
+    expect(draft.idea.nextId).toBe(22)
+  })
+
+  test('is refused if the ID is already used', () => {
+    const draft = buildDraft(idea(), [], entries({ kind: 'create-file', path: 'costs.md', markdown: '', file: 'f4' }))
+    expect(Object.values(draft.problems)[0]).toContain('f4 is already used')
+  })
+})
