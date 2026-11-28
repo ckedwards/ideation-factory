@@ -10,6 +10,7 @@ import {
   type BatchResult,
   type BuiltDraft,
   buildDraft,
+  type Command,
   type DraftChanges,
   type DraftEntry,
   draftChanges,
@@ -20,7 +21,11 @@ import {
   createIdea,
   type FileOutline,
   type Idea,
+  type LinkFix,
+  linkFixes,
   outline,
+  type Rename,
+  renameFixCommands,
   suggestionSource,
   type Upload,
   type UploadResult,
@@ -48,6 +53,10 @@ export interface CoreRunner {
     files: Record<string, EditorBlock[]>,
     words?: MovedWords[],
   ): Promise<DraftChanges>
+  /** The block edits that keep links pointing where they did when `renames` are made together. */
+  linkFixes(key: string, idea: Idea, renames: Rename[]): Promise<LinkFix[]>
+  /** The commands that fix the links a batch's renames break, to go after its steps. */
+  renameFixCommands(key: string, idea: Idea, steps: Command[]): Promise<Command[]>
   close(): Promise<void>
 }
 
@@ -70,6 +79,8 @@ export const core = {
   suggestionSource,
   buildDraft,
   draftChanges,
+  linkFixes,
+  renameFixCommands,
 }
 export type CoreMethod = keyof typeof core
 
@@ -83,6 +94,8 @@ export function inProcessCore(): CoreRunner {
     suggestionSource: async (_key, idea, anchor) => suggestionSource(idea, anchor),
     buildDraft: async (_key, idea, comments, entries) => buildDraft(idea, comments, entries),
     draftChanges: async (_key, draft, files, words) => draftChanges(draft, files, words),
+    linkFixes: async (_key, idea, renames) => linkFixes(idea, renames),
+    renameFixCommands: async (_key, idea, steps) => renameFixCommands(idea, steps),
     close: async () => {},
   }
 }

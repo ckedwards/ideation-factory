@@ -149,11 +149,55 @@ describe('a file renamed in the draft', () => {
     expect(draft.changes.filter((c) => c.change.kind === 'rename-file').map((c) => c.change)).toEqual([
       { kind: 'rename-file', file: 'f6', path: 'found.md', was: 'notes.md' },
     ])
-    // and back to its path in the latest version: no rename left
+    // the link followed the second rename, as it does any rename
+    expect(draft.files.find((f) => f.file === 'f1')!.content).toContain('See [notes](found.md).')
+    // and back to its path in the latest version: no rename left, and the link back as it was
     value(
       await write({ type: 'draft', changes: [{ kind: 'rename-file', file: 'f6', path: 'notes.md', was: 'found.md' }] }),
     )
-    expect((await service.draft()).changes.map((c) => c.change.kind)).toEqual(['edit'])
+    expect((await service.draft()).changes).toEqual([])
+  })
+
+  test('alone, has its links fixed for you, as any caller’s rename does', async () => {
+    const { service, write } = await created()
+    const done = value(
+      await write({
+        type: 'draft',
+        changes: [{ kind: 'rename-file', file: 'f6', path: 'docs/notes.md', was: 'notes.md' }],
+      }),
+    )
+    expect(done).toEqual({ kind: 'draft', keys: ['r-f6'] })
+    const draft = await service.draft()
+    expect(draft.files.find((f) => f.file === 'f1')!.content).toContain('See [notes](docs/notes.md).')
+    expect(draft.changes.map((c) => c.change.kind)).toEqual(['edit', 'rename-file'])
+  })
+
+  test('in a batch, has its links fixed in the version it makes', async () => {
+    const { service, write } = await created()
+    value(
+      await write({
+        type: 'edit',
+        batch: { base: 1, steps: [{ command: 'rename-file', file: 'f6', path: 'docs/notes.md' }] },
+      }),
+    )
+    expect((await service.file(2, 'f1'))!.content).toContain('See [notes](docs/notes.md).')
+  })
+
+  test('in a batch that changes the linking block itself, leaves that block as the batch has it', async () => {
+    const { service, write } = await created()
+    value(
+      await write({
+        type: 'edit',
+        batch: {
+          base: 1,
+          steps: [
+            { command: 'rename-file', file: 'f6', path: 'docs/notes.md' },
+            { command: 'replace', in: 'b3', old: 'See', new: 'Read' },
+          ],
+        },
+      }),
+    )
+    expect((await service.file(2, 'f1'))!.content).toContain('Read [notes](notes.md).')
   })
 
   test('made against a path it no longer has is refused as outdated', async () => {

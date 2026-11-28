@@ -31,7 +31,15 @@ export {
   unitSource,
 } from './draft.ts'
 export { type BlockEdit, blockEdit } from './edit.ts'
-export { filesInFolder, folderRenames, type LinkFix, linkFixes, type Rename, renameChanges } from './links.ts'
+export {
+  filesInFolder,
+  folderRenames,
+  type LinkFix,
+  linkFixes,
+  type Rename,
+  renameChanges,
+  renameFixCommands,
+} from './links.ts'
 export { contentHash } from './hash.ts'
 export {
   type Anchor,

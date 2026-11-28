@@ -4,7 +4,7 @@ import { describe, expect, test } from 'bun:test'
 import { applyBatch } from './apply.ts'
 import { buildDraft, type DraftChange, type DraftEntry } from './draft.ts'
 import { createIdea, type Idea, textAnchor } from './idea.ts'
-import { folderRenames, linkFixes, renameChanges } from './links.ts'
+import { folderRenames, linkFixes, renameChanges, renameFixCommands } from './links.ts'
 
 // f1 index.md: s2 Index, b3; f4 sync-states.md: s5 States, b6; f7 research/interviews.md: b8;
 // f9 research/notes.md: b10; next ID 11
@@ -286,5 +286,26 @@ describe('a file the server gave an ID', () => {
   test('is refused if the ID is already used', () => {
     const draft = buildDraft(idea(), [], entries({ kind: 'create-file', path: 'costs.md', markdown: '', file: 'f4' }))
     expect(Object.values(draft.problems)[0]).toContain('f4 is already used')
+  })
+})
+
+describe('the fixes a batch’s renames need', () => {
+  test('go after its steps, and leave a block the batch changes, or a file it deletes, as it has them', () => {
+    const base = idea()
+    const rename = [{ command: 'rename-file' as const, file: 'f4', path: 'states.md' }]
+    const done = applyBatch(base, [], { base: 1, steps: [...rename, ...renameFixCommands(base, rename)] })
+    expect(done.ok && done.idea.files[0]!.source).toContain('See [states](states.md) and')
+    expect(
+      renameFixCommands(base, [
+        { command: 'rename-file', file: 'f4', path: 'states.md' },
+        { command: 'replace', in: 'b3', old: 'See', new: 'Read' },
+      ]),
+    ).toEqual([])
+    expect(
+      renameFixCommands(base, [
+        { command: 'rename-file', file: 'f7', path: 'interviews.md' },
+        { command: 'delete-file', file: 'f9' },
+      ]).length,
+    ).toBe(2)
   })
 })
