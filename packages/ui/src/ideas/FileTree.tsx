@@ -341,18 +341,20 @@ function Row({ row, tabIndex, current, menu, onToggle, onFocus, ref }: RowProps)
         className={['file-tree-row', 'is-folder', folder.deleted && 'is-deleted'].filter(Boolean).join(' ')}
         style={indent}
       >
-        <button type="button" tabIndex={-1} className="file-tree-folder" onClick={() => onToggle(!row.open)}>
-          <span className="file-tree-caret" aria-hidden>
-            {row.open ? '▾' : '▸'}
-          </span>
-          <span className="file-tree-name">{folder.name}</span>
-        </button>
-        {folder.deleted ? (
-          <span className="file-tree-state"> · deleted</span>
-        ) : (
-          !row.open && folder.changed && <span className="file-tree-state is-changed"> · changed</span>
-        )}
-        {!row.open && folder.comments > 0 && <Comments n={folder.comments} />}
+        <span className="file-tree-main">
+          <button type="button" tabIndex={-1} className="file-tree-folder" onClick={() => onToggle(!row.open)}>
+            <span className="file-tree-caret" aria-hidden>
+              {row.open ? '▾' : '▸'}
+            </span>
+            <span className="file-tree-name">{folder.name}</span>
+          </button>
+          {folder.deleted ? (
+            <span className="file-tree-state"> · deleted</span>
+          ) : (
+            !row.open && folder.changed && <span className="file-tree-state is-changed"> · changed</span>
+          )}
+          {!row.open && folder.comments > 0 && <Comments n={folder.comments} />}
+        </span>
         {menu.length > 0 && (
           <RowMenu label={folder.path} groups={[{ items: menu }]} tabIndex={tabIndex} className="file-tree-menu" />
         )}
@@ -372,17 +374,19 @@ function Row({ row, tabIndex, current, menu, onToggle, onFocus, ref }: RowProps)
       className={['file-tree-row', state === 'deleted' && 'is-deleted'].filter(Boolean).join(' ')}
       style={indent}
     >
-      <a
-        href={(file as FileTreeFile).href}
-        tabIndex={-1}
-        className="file-tree-name"
-        aria-current={file.path === current ? 'page' : undefined}
-        title={state === 'renamed' && file.was ? `was ${file.was}` : undefined}
-      >
-        {name}
-      </a>
-      {state && <span className={`file-tree-state is-${state}`}> · {state}</span>}
-      {(file.comments ?? 0) > 0 && <Comments n={file.comments!} />}
+      <span className="file-tree-main">
+        <a
+          href={(file as FileTreeFile).href}
+          tabIndex={-1}
+          className="file-tree-name"
+          aria-current={file.path === current ? 'page' : undefined}
+          title={state === 'renamed' && file.was ? `was ${file.was}` : undefined}
+        >
+          {name}
+        </a>
+        {state && <span className={`file-tree-state is-${state}`}> · {state}</span>}
+        {(file.comments ?? 0) > 0 && <Comments n={file.comments!} />}
+      </span>
       {menu.length > 0 && (
         <RowMenu label={file.path} groups={[{ items: menu }]} tabIndex={tabIndex} className="file-tree-menu" />
       )}
