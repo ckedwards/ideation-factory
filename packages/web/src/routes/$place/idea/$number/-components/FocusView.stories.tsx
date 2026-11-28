@@ -217,6 +217,22 @@ export const TwoFiles: Story = {
   },
 }
 
+// While the draft's in use, the pages are its files, marked as the Files tree marks them
+export const DraftFiles: Story = {
+  args: {
+    pages: [
+      { ...twoFiles[0]!, state: 'changed' },
+      { ...twoFiles[1]!, path: 'research/sync-states.md', state: 'renamed' },
+      { id: 'f9', path: 'decisions/offline.md', source: '', comments: [], state: 'new' },
+    ],
+  },
+  play: async () => {
+    const pages = within(within(region()).getByRole('navigation', { name: 'Pages' }))
+    await expect(pages.getByRole('link', { name: /research\/sync-states\.md · renamed/ })).toBeVisible()
+    await expect(pages.getByRole('link', { name: /decisions\/offline\.md · new/ })).toBeVisible()
+  },
+}
+
 /** The comment opened, once it's been placed beside its text. */
 const placedOpen = () =>
   waitFor(() => {

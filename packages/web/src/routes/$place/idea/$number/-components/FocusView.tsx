@@ -17,6 +17,7 @@ import { type ReactNode, type RefObject, useEffect, useLayoutEffect, useMemo, us
 import { createPortal } from 'react-dom'
 import { markdownTree } from '@ideaf/core'
 import {
+  type FileState,
   type RowMenuItem,
   Button,
   type CardSize,
@@ -66,6 +67,8 @@ export interface FocusEditing {
 export interface FocusPage {
   id: string
   path: string
+  /** What the draft does to its file, while it's in use: as the Files tree says. */
+  state?: FileState | null
   source: string
   comments: PageComment[]
 }
@@ -458,6 +461,20 @@ export function FocusView(props: FocusViewProps) {
     setPagesOpen(false)
     document.getElementById(id)?.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' })
   }
+  // the file changed while it's open (a file just made, or followed through a rename): to its page,
+  // once it's there
+  const goneTo = useRef(props.file)
+  useEffect(() => {
+    // open, whether it opened from the page ('open') or from its address ('still')
+    if ((phase !== 'open' && phase !== 'still') || props.file === goneTo.current) {
+      return
+    }
+    const at = pages.findIndex((p) => p.path === props.file)
+    if (at >= 0) {
+      goneTo.current = props.file
+      requestAnimationFrame(() => go(rowId(at)))
+    }
+  })
 
   const actions: ThreadActions = props.actions
 
@@ -542,7 +559,10 @@ export function FocusView(props: FocusViewProps) {
                   }}
                 >
                   <span className="focus-nav-n">{i + 1}</span>
-                  {page.path}
+                  <span className={page.state === 'deleted' ? 'focus-nav-path is-deleted' : 'focus-nav-path'}>
+                    {page.path}
+                  </span>
+                  {page.state && <span className={`focus-nav-state is-${page.state}`}> · {page.state}</span>}
                 </a>
                 {here && (
                   <Sections

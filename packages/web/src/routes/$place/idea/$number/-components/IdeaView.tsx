@@ -76,6 +76,8 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
   const asOf = useQuery({ ...commentsQuery(id, version), enabled: older })
   const threads: Thread[] = older ? (asOf.data ?? []) : live
   const { data: me } = useSuspenseQuery(meQuery)
+  // going to a file of the draft from here: in the focus view if that's where this is
+  const toFile = (to: string) => links.files({ file: to, ...(view === 'focus' ? { view: 'focus' as const } : {}) })
   // a note at the bottom of the page, and something to do about it ("See it")
   const [toast, setToast] = useState<{ message: string; action?: { label: string; onAction: () => void } } | null>(null)
   const setNote = useCallback((message: string | null) => setToast(message === null ? null : { message }), [])
@@ -204,33 +206,34 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
     me: me.id,
     nameOf: (user) => people.get(user)?.name ?? 'Someone',
     openDraft: () => setEditing(true),
-    showFile: (to) => void navigate({ href: links.files({ file: to }) }),
+    showFile: (to) => void navigate({ href: toFile(to) }),
     shown: file.path,
     onNote: setToast,
   })
   // an older version's file the latest doesn't have (deleted since): its text can come back, as a new
   // file in the draft at its path (or beside it, if that's taken); its old comments stay outdated
   const latestFiles = useQuery({ ...filesQuery(id, latest), enabled: older })
-  const restorable =
+  const restorableFile = (fileId: string) =>
     older &&
     idea.you.edit &&
     !!draft.data &&
     !!latestFiles.data &&
-    !latestFiles.data.files.some((f) => f.file === file.id)
-  const restoreFile = async () => {
+    !latestFiles.data.files.some((f) => f.file === fileId)
+  const restorable = restorableFile(file.id)
+  const restoreFile = async (gone: FileView = file) => {
     const now = draft.data!
     const taken = new Set([...now.files, ...now.deleted].map((f) => f.path.toLowerCase()))
-    let to = file.path
+    let to = gone.path
     for (let n = 2; taken.has(to.toLowerCase()); n++) {
-      to = file.path.replace(/(\.[^./]+)?$/, `-${n}$1`)
+      to = gone.path.replace(/(\.[^./]+)?$/, `-${n}$1`)
     }
     try {
-      await api.changeDraft({ idea: id, changes: [{ kind: 'create-file', path: to, markdown: file.source }] })
+      await api.changeDraft({ idea: id, changes: [{ kind: 'create-file', path: to, markdown: gone.source }] })
       await queryClient.invalidateQueries({ queryKey: draftQuery(id).queryKey, exact: true })
       setNote(
-        `${to === file.path ? `Restored ${to}` : `Restored ${file.path} as ${to}`} in the draft. Its old comments stay outdated.`,
+        `${to === gone.path ? `Restored ${to}` : `Restored ${gone.path} as ${to}`} in the draft. Its old comments stay outdated.`,
       )
-      void navigate({ href: links.files({ file: to }) })
+      void navigate({ href: toFile(to) })
     } catch (error) {
       setNote(`That didn’t work: ${error instanceof Error ? error.message : String(error)}`)
     }
@@ -238,6 +241,11 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
   // the file's own ⋯, on its line here and on each page of the focus view; and the name box for it
   const [naming, setNaming] = useState<NameBox | null>(null)
   const fileMenu = (fileId: string): RowMenuItem[] | undefined => {
+    // an older version's file the latest doesn't have: on its line here and in the focus view alike
+    if (restorableFile(fileId)) {
+      const gone = views.find((v) => v.view.id === fileId)?.view
+      return gone ? [{ label: 'Restore this file', onSelect: () => void restoreFile(gone) }] : undefined
+    }
     const actions = files.actions
     if (!actions || !drafting) {
       return undefined
@@ -342,7 +350,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
     if (!path || !named || !draftPath || draftPath === path) {
       return
     }
-    void navigate({ href: links.files({ file: draftPath }), replace: true })
+    void navigate({ href: toFile(draftPath), replace: true })
     if (renamer && renamer !== me.id) {
       setNote(`${people.get(renamer)?.name ?? 'Someone'} renamed this file to ${draftPath}.`)
     }
@@ -356,7 +364,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
     }
     let gone = false
     api.findFile({ idea: id, path }).then(
-      (found) => !gone && void navigate({ href: links.files({ file: found.path }), replace: true }),
+      (found) => !gone && void navigate({ href: toFile(found.path), replace: true }),
       () => !gone && setNote(`No file is at ${path}: showing ${views[0]!.view.path}.`),
     )
     return () => {
@@ -444,6 +452,26 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
     onAddToDraft: addToDraft,
     onReject: writes.reject,
   }
+  // the focus view's pages: while the draft's in use, its files as the Files tree has them (new ones
+  // too, renamed ones at their new paths, deleted ones marked), else the version's
+  const stateOf = new Map(treeFiles.map((f) => [f.id, f.state ?? null]))
+  const focusViews = drafting
+    ? [
+        ...views.flatMap((v) => {
+          const now =
+            drafting.files.find((f) => f.file === v.view.id) ?? drafting.deleted.find((d) => d.file === v.view.id)
+          return now ? [{ ...v, path: now.path, state: stateOf.get(v.view.id) ?? null }] : []
+        }),
+        ...drafting.files
+          .filter((f) => !views.some((v) => v.view.id === f.file))
+          .map((f) => ({
+            view: { id: f.file, path: f.path, source: f.content, unitIds: f.units.map((u) => u.id) },
+            titles: new Map<string, string>(),
+            path: f.path,
+            state: 'new' as const,
+          })),
+      ]
+    : views.map((v) => ({ ...v, path: v.view.path, state: null }))
   const draftChanges = draft.data?.changes ?? []
   const drafters = [...new Set(draftChanges.map((c) => people.get(c.by.user)?.name ?? 'someone'))]
   // editors have the draft itself; everyone else, the idea's word for it
@@ -600,10 +628,11 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
               <RelativeTime at={at} />
             </>
           }
-          pages={views.map(({ view: at, titles: named }) => ({
+          pages={focusViews.map(({ view: at, titles: named, state, path: shownPath }) => ({
             id: at.id,
-            path: at.path,
+            path: shownPath,
             source: at.source,
+            state,
             // its open threads, in the version being read
             comments: threads.flatMap((thread) => {
               const where = place(thread, at)
@@ -613,7 +642,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
                 : []
             }),
           }))}
-          file={file.path}
+          file={draftPath ?? file.path}
           phase={focusPhase}
           onExit={(leaving) => {
             if (enteredOn.current === leaving) {

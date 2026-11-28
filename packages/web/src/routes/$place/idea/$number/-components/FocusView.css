@@ -524,3 +524,17 @@ html[data-focus='open'] .idea-page-measure .prose {
 .focus-file-box {
   margin-bottom: var(--space-5);
 }
+/* what the draft does to a page's file, as the Files tree says it */
+.focus-nav-state {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
+.focus-nav-state.is-new,
+.focus-nav-state.is-renamed,
+.focus-nav-state.is-changed {
+  color: var(--changed);
+}
+.focus-nav-path.is-deleted {
+  color: var(--ink-3);
+  text-decoration: line-through;
+}
