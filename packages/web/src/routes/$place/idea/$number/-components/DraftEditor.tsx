@@ -212,7 +212,22 @@ export function DraftEditor(props: DraftEditorProps) {
     const live = latest.current.doc
     return live ? live.settle() : true
   }
-  props.flush.current = flush
+  // given to the editing hook, which waits on it before Commit, Preview and Close: one function for this
+  // editor's life, taken back as it goes, so nothing waits on an editor that's gone (one closed with
+  // the draft would never settle)
+  const latestFlush = useRef(flush)
+  latestFlush.current = flush
+  const [ownFlush] = useState(() => () => latestFlush.current())
+  props.flush.current = ownFlush
+  const flushRef = props.flush
+  useEffect(
+    () => () => {
+      if (flushRef.current === ownFlush) {
+        flushRef.current = null
+      }
+    },
+    [flushRef, ownFlush],
+  )
 
   // typed and not stored yet
   const unsaved = () => {
