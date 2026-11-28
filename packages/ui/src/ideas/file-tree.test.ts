@@ -1,6 +1,6 @@
 // An idea's files as a tree (file-tree.ts).
 import { describe, expect, test } from 'bun:test'
-import { buildTree, folderPaths, type TreeFile, visibleRows } from './file-tree.ts'
+import { buildTree, folderHint, folderPaths, isImage, stateHint, type TreeFile, visibleRows } from './file-tree.ts'
 
 const files: TreeFile[] = [
   { id: 'f1', path: 'offline.md', comments: 1 },
@@ -42,6 +42,27 @@ describe('the tree', () => {
       path: 'packages/server/docs',
       changed: false,
     })
+  })
+
+  test('a rename alone doesn’t mark its folder: the commit lists it', () => {
+    const tree = buildTree([
+      { id: 'a', path: 'findings/costs.md', state: 'renamed', was: 'research/costs.md' },
+      { id: 'b', path: 'notes/plan.md', state: 'changed', was: 'plan.md' },
+    ])
+    expect(tree.folders.find((f) => f.path === 'findings')).toMatchObject({ changed: false })
+    expect(tree.folders.find((f) => f.path === 'notes')).toMatchObject({ changed: true })
+  })
+
+  test('each mark said in words, for its tooltip and a screen reader', () => {
+    expect(stateHint('new')).toBe('New in the draft')
+    expect(stateHint('changed')).toBe('Changed in the draft')
+    expect(stateHint('changed', 'plan.md')).toBe('Changed in the draft, renamed from plan.md')
+    expect(stateHint('renamed', 'plan.md')).toBe('Renamed in the draft, from plan.md')
+    expect(stateHint('deleted')).toBe('Deleted in the draft: it goes when the draft is committed')
+    expect(stateHint(null)).toBeNull()
+    expect(folderHint({ changed: true, deleted: true })).toBe('Deleted in the draft, with everything in it')
+    expect(folderHint({ changed: false, deleted: false })).toBeNull()
+    expect([isImage('images/chart.png'), isImage('notes/plan.md')]).toEqual([true, false])
   })
 
   test('a closed folder hides what’s in it, unless it holds the file being read', () => {

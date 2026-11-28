@@ -4,13 +4,17 @@
 // - **Order:** folders above files, each sorted by name.
 // - **Chains:** a folder holding nothing but one other folder shares its row with it
 //   (packages/server/docs), as VS Code's Explorer does, so deep, sparse paths stay short.
-// - **A closed folder says what's inside:** its open comments, and whether the draft changes anything
-//   in it. A folder whose files are all deleted in the draft is deleted too.
+// - **A closed folder says what's inside:** its open comments, and whether the draft makes, changes or
+//   deletes anything in it (a rename alone isn't marked: the commit lists it). A folder whose files
+//   are all deleted in the draft is deleted too.
 // - **Open by default:** a folder is open unless it's been closed, and the one holding the file being
 //   read is always open.
 // - Rows don't assume Markdown: a file is any path (an image is a file too).
 
-/** What the draft does to a file. */
+/**
+ * What the draft does to a file. A file renamed and changed is `changed`, with `was`; `renamed` is a
+ * rename alone, which the tree doesn't mark.
+ */
 export type FileState = 'new' | 'renamed' | 'deleted' | 'changed'
 
 export interface TreeFile {
@@ -37,7 +41,7 @@ export interface FolderNode {
   count: number
   /** Open comments on the files under it. */
   comments: number
-  /** The draft changes something under it. */
+  /** The draft makes, changes or deletes something under it (a rename alone doesn't count). */
   changed: boolean
   /** Every file under it is deleted in the draft. */
   deleted: boolean
@@ -107,6 +111,41 @@ export function folderPaths(files: readonly TreeFile[]): Set<string> {
   return out
 }
 
+/**
+ * What a file's mark means, said in words: the tooltip on its name (its color says it at a glance),
+ * and what a screen reader hears after the name. Null for a file the draft leaves alone.
+ */
+export function stateHint(state: FileState | null | undefined, was?: string | null): string | null {
+  const from = was ? `, renamed from ${was}` : ''
+  switch (state) {
+    case 'new':
+      return 'New in the draft'
+    case 'changed':
+      return `Changed in the draft${from}`
+    case 'renamed':
+      return was ? `Renamed in the draft, from ${was}` : null
+    case 'deleted':
+      return 'Deleted in the draft: it goes when the draft is committed'
+    default:
+      return null
+  }
+}
+
+/** A closed folder's mark, in words. */
+export function folderHint(folder: Pick<FolderNode, 'changed' | 'deleted'>): string | null {
+  if (folder.deleted) {
+    return 'Deleted in the draft, with everything in it'
+  }
+  return folder.changed ? 'The draft makes, changes or deletes something in it' : null
+}
+
+const IMAGE = /\.(png|jpe?g|gif|webp|avif|svg)$/i
+
+/** Whether a path is an image's, for its icon. */
+export function isImage(path: string): boolean {
+  return IMAGE.test(path)
+}
+
 /** The folder a path is in (`research` for research/notes.md), or '' at the top. */
 export function folderOf(path: string): string {
   const at = path.lastIndexOf('/')
@@ -130,7 +169,7 @@ function finish(folder: FolderNode, top = false): FolderNode {
   const files = node.files.map((f) => f.file)
   node.count = files.length + node.folders.reduce((n, f) => n + f.count, 0)
   node.comments = files.reduce((n, f) => n + (f.comments ?? 0), 0) + node.folders.reduce((n, f) => n + f.comments, 0)
-  node.changed = files.some((f) => !!f.state) || node.folders.some((f) => f.changed)
+  node.changed = files.some((f) => !!f.state && f.state !== 'renamed') || node.folders.some((f) => f.changed)
   node.deleted = node.count > 0 && files.every((f) => f.state === 'deleted') && node.folders.every((f) => f.deleted)
   return node
 }

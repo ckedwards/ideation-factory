@@ -23,9 +23,11 @@ const tree = [
   file('f8', 'decisions/conflicts.md'),
 ]
 
-// what the draft does: a file made, one renamed, one changed, one deleted, and a folder deleted
+// what the draft does: a file made, one renamed, one renamed and changed, one changed, one deleted,
+// and a folder deleted
 const inTheDraft = [
   file('f1', 'offline.md', { state: 'changed' }),
+  file('f6', 'research/costs.md', { state: 'changed', was: 'costs.md' }),
   file('f2', 'states.md', { state: 'renamed', was: 'sync-states.md' }),
   file('f3', 'sync-queue.md', { state: 'deleted' }),
   file('f9', 'research/interviews.md', { state: 'new' }),
@@ -104,14 +106,25 @@ export const Folders: Story = {}
 /** Without edit access: no `+`, no ⋯. */
 export const ReadOnly: Story = { args: { editable: false } }
 
-/** The draft's file changes: new, renamed (pointing says what it was), changed, deleted, and a folder deleted. */
+/**
+ * The draft's file changes, in the names' color: new green, changed amber (renamed and changed too),
+ * deleted struck through, a folder deleted, and a closed folder with a change inside amber. A rename
+ * alone isn't marked; pointing at a name says what the draft does to it.
+ */
 export const InTheDraft: Story = {
   args: { files: inTheDraft, closed: ['notes'] },
   play: async ({ canvas }) => {
-    await expect(canvas.getByText('states.md')).toHaveAttribute('title', 'was sync-states.md')
-    await expect(canvas.getByText('· new')).toBeVisible()
+    const name = (text: string) => canvas.getByText(text, { selector: '.file-tree-name, .file-tree-name *' })
+    // a rename alone: no mark, but pointing says where it was
+    await expect(canvas.getByRole('treeitem', { name: /^states\.md/ })).not.toHaveClass('is-renamed')
+    await expect(name('states.md').closest('a')).toHaveAttribute('title', 'Renamed in the draft, from sync-states.md')
+    // new and changed: the color, and the words for a screen reader
+    await expect(canvas.getByRole('treeitem', { name: /^interviews\.md ?, new/ })).toHaveClass('is-new')
+    await expect(canvas.getByRole('treeitem', { name: /^costs\.md ?, changed/ })).toHaveClass('is-changed')
+    await expect(name('costs.md').closest('a')).toHaveAttribute('title', 'Changed in the draft, renamed from costs.md')
+    await expect(canvas.getByRole('treeitem', { name: /^sync-queue\.md ?, deleted/ })).toHaveClass('is-deleted')
     // a closed folder with a change inside says so
-    await expect(canvas.getByRole('treeitem', { name: /notes/ })).toHaveTextContent('· changed')
+    await expect(canvas.getByRole('treeitem', { name: /^notes ?, changed inside/ })).toHaveClass('is-changed')
   },
 }
 
