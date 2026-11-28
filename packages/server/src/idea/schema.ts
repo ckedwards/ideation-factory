@@ -44,6 +44,11 @@ export interface IdeaDB {
     draft_change: number
     /** Who changed the draft last, as a Caller in JSON (null: nobody yet). */
     draft_by: string | null
+    /**
+     * The next ID a file made in the draft takes (0: none made yet). Every version starts its IDs
+     * at this or above, so a new file's ID is never given to anything else, and committing keeps it.
+     */
+    draft_next_id: number
   }
   versions: {
     number: number
@@ -122,6 +127,11 @@ export interface IdeaDB {
   /** Who changed each of the draft's blocks (by its ID), and when they last did. */
   draft_authors: { block: string; by: string; at: number }
   /**
+   * Files the draft makes, renames or deletes (core's create-file, rename-file and delete-file), in
+   * the order made. A new file's text is in its document, like any file's; its change makes it empty.
+   */
+  draft_file_changes: { key: string; seq: number; change: string; by: string; at: number }
+  /**
    * Words an editor saw cut from one block and pasted into another (core's MovedWords), in the order
    * they were: the draft's changes count them as moves while the documents still read that way, so
    * their comments go with them. Emptied when the draft is committed or discarded.
@@ -181,6 +191,7 @@ export const IDEA_COLUMNS = {
     'draft_at',
     'draft_change',
     'draft_by',
+    'draft_next_id',
   ],
   versions: ['number', 'parent', 'created_at', 'created_by', 'how', 'next_id', 'authors'],
   version_files: ['version', 'file', 'path', 'hash', 'bytes', 'unit_ids'],
@@ -206,6 +217,7 @@ export const IDEA_COLUMNS = {
   draft_suggestions: ['comment', 'change', 'by', 'at'],
   draft_held: ['key', 'change', 'by', 'at'],
   draft_authors: ['block', 'by', 'at'],
+  draft_file_changes: ['key', 'seq', 'change', 'by', 'at'],
   draft_moved: ['seq', 'words', 'by', 'at'],
   draft_restore_points: [
     'seq',
@@ -253,7 +265,8 @@ const MIGRATIONS: Migration[] = [
       git_branch TEXT,
       draft_at INTEGER,
       draft_change INTEGER NOT NULL DEFAULT 0,
-      draft_by TEXT
+      draft_by TEXT,
+      draft_next_id INTEGER NOT NULL DEFAULT 0
     )`,
     `CREATE TABLE versions (
       number INTEGER PRIMARY KEY,
@@ -345,6 +358,7 @@ const MIGRATIONS: Migration[] = [
     `CREATE TABLE draft_suggestions (comment TEXT PRIMARY KEY, change TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL)`,
     `CREATE TABLE draft_held (key TEXT PRIMARY KEY, change TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL)`,
     `CREATE TABLE draft_authors (block TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (block, by))`,
+    `CREATE TABLE draft_file_changes (key TEXT PRIMARY KEY, seq INTEGER NOT NULL, change TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL)`,
     `CREATE TABLE draft_moved (seq INTEGER PRIMARY KEY, words TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL)`,
     `CREATE TABLE draft_restore_points (
       seq INTEGER PRIMARY KEY,

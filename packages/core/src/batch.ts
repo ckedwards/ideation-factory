@@ -67,7 +67,14 @@ export const Command = z.discriminatedUnion('command', [
   /** Rewrites a section's own body (up to its first subsection), keeping the heading and subsections. */
   z.strictObject({ command: z.literal('set-section'), target: SectionId, markdown: Markdown, expect, addresses }),
   z.strictObject({ command: z.literal('rename-file'), file: FileId, path: Path, addresses }),
-  z.strictObject({ command: z.literal('create-file'), path: Path, markdown: Markdown, addresses }),
+  z.strictObject({
+    command: z.literal('create-file'),
+    path: Path,
+    markdown: Markdown,
+    /** The ID the server gave a file made in a draft, which committing keeps; without one, the next ID. */
+    file: FileId.optional(),
+    addresses,
+  }),
   z.strictObject({ command: z.literal('delete-file'), file: FileId, addresses }),
 ])
 
