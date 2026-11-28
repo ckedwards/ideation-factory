@@ -2,7 +2,7 @@
 // one. The whole file's comments sit beside it in the gutter, as any comment sits beside its text. It
 // heads the file while it's read (in the document's toolbar) and while it's edited (over the editor's
 // text), and each sheet of the focus view.
-import { Button } from '@ideaf/ui'
+import { Button, RowMenu, type RowMenuItem } from '@ideaf/ui'
 import { plural } from '../../../../../plural.ts'
 import './FileLine.css'
 
@@ -14,9 +14,11 @@ export interface FileLineProps {
   count: number
   /** Opens the box for a comment on the file; none where comments can't be made. */
   onComment?: (() => void) | undefined
+  /** The file's own ⋯: renaming or deleting it (restoring it, deleted), for someone who can edit. */
+  menu?: RowMenuItem[] | undefined
 }
 
-export function FileLine({ path, version, count, onComment }: FileLineProps) {
+export function FileLine({ path, version, count, onComment, menu }: FileLineProps) {
   return (
     <span className="file-line">
       <span className="file-line-path">{path}</span>
@@ -27,6 +29,7 @@ export function FileLine({ path, version, count, onComment }: FileLineProps) {
           Comment on the file
         </Button>
       )}
+      {menu && menu.length > 0 && <RowMenu label={path} groups={[{ items: menu }]} />}
     </span>
   )
 }

@@ -17,6 +17,7 @@ import { type ReactNode, type RefObject, useEffect, useLayoutEffect, useMemo, us
 import { createPortal } from 'react-dom'
 import { markdownTree } from '@ideaf/core'
 import {
+  type RowMenuItem,
   Button,
   type CardSize,
   CommentGutter,
@@ -92,6 +93,10 @@ export interface FocusViewProps {
   onFileComment?: (page: string, body: string, pending: boolean) => void
   /** For those who can edit the latest version: its draft, here. */
   editing?: FocusEditing
+  /** Making a file: in the top line, as there's no Files list here. */
+  onNewFile?: () => void
+  /** Each page's file's own ⋯, on its line. */
+  fileMenu?: (page: string) => RowMenuItem[] | undefined
 }
 
 const DURATION = 300
@@ -512,6 +517,11 @@ export function FocusView(props: FocusViewProps) {
               />
             </span>
           )}
+          {props.onNewFile && (
+            <Button variant="ghost" onClick={props.onNewFile}>
+              New file
+            </Button>
+          )}
           <Button variant="ghost" onClick={exit}>
             Exit focus view <kbd aria-hidden>Esc</kbd>
           </Button>
@@ -562,6 +572,7 @@ export function FocusView(props: FocusViewProps) {
             carried={carried === page.id}
             current={page.id === current.page}
             editor={editing ? editing.sheet(page.id) : null}
+            menu={props.fileMenu?.(page.id)}
             active={active}
             onActive={setActive}
             actions={actions}
@@ -644,6 +655,8 @@ function Sections(props: {
 }
 
 interface RowProps {
+  /** The page's file's own ⋯. */
+  menu?: RowMenuItem[] | undefined
   index: number
   of: number
   page: FocusPage
@@ -699,6 +712,7 @@ function Row(props: RowProps) {
               path={page.path}
               count={page.comments.filter((c) => c.place.kind === 'file').length}
               onComment={commentable ? () => setFileBox(true) : undefined}
+              menu={props.menu}
             />
           </span>
           <span className="focus-sheet-n">

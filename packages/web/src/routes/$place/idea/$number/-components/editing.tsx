@@ -24,6 +24,7 @@ import {
 } from './EditPanel.tsx'
 import { IdeaMode } from './IdeaFrame.tsx'
 import { DraftEditor } from './DraftEditor.tsx'
+import { DeletedFile } from './DeletedFile.tsx'
 import { blockRange, headingOffset, toSource } from './anchors.ts'
 import { usePeople } from './shared.tsx'
 import { draftQuery, filesQuery, ideaQuery, restorePointQuery, restorePointsQuery } from './queries.ts'
@@ -291,6 +292,29 @@ export function useEditing(args: UseEditingArgs): Editing | null {
     )
   }
   const file = draft.files.find((f) => f.file === args.file) ?? draft.files[0]
+  /** A file the draft deletes, where its editor would be: read-only, with who deleted it and Restore. */
+  const deletedView = (id: string, bare: boolean) => {
+    const gone = draft.deleted.find((d) => d.file === id)
+    if (!gone) {
+      return null
+    }
+    const by = draft.changes.find((c) => c.key === gone.change)?.by.user
+    return (
+      <DeletedFile
+        key={id}
+        path={gone.path}
+        content={gone.content}
+        by={by && by !== args.me ? (args.people.get(by)?.name ?? 'Someone') : null}
+        onRestore={() =>
+          void api
+            .undoDraftChange({ idea, key: gone.change })
+            .catch(failed)
+            .finally(() => void reread())
+        }
+        {...(bare ? { bare } : args.lead ? { lead: args.lead } : {})}
+      />
+    )
+  }
   const placed = file ? placeComments(draft, file, args.shownFile, args.threads) : { places: new Map(), marks: [] }
   /** What's typed, in every file, saved first; false if something couldn't be (the page says why). */
   const saved = async () => {
@@ -500,6 +524,8 @@ export function useEditing(args: UseEditingArgs): Editing | null {
           </p>
           {file && compared(file.file)}
         </>
+      ) : draft.deleted.some((d) => d.file === args.file) ? (
+        deletedView(args.file, false)
       ) : (
         file &&
         (live ? (
@@ -527,6 +553,8 @@ export function useEditing(args: UseEditingArgs): Editing | null {
         pointCompared(id)
       ) : previewing ? (
         compared(id)
+      ) : draft.deleted.some((d) => d.file === id) ? (
+        deletedView(id, true)
       ) : draft.files.some((f) => f.file === id) && live ? (
         <DraftEditor
           key={id}

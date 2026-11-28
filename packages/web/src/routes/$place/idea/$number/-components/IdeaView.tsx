@@ -7,7 +7,7 @@
 // The routes say which version, which file and what to compare against.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { type Anchor, parseMarkdown, suggestionSource } from '@ideaf/core'
-import { type FileTreeFile, RelativeTime, Toast } from '@ideaf/ui'
+import { type FileTreeFile, type NameBox, RelativeTime, type RowMenuItem, Toast } from '@ideaf/ui'
 import { useLiveSuspenseQuery } from '@tanstack/react-db'
 import { useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
@@ -25,6 +25,7 @@ import { CommentBox } from './CommentBox.tsx'
 import { FileLine } from './FileLine.tsx'
 import { useClosedFolders } from './closed-folders.ts'
 import { useFileActions } from './file-actions.tsx'
+import { FileNameDialog } from './FileNameDialog.tsx'
 import { type FocusPhase, FocusView } from './FocusView.tsx'
 import { actorOf, type FileView, personOf, place, type Thread } from './view.ts'
 
@@ -106,8 +107,15 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
     const titles = new Map(entries.map((e) => [e.id, e.kind === 'heading' ? (e.path.at(-1) ?? '') : blockLabel(e)]))
     return { view, titles }
   })
-  // the file at the path; or one the draft has there (renamed to it, or new, so not in the version)
-  const inDraft = drafting?.files.find((f) => f.path === path) ?? drafting?.deleted.find((d) => d.path === path)
+  // the file at the path; or one the draft has there (renamed to it, or new, so not in the version); or
+  // the one this address showed last, renamed since (by someone else, while it was open)
+  const remembered = useRef<{ path: string | undefined; id: string } | null>(null)
+  const last = remembered.current
+  const was = last && last.path === path ? last.id : null
+  const inDraft =
+    drafting?.files.find((f) => f.path === path) ??
+    drafting?.deleted.find((d) => d.path === path) ??
+    (was ? (drafting?.files.find((f) => f.file === was) ?? drafting?.deleted.find((d) => d.file === was)) : undefined)
   const shown =
     views.find((f) => f.view.path === path) ??
     (inDraft
@@ -119,6 +127,9 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
   // a file only the draft has: it can only be shown in the draft
   const onlyInDraft = !views.some((f) => f.view.id === shown.view.id)
   const file = shown.view
+  // its path in the draft, where it's been renamed: what its line says, and where the address goes
+  const draftPath =
+    drafting?.files.find((f) => f.file === file.id)?.path ?? drafting?.deleted.find((d) => d.file === file.id)?.path
   const titles = shown.titles
   const made = idea.versions.find((n) => n.number === version)
   const people = usePeople([
@@ -186,13 +197,45 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
   // not while comparing), the box opening under it
   const [fileBox, setFileBox] = useState(false)
   const onFile = threads.filter((t) => t.anchor?.kind === 'file' && t.anchor.file === file.id)
+  const files = useFileActions({
+    idea: id,
+    draft: drafting,
+    threads,
+    me: me.id,
+    nameOf: (user) => people.get(user)?.name ?? 'Someone',
+    openDraft: () => setEditing(true),
+    showFile: (to) => void navigate({ href: links.files({ file: to }) }),
+    shown: file.path,
+    onNote: setToast,
+  })
+  // the file's own ⋯, on its line here and on each page of the focus view; and the name box for it
+  const [naming, setNaming] = useState<NameBox | null>(null)
+  const fileMenu = (fileId: string): RowMenuItem[] | undefined => {
+    const actions = files.actions
+    if (!actions || !drafting) {
+      return undefined
+    }
+    if (drafting.deleted.some((d) => d.file === fileId)) {
+      return [{ label: 'Restore', onSelect: () => actions.onRestore(fileId) }]
+    }
+    return [
+      { label: 'Rename', onSelect: () => setNaming({ kind: 'rename', file: fileId }) },
+      {
+        label: 'Delete',
+        danger: true,
+        onSelect: () => actions.onDelete(fileId),
+        ...(drafting.files.length <= 1 ? { unavailable: 'An idea keeps at least one file.' } : {}),
+      },
+    ]
+  }
   const fileLine = (
     <>
       <FileLine
-        path={file.path}
+        path={draftPath ?? file.path}
         version={version !== latest ? version : undefined}
         count={onFile.filter((t) => !t.resolved).length}
         onComment={idea.you.view && !older && base === null ? () => setFileBox(true) : undefined}
+        menu={fileMenu(file.id)}
       />
       {fileBox && (
         <div className="file-line-box">
@@ -259,17 +302,41 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
       setEditing(true)
     }
   }, [onlyInDraft, drafting, editing])
-  const files = useFileActions({
-    idea: id,
-    draft: drafting,
-    threads,
-    me: me.id,
-    nameOf: (user) => people.get(user)?.name ?? 'Someone',
-    openDraft: () => setEditing(true),
-    showFile: (to) => void navigate({ href: links.files({ file: to }) }),
-    shown: file.path,
-    onNote: setToast,
+  // the file shown has another path in the draft (renamed, here or by someone else): the address follows
+  const renamer = drafting?.changes.find((c) => c.change.kind === 'rename-file' && c.change.file === file.id)?.by.user
+  // (only for the file the address names: not one shown in place of a path no file has)
+  const named = views.some((f) => f.view.path === path) || !!inDraft
+  useEffect(() => {
+    if (named) {
+      remembered.current = { path, id: file.id }
+    }
   })
+  useEffect(() => {
+    if (!path || !named || !draftPath || draftPath === path) {
+      return
+    }
+    void navigate({ href: links.files({ file: draftPath }), replace: true })
+    if (renamer && renamer !== me.id) {
+      setNote(`${people.get(renamer)?.name ?? 'Someone'} renamed this file to ${draftPath}.`)
+    }
+    // only when the path the draft gives it changes
+  }, [draftPath, path])
+  // an address no file has now: the file that had it before (renamed or moved since), where it is now
+  const lost = !!path && !older && base === null && !views.some((f) => f.view.path === path) && !inDraft
+  useEffect(() => {
+    if (!lost || !path) {
+      return
+    }
+    let gone = false
+    api.findFile({ idea: id, path }).then(
+      (found) => !gone && void navigate({ href: links.files({ file: found.path }), replace: true }),
+      () => !gone && setNote(`No file is at ${path}: showing ${views[0]!.view.path}.`),
+    )
+    return () => {
+      gone = true
+    }
+    // once for each address that's lost
+  }, [lost, path])
   // its open comments, on its text and as a whole
   const commentsOn = (fileId: string) =>
     threads.filter(
@@ -552,6 +619,8 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
             }
           }}
           onFileComment={(page, body, pending) => writes.comment({ kind: 'file', file: page }, body, pending)}
+          {...(files.actions ? { onNewFile: () => setNaming({ kind: 'create', folder: '' }) } : {})}
+          fileMenu={fileMenu}
           // the draft, for those who can edit the latest version: every sheet at once
           {...(idea.you.edit && !older
             ? {
@@ -576,6 +645,9 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
       {/* the editor's words and actions, in the idea's bar while it's open (in focus view, its own) */}
       {!focusPhase && editor?.bar}
       {files.dialog}
+      {files.actions && (
+        <FileNameDialog box={naming} files={treeFiles} actions={files.actions} onClose={() => setNaming(null)} />
+      )}
       <Toast message={toast?.message ?? null} action={toast?.action} onDismiss={() => setNote(null)} />
     </>
   )
