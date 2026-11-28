@@ -7,10 +7,13 @@
 // draft as you pulled it and your files, block by block, each block saying
 // how it read when you pulled. If someone changed the same block since, it's
 // refused: pull (which merges the draft into your files, conflicts marked) and
-// sync again. --overwrite-draft makes a version over the draft instead, as a
-// force push: everyone in the draft loses those changes, and is told.
+// sync again. Files added, moved (the same text at a new path) or removed go
+// into the draft too, as files it makes, renames or deletes; the server fixes
+// links to a moved file. --overwrite-draft makes a version over the draft
+// instead, as a force push: everyone in the draft loses those changes, and is
+// told.
 import { ApiError } from '@ideaf/api'
-import { blocksOfSource, contentHash, draftChanges, type Idea } from '@ideaf/core'
+import { blocksOfSource, contentHash, type DraftChange, draftChanges, type Idea } from '@ideaf/core'
 import { CliError, type Context } from '../context.ts'
 import { EXIT } from '../context.ts'
 import { gitHint, type IdeaState, readText, scanMarkdown, scopeFrom, writeState } from '../workspace.ts'
@@ -43,6 +46,13 @@ async function run(
 
   const files: Array<{ file?: string; path: string; content: string; base?: string }> = []
   const gone = Object.entries(state.files).filter(([p]) => inScope(p) && !local.has(p))
+  // a file pulled from the draft was its text there
+  const pulledHash = new Map<string, string>()
+  for (const [p, f] of gone) {
+    if (f.draft) {
+      pulledHash.set(p, await contentHash(f.draft.content))
+    }
+  }
   const renamedFrom = new Set<string>()
   for (const [p, { content, hash }] of local) {
     const tracked = state.files[p]
@@ -53,8 +63,8 @@ async function run(
       }
       continue
     }
-    // a file that disappeared with exactly this content was moved here: send it as a rename
-    const moved = gone.find(([old, f]) => f.base === hash && !renamedFrom.has(old))
+    // a file that disappeared with exactly this content (as it was pulled) was moved here: a rename
+    const moved = gone.find(([old, f]) => (pulledHash.get(old) ?? f.base) === hash && !renamedFrom.has(old))
     if (moved) {
       renamedFrom.add(moved[0])
       files.push({ file: moved[1].file, path: p, content, base: moved[1].base })
@@ -130,15 +140,18 @@ async function intoDraft(
   files: Array<{ file?: string; path: string; content: string }>,
   deleted: string[],
 ): Promise<number> {
-  const moved = files.filter((f) => !f.file || state.files[f.path]?.file !== f.file)
-  if (moved.length > 0 || deleted.length > 0) {
-    throw new CliError(
-      "the idea's draft has changes, and a draft can't add, remove or rename files yet: commit or discard the draft first, or pass --overwrite-draft to make a version over it",
-      EXIT.usage,
-      'draft_files',
-    )
-  }
-  if (files.some((f) => !state.files[f.path]!.draft)) {
+  // edited where they were; the rest are files made, or moved (the same text at a new path)
+  const edited = files.filter((f) => f.file && state.files[f.path]?.file === f.file)
+  const pathOf = new Map(Object.entries(state.files).map(([p, f]) => [f.file, p]))
+  const fileChanges: DraftChange[] = files.flatMap((f): DraftChange[] => {
+    if (!f.file) {
+      return [{ kind: 'create-file', path: f.path, markdown: f.content }]
+    }
+    const was = pathOf.get(f.file)
+    return was !== undefined && was !== f.path ? [{ kind: 'rename-file', file: f.file, path: f.path, was }] : []
+  })
+  const deletes: DraftChange[] = deleted.map((file) => ({ kind: 'delete-file', file }))
+  if (edited.some((f) => !state.files[f.path]!.draft)) {
     throw new CliError(
       "the idea's draft has changes your files don't have: run `ideaf pull` to bring them in (merging your edits), then sync again",
       EXIT.pullFirst,
@@ -158,7 +171,7 @@ async function intoDraft(
     nextId: 1 + Math.max(0, ...numbers.filter(Number.isFinite)),
   }
   const blocks = Object.fromEntries(
-    files.map((f) => {
+    edited.map((f) => {
       const was = state.files[f.path]!.draft!.units as Parameters<typeof blocksOfSource>[0]
       return [state.files[f.path]!.file, blocksOfSource(was, f.content)]
     }),
@@ -171,13 +184,14 @@ async function intoDraft(
       'conflict',
     )
   }
-  if (made.changes.length === 0) {
+  const changes = [...fileChanges, ...made.changes, ...deletes]
+  if (changes.length === 0) {
     ctx.say('Nothing to sync.')
     ctx.result({ idea: id, draft: true, changes: [] })
     return EXIT.ok
   }
   try {
-    await ctx.api.changeDraft({ idea: id, changes: made.changes })
+    await ctx.api.changeDraft({ idea: id, changes })
   } catch (error) {
     if (error instanceof ApiError && error.code === 'conflict') {
       throw new CliError(
@@ -189,10 +203,10 @@ async function intoDraft(
     }
     throw error
   }
-  const n = made.changes.length
+  const n = changes.length
   ctx.say(`Sent ${n} change${n === 1 ? '' : 's'} to the draft, on top of everyone's.`)
   const back = await pullInto(ctx, id)
   ctx.say('Commit the draft in the web app, or with `ideaf draft commit`.')
-  ctx.result({ idea: id, draft: true, changes: made.changes, pulled: back.changes })
+  ctx.result({ idea: id, draft: true, changes, pulled: back.changes })
   return back.exit
 }
