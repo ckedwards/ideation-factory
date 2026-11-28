@@ -30,6 +30,7 @@ import { usePeople } from './shared.tsx'
 import { draftQuery, filesQuery, ideaQuery, restorePointQuery, restorePointsQuery } from './queries.ts'
 import type { DraftVersion } from './VersionList.tsx'
 import { type EarlierDraft, EarlierDraftBand, EarlierDraftDialogs } from './EarlierDrafts.tsx'
+import { filesChanged, rowsOf } from './draft-rows.ts'
 import { type FileView, personOf, type Placement, type Thread } from './view.ts'
 
 export type Draft = Output<Operations['getDraft']>
@@ -450,16 +451,29 @@ export function useEditing(args: UseEditingArgs): Editing | null {
     args.setOpen(false)
     return true
   }
+  // the list of changes: one row each, but one for a folder renamed or deleted, with one Undo
+  const deletedPath = (file: string) => draft.deleted.find((d) => d.file === file)?.path ?? null
+  const rows = rowsOf(
+    draft.changes,
+    deletedPath,
+    draft.files.map((f) => f.path),
+  )
+  const files = filesChanged(
+    draft.files,
+    draft.deleted.length,
+    new Map(args.latestFiles.map((f) => [f.file, f.content])),
+  )
   // the panel's and the bar's: the same draft, and the same ways of acting on it
   const panelProps: EditPanelProps = {
     version: draft.version,
-    changes: draft.changes.map((c) => ({
-      key: c.key,
-      label: describe(c.change),
-      authors: c.authors.map((a) => personOf(a, args.people)),
-      problem: c.problem,
+    changes: rows.map((row) => ({
+      key: row.key,
+      label: row.folder?.label ?? describe(row.entries[0]!.change, deletedPath),
+      authors: distinctPeople(row.entries.flatMap((c) => c.authors).map((a) => personOf(a, args.people))),
+      problem: row.entries.find((c) => c.problem)?.problem ?? null,
     })),
-    together: together(draft, args.latestFiles, present, args.me, args.people),
+    files,
+    together: together(draft, rows.length, files, present, args.me, args.people),
     onConfirming: () => void reread(),
     outcomes: draft.comments.map((o): CommentOutcomeRow => {
       const thread = args.threads.find((t) => t.id === o.id)
@@ -473,9 +487,13 @@ export function useEditing(args: UseEditingArgs): Editing | null {
     previewing,
     committing,
     unsaved,
+    // a row's changes, all of them: a folder's renames or deletes come back together
     onUndo: (key) =>
-      void api
-        .undoDraftChange({ idea, key })
+      void (async () => {
+        for (const each of [...(rows.find((r) => r.key === key)?.keys ?? [key])].reverse()) {
+          await api.undoDraftChange({ idea, key: each })
+        }
+      })()
         .catch(failed)
         .finally(() => void reread()),
     onPreview: (on) =>
@@ -693,8 +711,14 @@ function placeComments(
   return { places, marks }
 }
 
-/** A change as the list of changes names it. */
-function describe(change: DraftChange): string {
+/** Each person once, in the order given. */
+function distinctPeople(people: Person[]): Person[] {
+  const seen = new Set<string>()
+  return people.filter((p) => !seen.has(p.id) && !!seen.add(p.id))
+}
+
+/** A change as the list of changes names it; `pathOf` names a file the draft deletes. */
+function describe(change: DraftChange, pathOf: (file: string) => string | null = () => null): string {
   const heading = (source: string) => /^\s*#{1,6}\s/.test(source)
   switch (change.kind) {
     case 'insert':
@@ -722,7 +746,7 @@ function describe(change: DraftChange): string {
     case 'rename-file':
       return `Renamed ${change.was} to ${change.path}`
     case 'delete-file':
-      return `Deleted ${change.file}`
+      return `Deleted ${pathOf(change.file) ?? 'a file'}`
   }
 }
 
@@ -759,7 +783,8 @@ function title(source: string): string {
  */
 function together(
   draft: Draft,
-  latestFiles: Array<{ file: string; content: string }>,
+  changes: number,
+  files: number,
   present: Array<{ user: string }>,
   me: string,
   people: ReadonlyMap<string, Person>,
@@ -789,10 +814,5 @@ function together(
   if (others.length === 0 && !present.some((p) => p.user !== me)) {
     return null
   }
-  const latest = new Map(latestFiles.map((f) => [f.file, f.content]))
-  const drafted = new Set(draft.files.map((f) => f.file))
-  const files =
-    draft.files.filter((f) => latest.get(f.file) !== f.content).length +
-    [...latest.keys()].filter((f) => !drafted.has(f)).length
-  return { changes: draft.changes.length, files, people: [...others, ...all.filter((c) => c.you)] }
+  return { changes, files, people: [...others, ...all.filter((c) => c.you)] }
 }
