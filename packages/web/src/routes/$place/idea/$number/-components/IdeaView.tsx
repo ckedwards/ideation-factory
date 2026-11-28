@@ -62,8 +62,13 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
   const older = version < latest
   // the idea's draft, for people who can edit it
   const draft = useQuery({ ...draftQuery(id), enabled: idea.you.edit })
-  // on the latest version, they see its files as the draft has them: new, renamed and deleted ones too
+  // on the latest version, the draft's files: a path it gives a file finds it, and the tree's actions
+  // change it (opening it)
   const drafting = idea.you.edit && !older && base === null && draft.data ? draft.data : null
+  // and while it's open, they're what's shown: the Files tree and the focus view's pages as the draft
+  // has them (new, renamed and deleted ones too, each marked), and a renamed file at its new path.
+  // Until then, the version's, unmarked
+  const viewing = editing ? drafting : null
   const [closedFolders, setClosedFolders] = useClosedFolders(id)
   const { data: pulled } = useSuspenseQuery(filesQuery(id, version))
   const { data: outlines } = useSuspenseQuery(outlineQuery(id, version))
@@ -131,7 +136,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
   const file = shown.view
   // its path in the draft, where it's been renamed: what its line says, and where the address goes
   const draftPath =
-    drafting?.files.find((f) => f.file === file.id)?.path ?? drafting?.deleted.find((d) => d.file === file.id)?.path
+    viewing?.files.find((f) => f.file === file.id)?.path ?? viewing?.deleted.find((d) => d.file === file.id)?.path
   const titles = shown.titles
   const made = idea.versions.find((n) => n.number === version)
   const people = usePeople([
@@ -289,7 +294,13 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
     lead: fileLine,
     draft: draft.data,
     open: editing,
-    setOpen: setEditing,
+    // closing it on a file only the draft has: to the version's first file, as that one isn't in it
+    setOpen: (open) => {
+      setEditing(open)
+      if (!open && onlyInDraft) {
+        void navigate({ href: toFile(views[0]!.view.path), replace: true })
+      }
+    },
     file: file.id,
     shownFile: file,
     latestFiles: pulled.files,
@@ -338,7 +349,8 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
     if (onlyInDraft && drafting && !editing) {
       setEditing(true)
     }
-  }, [onlyInDraft, drafting, editing])
+    // when the address comes to such a file (or the draft that has it arrives): not as it's closed
+  }, [onlyInDraft, drafting !== null, path])
   // the file shown has another path in the draft (renamed, here or by someone else): the address follows
   const renamer = drafting?.changes.find((c) => c.change.kind === 'rename-file' && c.change.file === file.id)?.by.user
   // (only for the file the address names: not one shown in place of a path no file has)
@@ -348,15 +360,23 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
       remembered.current = { path, id: file.id }
     }
   })
+  // the path the open draft gave this file last: a rename someone makes while it's open is said, not
+  // the draft's path as it opens
+  const lastDraftPath = useRef<{ file: string; path: string } | null>(null)
   useEffect(() => {
-    if (!path || !named || !draftPath || draftPath === path) {
+    const before = lastDraftPath.current
+    lastDraftPath.current = draftPath ? { file: file.id, path: draftPath } : null
+    const renamedNow = !!draftPath && before?.file === file.id && before.path !== draftPath
+    // the draft's path while it's open, the version's once it's closed
+    const wanted = draftPath ?? file.path
+    if (!path || !named || wanted === path) {
       return
     }
-    void navigate({ href: toFile(draftPath), replace: true })
-    if (renamer && renamer !== me.id) {
+    void navigate({ href: toFile(wanted), replace: true })
+    if (renamedNow && renamer && renamer !== me.id) {
       setNote(`${people.get(renamer)?.name ?? 'Someone'} renamed this file to ${draftPath}.`)
     }
-    // only when the path the draft gives it changes
+    // only when the path the draft gives it changes, or the draft's opened or closed
   }, [draftPath, path])
   // an address no file has now: the file that had it before (renamed or moved since), where it is now
   const lost = !!path && !older && base === null && !views.some((f) => f.view.path === path) && !inDraft
@@ -379,9 +399,9 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
     threads.filter(
       (t) => !t.resolved && t.state !== 'outdated' && t.anchor?.kind !== 'idea' && t.anchor?.file === fileId,
     ).length
-  const treeFiles: FileTreeFile[] = drafting
+  const treeFiles: FileTreeFile[] = viewing
     ? [
-        ...drafting.files.map((f): FileTreeFile => {
+        ...viewing.files.map((f): FileTreeFile => {
           const inVersion = pulled.files.find((p) => p.file === f.file)
           // renamed and changed is changed (its tooltip says where it was): a rename alone isn't marked
           const state = f.made
@@ -400,7 +420,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
             comments: commentsOn(f.file),
           }
         }),
-        ...drafting.deleted.map((d): FileTreeFile => ({
+        ...viewing.deleted.map((d): FileTreeFile => ({
           id: d.file,
           path: d.path,
           href: links.files({ file: d.path }),
@@ -459,16 +479,16 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
   // too, renamed ones at their new paths, deleted ones marked), else the version's
   const stateOf = new Map(treeFiles.map((f) => [f.id, f.state ?? null]))
   const wasOf = new Map(treeFiles.map((f) => [f.id, f.was ?? null]))
-  const focusViews = drafting
+  const focusViews = viewing
     ? [
         ...views.flatMap((v) => {
           const now =
-            drafting.files.find((f) => f.file === v.view.id) ?? drafting.deleted.find((d) => d.file === v.view.id)
+            viewing.files.find((f) => f.file === v.view.id) ?? viewing.deleted.find((d) => d.file === v.view.id)
           return now
             ? [{ ...v, path: now.path, state: stateOf.get(v.view.id) ?? null, was: wasOf.get(v.view.id) ?? null }]
             : []
         }),
-        ...drafting.files
+        ...viewing.files
           .filter((f) => !views.some((v) => v.view.id === f.file))
           .map((f) => ({
             view: { id: f.file, path: f.path, source: f.content, unitIds: f.units.map((u) => u.id) },
