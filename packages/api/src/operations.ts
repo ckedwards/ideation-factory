@@ -172,6 +172,24 @@ export const operations = {
     output: PulledFiles,
   }),
 
+  findFile: defineOperation({
+    name: 'find_file',
+    summary: 'Find a file by its path',
+    description:
+      'The file with this path in the latest version; or, for a path no file has now, the file that had it last (it was renamed or moved since), and its path now. So a link or address made before a rename still finds the file. Not found if no version had it, or the file that had it is gone.',
+    method: 'GET',
+    path: '/ideas/{idea}/files/find',
+    kind: 'read',
+    input: z.strictObject({ idea: IdeaId, path: z.string().min(1).max(512) }),
+    output: z.object({
+      file: z.string(),
+      /** Its path in the latest version. */
+      path: z.string(),
+      /** The path asked for, if the file has another now. */
+      was: z.string().nullable(),
+    }),
+  }),
+
   sync: defineOperation({
     name: 'sync',
     summary: 'Upload edited files',

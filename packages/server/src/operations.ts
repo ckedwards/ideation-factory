@@ -602,6 +602,13 @@ export function createHandlers(actors: Client<Registry>): Handlers<Operations> {
         ),
       ),
 
+    findFile: (input, { caller, token }) =>
+      withAccess(input.idea, { caller, token }, 'view', () =>
+        read(
+          async () => (await ideaOf(input.idea).findFile(input.path)) ?? notFound(`no file was ever at ${input.path}`),
+        ),
+      ),
+
     suggestionSource: (input, { caller, token }) =>
       withAccess(input.idea, { caller, token }, 'view', () =>
         read(() => ideaOf(input.idea).suggestionSource(input.file, input.start, input.end)),
