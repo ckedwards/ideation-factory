@@ -57,6 +57,15 @@
 .file-tree-row:focus-visible {
   box-shadow: 0 0 0 2px var(--accent);
 }
+/* a long name keeps its line: what's beside it goes under it first */
+.file-tree-main {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-1);
+  min-width: 0;
+}
 .file-tree-folder {
   display: flex;
   align-items: center;
@@ -78,15 +87,15 @@
 }
 .file-tree-name {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   color: var(--ink-2);
   text-decoration: none;
 }
 .file-tree-row.is-folder .file-tree-name {
   color: var(--ink);
 }
-/* a file's name lines up with its folder's, past the caret */
-.file-tree-row:not(.is-folder) .file-tree-name {
+/* a file's name lines up with its folder's, past the caret, and so does what wraps under it */
+.file-tree-row:not(.is-folder) .file-tree-main {
   padding-left: calc(1em + var(--space-1));
 }
 .file-tree-name[aria-current='page'] {
@@ -118,7 +127,7 @@
 }
 /* ⋯ shows when the row is pointed at or focused, and always on a touch screen */
 .file-tree-menu {
-  margin-left: auto;
+  flex: none;
   opacity: 0;
 }
 .file-tree-row:hover .file-tree-menu,
@@ -158,6 +167,11 @@
   color: var(--ink);
   font: inherit;
   outline: none;
+}
+/* the box around it shows the focus */
+.file-tree-input:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 .file-tree-extension {
   padding-right: var(--space-2);
