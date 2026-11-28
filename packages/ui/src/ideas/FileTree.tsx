@@ -76,7 +76,6 @@ export function FileTree({
   const tree = useMemo(() => buildTree(files), [files])
   const closedSet = useMemo(() => new Set(closed), [closed])
   const rows = useMemo(() => visibleRows(tree, closedSet, current), [tree, closedSet, current])
-  const folders = useMemo(() => folderPaths(files), [files])
   const [box, setBox] = useState<NameBox | null>(defaultNameBox)
   const [focused, setFocused] = useState(0)
   const items = useRef<Array<HTMLElement | null>>([])
@@ -238,15 +237,14 @@ export function FileTree({
 
   const boxRow = (depth: number) =>
     box && actions ? (
-      <NameBoxRow
-        box={box}
-        depth={depth}
-        files={files}
-        folders={folders}
-        tree={tree}
-        actions={actions}
-        onDone={() => setBox(null)}
-      />
+      <li
+        role="treeitem"
+        aria-level={depth + 1}
+        className="file-tree-row is-naming"
+        style={{ '--file-tree-depth': depth } as CSSProperties}
+      >
+        <NameBoxField box={box} files={files} actions={actions} onDone={() => setBox(null)} />
+      </li>
     ) : null
 
   return (
@@ -402,18 +400,25 @@ function Comments({ n }: { n: number }) {
   )
 }
 
-interface NameBoxRowProps {
+export interface NameBoxFieldProps {
   box: NameBox
-  depth: number
-  files: FileTreeFile[]
-  folders: Set<string>
-  tree: FolderNode
+  files: readonly TreeFile[]
   actions: FileTreeActions
+  /** Done with it: made or renamed, or left. */
   onDone: () => void
+  /** Leaving it (clicking elsewhere) leaves it, as in the tree's row; not in a dialog, which has Cancel. */
+  keepOnBlur?: boolean
+  /** Set to what Enter does: for a dialog's button. */
+  submitRef?: { current: (() => void) | null }
 }
 
-/** Making or renaming in the row: the name checked as you type, Enter to do it, Esc to leave it. */
-function NameBoxRow({ box, depth, files, folders, tree, actions, onDone }: NameBoxRowProps) {
+/**
+ * The name box: making or renaming a file (or renaming a folder), the name checked as you type, Enter
+ * to do it, Esc to leave it. In the tree's row, or a dialog where there's no tree (the focus view).
+ */
+export function NameBoxField({ box, files, actions, onDone, keepOnBlur, submitRef }: NameBoxFieldProps) {
+  const folders = useMemo(() => folderPaths(files), [files])
+  const tree = useMemo(() => buildTree(files), [files])
   const renamed = box.kind === 'rename' ? files.find((f) => f.id === box.file) : undefined
   // a file's extension stays as it is: a page's .md is fixed at the end of the box
   const extension = box.kind === 'rename-folder' ? '' : renamed ? extensionOf(renamed.path) : EXTENSION
@@ -506,13 +511,11 @@ function NameBoxRow({ box, depth, files, folders, tree, actions, onDone }: NameB
       : box.kind === 'rename'
         ? `Rename ${renamed?.path ?? ''}`
         : `Rename folder ${box.folder}`
+  if (submitRef) {
+    submitRef.current = submit
+  }
   return (
-    <li
-      role="treeitem"
-      aria-level={depth + 1}
-      className="file-tree-row is-naming"
-      style={{ '--file-tree-depth': depth } as CSSProperties}
-    >
+    <>
       <div className="file-tree-box">
         <input
           ref={input}
@@ -531,14 +534,14 @@ function NameBoxRow({ box, depth, files, folders, tree, actions, onDone }: NameB
               onDone()
             }
           }}
-          onBlur={onDone}
+          {...(keepOnBlur ? {} : { onBlur: onDone })}
         />
         {extension && <span className="file-tree-extension">{extension}</span>}
       </div>
       <p id={hintId} className={showProblem ? 'file-tree-hint is-problem' : 'file-tree-hint'} role="status">
         {showProblem ? problem : note}
       </p>
-    </li>
+    </>
   )
 }
 

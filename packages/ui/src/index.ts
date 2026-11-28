@@ -41,6 +41,8 @@ export {
   type FileTreeFile,
   type FileTreeProps,
   type NameBox,
+  NameBoxField,
+  type NameBoxFieldProps,
 } from './ideas/FileTree.tsx'
 export { IdeaRow, type IdeaRowHide, type IdeaRowProps } from './ideas/IdeaRow.tsx'
 export { StatusControl, type OpenStatus, type StatusControlProps } from './ideas/StatusControl.tsx'
