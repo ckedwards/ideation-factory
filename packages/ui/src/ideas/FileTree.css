@@ -85,6 +85,10 @@
   font-size: var(--text-xs);
   text-align: center;
 }
+/* the icon: a folder, a page, a picture; quieter than the name */
+.file-tree-row .icon {
+  color: var(--ink-2);
+}
 .file-tree-name {
   min-width: 0;
   overflow-wrap: break-word;
@@ -94,7 +98,7 @@
 .file-tree-row.is-folder .file-tree-name {
   color: var(--ink);
 }
-/* a file's name lines up with its folder's, past the caret, and so does what wraps under it */
+/* a file's icon lines up with its folder's, past the caret, and so does what wraps under it */
 .file-tree-row:not(.is-folder) .file-tree-main {
   padding-left: calc(1em + var(--space-1));
 }
@@ -102,15 +106,13 @@
   color: var(--ink);
   font-weight: 600;
 }
-.file-tree-state {
-  flex: none;
-  color: var(--ink-3);
-  font-size: var(--text-xs);
+/* what the draft does to it, in its name's color: new green, changed amber (a closed folder too, for
+   something inside), deleted struck through; the tooltip and hidden text say it in words */
+.file-tree-row.is-new .file-tree-name {
+  color: color-mix(in srgb, var(--ok) 80%, var(--ink));
 }
-.file-tree-state.is-changed,
-.file-tree-state.is-new,
-.file-tree-state.is-renamed {
-  color: var(--changed);
+.file-tree-row.is-changed .file-tree-name {
+  color: color-mix(in srgb, var(--warn) 80%, var(--ink));
 }
 .file-tree-row.is-deleted .file-tree-name {
   color: var(--ink-3);

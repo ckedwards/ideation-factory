@@ -1,7 +1,10 @@
-// An idea's Files list, as a tree of folders (docs: Files in the browser). Folders above files, a
-// chain of folders holding only a folder on one row, and what the draft does to each file beside it:
-// new, renamed, changed, or struck through and deleted. A closed folder shows the comments and changes
-// inside it; which folders are closed is the page's to keep.
+// An idea's Files list, as a tree of folders (docs: Files in the browser; Files tree: icons and
+// marks). Folders above files, a chain of folders holding only a folder on one row, an icon on each
+// (a folder, open or closed, a page, a picture), and what the draft does to each file in its name's
+// color: new in green, changed in amber, deleted struck through; a rename alone isn't marked, as the
+// commit lists it. The name's tooltip says it in words, and so does hidden text for a screen reader.
+// A closed folder shows the comments and changes inside it; which folders are closed is the page's to
+// keep.
 //
 // For someone who can edit, `+` beside the label makes a file, and each row's ⋯ renames or deletes
 // it (a folder's makes a file in it, renames or deletes it); a deleted one is restored the same way.
@@ -9,11 +12,15 @@
 // Right opens a folder, Left closes it or goes up, Enter opens, F2 renames, Delete deletes.
 import { type CSSProperties, Fragment, type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { RowMenu, type RowMenuItem } from '../controls/RowMenu.tsx'
+import { Icon } from '../labels/Icon.tsx'
 import {
   buildTree,
   type FolderNode,
+  folderHint,
   folderOf,
   folderPaths,
+  isImage,
+  stateHint,
   type TreeFile,
   type TreeRow,
   visibleRows,
@@ -328,6 +335,9 @@ function Row({ row, tabIndex, current, menu, onToggle, onFocus, ref }: RowProps)
   const indent = { '--file-tree-depth': row.depth } as CSSProperties
   if (row.kind === 'folder') {
     const folder = row.node
+    // a deleted folder is struck through open or closed; a closed one says what changed inside
+    const hint = folder.deleted || !row.open ? folderHint(folder) : null
+    const mark = folder.deleted ? 'is-deleted' : hint ? 'is-changed' : null
     return (
       <li
         ref={ref}
@@ -336,7 +346,7 @@ function Row({ row, tabIndex, current, menu, onToggle, onFocus, ref }: RowProps)
         aria-level={row.depth + 1}
         tabIndex={tabIndex}
         onFocus={onFocus}
-        className={['file-tree-row', 'is-folder', folder.deleted && 'is-deleted'].filter(Boolean).join(' ')}
+        className={['file-tree-row', 'is-folder', mark].filter(Boolean).join(' ')}
         style={indent}
       >
         <span className="file-tree-main">
@@ -344,13 +354,12 @@ function Row({ row, tabIndex, current, menu, onToggle, onFocus, ref }: RowProps)
             <span className="file-tree-caret" aria-hidden>
               {row.open ? '▾' : '▸'}
             </span>
-            <span className="file-tree-name">{folder.name}</span>
+            <Icon name={row.open ? 'folderOpen' : 'folder'} />
+            <span className="file-tree-name" title={hint ?? undefined}>
+              {folder.name}
+              {hint && <span className="visually-hidden">, {folder.deleted ? 'deleted' : 'changed inside'}</span>}
+            </span>
           </button>
-          {folder.deleted ? (
-            <span className="file-tree-state"> · deleted</span>
-          ) : (
-            !row.open && folder.changed && <span className="file-tree-state is-changed"> · changed</span>
-          )}
           {!row.open && folder.comments > 0 && <Comments n={folder.comments} />}
         </span>
         {menu.length > 0 && (
@@ -361,6 +370,9 @@ function Row({ row, tabIndex, current, menu, onToggle, onFocus, ref }: RowProps)
   }
   const { file, name } = row.node
   const state = file.state ?? null
+  const hint = stateHint(state, file.was)
+  // a rename alone isn't marked: its tooltip says where it was
+  const mark = state && state !== 'renamed' ? `is-${state}` : null
   return (
     <li
       ref={ref}
@@ -369,20 +381,21 @@ function Row({ row, tabIndex, current, menu, onToggle, onFocus, ref }: RowProps)
       aria-current={file.path === current ? 'page' : undefined}
       tabIndex={tabIndex}
       onFocus={onFocus}
-      className={['file-tree-row', state === 'deleted' && 'is-deleted'].filter(Boolean).join(' ')}
+      className={['file-tree-row', mark].filter(Boolean).join(' ')}
       style={indent}
     >
       <span className="file-tree-main">
+        <Icon name={isImage(file.path) ? 'image' : 'page'} />
         <a
           href={(file as FileTreeFile).href}
           tabIndex={-1}
           className="file-tree-name"
           aria-current={file.path === current ? 'page' : undefined}
-          title={state === 'renamed' && file.was ? `was ${file.was}` : undefined}
+          title={hint ?? undefined}
         >
           {name}
+          {mark && <span className="visually-hidden">, {state}</span>}
         </a>
-        {state && <span className={`file-tree-state is-${state}`}> · {state}</span>}
         {(file.comments ?? 0) > 0 && <Comments n={file.comments!} />}
       </span>
       {menu.length > 0 && (

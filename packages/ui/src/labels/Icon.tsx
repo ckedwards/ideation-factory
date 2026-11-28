@@ -63,6 +63,26 @@ const PATHS = {
       <path d="M2.25 4.5 8 9l5.75-4.5" />
     </>
   ),
+  // a folder, closed and open: the Files tree's folders
+  folder: <path d="M2.5 4.5a1 1 0 0 1 1-1h3l1.5 1.5h4.5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z" />,
+  folderOpen: (
+    <path d="M2.5 12V4.5a1 1 0 0 1 1-1h3l1.5 1.5h4a1 1 0 0 1 1 1v1M2.5 12l1.6-4.4a1 1 0 0 1 .9-.6h8.6a.6.6 0 0 1 .6.8L12.6 12a1 1 0 0 1-.9.5h-8.7a.5.5 0 0 1-.5-.5z" />
+  ),
+  // a page with lines of text: a file
+  page: (
+    <>
+      <path d="M4 2.5h5l3 3v8H4z" />
+      <path d="M9 2.5v3h3M6 8.5h4M6 11h3" />
+    </>
+  ),
+  // a picture: an image file
+  image: (
+    <>
+      <rect x="2.5" y="3" width="11" height="10" rx="1.5" />
+      <path d="M2.5 11l3.5-3.5 3 3 1.75-1.75 2.75 2.75" />
+      <circle cx="10.5" cy="6" r="1" />
+    </>
+  ),
 } satisfies Record<string, ReactNode>
 
 export type IconName = keyof typeof PATHS
