@@ -200,6 +200,21 @@ describe('a file renamed in the draft', () => {
     expect((await service.file(2, 'f1'))!.content).toContain('Read [notes](notes.md).')
   })
 
+  test('undone, is renamed back, with the links it fixed fixed back', async () => {
+    const { service, write } = await created()
+    value(
+      await write({
+        type: 'draft',
+        changes: [{ kind: 'rename-file', file: 'f6', path: 'docs/notes.md', was: 'notes.md' }],
+      }),
+    )
+    expect((await service.draft()).files.find((f) => f.file === 'f1')!.content).toContain('[notes](docs/notes.md)')
+    value(await write({ type: 'undraft', key: 'r-f6' }))
+    const draft = await service.draft()
+    expect(draft.changes).toEqual([])
+    expect(draft.files.find((f) => f.file === 'f1')!.content).toBe(PLAN)
+  })
+
   test('made against a path it no longer has is refused as outdated', async () => {
     const { write } = await created()
     value(
