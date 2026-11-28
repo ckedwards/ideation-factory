@@ -13,6 +13,7 @@
 // - An idea's draft: changes on the latest version, checked as they're built (draft.ts)
 // - An editor's blocks, as they are on screen, turned into draft changes (changes.ts)
 // - What a suggested edit replaces, and the command accepting it applies (suggest.ts)
+// - The link fixes renaming or moving files needs (links.ts)
 
 export { applyBatch, type BatchResult, type Conflict, type ConflictReason, type StepResult } from './apply.ts'
 export { blocksOfSource, type DraftChanges, draftChanges, type EditorBlock, type MovedWords } from './changes.ts'
@@ -21,6 +22,7 @@ export {
   addChange,
   type BuiltDraft,
   buildDraft,
+  type DeletedFile,
   type DraftAddition,
   DraftChange,
   type DraftEntry,
@@ -29,6 +31,7 @@ export {
   unitSource,
 } from './draft.ts'
 export { type BlockEdit, blockEdit } from './edit.ts'
+export { filesInFolder, folderRenames, type LinkFix, linkFixes, type Rename, renameChanges } from './links.ts'
 export { contentHash } from './hash.ts'
 export {
   type Anchor,

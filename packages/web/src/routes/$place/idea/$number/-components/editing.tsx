@@ -689,6 +689,12 @@ function describe(change: DraftChange): string {
       return heading(change.was)
         ? `Renamed “${title(change.was)}” to “${title(change.source)}”`
         : `Edited “${excerpt(change.source)}”`
+    case 'create-file':
+      return `Added ${change.path}`
+    case 'rename-file':
+      return `Renamed ${change.was} to ${change.path}`
+    case 'delete-file':
+      return `Deleted ${change.file}`
   }
 }
 

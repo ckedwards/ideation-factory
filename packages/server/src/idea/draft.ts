@@ -58,6 +58,12 @@ export function keyOf(change: DraftChange, taken: Set<string>): string {
         return `t-${change.from}-${change.to.in}`
       case 'suggestion':
         return `s-${change.comment}`
+      case 'create-file':
+        return `c-${change.path}`.slice(0, 60)
+      case 'rename-file':
+        return `r-${change.file}`
+      case 'delete-file':
+        return `x-${change.file}`
       case 'insert': {
         const at = change.at as Record<string, unknown>
         const where = Object.entries(at)
@@ -86,6 +92,9 @@ export function blocksNamed(change: DraftChange): string[] {
       return [change.from, change.to.in]
     case 'insert':
     case 'suggestion':
+    case 'create-file':
+    case 'rename-file':
+    case 'delete-file':
       return []
   }
 }

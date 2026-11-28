@@ -123,5 +123,10 @@ export function needsALook(change: DraftChange, now: Draft, file: string, mine: 
     case 'suggestion':
       // the page never makes one
       return { what: 'A suggestion', yours: change.new, theirs: null, over: null }
+    case 'create-file':
+    case 'rename-file':
+    case 'delete-file':
+      // nor these: files are made, renamed and deleted from the Files list
+      return { what: 'A change to a file', yours: '', theirs: null, over: null }
   }
 }
