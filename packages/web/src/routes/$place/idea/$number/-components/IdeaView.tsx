@@ -208,6 +208,33 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
     shown: file.path,
     onNote: setToast,
   })
+  // an older version's file the latest doesn't have (deleted since): its text can come back, as a new
+  // file in the draft at its path (or beside it, if that's taken); its old comments stay outdated
+  const latestFiles = useQuery({ ...filesQuery(id, latest), enabled: older })
+  const restorable =
+    older &&
+    idea.you.edit &&
+    !!draft.data &&
+    !!latestFiles.data &&
+    !latestFiles.data.files.some((f) => f.file === file.id)
+  const restoreFile = async () => {
+    const now = draft.data!
+    const taken = new Set([...now.files, ...now.deleted].map((f) => f.path.toLowerCase()))
+    let to = file.path
+    for (let n = 2; taken.has(to.toLowerCase()); n++) {
+      to = file.path.replace(/(\.[^./]+)?$/, `-${n}$1`)
+    }
+    try {
+      await api.changeDraft({ idea: id, changes: [{ kind: 'create-file', path: to, markdown: file.source }] })
+      await queryClient.invalidateQueries({ queryKey: draftQuery(id).queryKey, exact: true })
+      setNote(
+        `${to === file.path ? `Restored ${to}` : `Restored ${file.path} as ${to}`} in the draft. Its old comments stay outdated.`,
+      )
+      void navigate({ href: links.files({ file: to }) })
+    } catch (error) {
+      setNote(`That didn’t work: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
   // the file's own ⋯, on its line here and on each page of the focus view; and the name box for it
   const [naming, setNaming] = useState<NameBox | null>(null)
   const fileMenu = (fileId: string): RowMenuItem[] | undefined => {
@@ -489,6 +516,7 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
                 at={at}
                 latestHref={links.files({ file: path })}
                 changesHref={links.changes(version, undefined, path)}
+                onRestore={restorable ? () => void restoreFile() : undefined}
               />
             ) : null}
           </>

@@ -559,6 +559,32 @@ export const OlderVersion: Story = {
   },
 }
 
+// An older version of a file the latest doesn't have: Restore this file brings its text back into the draft
+export const OlderVersionOfADeletedFile: Story = {
+  args: {
+    source: earlier,
+    canComment: false,
+    comments: [],
+    versions: { ...versions, viewing: 1 },
+    banner: (
+      <VersionBanner
+        kind="older"
+        version={1}
+        latest={3}
+        by={actors.person}
+        at={NOW - 72 * 3_600_000}
+        latestHref="#latest"
+        changesHref="#changes"
+        onRestore={fn()}
+      />
+    ),
+  },
+  play: async ({ canvasElement }) => {
+    const page = within(canvasElement)
+    await expect(page.getByRole('button', { name: 'Restore this file' })).toBeVisible()
+  },
+}
+
 // Comparing: the file as a redline against v1, the sections that changed
 // marked in the contents, the comments as a list, and the versions shown
 export const Compare: Story = {
