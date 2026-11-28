@@ -13,6 +13,7 @@
 import { type CSSProperties, Fragment, type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { RowMenu, type RowMenuItem } from '../controls/RowMenu.tsx'
 import { Icon } from '../labels/Icon.tsx'
+import { Link } from '../link/Link.tsx'
 import {
   buildTree,
   type FolderNode,
@@ -386,7 +387,8 @@ function Row({ row, tabIndex, current, menu, onToggle, onFocus, ref }: RowProps)
     >
       <span className="file-tree-main">
         <Icon name={isImage(file.path) ? 'image' : 'page'} />
-        <a
+        {/* the app's link: it goes there without loading the page again */}
+        <Link
           href={(file as FileTreeFile).href}
           tabIndex={-1}
           className="file-tree-name"
@@ -395,7 +397,7 @@ function Row({ row, tabIndex, current, menu, onToggle, onFocus, ref }: RowProps)
         >
           {name}
           {mark && <span className="visually-hidden">, {state}</span>}
-        </a>
+        </Link>
         {(file.comments ?? 0) > 0 && <Comments n={file.comments!} />}
       </span>
       {menu.length > 0 && (
