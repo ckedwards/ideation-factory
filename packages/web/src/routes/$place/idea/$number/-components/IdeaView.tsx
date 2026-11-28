@@ -381,12 +381,13 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
     ? [
         ...drafting.files.map((f): FileTreeFile => {
           const inVersion = pulled.files.find((p) => p.file === f.file)
+          // renamed and changed is changed (its tooltip says where it was): a rename alone isn't marked
           const state = f.made
             ? 'new'
-            : f.was
-              ? 'renamed'
-              : inVersion && inVersion.content !== f.content
-                ? 'changed'
+            : inVersion && inVersion.content !== f.content
+              ? 'changed'
+              : f.was
+                ? 'renamed'
                 : null
           return {
             id: f.file,
@@ -455,12 +456,15 @@ export function IdeaView({ id, links, v, base: wantedBase, file: path, comment: 
   // the focus view's pages: while the draft's in use, its files as the Files tree has them (new ones
   // too, renamed ones at their new paths, deleted ones marked), else the version's
   const stateOf = new Map(treeFiles.map((f) => [f.id, f.state ?? null]))
+  const wasOf = new Map(treeFiles.map((f) => [f.id, f.was ?? null]))
   const focusViews = drafting
     ? [
         ...views.flatMap((v) => {
           const now =
             drafting.files.find((f) => f.file === v.view.id) ?? drafting.deleted.find((d) => d.file === v.view.id)
-          return now ? [{ ...v, path: now.path, state: stateOf.get(v.view.id) ?? null }] : []
+          return now
+            ? [{ ...v, path: now.path, state: stateOf.get(v.view.id) ?? null, was: wasOf.get(v.view.id) ?? null }]
+            : []
         }),
         ...drafting.files
           .filter((f) => !views.some((v) => v.view.id === f.file))

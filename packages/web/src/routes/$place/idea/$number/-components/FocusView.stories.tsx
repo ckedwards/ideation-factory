@@ -222,14 +222,21 @@ export const DraftFiles: Story = {
   args: {
     pages: [
       { ...twoFiles[0]!, state: 'changed' },
-      { ...twoFiles[1]!, path: 'research/sync-states.md', state: 'renamed' },
+      { ...twoFiles[1]!, path: 'research/sync-states.md', state: 'renamed', was: 'sync-states.md' },
       { id: 'f9', path: 'decisions/offline.md', source: '', comments: [], state: 'new' },
     ],
   },
   play: async () => {
     const pages = within(within(region()).getByRole('navigation', { name: 'Pages' }))
-    await expect(pages.getByRole('link', { name: /research\/sync-states\.md · renamed/ })).toBeVisible()
-    await expect(pages.getByRole('link', { name: /decisions\/offline\.md · new/ })).toBeVisible()
+    // a rename alone isn't marked, but pointing says where it was
+    const renamed = pages.getByRole('link', { name: /research\/sync-states\.md$/ })
+    await expect(renamed.querySelector('.focus-nav-path')).toHaveAttribute(
+      'title',
+      'Renamed in the draft, from sync-states.md',
+    )
+    // new: its color, and the word for a screen reader
+    const made = pages.getByRole('link', { name: /decisions\/offline\.md ?, new/ })
+    await expect(made.querySelector('.focus-nav-path')).toHaveClass('is-new')
   },
 }
 
