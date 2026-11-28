@@ -28,6 +28,7 @@ import {
   renderMermaid,
   SegmentedControl,
   SelectionMenu,
+  stateHint,
   type TextSelection,
 } from '@ideaf/ui'
 import { type PageComment, type ThreadActions, ThreadCard } from './ThreadCard.tsx'
@@ -69,6 +70,8 @@ export interface FocusPage {
   path: string
   /** What the draft does to its file, while it's in use: as the Files tree says. */
   state?: FileState | null
+  /** Its path in the latest version, when the draft renames it. */
+  was?: string | null
   source: string
   comments: PageComment[]
 }
@@ -559,10 +562,16 @@ export function FocusView(props: FocusViewProps) {
                   }}
                 >
                   <span className="focus-nav-n">{i + 1}</span>
-                  <span className={page.state === 'deleted' ? 'focus-nav-path is-deleted' : 'focus-nav-path'}>
+                  {/* as the Files tree marks it: the path's color, its tooltip and hidden words */}
+                  <span
+                    className={
+                      page.state && page.state !== 'renamed' ? `focus-nav-path is-${page.state}` : 'focus-nav-path'
+                    }
+                    title={stateHint(page.state, page.was) ?? undefined}
+                  >
                     {page.path}
+                    {page.state && page.state !== 'renamed' && <span className="visually-hidden">, {page.state}</span>}
                   </span>
-                  {page.state && <span className={`focus-nav-state is-${page.state}`}> · {page.state}</span>}
                 </a>
                 {here && (
                   <Sections
