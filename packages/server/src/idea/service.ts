@@ -2528,6 +2528,15 @@ export class IdeaService {
     if (!entry) {
       refuse('not_found', `no change ${key} in the draft`)
     }
+    // undoing a rename is renaming it back: the links it fixed are fixed back too
+    if (entry!.kind === 'file' && entry!.change.kind === 'rename-file') {
+      const { file } = entry!.change
+      const now = derived.built.files.find((f) => f.id === file)?.path
+      const before = latest.idea.files.find((f) => f.id === file)?.path
+      if (now && before && now !== before) {
+        return this.#draftAdd(request, [{ kind: 'rename-file', file, path: before, was: now }])
+      }
+    }
     const rest = derived.entries.filter((e) => e.key !== key)
     const built = await this.#core.buildDraft(this.id, latest.idea, latest.comments, rest.map(plainEntry))
     const next = await this.#nextDraft(request, latest, state, derived, {
