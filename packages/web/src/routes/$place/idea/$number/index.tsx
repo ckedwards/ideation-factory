@@ -10,6 +10,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { meQuery, teamQuery } from '../../../../api.ts'
 import { type ActivityItem, IdeaOverview } from './-components/IdeaOverview.tsx'
 import { ideaLinks } from './-components/links.ts'
+import { useClosedFolders } from './-components/closed-folders.ts'
 import { commentsOf } from './-components/live.ts'
 import { filesQuery, ideaQuery, loadIdeaPage, outlineQuery, reviewsQuery } from './-components/queries.ts'
 import { ReviewPanel } from './-components/ReviewPanel.tsx'
@@ -34,6 +35,7 @@ export const Route = createFileRoute('/$place/idea/$number/')({
 
 function Overview() {
   const { idea: id, place, number } = Route.useRouteContext()
+  const [closedFolders, setClosedFolders] = useClosedFolders(id)
   const queryClient = useQueryClient()
   const links = ideaLinks(place, number)
   const { data: idea } = useSuspenseQuery(ideaQuery(id))
@@ -159,7 +161,12 @@ function Overview() {
   return (
     <>
       <IdeaOverview
-        files={pulled.files.map((f) => ({ path: f.path, href: links.files({ file: f.path }) }))}
+        files={{
+          files: pulled.files.map((f) => ({ id: f.file, path: f.path, href: links.files({ file: f.path }) })),
+          current: null,
+          closed: closedFolders,
+          onClosedChange: setClosedFolders,
+        }}
         team={teamRef(idea, team.data, people, me.id)}
         startedBy={actorOf(first?.by ?? { user: idea.owner, bot: null, purpose: 'me' }, people)}
         startedAt={idea.createdAt}

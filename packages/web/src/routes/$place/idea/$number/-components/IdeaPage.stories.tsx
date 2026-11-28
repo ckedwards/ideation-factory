@@ -101,7 +101,12 @@ const meta = {
     }
   },
   args: {
-    files: [{ path: 'plan.md', href: '#plan', current: true }],
+    files: {
+      files: [{ id: 'f1', path: 'plan.md', href: '#plan' }],
+      current: 'plan.md',
+      closed: [],
+      onClosedChange: fn(),
+    },
     source,
     comments,
     versions,
@@ -508,14 +513,19 @@ export const NoComments: Story = {
   },
 }
 
-// An idea with several files lists them, the one shown marked
+// An idea with several files shows them as a tree, the one shown marked
 export const SeveralFiles: Story = {
   args: {
-    files: [
-      { path: 'plan.md', href: '#plan', current: true },
-      { path: 'design/sync-protocol.md', href: '#protocol', current: false },
-      { path: 'notes/risks.md', href: '#risks', current: false },
-    ],
+    files: {
+      files: [
+        { id: 'f1', path: 'plan.md', href: '#plan' },
+        { id: 'f2', path: 'design/sync-protocol.md', href: '#protocol' },
+        { id: 'f3', path: 'notes/risks.md', href: '#risks' },
+      ],
+      current: 'plan.md',
+      closed: [],
+      onClosedChange: fn(),
+    },
   },
   play: async ({ canvasElement }) => {
     const files = within(within(canvasElement).getByRole('navigation', { name: 'Files' }))

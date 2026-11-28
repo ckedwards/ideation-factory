@@ -17,8 +17,9 @@ import {
   CommentGutter,
   CommentTicks,
   headings,
+  FileTree,
+  type FileTreeProps,
   IdeaPageLayout,
-  Link,
   MarkdownView,
   Redline,
   redline,
@@ -32,7 +33,6 @@ import {
   markSelector,
   Toc,
 } from '@ideaf/ui'
-import { plural } from '../../../../../plural.ts'
 import { VersionList, type VersionListProps } from './VersionList.tsx'
 import type { Placement } from './view.ts'
 import type { Editing } from './editing.tsx'
@@ -46,8 +46,8 @@ export interface IdeaPageProps extends ThreadActions {
   showSource?: boolean
   /** A comment to open where it is (a link from the overview): active, and its text scrolled to. */
   opened?: string | undefined
-  /** The idea's files; listed when there's more than one. `changed`: since the version compared against. */
-  files: { path: string; href: string; current: boolean; changed?: boolean; comments?: number }[]
+  /** The idea's files, as a tree: with what the draft does to each, and its actions, for someone who can edit. */
+  files: Omit<FileTreeProps, 'labelClassName'>
   /** The file shown, as Markdown. */
   source: string
   /** Comparing: the file as it was in an earlier version (empty if it didn't exist then). */
@@ -313,26 +313,7 @@ export function IdeaPage(props: IdeaPageProps) {
     <div className="idea-nav">
       <Stack gap={5}>
         {/* every file, as the overview lists them: the same left slot on every page */}
-        {props.files.length > 0 && (
-          <nav aria-label="Files">
-            <h2 className="idea-rail-label">Files</h2>
-            <ul className="idea-files">
-              {props.files.map((file) => (
-                <li key={file.path}>
-                  <Link href={file.href} aria-current={file.current ? 'page' : undefined}>
-                    {file.path}
-                  </Link>
-                  {file.changed && <span className="idea-file-changed"> · changed</span>}
-                  {(file.comments ?? 0) > 0 && (
-                    <span className="idea-file-comments" title={plural(file.comments!, 'open comment')}>
-                      {file.comments}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </nav>
-        )}
+        {props.files.files.length > 0 && <FileTree {...props.files} labelClassName="idea-rail-label" />}
         {/* open beside the document; a disclosure, closed to start, where the rail is a band across the top;
             left out for a file with no headings, rather than a heading over nothing */}
         {contents.length > 0 && (

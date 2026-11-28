@@ -20,22 +20,6 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.idea-overview-files {
-  display: grid;
-  gap: var(--space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.idea-overview-files a {
-  color: var(--ink-2);
-  text-decoration: none;
-  word-break: break-all;
-}
-.idea-overview-files a:hover {
-  color: var(--ink);
-  text-decoration: underline;
-}
 .idea-overview-details {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
