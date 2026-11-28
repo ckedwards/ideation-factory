@@ -158,3 +158,26 @@ export const Outdated: Story = {
     await expect(dialog.getByText('A change is outdated: undo or redo it to commit.')).toBeVisible()
   },
 }
+
+// Files made, renamed and deleted are changes too: a folder renamed is one row with one Undo, and the
+// count says how many files they're in
+export const FileChanges: Story = {
+  args: {
+    changes: [
+      { key: 'c-f9', label: 'Added research/costs.md', authors: [riley] },
+      { key: 'r-f3', label: 'Renamed research to findings (4 files)', authors: [maya] },
+      { key: 'e-b3', label: 'Edited “See the findings.”', authors: [maya] },
+      { key: 'x-f6', label: 'Deleted sync-queue.md', authors: [riley] },
+    ],
+    files: 7,
+  },
+  play: async ({ args, canvasElement, userEvent }) => {
+    const page = within(canvasElement)
+    const body = within(canvasElement.ownerDocument.body)
+    await userEvent.click(page.getByRole('button', { name: '4 changes in 7 files' }))
+    const dialog = within(await body.findByRole('dialog', { name: 'The draft’s changes' }))
+    await expect(dialog.getByText('Renamed research to findings (4 files)')).toBeVisible()
+    await userEvent.click(dialog.getAllByRole('button', { name: 'Undo this change' })[1]!)
+    await expect(args.onUndo).toHaveBeenCalledWith('r-f3')
+  },
+}

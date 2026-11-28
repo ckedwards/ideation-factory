@@ -52,6 +52,8 @@ export interface EditPanelProps {
   /** The version the draft is on: the latest. */
   version: number
   changes: ChangeRow[]
+  /** How many files they change (their text, their path, made or deleted). */
+  files?: number
   /** Where each comment would be once it's committed. */
   outcomes: CommentOutcomeRow[]
   previewing: boolean
@@ -152,6 +154,7 @@ export function EditActions(props: EditPanelProps) {
           onClick={() => setListing(true)}
         >
           {plural(changes.length, 'change')}
+          {(props.files ?? 0) > 1 && ` in ${plural(props.files!, 'file')}`}
           {outdated > 0 && ` · ${outdated} outdated`}
         </Button>
       )}
