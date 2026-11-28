@@ -198,5 +198,11 @@ function describe(change: Change): string {
       return `moved ${text(change.old)} from ${change.from} to ${change.to.in}`
     case 'edit':
       return `edited ${change.id}: ${text(change.source)}`
+    case 'create-file':
+      return `added ${change.path}`
+    case 'rename-file':
+      return `renamed ${change.was} to ${change.path}`
+    case 'delete-file':
+      return `deleted ${change.file}`
   }
 }

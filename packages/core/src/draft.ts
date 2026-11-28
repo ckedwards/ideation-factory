@@ -4,7 +4,8 @@
 //
 // - **Changes, not commands:** an edit of a block (its new source), new text
 //   at a place, a deletion, a move of a block or section or of some of a
-//   block's text, or an accepted suggestion. Each is turned into
+//   block's text, an accepted suggestion, or a file made, renamed or deleted
+//   (a rename's link fixes are edits, from links.ts). Each is turned into
 //   commands against the draft as it is at that point, in the order they were
 //   made, so a later change builds on an earlier one.
 // - **Checked, never guessed:** an edit or deletion remembers the block as it
@@ -30,7 +31,9 @@ import { parseMarkdown, type UnitKind } from './markdown.ts'
 import { suggestionCommand } from './suggest.ts'
 
 const BlockId = z.string().regex(/^[bs][0-9]+$/, 'a block (b…) or section (s…) ID')
+const FileId = z.string().regex(/^f[0-9]+$/, 'a file ID (f…)')
 const Source = z.string().max(1_000_000)
+const Path = z.string().min(1).max(512)
 
 /** A change to the draft: what the web app's editor (and, later, a full editor) sends. */
 export const DraftChange = z.discriminatedUnion('kind', [
@@ -51,6 +54,12 @@ export const DraftChange = z.discriminatedUnion('kind', [
   }),
   /** A suggestion accepted into the draft: its comment, and its change. */
   z.strictObject({ kind: z.literal('suggestion'), comment: z.string().max(64), old: Source, new: Source }),
+  /** A new file; it takes the ID committing gives it, so later changes can name it and its blocks. */
+  z.strictObject({ kind: z.literal('create-file'), path: Path, markdown: Source }),
+  /** A file's new path; `was`, its path as the change was made against. */
+  z.strictObject({ kind: z.literal('rename-file'), file: FileId, path: Path, was: Path }),
+  /** A file, gone when the draft is committed; its comments become outdated. */
+  z.strictObject({ kind: z.literal('delete-file'), file: FileId }),
 ])
 export type DraftChange = z.infer<typeof DraftChange>
 
@@ -75,6 +84,21 @@ export interface DraftFile {
   source: string
   unitIds: string[]
   units: DraftUnit[]
+  /** The change that made it, for a file new in the draft. */
+  made: string | null
+  /** Its path in the latest version, if the draft renamed it. */
+  was: string | null
+}
+
+/** A file the draft deletes, as it was when deleted (with what was typed in it), so it can be restored. */
+export interface DeletedFile {
+  id: string
+  path: string
+  source: string
+  /** The change that deletes it. */
+  change: string
+  /** The change that made it, for a file new in the draft. */
+  made: string | null
 }
 
 export interface BuiltDraft {
@@ -83,6 +107,8 @@ export interface BuiltDraft {
   /** The batch that commits it: its commands, and the change each came from. */
   commands: Command[]
   owners: string[]
+  /** Files the draft deletes, in the order deleted. */
+  deleted: DeletedFile[]
   /** Changes that don't apply (outdated), and why, by key. */
   problems: Record<string, string>
   /** Where each comment would be, and how it fared. */
@@ -95,6 +121,8 @@ export function buildDraft(base: Idea, comments: Comment[], entries: DraftEntry[
   const commands: Command[] = []
   const owners: string[] = []
   const madeBy = new Map<string, string>()
+  const fileMadeBy = new Map<string, string>()
+  const deleted: DeletedFile[] = []
   // comments as they go: where each is now, and the worst that's happened to it
   let anchors = new Map<string, Anchor | null>(comments.map((c) => [c.id, c.anchor]))
   const states = new Map<string, AnchorState>(comments.map((c) => [c.id, 'exact']))
@@ -121,6 +149,19 @@ export function buildDraft(base: Idea, comments: Comment[], entries: DraftEntry[
         madeBy.set(id, madeBy.get(id) ?? key)
       }
     }
+    const filesBefore = new Set(idea.files.map((f) => f.id))
+    const filesAfter = new Set(applied.idea.files.map((f) => f.id))
+    for (const file of applied.idea.files) {
+      if (!filesBefore.has(file.id)) {
+        fileMadeBy.set(file.id, key)
+      }
+    }
+    for (const file of idea.files) {
+      if (!filesAfter.has(file.id)) {
+        const { id, path, source } = file
+        deleted.push({ id, path, source, change: key, made: fileMadeBy.get(id) ?? null })
+      }
+    }
     for (const outcome of applied.comments) {
       anchors.set(outcome.id, outcome.anchor)
       states.set(outcome.id, worse(states.get(outcome.id) ?? 'exact', outcome.state))
@@ -141,6 +182,8 @@ export function buildDraft(base: Idea, comments: Comment[], entries: DraftEntry[
       path: file.path,
       source: file.source,
       unitIds: file.unitIds,
+      made: fileMadeBy.get(file.id) ?? null,
+      was: original && original.path !== file.path ? original.path : null,
       units: parsed.units.map((unit, i): DraftUnit => {
         const id = file.unitIds[i]!
         const source = file.source.slice(unit.start, unit.end)
@@ -163,6 +206,7 @@ export function buildDraft(base: Idea, comments: Comment[], entries: DraftEntry[
     files,
     commands,
     owners,
+    deleted,
     problems,
     comments: comments.map((c) => ({
       id: c.id,
@@ -274,6 +318,25 @@ export function commandsFor(
   change: DraftChange,
 ): { ok: true; commands: Command[] } | { ok: false; message: string } {
   switch (change.kind) {
+    case 'create-file':
+      return { ok: true, commands: [{ command: 'create-file', path: change.path, markdown: change.markdown }] }
+    case 'rename-file': {
+      const file = idea.files.find((f) => f.id === change.file)
+      if (!file) {
+        return { ok: false, message: 'that file is gone' }
+      }
+      if (file.path !== change.was) {
+        return {
+          ok: false,
+          message: `that file has been renamed to ${file.path} since; undo this, and rename it again`,
+        }
+      }
+      return { ok: true, commands: [{ command: 'rename-file', file: change.file, path: change.path }] }
+    }
+    case 'delete-file':
+      return idea.files.some((f) => f.id === change.file)
+        ? { ok: true, commands: [{ command: 'delete-file', file: change.file }] }
+        : { ok: false, message: 'that file is gone' }
     case 'insert':
       return change.markdown.trim()
         ? { ok: true, commands: [{ command: 'insert', at: change.at, markdown: change.markdown }] }

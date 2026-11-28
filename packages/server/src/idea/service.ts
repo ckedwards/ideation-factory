@@ -499,6 +499,11 @@ function clipChange(change: DraftChange): DraftChange {
       return { ...change, old: clip(change.old), was: { from: clip(change.was.from), to: clip(change.was.to) } }
     case 'suggestion':
       return { ...change, old: clip(change.old), new: clip(change.new) }
+    case 'create-file':
+      return { ...change, markdown: clip(change.markdown) }
+    case 'rename-file':
+    case 'delete-file':
+      return change
   }
 }
 
@@ -2328,6 +2333,10 @@ export class IdeaService {
   async #draftAdd(request: WriteRequest, changes: DraftChange[]) {
     if (changes.some((c) => c.kind === 'suggestion')) {
       refuse('invalid', 'suggestions go into the draft by accepting them')
+    }
+    // the draft doesn't keep file changes yet (docs: Files in the browser, step 2)
+    if (changes.some((c) => c.kind === 'create-file' || c.kind === 'rename-file' || c.kind === 'delete-file')) {
+      refuse('invalid', 'the draft can’t make, rename or delete files yet; use edit, which makes a version')
     }
     await this.#requireMeta()
     const { latest, state, derived } = await this.#draftNow(request.caller)
